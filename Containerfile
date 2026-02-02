@@ -23,5 +23,11 @@ RUN \
 
 FROM registry.access.redhat.com/ubi10/ubi:10.1-1763341459 AS runtime
 
+RUN \
+  dnf install -y \
+  openssl \
+  && \
+  dnf clean all -y
+
 # Install the binary:
 COPY --from=builder /source/fulfillment-service /usr/local/bin
