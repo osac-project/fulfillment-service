@@ -64,6 +64,7 @@ var _ = Describe("Authorization rules", Ordered, func() {
 				"template", "fulfillment-service", chartDir,
 				"--namespace", "my-ns",
 				"--set", "certs.issuerRef.name=my-ca",
+				"--set", "certs.caBundle.configMap=my-bundle",
 				"--set", "auth.issuerUrl=https://my-issuer.com",
 			).
 			Build()

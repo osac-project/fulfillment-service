@@ -26,7 +26,7 @@ The following table lists the configurable parameters of the chart and their def
 | `variant` | Deployment variant (`kind` or `openshift`) | `kind` |
 | `certs.issuerRef.kind` | Kind of _cert-manager_ issuer | `ClusterIssuer` |
 | `certs.issuerRef.name` | Name of _cert-manager_ issuer | None |
-| `certs.caBundle.configMap` | Name of configmap containing trusted CA certificates in PEM format | None |
+| `certs.caBundle.configMap` | Name of configmap containing trusted CA certificates in PEM format | Required |
 | `hostname` | Hostname used to access the service from outside the cluster | None |
 | `auth.issuerUrl` | OAuth issuer URL for authentication | `https://keycloak.keycloak.svc.cluster.local:8000/realms/innabox` |
 | `log.level` | Log level for all components (debug, info, warn, error) | `info` |

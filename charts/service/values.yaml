@@ -23,8 +23,8 @@ certs:
     kind: ClusterIssuer
     name:
 
-  # This defines the trusted CA certificates bundle. It should be the name of a configmap in the release namespace
-  # that contains trusted CA certificates in PEM format. If not set or empty, no CA bundle will be used.
+  # This defines the trusted CA certificates bundle. It must be the name of a configmap in the release namespace
+  # that contains trusted CA certificates in PEM format.
   caBundle:
     configMap:
 

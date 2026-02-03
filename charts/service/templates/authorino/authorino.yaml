@@ -11,6 +11,8 @@ Unless required by applicable law or agreed to in writing, software distributed 
 specific language governing permissions and limitations under the License.
 */}}
 
+{{- $caBundleConfigMap := required "certs.caBundle.configMap is required" .Values.certs.caBundle.configMap }}
+
 apiVersion: operator.authorino.kuadrant.io/v1beta1
 kind: Authorino
 metadata:
@@ -27,11 +29,9 @@ spec:
   oidcServer:
     tls:
       enabled: false
-  {{- if .Values.certs.caBundle.configMap }}
   volumes:
     items:
     - name: ca-bundle
       configMaps:
-      - {{ .Values.certs.caBundle.configMap }}
+      - {{ $caBundleConfigMap }}
       mountPath: /etc/ssl/certs
-  {{- end }}
