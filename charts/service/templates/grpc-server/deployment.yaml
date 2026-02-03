@@ -11,6 +11,8 @@ Unless required by applicable law or agreed to in writing, software distributed 
 specific language governing permissions and limitations under the License.
 */}}
 
+{{- $caBundleConfigMap := required "certs.caBundle.configMap is required" .Values.certs.caBundle.configMap }}
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,11 +29,9 @@ spec:
         app: fulfillment-grpc-server
     spec:
       volumes:
-      {{- if .Values.certs.caBundle.configMap }}
       - name: cas
         configMap:
-          name: {{ .Values.certs.caBundle.configMap }}
-      {{- end }}
+          name: {{ $caBundleConfigMap }}
       - name: cert
         secret:
           secretName: fulfillment-database-client-cert
@@ -42,10 +42,8 @@ spec:
       - name: grpc-server
         image: {{ .Values.images.service }}
         volumeMounts:
-        {{- if .Values.certs.caBundle.configMap }}
         - name: cas
           mountPath: /etc/fulfillment-grpc-server/tls/cas
-        {{- end }}
         - name: cert
           mountPath: /secrets/cert
         - name: tls
@@ -57,9 +55,7 @@ spec:
         - --log-level={{ .Values.log.level }}
         - --log-headers={{ .Values.log.headers }}
         - --log-bodies={{ .Values.log.bodies }}
-        {{- if .Values.certs.caBundle.configMap }}
         - --ca-file=/etc/fulfillment-grpc-server/tls/cas
-        {{- end }}
         - "--db-url=postgres://client@fulfillment-database:5432/service?\
           sslmode=verify-full&\
           sslcert=/secrets/cert/tls.crt&\

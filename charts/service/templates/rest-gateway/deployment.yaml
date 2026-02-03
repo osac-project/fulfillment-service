@@ -11,6 +11,8 @@ Unless required by applicable law or agreed to in writing, software distributed 
 specific language governing permissions and limitations under the License.
 */}}
 
+{{- $caBundleConfigMap := required "certs.caBundle.configMap is required" .Values.certs.caBundle.configMap }}
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,11 +29,9 @@ spec:
         app: fulfillment-rest-gateway
     spec:
       volumes:
-      {{- if .Values.certs.caBundle.configMap }}
       - name: cas
         configMap:
-          name: {{ .Values.certs.caBundle.configMap }}
-      {{- end }}
+          name: {{ $caBundleConfigMap }}
       - name: tls
         secret:
           secretName: fulfillment-rest-gateway-tls
@@ -39,10 +39,8 @@ spec:
       - name: rest-gateway
         image: {{ .Values.images.service }}
         volumeMounts:
-        {{- if .Values.certs.caBundle.configMap }}
         - name: cas
           mountPath: /etc/fulfillment-rest-gateway/tls/cas
-        {{- end }}
         - name: tls
           mountPath: /etc/fulfillment-rest-gateway/tls
         command:
@@ -52,9 +50,7 @@ spec:
         - --log-level={{ .Values.log.level }}
         - --log-headers={{ .Values.log.headers }}
         - --log-bodies={{ .Values.log.bodies }}
-        {{- if .Values.certs.caBundle.configMap }}
         - --ca-file=/etc/fulfillment-rest-gateway/tls/cas
-        {{- end }}
         - --http-listener-address=0.0.0.0:8000
         - --http-listener-tls-crt=/etc/fulfillment-rest-gateway/tls/tls.crt
         - --http-listener-tls-key=/etc/fulfillment-rest-gateway/tls/tls.key
