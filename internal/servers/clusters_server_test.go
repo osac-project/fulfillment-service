@@ -1279,5 +1279,264 @@ var _ = Describe("Clusters server", func() {
 				"a23456789012345678901234567890123456789012345678901234567890123",
 			),
 		)
+
+		It("Adds label by updating", func() {
+			// Create the object:
+			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Spec: ffv1.ClusterSpec_builder{
+						Template: "my_template",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Delete the label:
+			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Id: object.GetId(),
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{
+							"example.com/my-label": "my-value",
+						},
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{
+						"metadata.labels",
+					},
+				},
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = updateResponse.GetObject()
+			labels := object.GetMetadata().GetLabels()
+			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "my-value"))
+
+			// Get and verify:
+			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			labels = object.GetMetadata().GetLabels()
+			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "my-value"))
+		})
+
+		It("Updates label by updating", func() {
+			// Create the object:
+			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{
+							"example.com/my-label": "my-value",
+						},
+					}.Build(),
+					Spec: ffv1.ClusterSpec_builder{
+						Template: "my_template",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Delete the label:
+			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Id: object.GetId(),
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{
+							"example.com/my-label": "your-value",
+						},
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{
+						"metadata.labels",
+					},
+				},
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = updateResponse.GetObject()
+			labels := object.GetMetadata().GetLabels()
+			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "your-value"))
+
+			// Get and verify:
+			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			labels = object.GetMetadata().GetLabels()
+			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "your-value"))
+		})
+
+		It("Deletes label by updating", func() {
+			// Create the object:
+			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{
+							"example.com/my-label": "my-value",
+						},
+					}.Build(),
+					Spec: ffv1.ClusterSpec_builder{
+						Template: "my_template",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Delete the label:
+			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Id: object.GetId(),
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{},
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{
+						"metadata.labels",
+					},
+				},
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = updateResponse.GetObject()
+			labels := object.GetMetadata().GetLabels()
+			Expect(labels).To(BeEmpty())
+
+			// Get and verify:
+			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			labels = object.GetMetadata().GetLabels()
+			Expect(labels).To(BeEmpty())
+		})
+
+		It("Adds label by updating without specifying the field mask", func() {
+			// Create the object:
+			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Spec: ffv1.ClusterSpec_builder{
+						Template: "my_template",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Delete the label:
+			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Id: object.GetId(),
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{
+							"example.com/my-label": "my-value",
+						},
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = updateResponse.GetObject()
+			labels := object.GetMetadata().GetLabels()
+			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "my-value"))
+
+			// Get and verify:
+			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			labels = object.GetMetadata().GetLabels()
+			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "my-value"))
+		})
+
+		It("Updates label by updating without specifying the field mask", func() {
+			// Create the object:
+			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{
+							"example.com/my-label": "my-value",
+						},
+					}.Build(),
+					Spec: ffv1.ClusterSpec_builder{
+						Template: "my_template",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Delete the label:
+			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Id: object.GetId(),
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{
+							"example.com/my-label": "your-value",
+						},
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = updateResponse.GetObject()
+			labels := object.GetMetadata().GetLabels()
+			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "your-value"))
+
+			// Get and verify:
+			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			labels = object.GetMetadata().GetLabels()
+			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "your-value"))
+		})
+
+		It("Updates label by updating without specifying the field mask", func() {
+			// Create the object:
+			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{
+							"example.com/my-label": "my-value",
+						},
+					}.Build(),
+					Spec: ffv1.ClusterSpec_builder{
+						Template: "my_template",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Delete the label:
+			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
+				Object: ffv1.Cluster_builder{
+					Id: object.GetId(),
+					Metadata: sharedv1.Metadata_builder{
+						Labels: map[string]string{},
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = updateResponse.GetObject()
+			labels := object.GetMetadata().GetLabels()
+			Expect(labels).To(BeEmpty())
+
+			// Get and verify:
+			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			labels = object.GetMetadata().GetLabels()
+			Expect(labels).To(BeEmpty())
+		})
 	})
 })
