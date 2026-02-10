@@ -270,16 +270,11 @@ func (t *task) validateTenant() error {
 }
 
 func (t *task) delete(ctx context.Context) (err error) {
-	// Remember to remove the finalizer if there was no error:
-	defer func() {
-		if err == nil {
-			t.removeFinalizer()
-		}
-	}()
-
 	// Do nothing if we don't know the hub yet:
 	t.hubId = t.computeInstance.GetStatus().GetHub()
 	if t.hubId == "" {
+		// No hub assigned, nothing to clean up on K8s side.
+		t.removeFinalizer()
 		return nil
 	}
 	err = t.getHub(ctx)
@@ -287,30 +282,45 @@ func (t *task) delete(ctx context.Context) (err error) {
 		return
 	}
 
-	// Delete the K8S object:
+	// Check if the K8S object still exists:
 	object, err := t.getKubeObject(ctx)
 	if err != nil {
 		return
 	}
 	if object == nil {
+		// K8s object is fully gone (all K8s finalizers processed).
+		// Safe to remove our DB finalizer and allow archiving.
 		t.r.logger.DebugContext(
 			ctx,
 			"Compute instance doesn't exist",
 			slog.String("id", t.computeInstance.GetId()),
 		)
+		t.removeFinalizer()
 		return
 	}
-	err = t.hubClient.Delete(ctx, object)
-	if err != nil {
-		return
-	}
-	t.r.logger.DebugContext(
-		ctx,
-		"Deleted compute instance",
-		slog.String("namespace", object.GetNamespace()),
-		slog.String("name", object.GetName()),
-	)
 
+	// Initiate K8s deletion if not already in progress:
+	if object.GetDeletionTimestamp() == nil {
+		err = t.hubClient.Delete(ctx, object)
+		if err != nil {
+			return
+		}
+		t.r.logger.DebugContext(
+			ctx,
+			"Deleted compute instance",
+			slog.String("namespace", object.GetNamespace()),
+			slog.String("name", object.GetName()),
+		)
+	} else {
+		t.r.logger.DebugContext(
+			ctx,
+			"Compute instance is still being deleted, waiting for K8s finalizers",
+			slog.String("namespace", object.GetNamespace()),
+			slog.String("name", object.GetName()),
+		)
+	}
+
+	// Don't remove finalizer — K8s object still exists with finalizers being processed.
 	return
 }
 
