@@ -26,11 +26,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	testsv1 "github.com/innabox/fulfillment-service/internal/api/tests/v1"
 	"github.com/innabox/fulfillment-service/internal/auth"
@@ -378,13 +374,10 @@ var _ = Describe("Generic DAO", func() {
 		})
 
 		It("Sets annotations when creating", func() {
-			annotationValue, err := anypb.New(wrapperspb.String("annotation-value"))
-			Expect(err).ToNot(HaveOccurred())
-
 			object := &testsv1.Object{
 				Metadata: &testsv1.Metadata{
-					Annotations: map[string]*anypb.Any{
-						"my-annotation": annotationValue,
+					Annotations: map[string]string{
+						"my-annotation": "my-value",
 					},
 				},
 			}
@@ -394,15 +387,13 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object = response.GetObject()
 			annotations := object.GetMetadata().GetAnnotations()
-			Expect(annotations).To(HaveKey("my-annotation"))
-			Expect(proto.Equal(annotations["my-annotation"], annotationValue)).To(BeTrue())
+			Expect(annotations).To(HaveKeyWithValue("my-annotation", "my-value"))
 
 			getResponse, err := generic.Get().SetId(object.GetId()).Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 			object = getResponse.GetObject()
 			annotations = object.GetMetadata().GetAnnotations()
-			Expect(annotations).To(HaveKey("my-annotation"))
-			Expect(proto.Equal(annotations["my-annotation"], annotationValue)).To(BeTrue())
+			Expect(annotations).To(HaveKeyWithValue("my-annotation", "my-value"))
 		})
 
 		It("Generates non empty identifiers", func() {
@@ -709,9 +700,6 @@ var _ = Describe("Generic DAO", func() {
 		})
 
 		It("Copies labels and annotations when archived on delete", func() {
-			annotationValue, err := anypb.New(wrapperspb.String("annotation-value"))
-			Expect(err).ToNot(HaveOccurred())
-
 			// Create an object without finalizers:
 			response, err := generic.Create().
 				SetObject(
@@ -720,8 +708,8 @@ var _ = Describe("Generic DAO", func() {
 							Labels: map[string]string{
 								"my-label": "my-value",
 							},
-							Annotations: map[string]*anypb.Any{
-								"my-annotation": annotationValue,
+							Annotations: map[string]string{
+								"my-annotation": "my-value",
 							},
 						}.Build(),
 					}.Build(),
@@ -751,33 +739,26 @@ var _ = Describe("Generic DAO", func() {
 				object.GetId(),
 			)
 			var (
-				labelsData []byte
-				annData    []byte
+				labelsData      []byte
+				annotationsData []byte
 			)
-			err = row.Scan(&labelsData, &annData)
+			err = row.Scan(&labelsData, &annotationsData)
 			Expect(err).ToNot(HaveOccurred())
-			var storedLabels map[string]string
-			err = json.Unmarshal(labelsData, &storedLabels)
+			var labels map[string]string
+			err = json.Unmarshal(labelsData, &labels)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(storedLabels).To(Equal(map[string]string{
+			Expect(labels).To(Equal(map[string]string{
 				"my-label": "my-value",
 			}))
-			var storedAnnotations map[string]json.RawMessage
-			err = json.Unmarshal(annData, &storedAnnotations)
+			var annotations map[string]string
+			err = json.Unmarshal(annotationsData, &annotations)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(storedAnnotations).To(HaveKey("my-annotation"))
-			marshalOptions := protojson.MarshalOptions{
-				UseProtoNames: true,
-			}
-			expectedAnnotation, err := marshalOptions.Marshal(annotationValue)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(storedAnnotations["my-annotation"]).To(MatchJSON(expectedAnnotation))
+			Expect(annotations).To(Equal(map[string]string{
+				"my-annotation": "my-value",
+			}))
 		})
 
 		It("Copies labels and annotations when archived on update", func() {
-			annotationValue, err := anypb.New(wrapperspb.String("annotation-value"))
-			Expect(err).ToNot(HaveOccurred())
-
 			// Create an object with finalizers:
 			response, err := generic.Create().
 				SetObject(
@@ -798,7 +779,6 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Update the object removing finalizers and adding metadata:
-			annotationValue, err = anypb.New(wrapperspb.String("annotation-update"))
 			Expect(err).ToNot(HaveOccurred())
 			_, err = generic.Update().
 				SetObject(
@@ -809,8 +789,8 @@ var _ = Describe("Generic DAO", func() {
 							Labels: map[string]string{
 								"my-label": "my-value",
 							},
-							Annotations: map[string]*anypb.Any{
-								"my-annotation": annotationValue,
+							Annotations: map[string]string{
+								"my-annotation": "my-value",
 							},
 						}.Build(),
 					}.Build(),
@@ -833,27 +813,23 @@ var _ = Describe("Generic DAO", func() {
 				object.GetId(),
 			)
 			var (
-				labelsData []byte
-				annData    []byte
+				labelsData      []byte
+				annotationsData []byte
 			)
-			err = row.Scan(&labelsData, &annData)
+			err = row.Scan(&labelsData, &annotationsData)
 			Expect(err).ToNot(HaveOccurred())
-			var storedLabels map[string]string
-			err = json.Unmarshal(labelsData, &storedLabels)
+			var labels map[string]string
+			err = json.Unmarshal(labelsData, &labels)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(storedLabels).To(Equal(map[string]string{
+			Expect(labels).To(Equal(map[string]string{
 				"my-label": "my-value",
 			}))
-			var storedAnnotations map[string]json.RawMessage
-			err = json.Unmarshal(annData, &storedAnnotations)
+			var annotations map[string]string
+			err = json.Unmarshal(annotationsData, &annotations)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(storedAnnotations).To(HaveKey("my-annotation"))
-			marshalOptions := protojson.MarshalOptions{
-				UseProtoNames: true,
-			}
-			expectedAnnotation, err := marshalOptions.Marshal(annotationValue)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(storedAnnotations["my-annotation"]).To(MatchJSON(expectedAnnotation))
+			Expect(annotations).To(Equal(map[string]string{
+				"my-annotation": "my-value",
+			}))
 		})
 
 		It("Returns not found error when deleting object that doesn't exist", func() {
@@ -1297,15 +1273,12 @@ var _ = Describe("Generic DAO", func() {
 		})
 
 		It("Updates annotations", func() {
-			initialAnnotation, err := anypb.New(wrapperspb.String("initial-value"))
-			Expect(err).ToNot(HaveOccurred())
-
 			response, err := generic.Create().
 				SetObject(
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
-							Annotations: map[string]*anypb.Any{
-								"my-annotation": initialAnnotation,
+							Annotations: map[string]string{
+								"my-annotation": "my-value",
 							},
 						}.Build(),
 					}.Build(),
@@ -1314,11 +1287,8 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := response.GetObject()
 
-			updatedAnnotation, err := anypb.New(wrapperspb.String("updated-value"))
-			Expect(err).ToNot(HaveOccurred())
-
-			object.GetMetadata().SetAnnotations(map[string]*anypb.Any{
-				"your-annotation": updatedAnnotation,
+			object.GetMetadata().SetAnnotations(map[string]string{
+				"your-annotation": "your-value",
 			})
 			updateResponse, err := generic.Update().
 				SetObject(object).
@@ -1326,8 +1296,7 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object = updateResponse.GetObject()
 			annotations := object.GetMetadata().GetAnnotations()
-			Expect(annotations).To(HaveKey("your-annotation"))
-			Expect(proto.Equal(annotations["your-annotation"], updatedAnnotation)).To(BeTrue())
+			Expect(annotations).To(HaveKeyWithValue("your-annotation", "your-value"))
 
 			getResponse, err := generic.Get().
 				SetId(object.GetId()).
@@ -1335,8 +1304,7 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object = getResponse.GetObject()
 			annotations = object.GetMetadata().GetAnnotations()
-			Expect(annotations).To(HaveKey("your-annotation"))
-			Expect(proto.Equal(annotations["your-annotation"], updatedAnnotation)).To(BeTrue())
+			Expect(annotations).To(HaveKeyWithValue("your-annotation", "your-value"))
 		})
 
 		It("Returns not found error when updating object that doesn't exist", func() {

@@ -26,10 +26,8 @@ import (
 
 	"github.com/dustin/go-humanize/english"
 	"github.com/jackc/pgx/v5"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/innabox/fulfillment-service/internal/collections"
@@ -146,15 +144,15 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 	)
 	row := r.tx.QueryRow(ctx, sql, r.sql.params...)
 	var (
-		name       string
-		creationTs time.Time
-		deletionTs time.Time
-		finalizers []string
-		creators   []string
-		tenants    []string
-		labelsData []byte
-		annData    []byte
-		data       []byte
+		name            string
+		creationTs      time.Time
+		deletionTs      time.Time
+		finalizers      []string
+		creators        []string
+		tenants         []string
+		labelsData      []byte
+		annotationsData []byte
+		data            []byte
 	)
 	err = row.Scan(
 		&name,
@@ -164,7 +162,7 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 		&creators,
 		&tenants,
 		&labelsData,
-		&annData,
+		&annotationsData,
 		&data,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -183,11 +181,11 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 	if err != nil {
 		return
 	}
-	labels, err := r.unmarshalLabels(labelsData)
+	labels, err := r.unmarshalMap(labelsData)
 	if err != nil {
 		return
 	}
-	annotations, err := r.unmarshalAnnotations(annData)
+	annotations, err := r.unmarshalMap(annotationsData)
 	if err != nil {
 		return
 	}
@@ -449,7 +447,7 @@ type makeMetadataArgs struct {
 	tenants     []string
 	name        string
 	labels      map[string]string
-	annotations map[string]*anypb.Any
+	annotations map[string]string
 }
 
 func (r *request[O]) makeMetadata(args makeMetadataArgs) metadataIface {
@@ -553,102 +551,26 @@ func (r *request[O]) getFinalizers(metadata metadataIface) []string {
 	return list
 }
 
-func (r *request[O]) getLabels(metadata metadataIface) map[string]string {
-	if metadata == nil {
-		return map[string]string{}
+func (r *request[O]) marshalMap(value map[string]string) (result []byte, err error) {
+	if value == nil {
+		result = []byte("{}")
+		return
 	}
-	labels := metadata.GetLabels()
-	if labels == nil {
-		return map[string]string{}
-	}
-	return labels
+	result, err = json.Marshal(value)
+	return
 }
 
-func (r *request[O]) getAnnotations(metadata metadataIface) map[string]*anypb.Any {
-	if metadata == nil {
-		return map[string]*anypb.Any{}
-	}
-	annotations := metadata.GetAnnotations()
-	if annotations == nil {
-		return map[string]*anypb.Any{}
-	}
-	return annotations
-}
-
-func (r *request[O]) marshalLabels(labels map[string]string) ([]byte, error) {
-	if len(labels) == 0 {
-		return []byte("{}"), nil
-	}
-	return json.Marshal(labels)
-}
-
-func (r *request[O]) unmarshalLabels(data []byte) (map[string]string, error) {
+func (r *request[O]) unmarshalMap(data []byte) (result map[string]string, err error) {
 	if len(data) == 0 {
-		return map[string]string{}, nil
+		return
 	}
-	var labels map[string]string
-	err := json.Unmarshal(data, &labels)
+	var value map[string]string
+	err = json.Unmarshal(data, &value)
 	if err != nil {
-		return nil, err
+		return
 	}
-	if labels == nil {
-		labels = map[string]string{}
-	}
-	return labels, nil
-}
-
-func (r *request[O]) marshalAnnotations(annotations map[string]*anypb.Any) ([]byte, error) {
-	if len(annotations) == 0 {
-		return []byte("{}"), nil
-	}
-	raw := make(map[string]json.RawMessage, len(annotations))
-	marshalOptions := protojson.MarshalOptions{
-		UseProtoNames: true,
-	}
-	for key, value := range annotations {
-		if value == nil {
-			raw[key] = json.RawMessage("null")
-			continue
-		}
-		encoded, err := marshalOptions.Marshal(value)
-		if err != nil {
-			return nil, err
-		}
-		raw[key] = encoded
-	}
-	return json.Marshal(raw)
-}
-
-func (r *request[O]) unmarshalAnnotations(data []byte) (map[string]*anypb.Any, error) {
-	if len(data) == 0 {
-		return map[string]*anypb.Any{}, nil
-	}
-	var raw map[string]json.RawMessage
-	err := json.Unmarshal(data, &raw)
-	if err != nil {
-		return nil, err
-	}
-	if raw == nil {
-		return map[string]*anypb.Any{}, nil
-	}
-	annotations := make(map[string]*anypb.Any, len(raw))
-	unmarshalOptions := protojson.UnmarshalOptions{
-		DiscardUnknown: true,
-	}
-	for key, value := range raw {
-		trimmed := bytes.TrimSpace(value)
-		if len(trimmed) == 0 || string(trimmed) == "null" {
-			annotations[key] = nil
-			continue
-		}
-		decoded := &anypb.Any{}
-		err = unmarshalOptions.Unmarshal(value, decoded)
-		if err != nil {
-			return nil, err
-		}
-		annotations[key] = decoded
-	}
-	return annotations, nil
+	result = value
+	return
 }
 
 // equivalent checks if two objects are equivalent. That means that they are equal except maybe in the creation and

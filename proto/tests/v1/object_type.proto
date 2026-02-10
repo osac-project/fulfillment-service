@@ -15,7 +15,6 @@ syntax = "proto3";
 
 package tests.v1;
 
-import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 
 // This is an object type used in unit tests.
@@ -61,7 +60,7 @@ message Metadata {
   repeated string tenants = 5;
   string name = 6;
   map<string, string> labels = 7;
-  map<string, google.protobuf.Any> annotations = 8;
+  map<string, string> annotations = 8;
 }
 
 message Spec {

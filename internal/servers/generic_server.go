@@ -27,7 +27,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
@@ -80,7 +79,7 @@ type metadataIface interface {
 	proto.Message
 	GetName() string
 	GetLabels() map[string]string
-	GetAnnotations() map[string]*anypb.Any
+	GetAnnotations() map[string]string
 }
 
 // NewGenericServer creates a builder that can then be used to configure and create a new generic server.
@@ -827,7 +826,7 @@ func (s *GenericServer[O]) validateLabels(labels map[string]string) error {
 	return nil
 }
 
-func (s *GenericServer[O]) validateAnnotations(annotations map[string]*anypb.Any) error {
+func (s *GenericServer[O]) validateAnnotations(annotations map[string]string) error {
 	for key := range annotations {
 		err := s.validateLabelKey("metadata.annotations", key)
 		if err != nil {

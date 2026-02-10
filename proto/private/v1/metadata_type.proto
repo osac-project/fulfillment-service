@@ -15,7 +15,6 @@ syntax = "proto3";
 
 package private.v1;
 
-import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 
 // Metadata common to all kinds of objects.
@@ -64,7 +63,6 @@ message Metadata {
   // Annotations contains arbitrary metadata for objects.
   //
   // Keys follow the same rules as label keys, including the optional DNS subdomain prefix and the 1-63 character name
-  // restrictions. Values are arbitrary protocol buffer messages stored as Any objects. Annotations aren't indexed or
-  // searchable.
-  map<string, google.protobuf.Any> annotations = 8;
+  // restrictions. Values can be any string.
+  map<string, string> annotations = 8;
 }

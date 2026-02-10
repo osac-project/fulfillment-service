@@ -76,12 +76,16 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	// Get the metadata:
 	metadata := r.getMetadata(r.args.object)
 	finalizers := r.getFinalizers(metadata)
-	name := ""
+	var (
+		name        string
+		labels      map[string]string
+		annotations map[string]string
+	)
 	if metadata != nil {
 		name = metadata.GetName()
+		labels = metadata.GetLabels()
+		annotations = metadata.GetAnnotations()
 	}
-	labels := r.getLabels(metadata)
-	annotations := r.getAnnotations(metadata)
 
 	// Get the tenants:
 	tenants, err := r.calculateTenants(ctx, current, r.args.object)
@@ -94,11 +98,11 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	if err != nil {
 		return
 	}
-	labelsData, err := r.marshalLabels(labels)
+	labelsData, err := r.marshalMap(labels)
 	if err != nil {
 		return
 	}
-	annotationsData, err := r.marshalAnnotations(annotations)
+	annotationsData, err := r.marshalMap(annotations)
 	if err != nil {
 		return
 	}

@@ -22,7 +22,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/innabox/fulfillment-service/internal/auth"
@@ -96,8 +95,8 @@ type metadataIface interface {
 	SetTenants([]string)
 	GetLabels() map[string]string
 	SetLabels(map[string]string)
-	GetAnnotations() map[string]*anypb.Any
-	SetAnnotations(map[string]*anypb.Any)
+	GetAnnotations() map[string]string
+	SetAnnotations(map[string]string)
 }
 
 // NewGenericDAO creates a builder that can then be used to configure and create a generic DAO.

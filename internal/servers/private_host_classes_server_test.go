@@ -23,7 +23,6 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 
 	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
 	"github.com/innabox/fulfillment-service/internal/database"
@@ -351,15 +350,11 @@ var _ = Describe("Private host classes server", func() {
 		DescribeTable(
 			"Rejects invalid annotations on create and update",
 			func(key string, value string, expected string) {
-				annotationValue, err := anypb.New(&privatev1.Metadata{
-					Name: value,
-				})
-				Expect(err).ToNot(HaveOccurred())
-				_, err = server.Create(ctx, privatev1.HostClassesCreateRequest_builder{
+				_, err := server.Create(ctx, privatev1.HostClassesCreateRequest_builder{
 					Object: privatev1.HostClass_builder{
 						Metadata: privatev1.Metadata_builder{
-							Annotations: map[string]*anypb.Any{
-								key: annotationValue,
+							Annotations: map[string]string{
+								key: value,
 							},
 						}.Build(),
 						Title:       "My title",
@@ -381,16 +376,13 @@ var _ = Describe("Private host classes server", func() {
 				Expect(err).ToNot(HaveOccurred())
 				object := createResponse.GetObject()
 
-				annotationValue, err = anypb.New(&privatev1.Metadata{
-					Name: value,
-				})
 				Expect(err).ToNot(HaveOccurred())
 				_, err = server.Update(ctx, privatev1.HostClassesUpdateRequest_builder{
 					Object: privatev1.HostClass_builder{
 						Id: object.GetId(),
 						Metadata: privatev1.Metadata_builder{
-							Annotations: map[string]*anypb.Any{
-								key: annotationValue,
+							Annotations: map[string]string{
+								key: value,
 							},
 						}.Build(),
 						Title:       "My title",

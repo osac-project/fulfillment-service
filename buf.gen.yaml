@@ -24,7 +24,7 @@ managed:
 
 inputs:
 
-- module: buf.build/innabox/fulfillment-api:v0.0.26
+- module: buf.build/innabox/fulfillment-api:v0.0.27
 - directory: proto
 
 plugins:

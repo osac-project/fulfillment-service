@@ -20,8 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/protobuf/types/known/anypb"
-
 	"github.com/innabox/fulfillment-service/internal/database"
 )
 
@@ -174,16 +172,16 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 	var items []O
 	for rows.Next() {
 		var (
-			id         string
-			name       string
-			creationTs time.Time
-			deletionTs time.Time
-			finalizers []string
-			creators   []string
-			tenants    []string
-			labelsData []byte
-			annData    []byte
-			data       []byte
+			id              string
+			name            string
+			creationTs      time.Time
+			deletionTs      time.Time
+			finalizers      []string
+			creators        []string
+			tenants         []string
+			labelsData      []byte
+			annotationsData []byte
+			data            []byte
 		)
 		err = rows.Scan(
 			&id,
@@ -194,7 +192,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 			&creators,
 			&tenants,
 			&labelsData,
-			&annData,
+			&annotationsData,
 			&data,
 		)
 		if err != nil {
@@ -206,12 +204,12 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 			return
 		}
 		var labels map[string]string
-		labels, err = r.unmarshalLabels(labelsData)
+		labels, err = r.unmarshalMap(labelsData)
 		if err != nil {
 			return
 		}
-		var annotations map[string]*anypb.Any
-		annotations, err = r.unmarshalAnnotations(annData)
+		var annotations map[string]string
+		annotations, err = r.unmarshalMap(annotationsData)
 		if err != nil {
 			return
 		}

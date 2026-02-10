@@ -107,15 +107,15 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 	)
 	row := r.tx.QueryRow(ctx, sql, r.sql.params...)
 	var (
-		name       string
-		creationTs time.Time
-		deletionTs time.Time
-		finalizers []string
-		creators   []string
-		tenants    []string
-		labelsData []byte
-		annData    []byte
-		data       []byte
+		name            string
+		creationTs      time.Time
+		deletionTs      time.Time
+		finalizers      []string
+		creators        []string
+		tenants         []string
+		labelsData      []byte
+		annotationsData []byte
+		data            []byte
 	)
 	err = row.Scan(
 		&name,
@@ -125,7 +125,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		&creators,
 		&tenants,
 		&labelsData,
-		&annData,
+		&annotationsData,
 		&data,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -142,11 +142,11 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 	if err != nil {
 		return
 	}
-	labels, err := r.unmarshalLabels(labelsData)
+	labels, err := r.unmarshalMap(labelsData)
 	if err != nil {
 		return
 	}
-	annotations, err := r.unmarshalAnnotations(annData)
+	annotations, err := r.unmarshalMap(annotationsData)
 	if err != nil {
 		return
 	}
@@ -181,7 +181,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		tenants:         tenants,
 		name:            name,
 		labelsData:      labelsData,
-		annotationsData: annData,
+		annotationsData: annotationsData,
 		data:            data,
 	})
 	if err != nil {
