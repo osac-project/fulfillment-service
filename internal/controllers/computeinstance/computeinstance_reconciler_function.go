@@ -45,12 +45,12 @@ const objectPrefix = "vm-"
 type FunctionBuilder struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
-	hubCache   *controllers.HubCache
+	hubCache   controllers.HubCacheProvider
 }
 
 type function struct {
 	logger                 *slog.Logger
-	hubCache               *controllers.HubCache
+	hubCache               controllers.HubCacheProvider
 	computeInstancesClient privatev1.ComputeInstancesClient
 	hubsClient             privatev1.HubsClient
 	maskCalculator         *masks.Calculator
@@ -82,7 +82,7 @@ func (b *FunctionBuilder) SetConnection(value *grpc.ClientConn) *FunctionBuilder
 }
 
 // SetHubCache sets the cache of hubs. This is mandatory.
-func (b *FunctionBuilder) SetHubCache(value *controllers.HubCache) *FunctionBuilder {
+func (b *FunctionBuilder) SetHubCache(value controllers.HubCacheProvider) *FunctionBuilder {
 	b.hubCache = value
 	return b
 }

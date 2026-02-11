@@ -26,7 +26,14 @@ import (
 	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
 )
 
-// HubClientCache contains the data and logic needed to build a cache of hub client.
+// HubCacheProvider is the interface for accessing hub connections. The concrete
+// *HubCache satisfies this interface. Consumers should depend on this interface
+// to allow mocking in unit tests.
+type HubCacheProvider interface {
+	Get(ctx context.Context, id string) (*HubEntry, error)
+}
+
+// HubCacheBuilder contains the data and logic needed to build a cache of hub client.
 type HubCacheBuilder struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
