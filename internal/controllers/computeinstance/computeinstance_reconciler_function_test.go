@@ -14,6 +14,9 @@ language governing permissions and limitations under the License.
 package computeinstance
 
 import (
+	"context"
+	"errors"
+	"slices"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -21,8 +24,19 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	clnt "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
+	"github.com/innabox/fulfillment-service/internal/controllers"
+	"github.com/innabox/fulfillment-service/internal/controllers/finalizers"
+	"github.com/innabox/fulfillment-service/internal/kubernetes/gvks"
+	"github.com/innabox/fulfillment-service/internal/kubernetes/labels"
 )
 
 var _ = Describe("buildSpec", func() {
@@ -91,5 +105,212 @@ var _ = Describe("buildSpec", func() {
 			Expect(spec["templateID"]).To(Equal(template))
 			Expect(spec["templateParameters"]).ToNot(BeNil())
 		})
+	})
+})
+
+// mockHubCache is a mock implementation of controllers.HubCacheProvider for testing.
+type mockHubCache struct {
+	entry *controllers.HubEntry
+	err   error
+}
+
+func (m *mockHubCache) Get(_ context.Context, _ string) (*controllers.HubEntry, error) {
+	return m.entry, m.err
+}
+
+// newComputeInstanceCR creates an unstructured ComputeInstance CR for use with the fake client.
+func newComputeInstanceCR(id, namespace, name string, deletionTimestamp *metav1.Time) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(gvks.ComputeInstance)
+	obj.SetNamespace(namespace)
+	obj.SetName(name)
+	obj.SetLabels(map[string]string{
+		labels.ComputeInstanceUuid: id,
+	})
+	if deletionTimestamp != nil {
+		obj.SetDeletionTimestamp(deletionTimestamp)
+		obj.SetFinalizers([]string{"cloudkit.openshift.io/computeinstance"})
+	}
+	return obj
+}
+
+// hasFinalizer checks if the fulfillment-controller finalizer is present on the compute instance.
+func hasFinalizer(ci *privatev1.ComputeInstance) bool {
+	if !ci.HasMetadata() {
+		return false
+	}
+	return slices.Contains(ci.GetMetadata().GetFinalizers(), finalizers.Controller)
+}
+
+// newTaskForDelete creates a task configured for testing delete() with hub-dependent paths.
+func newTaskForDelete(ciID, hubID, hubNamespace string, hubCache controllers.HubCacheProvider) *task {
+	ci := privatev1.ComputeInstance_builder{
+		Id: ciID,
+		Metadata: privatev1.Metadata_builder{
+			Finalizers: []string{finalizers.Controller},
+		}.Build(),
+		Status: privatev1.ComputeInstanceStatus_builder{
+			Hub: hubID,
+		}.Build(),
+	}.Build()
+
+	f := &function{
+		logger:   logger,
+		hubCache: hubCache,
+	}
+
+	return &task{
+		r:               f,
+		computeInstance: ci,
+	}
+}
+
+var _ = Describe("delete", func() {
+	const (
+		ciID         = "test-ci-delete-id"
+		hubID        = "test-hub"
+		hubNamespace = "test-ns"
+		crName       = "vm-test"
+	)
+
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	It("should remove finalizer when K8s object doesn't exist", func() {
+		scheme := runtime.NewScheme()
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		hubCache := &mockHubCache{
+			entry: &controllers.HubEntry{
+				Namespace: hubNamespace,
+				Client:    fakeClient,
+			},
+		}
+
+		t := newTaskForDelete(ciID, hubID, hubNamespace, hubCache)
+		Expect(hasFinalizer(t.computeInstance)).To(BeTrue())
+
+		err := t.delete(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(hasFinalizer(t.computeInstance)).To(BeFalse())
+	})
+
+	It("should call hubClient.Delete when K8s object exists without DeletionTimestamp", func() {
+		cr := newComputeInstanceCR(ciID, hubNamespace, crName, nil)
+
+		scheme := runtime.NewScheme()
+		scheme.AddKnownTypeWithName(
+			schema.GroupVersionKind{Group: gvks.ComputeInstance.Group, Version: gvks.ComputeInstance.Version, Kind: gvks.ComputeInstance.Kind + "List"},
+			&unstructured.UnstructuredList{},
+		)
+
+		deleteCalled := false
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(cr).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, client clnt.WithWatch, obj clnt.Object, opts ...clnt.DeleteOption) error {
+					deleteCalled = true
+					return nil
+				},
+			}).
+			Build()
+
+		hubCache := &mockHubCache{
+			entry: &controllers.HubEntry{
+				Namespace: hubNamespace,
+				Client:    fakeClient,
+			},
+		}
+
+		t := newTaskForDelete(ciID, hubID, hubNamespace, hubCache)
+
+		err := t.delete(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(deleteCalled).To(BeTrue())
+		// Finalizer should NOT be removed — K8s object still exists
+		Expect(hasFinalizer(t.computeInstance)).To(BeTrue())
+	})
+
+	It("should not call hubClient.Delete when K8s object has DeletionTimestamp", func() {
+		now := metav1.Now()
+		cr := newComputeInstanceCR(ciID, hubNamespace, crName, &now)
+
+		scheme := runtime.NewScheme()
+		scheme.AddKnownTypeWithName(
+			schema.GroupVersionKind{Group: gvks.ComputeInstance.Group, Version: gvks.ComputeInstance.Version, Kind: gvks.ComputeInstance.Kind + "List"},
+			&unstructured.UnstructuredList{},
+		)
+
+		deleteCalled := false
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(cr).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, client clnt.WithWatch, obj clnt.Object, opts ...clnt.DeleteOption) error {
+					deleteCalled = true
+					return nil
+				},
+			}).
+			Build()
+
+		hubCache := &mockHubCache{
+			entry: &controllers.HubEntry{
+				Namespace: hubNamespace,
+				Client:    fakeClient,
+			},
+		}
+
+		t := newTaskForDelete(ciID, hubID, hubNamespace, hubCache)
+
+		err := t.delete(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(deleteCalled).To(BeFalse())
+		// Finalizer should NOT be removed — K8s object still being deleted
+		Expect(hasFinalizer(t.computeInstance)).To(BeTrue())
+	})
+
+	It("should propagate error when hub cache returns error", func() {
+		hubCache := &mockHubCache{
+			err: errors.New("hub not found"),
+		}
+
+		t := newTaskForDelete(ciID, hubID, hubNamespace, hubCache)
+
+		err := t.delete(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("hub not found"))
+		// Finalizer should NOT be removed on error
+		Expect(hasFinalizer(t.computeInstance)).To(BeTrue())
+	})
+
+	It("should remove finalizer when no hub is assigned", func() {
+		ci := privatev1.ComputeInstance_builder{
+			Id: ciID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+			}.Build(),
+			Status: privatev1.ComputeInstanceStatus_builder{
+				// No hub assigned
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger: logger,
+		}
+
+		t := &task{
+			r:               f,
+			computeInstance: ci,
+		}
+
+		err := t.delete(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(hasFinalizer(t.computeInstance)).To(BeFalse())
 	})
 })
