@@ -26,10 +26,9 @@ import (
 	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
 )
 
-// HubCacheProvider is the interface for accessing hub connections. The concrete
-// *HubCache satisfies this interface. Consumers should depend on this interface
-// to allow mocking in unit tests.
-type HubCacheProvider interface {
+// HubCache is the interface for accessing hub connections. Consumers should
+// depend on this interface to allow mocking in unit tests.
+type HubCache interface {
 	Get(ctx context.Context, id string) (*HubEntry, error)
 }
 
@@ -39,8 +38,8 @@ type HubCacheBuilder struct {
 	connection *grpc.ClientConn
 }
 
-// HubCache caches the information and connections to the hubs.
-type HubCache struct {
+// hubCache caches the information and connections to the hubs.
+type hubCache struct {
 	logger      *slog.Logger
 	client      privatev1.HubsClient
 	entries     map[string]*HubEntry
@@ -70,7 +69,7 @@ func (b *HubCacheBuilder) SetConnection(value *grpc.ClientConn) *HubCacheBuilder
 }
 
 // Build uses the information stored in the buidler to create a new hub client cache.
-func (b *HubCacheBuilder) Build() (result *HubCache, err error) {
+func (b *HubCacheBuilder) Build() (result HubCache, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
@@ -82,7 +81,7 @@ func (b *HubCacheBuilder) Build() (result *HubCache, err error) {
 	}
 
 	// Create and populate the object:
-	result = &HubCache{
+	result = &hubCache{
 		logger:      b.logger,
 		client:      privatev1.NewHubsClient(b.connection),
 		entries:     map[string]*HubEntry{},
@@ -91,7 +90,7 @@ func (b *HubCacheBuilder) Build() (result *HubCache, err error) {
 	return
 }
 
-func (r *HubCache) Get(ctx context.Context, id string) (result *HubEntry, err error) {
+func (r *hubCache) Get(ctx context.Context, id string) (result *HubEntry, err error) {
 	r.entriesLock.Lock()
 	defer r.entriesLock.Unlock()
 	result, ok := r.entries[id]
@@ -106,7 +105,7 @@ func (r *HubCache) Get(ctx context.Context, id string) (result *HubEntry, err er
 	return
 }
 
-func (r *HubCache) create(ctx context.Context, id string) (result *HubEntry, err error) {
+func (r *hubCache) create(ctx context.Context, id string) (result *HubEntry, err error) {
 	response, err := r.client.Get(ctx, privatev1.HubsGetRequest_builder{
 		Id: id,
 	}.Build())

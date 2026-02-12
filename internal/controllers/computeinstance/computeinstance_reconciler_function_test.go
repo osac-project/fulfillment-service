@@ -108,7 +108,7 @@ var _ = Describe("buildSpec", func() {
 	})
 })
 
-// mockHubCache is a mock implementation of controllers.HubCacheProvider for testing.
+// mockHubCache is a mock implementation of controllers.HubCache for testing.
 type mockHubCache struct {
 	entry *controllers.HubEntry
 	err   error
@@ -143,7 +143,7 @@ func hasFinalizer(ci *privatev1.ComputeInstance) bool {
 }
 
 // newTaskForDelete creates a task configured for testing delete() with hub-dependent paths.
-func newTaskForDelete(ciID, hubID, hubNamespace string, hubCache controllers.HubCacheProvider) *task {
+func newTaskForDelete(ciID, hubID, hubNamespace string, hubCache controllers.HubCache) *task {
 	ci := privatev1.ComputeInstance_builder{
 		Id: ciID,
 		Metadata: privatev1.Metadata_builder{
