@@ -31,4 +31,4 @@ modules:
 deps:
 - buf.build/googleapis/googleapis
 - buf.build/grpc-ecosystem/grpc-gateway
-- buf.build/innabox/fulfillment-api:v0.0.25
+- buf.build/innabox/fulfillment-api:v0.0.28
