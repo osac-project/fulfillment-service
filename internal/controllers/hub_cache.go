@@ -28,6 +28,8 @@ import (
 
 // HubCache is the interface for accessing hub connections. Consumers should
 // depend on this interface to allow mocking in unit tests.
+//
+//go:generate mockgen -destination=hub_cache_mock.go -package=controllers . HubCache
 type HubCache interface {
 	Get(ctx context.Context, id string) (*HubEntry, error)
 }

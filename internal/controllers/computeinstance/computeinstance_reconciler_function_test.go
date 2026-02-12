@@ -21,6 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -108,16 +109,6 @@ var _ = Describe("buildSpec", func() {
 	})
 })
 
-// mockHubCache is a mock implementation of controllers.HubCache for testing.
-type mockHubCache struct {
-	entry *controllers.HubEntry
-	err   error
-}
-
-func (m *mockHubCache) Get(_ context.Context, _ string) (*controllers.HubEntry, error) {
-	return m.entry, m.err
-}
-
 // newComputeInstanceCR creates an unstructured ComputeInstance CR for use with the fake client.
 func newComputeInstanceCR(id, namespace, name string, deletionTimestamp *metav1.Time) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
@@ -143,7 +134,7 @@ func hasFinalizer(ci *privatev1.ComputeInstance) bool {
 }
 
 // newTaskForDelete creates a task configured for testing delete() with hub-dependent paths.
-func newTaskForDelete(ciID, hubID, hubNamespace string, hubCache controllers.HubCache) *task {
+func newTaskForDelete(ciID, hubID string, hubCache controllers.HubCache) *task {
 	ci := privatev1.ComputeInstance_builder{
 		Id: ciID,
 		Metadata: privatev1.Metadata_builder{
@@ -173,10 +164,15 @@ var _ = Describe("delete", func() {
 		crName       = "vm-test"
 	)
 
-	var ctx context.Context
+	var (
+		ctx  context.Context
+		ctrl *gomock.Controller
+	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
 	})
 
 	It("should remove finalizer when K8s object doesn't exist", func() {
@@ -185,14 +181,15 @@ var _ = Describe("delete", func() {
 			WithScheme(scheme).
 			Build()
 
-		hubCache := &mockHubCache{
-			entry: &controllers.HubEntry{
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{
 				Namespace: hubNamespace,
 				Client:    fakeClient,
-			},
-		}
+			}, nil)
 
-		t := newTaskForDelete(ciID, hubID, hubNamespace, hubCache)
+		t := newTaskForDelete(ciID, hubID, hubCache)
 		Expect(hasFinalizer(t.computeInstance)).To(BeTrue())
 
 		err := t.delete(ctx)
@@ -221,14 +218,15 @@ var _ = Describe("delete", func() {
 			}).
 			Build()
 
-		hubCache := &mockHubCache{
-			entry: &controllers.HubEntry{
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{
 				Namespace: hubNamespace,
 				Client:    fakeClient,
-			},
-		}
+			}, nil)
 
-		t := newTaskForDelete(ciID, hubID, hubNamespace, hubCache)
+		t := newTaskForDelete(ciID, hubID, hubCache)
 
 		err := t.delete(ctx)
 		Expect(err).ToNot(HaveOccurred())
@@ -259,14 +257,15 @@ var _ = Describe("delete", func() {
 			}).
 			Build()
 
-		hubCache := &mockHubCache{
-			entry: &controllers.HubEntry{
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{
 				Namespace: hubNamespace,
 				Client:    fakeClient,
-			},
-		}
+			}, nil)
 
-		t := newTaskForDelete(ciID, hubID, hubNamespace, hubCache)
+		t := newTaskForDelete(ciID, hubID, hubCache)
 
 		err := t.delete(ctx)
 		Expect(err).ToNot(HaveOccurred())
@@ -276,11 +275,12 @@ var _ = Describe("delete", func() {
 	})
 
 	It("should propagate error when hub cache returns error", func() {
-		hubCache := &mockHubCache{
-			err: errors.New("hub not found"),
-		}
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(nil, errors.New("hub not found"))
 
-		t := newTaskForDelete(ciID, hubID, hubNamespace, hubCache)
+		t := newTaskForDelete(ciID, hubID, hubCache)
 
 		err := t.delete(ctx)
 		Expect(err).To(HaveOccurred())
