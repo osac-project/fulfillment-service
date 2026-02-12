@@ -127,9 +127,6 @@ func newComputeInstanceCR(id, namespace, name string, deletionTimestamp *metav1.
 
 // hasFinalizer checks if the fulfillment-controller finalizer is present on the compute instance.
 func hasFinalizer(ci *privatev1.ComputeInstance) bool {
-	if !ci.HasMetadata() {
-		return false
-	}
 	return slices.Contains(ci.GetMetadata().GetFinalizers(), finalizers.Controller)
 }
 
