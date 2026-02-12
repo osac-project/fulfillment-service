@@ -199,7 +199,7 @@ var _ = Describe("Compute instances server", func() {
 						TemplateParameters: templateParams,
 					}.Build(),
 					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -209,7 +209,7 @@ var _ = Describe("Compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).ToNot(BeEmpty())
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.small"))
-			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING))
+			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING))
 		})
 
 		It("List objects", func() {
@@ -225,7 +225,7 @@ var _ = Describe("Compute instances server", func() {
 							Template: templateID,
 						}.Build(),
 						Status: ffv1.ComputeInstanceStatus_builder{
-							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -253,7 +253,7 @@ var _ = Describe("Compute instances server", func() {
 							Template: templateID,
 						}.Build(),
 						Status: ffv1.ComputeInstanceStatus_builder{
-							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -283,7 +283,7 @@ var _ = Describe("Compute instances server", func() {
 							Template: templateID,
 						}.Build(),
 						Status: ffv1.ComputeInstanceStatus_builder{
-							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -311,7 +311,7 @@ var _ = Describe("Compute instances server", func() {
 						Template: "general.small",
 					}.Build(),
 					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -332,7 +332,7 @@ var _ = Describe("Compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).To(Equal(id))
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.small"))
-			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING))
+			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING))
 		})
 
 		It("Updates object", func() {
@@ -347,7 +347,7 @@ var _ = Describe("Compute instances server", func() {
 						Template: "general.small",
 					}.Build(),
 					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -366,7 +366,7 @@ var _ = Describe("Compute instances server", func() {
 						Template: "general.large",
 					}.Build(),
 					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_READY,
+						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -379,7 +379,7 @@ var _ = Describe("Compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).To(Equal(id))
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.large"))
-			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_READY))
+			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING))
 		})
 
 		It("Deletes object", func() {
@@ -393,7 +393,7 @@ var _ = Describe("Compute instances server", func() {
 						Template: "general.small",
 					}.Build(),
 					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())

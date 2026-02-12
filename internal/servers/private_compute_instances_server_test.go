@@ -194,7 +194,7 @@ var _ = Describe("Private compute instances server", func() {
 						TemplateParameters: templateParams,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -204,7 +204,7 @@ var _ = Describe("Private compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).ToNot(BeEmpty())
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.small"))
-			Expect(object.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING))
+			Expect(object.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING))
 		})
 
 		It("List objects", func() {
@@ -220,7 +220,7 @@ var _ = Describe("Private compute instances server", func() {
 							Template: templateID,
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
-							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -248,7 +248,7 @@ var _ = Describe("Private compute instances server", func() {
 							Template: templateID,
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
-							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -278,7 +278,7 @@ var _ = Describe("Private compute instances server", func() {
 							Template: templateID,
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
-							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -306,7 +306,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template: "general.small",
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -327,7 +327,7 @@ var _ = Describe("Private compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).To(Equal(id))
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.small"))
-			Expect(object.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING))
+			Expect(object.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING))
 		})
 
 		It("Updates object", func() {
@@ -342,7 +342,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template: "general.small",
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -361,7 +361,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template: "general.large",
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_READY,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -374,7 +374,7 @@ var _ = Describe("Private compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).To(Equal(id))
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.large"))
-			Expect(object.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_READY))
+			Expect(object.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING))
 		})
 
 		It("Deletes object", func() {
@@ -388,7 +388,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template: "general.small",
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -459,7 +459,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template: "non-existent-template",
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -477,7 +477,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template: "existing-template",
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -494,7 +494,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template: "non-existent-template",
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -513,7 +513,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template: "",
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING,
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())

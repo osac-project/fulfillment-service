@@ -230,7 +230,7 @@ func (t *task) setDefaults() {
 		t.computeInstance.SetStatus(&privatev1.ComputeInstanceStatus{})
 	}
 	if t.computeInstance.GetStatus().GetState() == privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_UNSPECIFIED {
-		t.computeInstance.GetStatus().SetState(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_PROGRESSING)
+		t.computeInstance.GetStatus().SetState(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING)
 	}
 	for value := range privatev1.ComputeInstanceConditionType_name {
 		if value != 0 {
