@@ -16,7 +16,7 @@ package dao
 import (
 	"context"
 
-	"github.com/innabox/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 // GetRequest represents a request to get a single object by its identifier.

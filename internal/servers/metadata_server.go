@@ -19,7 +19,7 @@ import (
 	"log/slog"
 	"slices"
 
-	metadatav1 "github.com/innabox/fulfillment-service/internal/api/metadata/v1"
+	metadatav1 "github.com/osac-project/fulfillment-service/internal/api/metadata/v1"
 )
 
 // MetadataServerBuilder Contains the data and logic needed to create a new metadata server.

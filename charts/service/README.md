@@ -14,7 +14,7 @@ This Helm chart deploys the complete fulfillment service.
 To install the chart with the release name `fulfillment-service`:
 
 ```bash
-$ helm install fulfillment-service ./charts/service -n innabox --create-namespace
+$ helm install fulfillment-service ./charts/service -n osac --create-namespace
 ```
 
 ## Configuration
@@ -28,11 +28,11 @@ The following table lists the configurable parameters of the chart and their def
 | `certs.issuerRef.name` | Name of _cert-manager_ issuer | None |
 | `certs.caBundle.configMap` | Name of configmap containing trusted CA certificates in PEM format | Required |
 | `hostname` | Hostname used to access the service from outside the cluster | None |
-| `auth.issuerUrl` | OAuth issuer URL for authentication | `https://keycloak.keycloak.svc.cluster.local:8000/realms/innabox` |
+| `auth.issuerUrl` | OAuth issuer URL for authentication | `https://keycloak.keycloak.svc.cluster.local:8000/realms/osac` |
 | `log.level` | Log level for all components (debug, info, warn, error) | `info` |
 | `log.headers` | Enable logging of HTTP/gRPC headers | `false` |
 | `log.bodies` | Enable logging of HTTP/gRPC request and response bodies | `false` |
-| `images.service` | Fulfillment service container image | `ghcr.io/innabox/fulfillment-service:main` |
+| `images.service` | Fulfillment service container image | `ghcr.io/osac/fulfillment-service:main` |
 | `images.postgres` | PostgreSQL container image | `quay.io/sclorg/postgresql-15-c9s:latest` |
 | `images.envoy` | Envoy proxy container image | `docker.io/envoyproxy/envoy:v1.33.0` |
 | `database.storageSize` | Size of database persistent volume | `10Gi` |
@@ -54,7 +54,7 @@ certs:
 hostname: fulfillment-service.example.com
 
 auth:
-  issuerUrl: https://keycloak.example.com/realms/innabox
+  issuerUrl: https://keycloak.example.com/realms/osac
 
 log:
   level: debug
@@ -62,7 +62,7 @@ log:
   bodies: true
 
 images:
-  service: ghcr.io/innabox/fulfillment-service:v1.0.0
+  service: ghcr.io/osac/fulfillment-service:v1.0.0
 
 database:
   storageSize: 50Gi
@@ -71,7 +71,7 @@ database:
 Then install with:
 
 ```bash
-$ helm install fulfillment-service ./charts/service -n innabox -f values.yaml
+$ helm install fulfillment-service ./charts/service -n osac -f values.yaml
 ```
 
 ## Variants
@@ -94,7 +94,7 @@ When `variant: openshift` is set:
 To uninstall the chart:
 
 ```bash
-helm uninstall fulfillment-service -n innabox
+helm uninstall fulfillment-service -n osac
 ```
 
 ## Database

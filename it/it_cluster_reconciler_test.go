@@ -27,11 +27,11 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/gvks"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/labels"
-	"github.com/innabox/fulfillment-service/internal/uuid"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
+	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Cluster reconciler", func() {

@@ -33,11 +33,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	"github.com/innabox/fulfillment-service/internal/controllers"
-	"github.com/innabox/fulfillment-service/internal/controllers/finalizers"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/gvks"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/labels"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/controllers"
+	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
 )
 
 var _ = Describe("buildSpec", func() {
@@ -120,7 +120,7 @@ func newComputeInstanceCR(id, namespace, name string, deletionTimestamp *metav1.
 	})
 	if deletionTimestamp != nil {
 		obj.SetDeletionTimestamp(deletionTimestamp)
-		obj.SetFinalizers([]string{"cloudkit.openshift.io/computeinstance"})
+		obj.SetFinalizers([]string{"osac.openshift.io/computeinstance"})
 	}
 	return obj
 }

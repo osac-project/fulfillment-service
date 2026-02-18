@@ -1,7 +1,7 @@
 # CA Helm chart
 
 This Helm chart creates a self-signed CA certificate and a `ClusterIssuer` named `default-ca` that can be used by other
-components in the _Innabox_ project.
+components in the _OSAC_ project.
 
 The CA certificate is copied to a config map named `ca-bundle` into all the namespaces of the cluster, in the
 `bundle.pem` key.
@@ -33,7 +33,7 @@ The following table lists the configurable parameters of the CA chart and their 
 |--------------|-------------------------------------------|---------------|
 | `issuerName` | The name of the `ClusterIssuer` to create | `default-ca`  |
 | `bundleName` | The name of the bundle to create          | `ca-bundle`   |
-| `commonName` | The common name for the CA certificate    | `Innabox CA`  |
+| `commonName` | The common name for the CA certificate    | `OSAC CA`  |
 
 The namespace can also be changed using the `--namespace` flag, but it must match the namespace
 where _cert-manager_ stores the secrets for cluster issuers, which is usually `cert-manager`.

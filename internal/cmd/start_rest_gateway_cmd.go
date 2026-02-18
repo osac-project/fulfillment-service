@@ -21,7 +21,7 @@ import (
 	"syscall"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/innabox/fulfillment-common/network"
+	"github.com/osac-project/fulfillment-common/network"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -32,11 +32,11 @@ import (
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/innabox/fulfillment-service/internal"
-	api "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	privateapi "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	shtdwn "github.com/innabox/fulfillment-service/internal/shutdown"
-	"github.com/innabox/fulfillment-service/internal/version"
+	"github.com/osac-project/fulfillment-service/internal"
+	api "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	privateapi "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
+	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
 // NewStartRestGatewayCommand creates and returns the `start rest-gateway` command.

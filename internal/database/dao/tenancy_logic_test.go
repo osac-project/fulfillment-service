@@ -24,10 +24,10 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
-	testsv1 "github.com/innabox/fulfillment-service/internal/api/tests/v1"
-	"github.com/innabox/fulfillment-service/internal/auth"
-	"github.com/innabox/fulfillment-service/internal/collections"
-	"github.com/innabox/fulfillment-service/internal/database"
+	testsv1 "github.com/osac-project/fulfillment-service/internal/api/tests/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 var _ = Describe("Tenancy logic", func() {

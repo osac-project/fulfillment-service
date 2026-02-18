@@ -29,14 +29,14 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	"github.com/innabox/fulfillment-service/internal/auth"
-	"github.com/innabox/fulfillment-service/internal/database"
-	"github.com/innabox/fulfillment-service/internal/database/dao"
-	"github.com/innabox/fulfillment-service/internal/jq"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/gvks"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/labels"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/jq"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
 )
 
 type ClustersServerBuilder struct {

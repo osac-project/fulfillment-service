@@ -30,9 +30,9 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	"github.com/innabox/fulfillment-service/internal/database"
-	"github.com/innabox/fulfillment-service/internal/uuid"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 type PrivateEventsServerBuilder struct {

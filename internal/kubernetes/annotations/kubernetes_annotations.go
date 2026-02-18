@@ -16,7 +16,7 @@ package annotations
 import (
 	"fmt"
 
-	"github.com/innabox/fulfillment-service/internal/kubernetes/gvks"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
 )
 
 // ComputeInstanceTenant is the annotation where the fulfillment API will write the tenant of the compute instance.

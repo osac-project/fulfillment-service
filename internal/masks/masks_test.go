@@ -17,8 +17,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/innabox/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
 )
 
 var _ = Describe("Calculator", func() {

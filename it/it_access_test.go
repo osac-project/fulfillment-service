@@ -21,8 +21,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
 )
 
 var _ = Describe("Access control", func() {

@@ -45,7 +45,7 @@ Here's an example `values.yaml` file for installing the chart:
 ```yaml
 variant: kind
 
-hostname: keycloak.innabox
+hostname: keycloak.osac
 
 certs:
   issuerRef:
@@ -144,7 +144,7 @@ following steps:
 2. Run the `export` command inside the pod to write the ream to a temporary file:
 
     ```bash
-    $ kubectl exec -n keycloak "${pod}" -- /opt/keycloak/bin/kc.sh export --realm innabox --file /tmp/realm.json
+    $ kubectl exec -n keycloak "${pod}" -- /opt/keycloak/bin/kc.sh export --realm osac --file /tmp/realm.json
     ```
 
 3. Copy the temporary file to a local file:

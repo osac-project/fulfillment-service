@@ -1,4 +1,4 @@
-module github.com/innabox/fulfillment-service
+module github.com/osac-project/fulfillment-service
 
 go 1.25.0
 
@@ -8,12 +8,12 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.8
-	github.com/innabox/fulfillment-common v0.0.37
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/puddle/v2 v2.2.2
 	github.com/json-iterator/go v1.1.12
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/open-policy-agent/opa v1.13.1
+	github.com/osac-project/fulfillment-common v0.0.39
 	github.com/prometheus/client_golang v1.23.2
 	go.uber.org/mock v0.6.0
 	go.yaml.in/yaml/v2 v2.4.3

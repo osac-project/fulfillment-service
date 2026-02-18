@@ -93,7 +93,7 @@ To create the Kind cluster use a command like this:
 $ kind create cluster --config - <<.
 apiVersion: kind.x-k8s.io/v1alpha4
 kind: Cluster
-name: innabox
+name: osac
 nodes:
 - role: control-plane
   extraPortMappings:
@@ -218,7 +218,7 @@ image. So you need to download the manifests, replace the image, and then apply 
 
 ```shell
 $ curl -o authorino.yaml https://raw.githubusercontent.com/Kuadrant/authorino-operator/refs/heads/release-v0.22.0/config/deploy/manifests.yaml
-$ sed -i 's|quay.io/kuadrant/authorino-operator:v0.20.0|quay.io/innabox/authorino-operator:latest|g' authorino.yaml
+$ sed -i 's|quay.io/kuadrant/authorino-operator:v0.20.0|quay.io/osac/authorino-operator:latest|g' authorino.yaml
 $ kubectl apply -f authorino.yaml
 ```
 

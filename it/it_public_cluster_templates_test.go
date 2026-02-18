@@ -19,7 +19,7 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
 )
 
 var _ = Describe("Cluster templates", func() {

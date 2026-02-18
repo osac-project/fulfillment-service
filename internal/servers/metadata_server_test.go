@@ -19,7 +19,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	metadatav1 "github.com/innabox/fulfillment-service/internal/api/metadata/v1"
+	metadatav1 "github.com/osac-project/fulfillment-service/internal/api/metadata/v1"
 )
 
 var _ = Describe("Metadata server", func() {

@@ -23,13 +23,13 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/innabox/fulfillment-service/internal/api/shared/v1"
-	"github.com/innabox/fulfillment-service/internal/auth"
-	"github.com/innabox/fulfillment-service/internal/collections"
-	"github.com/innabox/fulfillment-service/internal/database"
-	"github.com/innabox/fulfillment-service/internal/database/dao"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Tenancy logic", func() {

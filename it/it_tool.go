@@ -28,11 +28,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/innabox/fulfillment-common/auth"
-	"github.com/innabox/fulfillment-common/network"
-	"github.com/innabox/fulfillment-common/oauth"
-	"github.com/innabox/fulfillment-common/testing"
 	"github.com/onsi/gomega/ghttp"
+	"github.com/osac-project/fulfillment-common/auth"
+	"github.com/osac-project/fulfillment-common/network"
+	"github.com/osac-project/fulfillment-common/oauth"
+	"github.com/osac-project/fulfillment-common/testing"
 	"go.yaml.in/yaml/v2"
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
@@ -47,8 +47,8 @@ import (
 	"k8s.io/utils/ptr"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	"github.com/innabox/fulfillment-service/internal/version"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
 // Deplyment modes:
@@ -401,7 +401,7 @@ func (t *Tool) buildBinary(ctx context.Context) error {
 		SetArgs(
 			"build",
 			"-ldflags",
-			fmt.Sprintf("-X github.com/innabox/fulfillment-service/internal.id=%s", version),
+			fmt.Sprintf("-X github.com/osac-project/fulfillment-service/internal.id=%s", version),
 		).
 		Build()
 	if err != nil {
@@ -716,7 +716,7 @@ func (t *Tool) deployServiceWithHelm(ctx context.Context, imageRef string) error
 			},
 		},
 		"auth": map[string]any{
-			"issuerUrl": fmt.Sprintf("https://%s/realms/innabox", keycloakAddr),
+			"issuerUrl": fmt.Sprintf("https://%s/realms/osac", keycloakAddr),
 		},
 	}
 	valuesBytes, err := yaml.Marshal(valuesData)
@@ -747,7 +747,7 @@ func (t *Tool) deployServiceWithHelm(ctx context.Context, imageRef string) error
 			"fulfillment-service",
 			"charts/service",
 			"--kubeconfig", t.kcFile,
-			"--namespace", "innabox",
+			"--namespace", "osac",
 			"--create-namespace",
 			"--values", valuesFile,
 			"--wait",
@@ -825,7 +825,7 @@ func (t *Tool) deployServiceWithKustomize(ctx context.Context, imageRef string) 
 		SetArgs(
 			"wait",
 			"--kubeconfig", t.kcFile,
-			"--namespace", "innabox",
+			"--namespace", "osac",
 			"--for=condition=available",
 			"--timeout=5m",
 			"deployment", "--all",
@@ -885,7 +885,7 @@ func (t *Tool) undeployServiceWithHelm(ctx context.Context) error {
 			"uninstall",
 			"fulfillment-service",
 			"--kubeconfig", t.kcFile,
-			"--namespace", "innabox",
+			"--namespace", "osac",
 		).
 		Build()
 	if err != nil {
@@ -901,7 +901,7 @@ func (t *Tool) undeployServiceWithKustomize(ctx context.Context) error {
 	t.logger.DebugContext(ctx, "Undeploying service with Kustomize")
 	err := t.cluster.Client().Delete(ctx, &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "innabox",
+			Name: "osac",
 		},
 	})
 	if err != nil {
@@ -912,7 +912,7 @@ func (t *Tool) undeployServiceWithKustomize(ctx context.Context) error {
 
 func (t *Tool) createClients(ctx context.Context) error {
 	// Create token sources:
-	emergencyTokenSource, err := t.makeKubernetesTokenSource(ctx, emergencyServiceAccount, "innabox")
+	emergencyTokenSource, err := t.makeKubernetesTokenSource(ctx, emergencyServiceAccount, "osac")
 	if err != nil {
 		return err
 	}
@@ -1012,7 +1012,7 @@ func (t *Tool) makeKeycloakTokenSource(ctx context.Context, username, password s
 		SetLogger(t.logger).
 		SetStore(store).
 		SetCaPool(t.caPool).
-		SetIssuer(fmt.Sprintf("https://%s/realms/innabox", keycloakAddr)).
+		SetIssuer(fmt.Sprintf("https://%s/realms/osac", keycloakAddr)).
 		SetFlow(oauth.PasswordFlow).
 		SetClientId("fulfillment-cli").
 		SetUsername(username).
@@ -1262,10 +1262,10 @@ const (
 
 // Name and namespace of the hub:
 const hubId = "local"
-const hubNamespace = "cloudkit-operator-system"
+const hubNamespace = "osac-operator-system"
 
 // Image details:
-const imageName = "ghcr.io/innabox/fulfillment-service"
+const imageName = "ghcr.io/osac/fulfillment-service"
 
 // userAgent is the user agent string for the integration test tool.
 const userAgent = "fulfillment-it-tool"
@@ -1273,7 +1273,7 @@ const userAgent = "fulfillment-it-tool"
 // Service host name and address:
 const (
 	keycloakAddr = "keycloak.keycloak.svc.cluster.local:8000"
-	serviceAddr  = "fulfillment-api.innabox.svc.cluster.local:8000"
+	serviceAddr  = "fulfillment-api.osac.svc.cluster.local:8000"
 )
 
 // Name of the Kubernetes service account that is used for emergency administration access.

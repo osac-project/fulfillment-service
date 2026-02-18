@@ -16,7 +16,7 @@ package labels
 import (
 	"fmt"
 
-	"github.com/innabox/fulfillment-service/internal/kubernetes/gvks"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
 )
 
 // ClusterOrderUuid is the label where the fulfillment API will write the identifier of the order.

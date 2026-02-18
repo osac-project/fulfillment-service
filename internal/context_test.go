@@ -19,9 +19,9 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/innabox/fulfillment-common/logging"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-common/logging"
 )
 
 var _ = Describe("Context", func() {

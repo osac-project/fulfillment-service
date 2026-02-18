@@ -16,9 +16,9 @@ package auth
 import (
 	"context"
 
-	"github.com/innabox/fulfillment-service/internal/collections"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 var _ = Describe("JWT tenancy logic", func() {

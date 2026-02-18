@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/innabox/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 // ListRequest represents a request to list objects with pagination and filtering.

@@ -22,9 +22,9 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	"github.com/innabox/fulfillment-service/internal/database"
-	"github.com/innabox/fulfillment-service/internal/database/dao"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Host classes server", func() {

@@ -17,7 +17,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/innabox/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 // SystemAttributionLogicBuilder contains the data and logic needed to create system attribution logic.

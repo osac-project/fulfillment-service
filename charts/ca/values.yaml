@@ -18,4 +18,4 @@ issuerName: default-ca
 bundleName: ca-bundle
 
 # The common name for the CA certificate:
-commonName: Innabox CA
+commonName: OSAC CA

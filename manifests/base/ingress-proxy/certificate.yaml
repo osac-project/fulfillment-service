@@ -22,8 +22,8 @@ spec:
   dnsNames:
   - localhost
   - fulfillment-api
-  - fulfillment-api.innabox
-  - fulfillment-api.innabox.svc.cluster.local
+  - fulfillment-api.osac
+  - fulfillment-api.osac.svc.cluster.local
   secretName: fulfillment-api-tls
   privateKey:
     rotationPolicy: Always

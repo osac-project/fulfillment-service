@@ -32,7 +32,7 @@ Before installing Keycloak, ensure you have:
 
 ## Installing Keycloak
 
-The fulfillment service includes a Helm chart for deploying Keycloak. The chart is published with each release as an OCI image at [ghcr.io/innabox/charts/keycloak](https://github.com/innabox/fulfillment-service/pkgs/container/charts%2Fkeycloak).
+The fulfillment service includes a Helm chart for deploying Keycloak. The chart is published with each release as an OCI image at [ghcr.io/osac/charts/keycloak](https://github.com/osac-project/fulfillment-service/pkgs/container/charts%2Fkeycloak).
 
 ### Installation Steps
 
@@ -41,7 +41,7 @@ Install Keycloak using the published Helm chart from the OCI registry:
 **For OpenShift clusters:**
 
 ```bash
-helm install keycloak oci://ghcr.io/innabox/charts/keycloak \
+helm install keycloak oci://ghcr.io/osac/charts/keycloak \
   --version 0.0.27 \
   --namespace keycloak \
   --create-namespace \
@@ -54,7 +54,7 @@ helm install keycloak oci://ghcr.io/innabox/charts/keycloak \
 **For Kind clusters:**
 
 ```bash
-helm install keycloak oci://ghcr.io/innabox/charts/keycloak \
+helm install keycloak oci://ghcr.io/osac/charts/keycloak \
   --version 0.0.27 \
   --namespace keycloak \
   --create-namespace \
@@ -64,7 +64,7 @@ helm install keycloak oci://ghcr.io/innabox/charts/keycloak \
   --wait
 ```
 
-Replace `0.0.27` with the version you want to use. You can find available versions at the [chart registry](https://github.com/innabox/fulfillment-service/pkgs/container/charts%2Fkeycloak).
+Replace `0.0.27` with the version you want to use. You can find available versions at the [chart registry](https://github.com/osac-project/fulfillment-service/pkgs/container/charts%2Fkeycloak).
 
 **Using a values file (optional):**
 
@@ -85,7 +85,7 @@ certs:
 Then install with:
 
 ```bash
-helm install keycloak oci://ghcr.io/innabox/charts/keycloak \
+helm install keycloak oci://ghcr.io/osac/charts/keycloak \
   --version 0.0.27 \
   --namespace keycloak \
   --create-namespace \
@@ -123,11 +123,11 @@ helm install keycloak oci://ghcr.io/innabox/charts/keycloak \
 
 ## Keycloak Configuration
 
-The Helm chart includes a pre-configured realm named `innabox` with the following setup:
+The Helm chart includes a pre-configured realm named `osac` with the following setup:
 
 ### Realm Configuration
 
-- **Realm Name**: `innabox`
+- **Realm Name**: `osac`
 
 ### Pre-configured Clients
 
@@ -160,7 +160,7 @@ To access the Keycloak Admin Console:
 3. **Select the realm**:
 
    - Click on the realm dropdown (top left)
-   - Select `innabox`
+   - Select `osac`
 
 ### Exporting Realm Configuration
 
@@ -175,7 +175,7 @@ If you need to export the realm configuration for backup or modification:
 2. Export the realm:
 
    ```bash
-   kubectl exec -n keycloak "${pod}" -- /opt/keycloak/bin/kc.sh export --realm innabox --file /tmp/realm.json
+   kubectl exec -n keycloak "${pod}" -- /opt/keycloak/bin/kc.sh export --realm osac --file /tmp/realm.json
    ```
 
 3. Copy the exported file:
@@ -204,7 +204,7 @@ https://<keycloak-hostname>:<port>/realms/<realm-name>
 
 For example:
 ```
-https://keycloak.keycloak.svc.cluster.local:8000/realms/innabox
+https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
 ```
 
 ### 2. Update the Fulfillment Service Deployment
@@ -212,15 +212,15 @@ https://keycloak.keycloak.svc.cluster.local:8000/realms/innabox
 When installing the fulfillment service using the Helm chart, set the `auth.issuerUrl` parameter:
 
 ```bash
-helm install fulfillment-service oci://ghcr.io/innabox/charts/fulfillment-service \
+helm install fulfillment-service oci://ghcr.io/osac/charts/fulfillment-service \
   --version 0.0.27 \
-  --namespace innabox \
+  --namespace osac \
   --create-namespace \
   --set variant=kind \
-  --set hostname=fulfillment-api.innabox.cluster.local \
+  --set hostname=fulfillment-api.osac.cluster.local \
   --set certs.issuerRef.name=default-ca \
   --set certs.caBundle.configMap=ca-bundle \
-  --set auth.issuerUrl=https://keycloak.keycloak.svc.cluster.local:8000/realms/innabox \
+  --set auth.issuerUrl=https://keycloak.keycloak.svc.cluster.local:8000/realms/osac \
   --wait
 ```
 
@@ -228,7 +228,7 @@ Or in a values file:
 
 ```yaml
 auth:
-  issuerUrl: https://keycloak.keycloak.svc.cluster.local:8000/realms/innabox
+  issuerUrl: https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
 ```
 
 ### 3. Update the AuthConfig Resource
@@ -253,7 +253,7 @@ Example AuthConfig snippet:
 authentication:
   "keycloak-jwt":
     jwt:
-      issuerUrl: https://keycloak.keycloak.svc.cluster.local:8000/realms/innabox
+      issuerUrl: https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
     overrides:
       authnMethod:
         value: jwt
@@ -266,7 +266,7 @@ The fulfillment service server component also needs to be configured with the tr
 The Helm chart automatically sets this from the `auth.issuerUrl` value. In the deployment, you'll see:
 
 ```yaml
-- --grpc-authn-trusted-token-issuers=https://keycloak.keycloak.svc.cluster.local:8000/realms/innabox
+- --grpc-authn-trusted-token-issuers=https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
 ```
 
 ### 5. Trusted vs Advertised Token Issuers
@@ -448,13 +448,13 @@ Use `--tenancy-logic=serviceaccount` for service account authentication:
 - **Visible Tenants**: The namespace plus the `shared` tenant
 
 Example:
-- Service account `system:serviceaccount:innabox:controller`
-- Assignable tenants: `["innabox"]`
-- Default tenants: `["innabox"]`
+- Service account `system:serviceaccount:osac:controller`
+- Assignable tenants: `["osac"]`
+- Default tenants: `["osac"]`
 - When creating a resource without specifying tenants:
-  - Assigned to tenant: `["innabox"]`
+  - Assigned to tenant: `["osac"]`
 - When listing resources:
-  - Can see resources from: `["innabox", "shared"]`
+  - Can see resources from: `["osac", "shared"]`
 
 #### Guest
 
@@ -560,9 +560,9 @@ Example: To add a new admin subject, add it to the `admin_subjects` set:
 
 ```rego
 admin_subjects := {
-  "system:serviceaccount:innabox:admin",
-  "system:serviceaccount:innabox:controller",
-  "system:serviceaccount:innabox:new-admin",  # New admin
+  "system:serviceaccount:osac:admin",
+  "system:serviceaccount:osac:controller",
+  "system:serviceaccount:osac:new-admin",  # New admin
 }
 ```
 
@@ -575,7 +575,7 @@ kubectl apply -f manifests/base/service/authconfig.yaml
 Or if using Helm:
 
 ```bash
-helm upgrade fulfillment-service charts/service -n innabox
+helm upgrade fulfillment-service charts/service -n osac
 ```
 
 ## Authorization Flow
@@ -722,7 +722,7 @@ The fulfillment service uses a two-level authorization approach:
 
 #### Scenario 3: Admin User Accessing Any Method
 
-1. Service account `system:serviceaccount:innabox:admin` sends request with service account token
+1. Service account `system:serviceaccount:osac:admin` sends request with service account token
 2. **Authorino checks**:
    - Is service account authenticated? ✅ Yes
    - Is the subject in `admin_subjects`? ✅ Yes
@@ -790,7 +790,7 @@ kubectl get svc -n keycloak
 ### 2. Verify Keycloak Realm
 
 Access the Keycloak Admin Console and verify:
-- The `innabox` realm exists
+- The `osac` realm exists
 - The `fulfillment-cli` and `fulfillment-controller` clients are configured
 - The realm is enabled
 
@@ -799,8 +799,8 @@ Access the Keycloak Admin Console and verify:
 Check that the fulfillment service is configured with the correct issuer URL:
 
 ```bash
-kubectl get deployment fulfillment-service -n innabox -o yaml | grep issuerUrl
-kubectl get authconfig fulfillment-service -n innabox -o yaml | grep issuerUrl
+kubectl get deployment fulfillment-service -n osac -o yaml | grep issuerUrl
+kubectl get authconfig fulfillment-service -n osac -o yaml | grep issuerUrl
 ```
 
 ### 4. Test Authentication
@@ -812,7 +812,7 @@ kubectl get authconfig fulfillment-service -n innabox -o yaml | grep issuerUrl
    ```bash
    # Get token (replace USERNAME and PASSWORD with actual credentials)
    TOKEN=$(curl -k -X POST \
-     https://localhost:8443/realms/innabox/protocol/openid-connect/token \
+     https://localhost:8443/realms/osac/protocol/openid-connect/token \
      -d "client_id=fulfillment-cli" \
      -d "username=USERNAME" \
      -d "password=PASSWORD" \
@@ -824,7 +824,7 @@ kubectl get authconfig fulfillment-service -n innabox -o yaml | grep issuerUrl
 
    ```bash
    # Get the service URL
-   SERVICE_URL=$(kubectl get route -n innabox fulfillment-api -o jsonpath='{.spec.host}')
+   SERVICE_URL=$(kubectl get route -n osac fulfillment-api -o jsonpath='{.spec.host}')
 
    # Make a request
    curl -k -H "Authorization: Bearer ${TOKEN}" \
@@ -835,7 +835,7 @@ kubectl get authconfig fulfillment-service -n innabox -o yaml | grep issuerUrl
 
 ```bash
 # Get a service account token
-TOKEN=$(kubectl create token -n innabox client)
+TOKEN=$(kubectl create token -n osac client)
 
 # Test the API
 curl -k -H "Authorization: Bearer ${TOKEN}" \
@@ -867,7 +867,7 @@ Test that authorization rules are working:
 
 - Verify the issuer URL matches exactly (including protocol, hostname, port, and path)
 - Check that Keycloak is accessible from the fulfillment service pods
-- Verify the realm name is correct (`innabox`)
+- Verify the realm name is correct (`osac`)
 - Check network policies if using them
 
 ### Authorization Denied

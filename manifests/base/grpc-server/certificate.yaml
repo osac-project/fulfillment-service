@@ -22,8 +22,8 @@ spec:
   dnsNames:
   - localhost
   - fulfillment-grpc-server
-  - fulfillment-grpc-server.innabox
-  - fulfillment-grpc-server.innabox.svc.cluster.local
+  - fulfillment-grpc-server.osac
+  - fulfillment-grpc-server.osac.svc.cluster.local
   secretName: fulfillment-grpc-server-tls
   privateKey:
     rotationPolicy: Always

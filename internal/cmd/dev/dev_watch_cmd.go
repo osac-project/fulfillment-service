@@ -21,16 +21,16 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/innabox/fulfillment-common/auth"
-	"github.com/innabox/fulfillment-common/network"
+	"github.com/osac-project/fulfillment-common/auth"
+	"github.com/osac-project/fulfillment-common/network"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/innabox/fulfillment-service/internal"
-	eventsv1 "github.com/innabox/fulfillment-service/internal/api/events/v1"
-	"github.com/innabox/fulfillment-service/internal/version"
+	"github.com/osac-project/fulfillment-service/internal"
+	eventsv1 "github.com/osac-project/fulfillment-service/internal/api/events/v1"
+	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
 // NewWatchCommand creates and returns the `listen` command.

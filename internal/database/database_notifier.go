@@ -24,7 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/innabox/fulfillment-service/internal/uuid"
+	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 // NotifierBuilder contains the data and logic needed to build a notifier.

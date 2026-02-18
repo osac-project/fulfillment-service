@@ -20,4 +20,4 @@ data:
   {{- $realm := .Files.Get "files/realm.json" | fromJson }}
   {{- $_ := set $realm "groups" .Values.groups }}
   {{- $_ := set $realm "users" .Values.users }}
-  innabox-realm.json: {{ $realm | toJson | b64enc }}
+  osac-realm.json: {{ $realm | toJson | b64enc }}

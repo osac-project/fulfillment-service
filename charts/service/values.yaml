@@ -29,8 +29,8 @@ certs:
     configMap:
 
 # This defines the hostname used to access the service from outside the cluster. The default is to use the hostname of
-# the Kubernetes service. For example, if the application is deployed in a namespace named 'innabox' then the default
-# hostname will be 'fulfillment-api.innabox.svc.cluster.local'.
+# the Kubernetes service. For example, if the application is deployed in a namespace named 'osac' then the default
+# hostname will be 'fulfillment-api.osac.svc.cluster.local'.
 hostname:
 
 # Authentication and authorization configuration:
@@ -61,7 +61,7 @@ log:
 
 # Image configuration:
 images:
-  service: ghcr.io/innabox/fulfillment-service:main
+  service: ghcr.io/osac/fulfillment-service:main
   postgres: quay.io/sclorg/postgresql-15-c9s:latest
   envoy: docker.io/envoyproxy/envoy:v1.33.0
 

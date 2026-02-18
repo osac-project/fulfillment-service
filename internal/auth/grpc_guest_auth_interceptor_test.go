@@ -17,9 +17,9 @@ import (
 	"context"
 	"time"
 
-	. "github.com/innabox/fulfillment-common/testing"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
+	. "github.com/osac-project/fulfillment-common/testing"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

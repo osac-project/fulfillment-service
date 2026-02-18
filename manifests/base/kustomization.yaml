@@ -34,7 +34,7 @@ images:
   newName: docker.io/envoyproxy/envoy
   newTag: v1.33.0
 - name: fulfillment-service
-  newName: ghcr.io/innabox/fulfillment-service
+  newName: ghcr.io/osac-project/fulfillment-service
   newTag: main
 - name: postgres
   newName: quay.io/sclorg/postgresql-15-c9s

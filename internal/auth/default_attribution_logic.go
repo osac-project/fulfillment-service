@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/innabox/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 // DefaultAttributionLogicBuilder contains the data and logic needed to create default attribution logic.

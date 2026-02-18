@@ -22,11 +22,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/innabox/fulfillment-common/testing"
-	"github.com/innabox/fulfillment-service/internal/jq"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-common/testing"
+	"github.com/osac-project/fulfillment-service/internal/jq"
 	"gopkg.in/yaml.v3"
 
 	// We need to use these deprecated package because Authorino currently uses version 0 of the Rego language,
@@ -142,7 +142,7 @@ var _ = Describe("Authorization rules", Ordered, func() {
 				"identity": map[string]any{
 					"authnMethod": "serviceaccount",
 					"user": map[string]any{
-						"username": "system:serviceaccount:innabox:client",
+						"username": "system:serviceaccount:osac:client",
 					},
 				},
 			},
@@ -218,7 +218,7 @@ var _ = Describe("Authorization rules", Ordered, func() {
 				"identity": map[string]any{
 					"authnMethod": "serviceaccount",
 					"user": map[string]any{
-						"username": "system:serviceaccount:innabox:client",
+						"username": "system:serviceaccount:osac:client",
 					},
 				},
 			},

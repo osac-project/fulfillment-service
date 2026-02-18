@@ -16,7 +16,7 @@ package auth
 import (
 	"context"
 
-	"github.com/innabox/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 // AttributionLogic defines the logic for determining what users and group should be assisged as the creators of

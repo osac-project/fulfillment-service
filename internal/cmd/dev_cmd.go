@@ -14,7 +14,7 @@ language governing permissions and limitations under the License.
 package cmd
 
 import (
-	"github.com/innabox/fulfillment-service/internal/cmd/dev"
+	"github.com/osac-project/fulfillment-service/internal/cmd/dev"
 	"github.com/spf13/cobra"
 )
 

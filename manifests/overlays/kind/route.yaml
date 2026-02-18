@@ -23,7 +23,7 @@ spec:
     name: default
     sectionName: tls
   hostnames:
-  - fulfillment-api.innabox.svc.cluster.local
+  - fulfillment-api.osac.svc.cluster.local
   rules:
   - backendRefs:
     - name: fulfillment-api

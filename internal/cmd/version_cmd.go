@@ -19,7 +19,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/innabox/fulfillment-service/internal"
+	"github.com/osac-project/fulfillment-service/internal"
 )
 
 // NewVersionCommand creates and returns the `version` command.

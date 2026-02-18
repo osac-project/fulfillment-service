@@ -26,7 +26,7 @@ spec:
         # TODO: This is the default audience for the Kubernetes API server. We should probably create a custom audience,
         # for example `fulfillment-api`, but then the users will need to create tokens for that audience. For example:
         #
-        # $ kubectl create token -n innabox --audience=fulfillment-api client
+        # $ kubectl create token -n osac --audience=fulfillment-api client
         #
         # It is not clear to me if we can also use that audience for the tokens generated automatically for the service
         # accounts of other pods, for example for the `controller` pods. It may be possible using a projected service

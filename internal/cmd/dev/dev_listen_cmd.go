@@ -25,8 +25,8 @@ import (
 	"github.com/spf13/pflag"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/innabox/fulfillment-service/internal"
-	"github.com/innabox/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal"
+	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 func NewListenCommand() *cobra.Command {

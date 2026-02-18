@@ -20,9 +20,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/innabox/fulfillment-service/internal/api/shared/v1"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"

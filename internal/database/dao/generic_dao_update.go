@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/innabox/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 // UpdateRequest represents a request to update an existing object.

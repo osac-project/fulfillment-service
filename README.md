@@ -165,17 +165,17 @@ The server deployed to the OpenShift cluster requires authentication. Before usi
 token of the `client` service account that is created for that. Use a command like this to obtain the token and save it
 into the `token` environment variable:
 
-    $ export token=$(kubectl create token -n innabox client)
+    $ export token=$(kubectl create token -n osac client)
 
 To verify that the deployment is working get the URL of the route, and use `grpcurl` and `curl` to verify that both the
 gRPC server and the REST gateway are working:
 
-    $ kubectl get route -n innabox fulfillment-api -o json | jq -r '.spec.host'
-    fulfillment-api-innabox.apps.mycluster.com
+    $ kubectl get route -n osac fulfillment-api -o json | jq -r '.spec.host'
+    fulfillment-api-osac.apps.mycluster.com
 
     $ grpcurl -insecure
     -H "Authorization: Bearer ${token}" \
-    fulfillment-api-innabox.apps.mycluster.com:443 fulfillment.v1.ClusterTemplates/List
+    fulfillment-api-osac.apps.mycluster.com:443 fulfillment.v1.ClusterTemplates/List
     {
       "size": 2,
       "total": 2,
@@ -195,7 +195,7 @@ gRPC server and the REST gateway are working:
 
     $  curl --silent --insecure \
     --header "Authorization: Bearer ${token}" \
-    https://fulfillment-api-innabox.apps.mycluster.com:443/api/fulfillment/v1/cluster_templates | jq
+    https://fulfillment-api-osac.apps.mycluster.com:443/api/fulfillment/v1/cluster_templates | jq
     {
       "size": 2,
       "total": 2,
@@ -226,13 +226,13 @@ through `127.0.0.1:8000` which is exposed by the Kind cluster.
 For the tests to work correctly, the following host names must resolve to `127.0.0.1`:
 
 - `keycloak.keycloak.svc.cluster.local` - The Keycloak identity provider used for authentication.
-- `fulfillment-api.innabox.svc.cluster.local` - The fulfillment service API.
+- `fulfillment-api.osac.svc.cluster.local` - The fulfillment service API.
 
 Add the following entries to your `/etc/hosts` file:
 
 ```
 127.0.0.1 keycloak.keycloak.svc.cluster.local
-127.0.0.1 fulfillment-api.innabox.svc.cluster.local
+127.0.0.1 fulfillment-api.osac.svc.cluster.local
 ```
 
 To run the integration tests:

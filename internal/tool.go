@@ -22,7 +22,7 @@ import (
 	"runtime/debug"
 	"slices"
 
-	"github.com/innabox/fulfillment-common/logging"
+	"github.com/osac-project/fulfillment-common/logging"
 	"github.com/spf13/cobra"
 )
 

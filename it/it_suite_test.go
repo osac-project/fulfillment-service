@@ -20,11 +20,11 @@ import (
 	"testing"
 
 	"github.com/go-logr/logr"
-	"github.com/innabox/fulfillment-common/logging"
 	"github.com/kelseyhightower/envconfig"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-common/logging"
 	"k8s.io/klog/v2"
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -88,7 +88,7 @@ var _ = BeforeSuite(func() {
 		SetKeepCluster(config.KeepKind).
 		SetKeepService(config.KeepService).
 		SetDeployMode(config.DeployMode).
-		AddCrdFile(filepath.Join("crds", "clusterorders.cloudkit.openshift.io.yaml")).
+		AddCrdFile(filepath.Join("crds", "clusterorders.osac.openshift.io.yaml")).
 		AddCrdFile(filepath.Join("crds", "hostedclusters.hypershift.openshift.io.yaml")).
 		Build()
 	Expect(err).ToNot(HaveOccurred())

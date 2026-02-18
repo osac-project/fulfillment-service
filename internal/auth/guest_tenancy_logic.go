@@ -17,7 +17,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/innabox/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 // GuestTenancyLogicBuilder contains the data and logic needed to create guest tenancy logic.

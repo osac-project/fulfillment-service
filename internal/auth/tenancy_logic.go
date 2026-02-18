@@ -16,7 +16,7 @@ package auth
 import (
 	"context"
 
-	"github.com/innabox/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 // TenancyLogic defines the logic for determining object tenancy and access control.

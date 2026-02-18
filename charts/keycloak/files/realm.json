@@ -1,6 +1,6 @@
 {
   "id" : "01e6c34f-6906-4907-9cbd-2dec7a6a0e1d",
-  "realm" : "innabox",
+  "realm" : "osac",
   "notBefore" : 0,
   "defaultSignatureAlgorithm" : "RS256",
   "revokeRefreshToken" : false,

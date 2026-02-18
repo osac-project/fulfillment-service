@@ -37,7 +37,7 @@ To install the chart with a custom hostname:
 $ helm install prometheus charts/prometheus \
 --namespace prometheus \
 --create-namespace \
---set hostname=prometheus.innabox \
+--set hostname=prometheus.osac \
 --wait
 ```
 
@@ -52,7 +52,7 @@ Here's an example `values.yaml` file for installing the chart:
 ```yaml
 variant: kind
 
-hostname: prometheus.innabox
+hostname: prometheus.osac
 ```
 
 Install using a values file:

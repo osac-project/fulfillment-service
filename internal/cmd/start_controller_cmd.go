@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/innabox/fulfillment-common/auth"
-	"github.com/innabox/fulfillment-common/network"
+	"github.com/osac-project/fulfillment-common/auth"
+	"github.com/osac-project/fulfillment-common/network"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -35,16 +35,16 @@ import (
 	"k8s.io/klog/v2"
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/innabox/fulfillment-service/internal"
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	"github.com/innabox/fulfillment-service/internal/controllers"
-	"github.com/innabox/fulfillment-service/internal/controllers/cluster"
-	"github.com/innabox/fulfillment-service/internal/controllers/computeinstance"
-	"github.com/innabox/fulfillment-service/internal/controllers/host"
-	"github.com/innabox/fulfillment-service/internal/controllers/hostpool"
-	internalhealth "github.com/innabox/fulfillment-service/internal/health"
-	shtdwn "github.com/innabox/fulfillment-service/internal/shutdown"
-	"github.com/innabox/fulfillment-service/internal/version"
+	"github.com/osac-project/fulfillment-service/internal"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/controllers"
+	"github.com/osac-project/fulfillment-service/internal/controllers/cluster"
+	"github.com/osac-project/fulfillment-service/internal/controllers/computeinstance"
+	"github.com/osac-project/fulfillment-service/internal/controllers/host"
+	"github.com/osac-project/fulfillment-service/internal/controllers/hostpool"
+	internalhealth "github.com/osac-project/fulfillment-service/internal/health"
+	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
+	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
 // NewStartControllerCommand creates and returns the `start controllers` command.

@@ -17,12 +17,12 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/innabox/fulfillment-common/logging"
-	. "github.com/innabox/fulfillment-common/testing"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-common/logging"
+	. "github.com/osac-project/fulfillment-common/testing"
 
-	"github.com/innabox/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 )
 
 func TestServers(t *testing.T) {

@@ -22,10 +22,10 @@ import (
 
 	envoycorev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyauthv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
-	"github.com/innabox/fulfillment-common/network"
-	. "github.com/innabox/fulfillment-common/testing"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-common/network"
+	. "github.com/osac-project/fulfillment-common/testing"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"

@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/innabox/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 var _ = Describe("Create tables", func() {

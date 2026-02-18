@@ -27,15 +27,15 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/innabox/fulfillment-service/internal/api/shared/v1"
-	"github.com/innabox/fulfillment-service/internal/controllers"
-	"github.com/innabox/fulfillment-service/internal/controllers/finalizers"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/annotations"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/gvks"
-	"github.com/innabox/fulfillment-service/internal/kubernetes/labels"
-	"github.com/innabox/fulfillment-service/internal/masks"
-	"github.com/innabox/fulfillment-service/internal/utils"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	"github.com/osac-project/fulfillment-service/internal/controllers"
+	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/annotations"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
+	"github.com/osac-project/fulfillment-service/internal/masks"
+	"github.com/osac-project/fulfillment-service/internal/utils"
 )
 
 // objectPrefix is the prefix that will be used in the `generateName` field of the resources created in the hub.

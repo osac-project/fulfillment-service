@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 
-	testsv1 "github.com/innabox/fulfillment-service/internal/api/tests/v1"
+	testsv1 "github.com/osac-project/fulfillment-service/internal/api/tests/v1"
 )
 
 var _ = Describe("Filter translator", func() {

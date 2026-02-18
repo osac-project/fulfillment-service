@@ -17,7 +17,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/innabox/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 // CreateTables creates the tables, indexes, and archived tables for the provided object names. It gets the current

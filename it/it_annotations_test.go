@@ -22,10 +22,10 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/innabox/fulfillment-service/internal/api/shared/v1"
-	"github.com/innabox/fulfillment-service/internal/uuid"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Annotations", func() {

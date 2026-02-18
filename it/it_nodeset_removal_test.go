@@ -21,9 +21,9 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	ffv1 "github.com/innabox/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/innabox/fulfillment-service/internal/api/private/v1"
-	"github.com/innabox/fulfillment-service/internal/uuid"
+	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Node set removal", func() {
@@ -122,7 +122,7 @@ var _ = Describe("Node set removal", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Step 4: Verify the 'storage' node set has been removed
-		// This tests the fix for https://github.com/innabox/issues/issues/251
+		// This tests the fix for https://github.com/osac-project/issues/issues/251
 		getResponse, err = clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
 			Id: clusterId,
 		}.Build())
