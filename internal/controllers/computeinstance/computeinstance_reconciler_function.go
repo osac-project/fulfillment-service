@@ -256,15 +256,7 @@ func (t *task) setConditionDefaults(value privatev1.ComputeInstanceConditionType
 
 func (t *task) validateTenant() error {
 	if !t.computeInstance.HasMetadata() || len(t.computeInstance.GetMetadata().GetTenants()) != 1 {
-		message := "Compute instance must have exactly one tenant assigned"
-		err := errors.New(message)
-		t.updateCondition(
-			privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROGRESSING,
-			sharedv1.ConditionStatus_CONDITION_STATUS_FALSE,
-			"InvalidTenant",
-			message,
-		)
-		return err
+		return errors.New("Compute instance must have exactly one tenant assigned")
 	}
 	return nil
 }
