@@ -472,10 +472,10 @@ func (t *task) addExplicitFields(spec map[string]any) {
 	ciSpec := t.computeInstance.GetSpec()
 
 	if ciSpec.HasCores() {
-		spec["cores"] = ciSpec.GetCores()
+		spec["cores"] = int64(ciSpec.GetCores())
 	}
 	if ciSpec.HasMemoryGib() {
-		spec["memoryGiB"] = ciSpec.GetMemoryGib()
+		spec["memoryGiB"] = int64(ciSpec.GetMemoryGib())
 	}
 	if ciSpec.HasRunStrategy() {
 		spec["runStrategy"] = ciSpec.GetRunStrategy()
@@ -496,7 +496,7 @@ func (t *task) addExplicitFields(spec map[string]any) {
 	}
 	if ciSpec.HasBootDisk() {
 		bootDisk := map[string]any{
-			"sizeGiB": ciSpec.GetBootDisk().GetSizeGib(),
+			"sizeGiB": int64(ciSpec.GetBootDisk().GetSizeGib()),
 		}
 		if ciSpec.GetBootDisk().HasStorageClass() {
 			bootDisk["storageClass"] = ciSpec.GetBootDisk().GetStorageClass()
@@ -504,10 +504,10 @@ func (t *task) addExplicitFields(spec map[string]any) {
 		spec["bootDisk"] = bootDisk
 	}
 	if len(ciSpec.GetAdditionalDisks()) > 0 {
-		disks := make([]map[string]any, 0, len(ciSpec.GetAdditionalDisks()))
+		disks := make([]any, 0, len(ciSpec.GetAdditionalDisks()))
 		for _, disk := range ciSpec.GetAdditionalDisks() {
 			d := map[string]any{
-				"sizeGiB": disk.GetSizeGib(),
+				"sizeGiB": int64(disk.GetSizeGib()),
 			}
 			if disk.HasStorageClass() {
 				d["storageClass"] = disk.GetStorageClass()

@@ -112,8 +112,8 @@ var _ = Describe("buildSpec", func() {
 			spec, err := task.buildSpec()
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(spec["cores"]).To(Equal(int32(4)))
-			Expect(spec["memoryGiB"]).To(Equal(int32(8)))
+			Expect(spec["cores"]).To(Equal(int64(4)))
+			Expect(spec["memoryGiB"]).To(Equal(int64(8)))
 			Expect(spec["runStrategy"]).To(Equal("Always"))
 			Expect(spec["sshKey"]).To(Equal("ssh-rsa AAAA..."))
 
@@ -122,15 +122,17 @@ var _ = Describe("buildSpec", func() {
 			Expect(image["sourceRef"]).To(Equal("quay.io/fedora/fedora:latest"))
 
 			bootDisk := spec["bootDisk"].(map[string]any)
-			Expect(bootDisk["sizeGiB"]).To(Equal(int32(20)))
+			Expect(bootDisk["sizeGiB"]).To(Equal(int64(20)))
 			Expect(bootDisk["storageClass"]).To(Equal("fast"))
 
-			additionalDisks := spec["additionalDisks"].([]map[string]any)
+			additionalDisks := spec["additionalDisks"].([]any)
 			Expect(additionalDisks).To(HaveLen(2))
-			Expect(additionalDisks[0]["sizeGiB"]).To(Equal(int32(100)))
-			Expect(additionalDisks[0]).ToNot(HaveKey("storageClass"))
-			Expect(additionalDisks[1]["sizeGiB"]).To(Equal(int32(50)))
-			Expect(additionalDisks[1]["storageClass"]).To(Equal("slow"))
+			disk0 := additionalDisks[0].(map[string]any)
+			Expect(disk0["sizeGiB"]).To(Equal(int64(100)))
+			Expect(disk0).ToNot(HaveKey("storageClass"))
+			disk1 := additionalDisks[1].(map[string]any)
+			Expect(disk1["sizeGiB"]).To(Equal(int64(50)))
+			Expect(disk1["storageClass"]).To(Equal("slow"))
 
 			userDataRef := spec["userDataSecretRef"].(map[string]any)
 			Expect(userDataRef["name"]).To(Equal("my-cloud-init"))
