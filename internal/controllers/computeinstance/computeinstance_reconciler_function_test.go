@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -73,6 +74,90 @@ var _ = Describe("buildSpec", func() {
 			// Verify other required fields are present
 			Expect(spec["templateID"]).To(Equal(template))
 			Expect(spec["templateParameters"]).ToNot(BeNil())
+		})
+
+		It("Includes explicit fields in spec map when present", func() {
+			template := "osac.templates.ocp_virt_vm"
+			task := &task{
+				computeInstance: privatev1.ComputeInstance_builder{
+					Id: "test-explicit-fields",
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template:    template,
+						Cores:       proto.Int32(4),
+						MemoryGib:   proto.Int32(8),
+						RunStrategy: proto.String("Always"),
+						SshKey:      proto.String("ssh-rsa AAAA..."),
+						Image: privatev1.ComputeInstanceImage_builder{
+							SourceType: "registry",
+							SourceRef:  "quay.io/fedora/fedora:latest",
+						}.Build(),
+						BootDisk: privatev1.ComputeInstanceDisk_builder{
+							SizeGib:      20,
+							StorageClass: proto.String("fast"),
+						}.Build(),
+						AdditionalDisks: []*privatev1.ComputeInstanceDisk{
+							privatev1.ComputeInstanceDisk_builder{
+								SizeGib: 100,
+							}.Build(),
+							privatev1.ComputeInstanceDisk_builder{
+								SizeGib:      50,
+								StorageClass: proto.String("slow"),
+							}.Build(),
+						},
+						UserDataSecretRef: proto.String("my-cloud-init"),
+					}.Build(),
+				}.Build(),
+			}
+
+			spec, err := task.buildSpec()
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(spec["cores"]).To(Equal(int32(4)))
+			Expect(spec["memoryGiB"]).To(Equal(int32(8)))
+			Expect(spec["runStrategy"]).To(Equal("Always"))
+			Expect(spec["sshKey"]).To(Equal("ssh-rsa AAAA..."))
+
+			image := spec["image"].(map[string]any)
+			Expect(image["sourceType"]).To(Equal("registry"))
+			Expect(image["sourceRef"]).To(Equal("quay.io/fedora/fedora:latest"))
+
+			bootDisk := spec["bootDisk"].(map[string]any)
+			Expect(bootDisk["sizeGiB"]).To(Equal(int32(20)))
+			Expect(bootDisk["storageClass"]).To(Equal("fast"))
+
+			additionalDisks := spec["additionalDisks"].([]map[string]any)
+			Expect(additionalDisks).To(HaveLen(2))
+			Expect(additionalDisks[0]["sizeGiB"]).To(Equal(int32(100)))
+			Expect(additionalDisks[0]).ToNot(HaveKey("storageClass"))
+			Expect(additionalDisks[1]["sizeGiB"]).To(Equal(int32(50)))
+			Expect(additionalDisks[1]["storageClass"]).To(Equal("slow"))
+
+			userDataRef := spec["userDataSecretRef"].(map[string]any)
+			Expect(userDataRef["name"]).To(Equal("my-cloud-init"))
+		})
+
+		It("Excludes explicit fields from spec map when not set", func() {
+			template := "osac.templates.ocp_virt_vm"
+			task := &task{
+				computeInstance: privatev1.ComputeInstance_builder{
+					Id: "test-no-explicit-fields",
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template,
+					}.Build(),
+				}.Build(),
+			}
+
+			spec, err := task.buildSpec()
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(spec).ToNot(HaveKey("cores"))
+			Expect(spec).ToNot(HaveKey("memoryGiB"))
+			Expect(spec).ToNot(HaveKey("runStrategy"))
+			Expect(spec).ToNot(HaveKey("sshKey"))
+			Expect(spec).ToNot(HaveKey("image"))
+			Expect(spec).ToNot(HaveKey("bootDisk"))
+			Expect(spec).ToNot(HaveKey("additionalDisks"))
+			Expect(spec).ToNot(HaveKey("userDataSecretRef"))
 		})
 
 		It("Excludes restartRequestedAt from spec map when not set", func() {

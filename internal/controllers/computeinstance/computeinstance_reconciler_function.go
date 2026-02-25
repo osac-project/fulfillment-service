@@ -462,5 +462,58 @@ func (t *task) buildSpec() (map[string]any, error) {
 		spec["restartRequestedAt"] = t.computeInstance.GetSpec().GetRestartRequestedAt().AsTime().Format(time.RFC3339)
 	}
 
+	// Add explicit spec fields if present:
+	t.addExplicitFields(spec)
+
 	return spec, nil
+}
+
+func (t *task) addExplicitFields(spec map[string]any) {
+	ciSpec := t.computeInstance.GetSpec()
+
+	if ciSpec.HasCores() {
+		spec["cores"] = ciSpec.GetCores()
+	}
+	if ciSpec.HasMemoryGib() {
+		spec["memoryGiB"] = ciSpec.GetMemoryGib()
+	}
+	if ciSpec.HasRunStrategy() {
+		spec["runStrategy"] = ciSpec.GetRunStrategy()
+	}
+	if ciSpec.HasSshKey() {
+		spec["sshKey"] = ciSpec.GetSshKey()
+	}
+	if ciSpec.HasUserDataSecretRef() {
+		spec["userDataSecretRef"] = map[string]any{
+			"name": ciSpec.GetUserDataSecretRef(),
+		}
+	}
+	if ciSpec.HasImage() {
+		spec["image"] = map[string]any{
+			"sourceType": ciSpec.GetImage().GetSourceType(),
+			"sourceRef":  ciSpec.GetImage().GetSourceRef(),
+		}
+	}
+	if ciSpec.HasBootDisk() {
+		bootDisk := map[string]any{
+			"sizeGiB": ciSpec.GetBootDisk().GetSizeGib(),
+		}
+		if ciSpec.GetBootDisk().HasStorageClass() {
+			bootDisk["storageClass"] = ciSpec.GetBootDisk().GetStorageClass()
+		}
+		spec["bootDisk"] = bootDisk
+	}
+	if len(ciSpec.GetAdditionalDisks()) > 0 {
+		disks := make([]map[string]any, 0, len(ciSpec.GetAdditionalDisks()))
+		for _, disk := range ciSpec.GetAdditionalDisks() {
+			d := map[string]any{
+				"sizeGiB": disk.GetSizeGib(),
+			}
+			if disk.HasStorageClass() {
+				d["storageClass"] = disk.GetStorageClass()
+			}
+			disks = append(disks, d)
+		}
+		spec["additionalDisks"] = disks
+	}
 }
