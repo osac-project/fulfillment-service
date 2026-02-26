@@ -104,9 +104,9 @@ var _ = Describe("buildSpec", func() {
 								StorageClass: proto.String("slow"),
 							}.Build(),
 						},
-						UserDataSecretRef: proto.String("my-cloud-init"),
 					}.Build(),
 				}.Build(),
+				userDataSecretName: "test-explicit-fields-user-data",
 			}
 
 			spec, err := task.buildSpec()
@@ -135,7 +135,7 @@ var _ = Describe("buildSpec", func() {
 			Expect(disk1["storageClass"]).To(Equal("slow"))
 
 			userDataRef := spec["userDataSecretRef"].(map[string]any)
-			Expect(userDataRef["name"]).To(Equal("my-cloud-init"))
+			Expect(userDataRef["name"]).To(Equal("test-explicit-fields-user-data"))
 		})
 
 		It("Excludes explicit fields from spec map when not set", func() {
@@ -396,5 +396,194 @@ var _ = Describe("delete", func() {
 		err := t.delete(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(hasFinalizer(t.computeInstance)).To(BeFalse())
+	})
+})
+
+var _ = Describe("ensureUserDataSecret", func() {
+	const (
+		ciID         = "test-ci-user-data"
+		hubNamespace = "test-ns"
+	)
+
+	var (
+		ctx context.Context
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	It("should create a Secret when user data is provided and Secret does not exist", func() {
+		scheme := runtime.NewScheme()
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: ciID,
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					UserDataSecretRef: proto.String("#cloud-config\npackages:\n  - vim"),
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		err := t.ensureUserDataSecret(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(t.userDataSecretName).To(Equal(ciID + userDataSecretSuffix))
+
+		// Verify the Secret was created in K8s
+		secret := &unstructured.Unstructured{}
+		secret.SetGroupVersionKind(gvks.Secret)
+		err = fakeClient.Get(ctx, clnt.ObjectKey{
+			Namespace: hubNamespace,
+			Name:      ciID + userDataSecretSuffix,
+		}, secret)
+		Expect(err).ToNot(HaveOccurred())
+
+		stringData, _, _ := unstructured.NestedMap(secret.Object, "stringData")
+		Expect(stringData[userDataSecretKey]).To(Equal("#cloud-config\npackages:\n  - vim"))
+
+		secretLabels := secret.GetLabels()
+		Expect(secretLabels[labels.ComputeInstanceUuid]).To(Equal(ciID))
+	})
+
+	It("should update an existing Secret when user data changes", func() {
+		existingSecret := &unstructured.Unstructured{}
+		existingSecret.SetGroupVersionKind(gvks.Secret)
+		existingSecret.SetNamespace(hubNamespace)
+		existingSecret.SetName(ciID + userDataSecretSuffix)
+		existingSecret.SetLabels(map[string]string{
+			labels.ComputeInstanceUuid: ciID,
+		})
+		_ = unstructured.SetNestedField(existingSecret.Object, map[string]any{
+			userDataSecretKey: "old-content",
+		}, "stringData")
+
+		scheme := runtime.NewScheme()
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(existingSecret).
+			Build()
+
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: ciID,
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					UserDataSecretRef: proto.String("new-content"),
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		err := t.ensureUserDataSecret(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(t.userDataSecretName).To(Equal(ciID + userDataSecretSuffix))
+
+		// Verify the Secret was updated
+		secret := &unstructured.Unstructured{}
+		secret.SetGroupVersionKind(gvks.Secret)
+		err = fakeClient.Get(ctx, clnt.ObjectKey{
+			Namespace: hubNamespace,
+			Name:      ciID + userDataSecretSuffix,
+		}, secret)
+		Expect(err).ToNot(HaveOccurred())
+
+		stringData, _, _ := unstructured.NestedMap(secret.Object, "stringData")
+		Expect(stringData[userDataSecretKey]).To(Equal("new-content"))
+	})
+
+	It("should not create a Secret when user data is not provided", func() {
+		scheme := runtime.NewScheme()
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id:   ciID,
+				Spec: privatev1.ComputeInstanceSpec_builder{}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		err := t.ensureUserDataSecret(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(t.userDataSecretName).To(BeEmpty())
+	})
+})
+
+var _ = Describe("deleteUserDataSecret", func() {
+	const (
+		ciID         = "test-ci-delete-secret"
+		hubNamespace = "test-ns"
+	)
+
+	var (
+		ctx context.Context
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	It("should delete an existing user data Secret", func() {
+		existingSecret := &unstructured.Unstructured{}
+		existingSecret.SetGroupVersionKind(gvks.Secret)
+		existingSecret.SetNamespace(hubNamespace)
+		existingSecret.SetName(ciID + userDataSecretSuffix)
+
+		scheme := runtime.NewScheme()
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(existingSecret).
+			Build()
+
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: ciID,
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		err := t.deleteUserDataSecret(ctx)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Verify the Secret is gone
+		secret := &unstructured.Unstructured{}
+		secret.SetGroupVersionKind(gvks.Secret)
+		err = fakeClient.Get(ctx, clnt.ObjectKey{
+			Namespace: hubNamespace,
+			Name:      ciID + userDataSecretSuffix,
+		}, secret)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should not return error when Secret does not exist", func() {
+		scheme := runtime.NewScheme()
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: ciID,
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		err := t.deleteUserDataSecret(ctx)
+		Expect(err).ToNot(HaveOccurred())
 	})
 })

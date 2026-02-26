@@ -55,6 +55,11 @@ var HostPool = schema.GroupVersionKind{
 
 var HostPoolList = listGVK(HostPool)
 
+var Secret = schema.GroupVersionKind{
+	Version: "v1",
+	Kind:    "Secret",
+}
+
 func listGVK(gvk schema.GroupVersionKind) schema.GroupVersionKind {
 	gvk.Kind = gvk.Kind + "List"
 	return gvk

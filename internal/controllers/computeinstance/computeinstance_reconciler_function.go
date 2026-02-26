@@ -24,6 +24,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -41,6 +42,12 @@ import (
 // objectPrefix is the prefix that will be used in the `generateName` field of the resources created in the hub.
 const objectPrefix = "vm-"
 
+// userDataSecretSuffix is appended to the compute instance ID to form the user data Secret name.
+const userDataSecretSuffix = "-user-data"
+
+// userDataSecretKey is the key used in the Secret's stringData to store the cloud-init user data.
+const userDataSecretKey = "userdata"
+
 // FunctionBuilder contains the data and logic needed to build a function that reconciles compute instances.
 type FunctionBuilder struct {
 	logger     *slog.Logger
@@ -57,11 +64,12 @@ type function struct {
 }
 
 type task struct {
-	r               *function
-	computeInstance *privatev1.ComputeInstance
-	hubId           string
-	hubNamespace    string
-	hubClient       clnt.Client
+	r                  *function
+	computeInstance    *privatev1.ComputeInstance
+	hubId              string
+	hubNamespace       string
+	hubClient          clnt.Client
+	userDataSecretName string
 }
 
 // NewFunction creates a new builder that can then be used to create a new compute instance reconciler function.
@@ -169,6 +177,11 @@ func (t *task) update(ctx context.Context) error {
 	// Get the K8S object:
 	object, err := t.getKubeObject(ctx)
 	if err != nil {
+		return err
+	}
+
+	// Ensure the user data Secret exists if user data is provided:
+	if err := t.ensureUserDataSecret(ctx); err != nil {
 		return err
 	}
 
@@ -289,6 +302,10 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	if object == nil {
 		// K8s object is fully gone (all K8s finalizers processed).
+		// Clean up the user data Secret if it exists:
+		if err = t.deleteUserDataSecret(ctx); err != nil {
+			return
+		}
 		// Safe to remove our DB finalizer and allow archiving.
 		t.r.logger.DebugContext(
 			ctx,
@@ -483,9 +500,9 @@ func (t *task) addExplicitFields(spec map[string]any) {
 	if ciSpec.HasSshKey() {
 		spec["sshKey"] = ciSpec.GetSshKey()
 	}
-	if ciSpec.HasUserDataSecretRef() {
+	if t.userDataSecretName != "" {
 		spec["userDataSecretRef"] = map[string]any{
-			"name": ciSpec.GetUserDataSecretRef(),
+			"name": t.userDataSecretName,
 		}
 	}
 	if ciSpec.HasImage() {
@@ -516,4 +533,89 @@ func (t *task) addExplicitFields(spec map[string]any) {
 		}
 		spec["additionalDisks"] = disks
 	}
+}
+
+// ensureUserDataSecret creates or updates a Kubernetes Secret containing the cloud-init user data
+// provided via the fulfillment API. The Secret name is stored in t.userDataSecretName for use by
+// addExplicitFields when building the CR spec.
+func (t *task) ensureUserDataSecret(ctx context.Context) error {
+	ciSpec := t.computeInstance.GetSpec()
+	if !ciSpec.HasUserDataSecretRef() {
+		return nil
+	}
+
+	secretName := fmt.Sprintf("%s%s", t.computeInstance.GetId(), userDataSecretSuffix)
+	userData := ciSpec.GetUserDataSecretRef()
+
+	secret := &unstructured.Unstructured{}
+	secret.SetGroupVersionKind(gvks.Secret)
+	secret.SetNamespace(t.hubNamespace)
+	secret.SetName(secretName)
+
+	err := t.hubClient.Get(ctx, clnt.ObjectKeyFromObject(secret), secret)
+	if apierrors.IsNotFound(err) {
+		err = t.createUserDataSecret(ctx, secret, userData)
+	} else if err == nil {
+		err = t.updateUserDataSecret(ctx, secret, userData)
+	}
+	if err != nil {
+		return err
+	}
+
+	t.userDataSecretName = secretName
+	return nil
+}
+
+func (t *task) createUserDataSecret(ctx context.Context, secret *unstructured.Unstructured, userData string) error {
+	secret.SetLabels(map[string]string{
+		labels.ComputeInstanceUuid: t.computeInstance.GetId(),
+	})
+	if err := unstructured.SetNestedField(secret.Object, map[string]any{
+		userDataSecretKey: userData,
+	}, "stringData"); err != nil {
+		return err
+	}
+	if err := t.hubClient.Create(ctx, secret); err != nil {
+		return err
+	}
+	t.r.logger.DebugContext(
+		ctx,
+		"Created user data secret",
+		slog.String("namespace", secret.GetNamespace()),
+		slog.String("name", secret.GetName()),
+	)
+	return nil
+}
+
+func (t *task) updateUserDataSecret(ctx context.Context, secret *unstructured.Unstructured, userData string) error {
+	update := secret.DeepCopy()
+	if err := unstructured.SetNestedField(update.Object, map[string]any{
+		userDataSecretKey: userData,
+	}, "stringData"); err != nil {
+		return err
+	}
+	if err := t.hubClient.Patch(ctx, update, clnt.MergeFrom(secret)); err != nil {
+		return err
+	}
+	t.r.logger.DebugContext(
+		ctx,
+		"Updated user data secret",
+		slog.String("namespace", secret.GetNamespace()),
+		slog.String("name", secret.GetName()),
+	)
+	return nil
+}
+
+// deleteUserDataSecret removes the user data Secret from the hub namespace during compute instance deletion.
+func (t *task) deleteUserDataSecret(ctx context.Context) error {
+	secretName := fmt.Sprintf("%s%s", t.computeInstance.GetId(), userDataSecretSuffix)
+	secret := &unstructured.Unstructured{}
+	secret.SetGroupVersionKind(gvks.Secret)
+	secret.SetNamespace(t.hubNamespace)
+	secret.SetName(secretName)
+	err := t.hubClient.Delete(ctx, secret)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
 }
