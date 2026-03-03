@@ -7,6 +7,3 @@ deps:
   - name: buf.build/grpc-ecosystem/grpc-gateway
     commit: 6467306b4f624747aaf6266762ee7a1c
     digest: b5:c2caa61467d992749812c909f93c07e9a667da33c758a7c1973d63136c23b3cafcc079985b12cdf54a10049ed3297418f1eda42cdffdcf34113792dcc3a990af
-  - name: buf.build/osac-project/fulfillment-api
-    commit: 062b17e4ca79422999ab5a197faceb55
-    digest: b5:962b55a6b24670ad18fd346b38eb67a7a28975088fa6b1624b61aa3ed350de10602761e5cf6830cd21b2067a9dc9ca68144e0d704aecc67afd1f909d5b81e9e7

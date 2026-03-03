@@ -24,11 +24,9 @@ import (
 	ossignal "os/signal"
 	"slices"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 )
 
@@ -385,17 +383,10 @@ func (b *SequenceBuilder) Build() (result *Sequence, err error) {
 	}
 	go func() {
 		signal := <-signals
-		var name string
-		switch typed := signal.(type) {
-		case syscall.Signal:
-			name = unix.SignalName(typed)
-		default:
-			name = signal.String()
-		}
 		logger.InfoContext(
 			context.Background(),
 			"Shutdown sequence started by signal",
-			slog.String("signal", name),
+			slog.String("signal", signal.String()),
 		)
 		result.Start(0)
 	}()

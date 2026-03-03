@@ -1,3 +1,4 @@
+
 *.log
 *.orig
 *.patch
@@ -5,6 +6,8 @@
 *.test
 /bin
 /dev.yaml
+/dist
+/fulfillment-cli
 /fulfillment-service
 /logs
 __debug_bin*

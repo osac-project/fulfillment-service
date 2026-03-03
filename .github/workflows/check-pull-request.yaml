@@ -61,6 +61,16 @@ jobs:
     - run: |
         ginkgo run -r internal
 
+  build-binaries:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: ./.github/actions/setup-go
+    - uses: goreleaser/goreleaser-action@v6
+      with:
+        args: build --snapshot --clean
+
   run-integration-tests-helm:
     name: Run integration tests - Helm
     runs-on: ubuntu-latest

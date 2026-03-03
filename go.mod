@@ -3,8 +3,10 @@ module github.com/osac-project/fulfillment-service
 go 1.25.0
 
 require (
+	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
+	github.com/gertd/go-pluralize v0.2.1
 	github.com/go-logr/logr v1.4.3
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.6.0
@@ -13,6 +15,9 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2
 	github.com/json-iterator/go v1.1.12
 	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/mattn/go-colorable v0.1.14
+	github.com/mattn/go-isatty v0.0.20
+	github.com/neilotoole/jsoncolor v0.7.2
 	github.com/open-policy-agent/opa v1.13.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
@@ -42,6 +47,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.0 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect

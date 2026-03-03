@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 
 	"github.com/google/cel-go/cel"
@@ -32,6 +33,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
@@ -126,7 +128,8 @@ func (b *PrivateEventsServerBuilder) createCelEnv() (result *cel.Env, err error)
 	var options []cel.EnvOption
 	protoregistry.GlobalTypes.RangeEnums(func(enumType protoreflect.EnumType) bool {
 		enumDesc := enumType.Descriptor()
-		if !privateEventsServerPackages[enumDesc.FullName().Parent()] {
+		packageName := string(enumDesc.FullName().Parent())
+		if !slices.Contains(packages.Private, packageName) {
 			return true
 		}
 		enumValues := enumDesc.Values()
@@ -314,9 +317,4 @@ func (s *PrivateEventsServer) processEvent(ctx context.Context, event *privatev1
 		}
 	}
 	return nil
-}
-
-// Names of the packages whose enums will be available in the filter expressions:
-var privateEventsServerPackages = map[protoreflect.FullName]bool{
-	privatev1.EventType_EVENT_TYPE_UNSPECIFIED.Descriptor().FullName().Parent(): true,
 }
