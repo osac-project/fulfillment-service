@@ -11,6 +11,8 @@
 # specific language governing permissions and limitations under the License.
 #
 
+domains:
+
 columns:
 
 - header: ID
@@ -19,12 +21,6 @@ columns:
 - header: NAME
   value: "has(this.metadata.name)? this.metadata.name: '-'"
 
-- header: STATE
-  value: this.status.state
-  type: fulfillment.v1.HostPoolState
-
-- header: HOST SETS
-  value: "string(size(this.spec.host_sets))"
-
-- header: ALLOCATED HOSTS
-  value: "string(size(this.status.hosts))"
+- header: POWER STATE
+  value: this.status.power_state
+  type: osac.private.v1.HostPowerState

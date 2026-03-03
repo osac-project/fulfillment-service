@@ -19,12 +19,6 @@ columns:
 - header: NAME
   value: "has(this.metadata.name)? this.metadata.name: '-'"
 
-- header: STATE
-  value: this.status.state
-  type: private.v1.HostPoolState
-
-- header: HOST SETS
-  value: "string(size(this.spec.host_sets))"
-
-- header: ALLOCATED HOSTS
-  value: "string(size(this.status.hosts))"
+- header: POWER STATE
+  value: this.status.power_state
+  type: osac.public.v1.HostPowerState

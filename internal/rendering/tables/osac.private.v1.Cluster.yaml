@@ -19,6 +19,22 @@ columns:
 - header: NAME
   value: "has(this.metadata.name)? this.metadata.name: '-'"
 
-- header: POWER STATE
-  value: this.status.power_state
-  type: fulfillment.v1.HostPowerState
+- header: TEMPLATE
+  value: this.spec.template
+  type: osac.private.v1.ClusterTemplate
+  lookup: true
+
+- header: STATE
+  value: this.status.state
+  type: osac.public.v1.ClusterState
+
+- header: HUB
+  value: this.status.hub
+  type: osac.private.v1.Hub
+  lookup: true
+
+- header: API URL
+  value: "has(this.status.api_url)? this.status.api_url: '-'"
+
+- header: CONSOLE URL
+  value: "has(this.status.console_url)? this.status.console_url: '-'"
