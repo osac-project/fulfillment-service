@@ -239,7 +239,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				return nil, nil
 			}
 			info := &grpc.UnaryServerInfo{
-				FullMethod: "/private.v1.Service/Method",
+				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
 			Expect(err).ToNot(HaveOccurred())
@@ -256,7 +256,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				return nil, nil
 			}
 			info := &grpc.UnaryServerInfo{
-				FullMethod: "/private.v1.Service/Method",
+				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
 			Expect(err).To(HaveOccurred())
@@ -289,7 +289,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				return nil, nil
 			}
 			info := &grpc.UnaryServerInfo{
-				FullMethod: "/private.v1.Service/Method",
+				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
 			Expect(err).ToNot(HaveOccurred())
@@ -305,7 +305,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				return nil, nil
 			}
 			info := &grpc.UnaryServerInfo{
-				FullMethod: "/private.v1.Service/Method",
+				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
 			Expect(err).To(HaveOccurred())
@@ -330,7 +330,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				return nil, nil
 			}
 			info := &grpc.UnaryServerInfo{
-				FullMethod: "/private.v1.Service/Method",
+				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
 			Expect(err).To(HaveOccurred())
@@ -355,7 +355,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				return nil, nil
 			}
 			info := &grpc.UnaryServerInfo{
-				FullMethod: "/private.v1.Service/Method",
+				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
 			Expect(err).To(HaveOccurred())
@@ -390,7 +390,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 			)
 			ctx = metadata.NewIncomingContext(ctx, md)
 			info := &grpc.UnaryServerInfo{
-				FullMethod: "/private.v1.Service/Method",
+				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
 			Expect(err).ToNot(HaveOccurred())
@@ -406,7 +406,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				return nil, nil
 			}
 			info := &grpc.UnaryServerInfo{
-				FullMethod: "/private.v1.Service/Method",
+				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
 			Expect(err).To(HaveOccurred())
@@ -449,7 +449,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				return nil
 			}
 			info := &grpc.StreamServerInfo{
-				FullMethod: "/private.v1.Service/StreamMethod",
+				FullMethod: "/osac.private.v1.Service/StreamMethod",
 			}
 			stream := &mockServerStream{
 				ctx: ctx,

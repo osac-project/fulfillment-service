@@ -67,7 +67,7 @@ func (b *GenericMapperBuilder[From, To]) SetStrict(value bool) *GenericMapperBui
 // protoreflect.Name - Like string.
 //
 // protoreflect.FullName - This indicates a field of a particular type. For example, if the value is
-// 'fulfillment.v1.Cluster.status' then only the 'status' field of the 'fulfillment.v1.Cluster' object will be ignored.
+// 'osac.public.v1.Cluster.status' then only the 'status' field of the 'osac.public.v1.Cluster' object will be ignored.
 func (b *GenericMapperBuilder[Fro, To]) AddIgnoredFields(values ...any) *GenericMapperBuilder[Fro, To] {
 	b.ignoredFields = append(b.ignoredFields, values...)
 	return b

@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -123,8 +123,8 @@ var _ = Describe("Cluster templates server", func() {
 		})
 
 		It("Creates object", func() {
-			response, err := server.Create(ctx, ffv1.ClusterTemplatesCreateRequest_builder{
-				Object: ffv1.ClusterTemplate_builder{
+			response, err := server.Create(ctx, publicv1.ClusterTemplatesCreateRequest_builder{
+				Object: publicv1.ClusterTemplate_builder{
 					Id:          "my_template",
 					Title:       "My template",
 					Description: "My template is *nice*",
@@ -141,8 +141,8 @@ var _ = Describe("Cluster templates server", func() {
 			// Create a few objects:
 			const count = 10
 			for i := range count {
-				_, err := server.Create(ctx, ffv1.ClusterTemplatesCreateRequest_builder{
-					Object: ffv1.ClusterTemplate_builder{
+				_, err := server.Create(ctx, publicv1.ClusterTemplatesCreateRequest_builder{
+					Object: publicv1.ClusterTemplate_builder{
 						Id:          fmt.Sprintf("my_template_%d", i),
 						Title:       fmt.Sprintf("My template %d", i),
 						Description: fmt.Sprintf("My template is *nice* %d", i),
@@ -152,7 +152,7 @@ var _ = Describe("Cluster templates server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.ClusterTemplatesListRequest_builder{}.Build())
+			response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
 			items := response.GetItems()
@@ -163,8 +163,8 @@ var _ = Describe("Cluster templates server", func() {
 			// Create a few objects:
 			const count = 10
 			for i := range count {
-				_, err := server.Create(ctx, ffv1.ClusterTemplatesCreateRequest_builder{
-					Object: ffv1.ClusterTemplate_builder{
+				_, err := server.Create(ctx, publicv1.ClusterTemplatesCreateRequest_builder{
+					Object: publicv1.ClusterTemplate_builder{
 						Id:          fmt.Sprintf("my_template_%d", i),
 						Title:       fmt.Sprintf("My template %d", i),
 						Description: fmt.Sprintf("My template is *nice* %d", i),
@@ -174,7 +174,7 @@ var _ = Describe("Cluster templates server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.ClusterTemplatesListRequest_builder{
+			response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
 				Limit: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -185,8 +185,8 @@ var _ = Describe("Cluster templates server", func() {
 			// Create a few objects:
 			const count = 10
 			for i := range count {
-				_, err := server.Create(ctx, ffv1.ClusterTemplatesCreateRequest_builder{
-					Object: ffv1.ClusterTemplate_builder{
+				_, err := server.Create(ctx, publicv1.ClusterTemplatesCreateRequest_builder{
+					Object: publicv1.ClusterTemplate_builder{
 						Id:          fmt.Sprintf("my_template_%d", i),
 						Title:       fmt.Sprintf("My template %d", i),
 						Description: fmt.Sprintf("My template is *nice* %d", i),
@@ -196,7 +196,7 @@ var _ = Describe("Cluster templates server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.ClusterTemplatesListRequest_builder{
+			response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
 				Offset: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -206,10 +206,10 @@ var _ = Describe("Cluster templates server", func() {
 		It("List objects with filter", func() {
 			// Create a few objects:
 			const count = 10
-			var objects []*ffv1.ClusterTemplate
+			var objects []*publicv1.ClusterTemplate
 			for i := range count {
-				response, err := server.Create(ctx, ffv1.ClusterTemplatesCreateRequest_builder{
-					Object: ffv1.ClusterTemplate_builder{
+				response, err := server.Create(ctx, publicv1.ClusterTemplatesCreateRequest_builder{
+					Object: publicv1.ClusterTemplate_builder{
 						Id:          fmt.Sprintf("my_template_%d", i),
 						Title:       fmt.Sprintf("My template %d", i),
 						Description: fmt.Sprintf("My template is *nice* %d", i),
@@ -221,7 +221,7 @@ var _ = Describe("Cluster templates server", func() {
 
 			// List the objects:
 			for _, object := range objects {
-				response, err := server.List(ctx, ffv1.ClusterTemplatesListRequest_builder{
+				response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
 					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -232,8 +232,8 @@ var _ = Describe("Cluster templates server", func() {
 
 		It("Get object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClusterTemplatesCreateRequest_builder{
-				Object: ffv1.ClusterTemplate_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClusterTemplatesCreateRequest_builder{
+				Object: publicv1.ClusterTemplate_builder{
 					Id:          "my_template",
 					Title:       "My template",
 					Description: "My template is *nice*",
@@ -242,7 +242,7 @@ var _ = Describe("Cluster templates server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get it:
-			getResponse, err := server.Get(ctx, ffv1.ClusterTemplatesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClusterTemplatesGetRequest_builder{
 				Id: createResponse.GetObject().GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -251,8 +251,8 @@ var _ = Describe("Cluster templates server", func() {
 
 		It("Update object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClusterTemplatesCreateRequest_builder{
-				Object: ffv1.ClusterTemplate_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClusterTemplatesCreateRequest_builder{
+				Object: publicv1.ClusterTemplate_builder{
 					Id:          "my_template",
 					Title:       "My template",
 					Description: "My template is *nice*",
@@ -262,8 +262,8 @@ var _ = Describe("Cluster templates server", func() {
 			object := createResponse.GetObject()
 
 			// Update the object:
-			updateResponse, err := server.Update(ctx, ffv1.ClusterTemplatesUpdateRequest_builder{
-				Object: ffv1.ClusterTemplate_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClusterTemplatesUpdateRequest_builder{
+				Object: publicv1.ClusterTemplate_builder{
 					Id:          object.GetId(),
 					Title:       "Still my template",
 					Description: "But now it is _ugly_",
@@ -274,7 +274,7 @@ var _ = Describe("Cluster templates server", func() {
 			Expect(updateResponse.GetObject().GetDescription()).To(Equal("But now it is _ugly_"))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClusterTemplatesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClusterTemplatesGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -284,8 +284,8 @@ var _ = Describe("Cluster templates server", func() {
 
 		It("Delete object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClusterTemplatesCreateRequest_builder{
-				Object: ffv1.ClusterTemplate_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClusterTemplatesCreateRequest_builder{
+				Object: publicv1.ClusterTemplate_builder{
 					Id:          "my_template",
 					Title:       "My template",
 					Description: "My template is *nice*",
@@ -305,13 +305,13 @@ var _ = Describe("Cluster templates server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Delete the object:
-			_, err = server.Delete(ctx, ffv1.ClusterTemplatesDeleteRequest_builder{
+			_, err = server.Delete(ctx, publicv1.ClusterTemplatesDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClusterTemplatesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClusterTemplatesGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())

@@ -19,22 +19,22 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
 
 var _ = Describe("Cluster templates", func() {
 	var (
 		ctx    context.Context
-		client ffv1.ClusterTemplatesClient
+		client publicv1.ClusterTemplatesClient
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		client = ffv1.NewClusterTemplatesClient(tool.UserConn())
+		client = publicv1.NewClusterTemplatesClient(tool.UserConn())
 	})
 
 	It("Can get the list of templates", func() {
-		listResponse, err := client.List(ctx, ffv1.ClusterTemplatesListRequest_builder{}.Build())
+		listResponse, err := client.List(ctx, publicv1.ClusterTemplatesListRequest_builder{}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResponse).ToNot(BeNil())
 		items := listResponse.GetItems()
@@ -43,7 +43,7 @@ var _ = Describe("Cluster templates", func() {
 
 	It("Can get a specific template", func() {
 		// First get the list to find an existing template:
-		listResponse, err := client.List(ctx, ffv1.ClusterTemplatesListRequest_builder{}.Build())
+		listResponse, err := client.List(ctx, publicv1.ClusterTemplatesListRequest_builder{}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResponse).ToNot(BeNil())
 		items := listResponse.GetItems()
@@ -54,7 +54,7 @@ var _ = Describe("Cluster templates", func() {
 		id := firstTemplate.GetId()
 
 		// Get the template and verify that the returned object is correct:
-		response, err := client.Get(ctx, ffv1.ClusterTemplatesGetRequest_builder{
+		response, err := client.Get(ctx, publicv1.ClusterTemplatesGetRequest_builder{
 			Id: id,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())

@@ -22,8 +22,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -35,15 +35,15 @@ type HostsServerBuilder struct {
 	tenancyLogic     auth.TenancyLogic
 }
 
-var _ ffv1.HostsServer = (*HostsServer)(nil)
+var _ publicv1.HostsServer = (*HostsServer)(nil)
 
 type HostsServer struct {
-	ffv1.UnimplementedHostsServer
+	publicv1.UnimplementedHostsServer
 
 	logger    *slog.Logger
 	delegate  privatev1.HostsServer
-	inMapper  *GenericMapper[*ffv1.Host, *privatev1.Host]
-	outMapper *GenericMapper[*privatev1.Host, *ffv1.Host]
+	inMapper  *GenericMapper[*publicv1.Host, *privatev1.Host]
+	outMapper *GenericMapper[*privatev1.Host, *publicv1.Host]
 }
 
 func NewHostsServer() *HostsServerBuilder {
@@ -87,7 +87,7 @@ func (b *HostsServerBuilder) Build() (result *HostsServer, err error) {
 
 	// Find the full name of the 'status' field so that we can configure the generic server to ignore it. This is
 	// because users don't have permission to change the status.
-	var object *ffv1.Host
+	var object *publicv1.Host
 	objectReflect := object.ProtoReflect()
 	objectDesc := objectReflect.Descriptor()
 	statusField := objectDesc.Fields().ByName("status")
@@ -97,7 +97,7 @@ func (b *HostsServerBuilder) Build() (result *HostsServer, err error) {
 	}
 
 	// Create the mappers:
-	inMapper, err := NewGenericMapper[*ffv1.Host, *privatev1.Host]().
+	inMapper, err := NewGenericMapper[*publicv1.Host, *privatev1.Host]().
 		SetLogger(b.logger).
 		SetStrict(true).
 		AddIgnoredFields(statusField.FullName()).
@@ -105,7 +105,7 @@ func (b *HostsServerBuilder) Build() (result *HostsServer, err error) {
 	if err != nil {
 		return
 	}
-	outMapper, err := NewGenericMapper[*privatev1.Host, *ffv1.Host]().
+	outMapper, err := NewGenericMapper[*privatev1.Host, *publicv1.Host]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
@@ -135,7 +135,7 @@ func (b *HostsServerBuilder) Build() (result *HostsServer, err error) {
 }
 
 func (s *HostsServer) List(ctx context.Context,
-	request *ffv1.HostsListRequest) (response *ffv1.HostsListResponse, err error) {
+	request *publicv1.HostsListRequest) (response *publicv1.HostsListResponse, err error) {
 	// Create private request with same parameters:
 	privateRequest := &privatev1.HostsListRequest{}
 	privateRequest.SetOffset(request.GetOffset())
@@ -151,9 +151,9 @@ func (s *HostsServer) List(ctx context.Context,
 
 	// Map private response to public format:
 	privateItems := privateResponse.GetItems()
-	publicItems := make([]*ffv1.Host, len(privateItems))
+	publicItems := make([]*publicv1.Host, len(privateItems))
 	for i, privateItem := range privateItems {
-		publicItem := &ffv1.Host{}
+		publicItem := &publicv1.Host{}
 		err = s.outMapper.Copy(ctx, privateItem, publicItem)
 		if err != nil {
 			s.logger.ErrorContext(
@@ -167,7 +167,7 @@ func (s *HostsServer) List(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostsListResponse{}
+	response = &publicv1.HostsListResponse{}
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
@@ -175,7 +175,7 @@ func (s *HostsServer) List(ctx context.Context,
 }
 
 func (s *HostsServer) Get(ctx context.Context,
-	request *ffv1.HostsGetRequest) (response *ffv1.HostsGetResponse, err error) {
+	request *publicv1.HostsGetRequest) (response *publicv1.HostsGetResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.HostsGetRequest{}
 	privateRequest.SetId(request.GetId())
@@ -188,7 +188,7 @@ func (s *HostsServer) Get(ctx context.Context,
 
 	// Map private response to public format:
 	privateHost := privateResponse.GetObject()
-	publicHost := &ffv1.Host{}
+	publicHost := &publicv1.Host{}
 	err = s.outMapper.Copy(ctx, privateHost, publicHost)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -200,13 +200,13 @@ func (s *HostsServer) Get(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostsGetResponse{}
+	response = &publicv1.HostsGetResponse{}
 	response.SetObject(publicHost)
 	return
 }
 
 func (s *HostsServer) Create(ctx context.Context,
-	request *ffv1.HostsCreateRequest) (response *ffv1.HostsCreateResponse, err error) {
+	request *publicv1.HostsCreateRequest) (response *publicv1.HostsCreateResponse, err error) {
 	// Map the public host to private format:
 	publicHost := request.GetObject()
 	if publicHost == nil {
@@ -235,7 +235,7 @@ func (s *HostsServer) Create(ctx context.Context,
 
 	// Map the private response back to public format:
 	createdPrivateHost := privateResponse.GetObject()
-	createdPublicHost := &ffv1.Host{}
+	createdPublicHost := &publicv1.Host{}
 	err = s.outMapper.Copy(ctx, createdPrivateHost, createdPublicHost)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -248,13 +248,13 @@ func (s *HostsServer) Create(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostsCreateResponse{}
+	response = &publicv1.HostsCreateResponse{}
 	response.SetObject(createdPublicHost)
 	return
 }
 
 func (s *HostsServer) Update(ctx context.Context,
-	request *ffv1.HostsUpdateRequest) (response *ffv1.HostsUpdateResponse, err error) {
+	request *publicv1.HostsUpdateRequest) (response *publicv1.HostsUpdateResponse, err error) {
 	// Map the public host to private format:
 	publicHost := request.GetObject()
 	if publicHost == nil {
@@ -284,7 +284,7 @@ func (s *HostsServer) Update(ctx context.Context,
 
 	// Map the private response back to public format:
 	updatedPrivateHost := privateResponse.GetObject()
-	updatedPublicHost := &ffv1.Host{}
+	updatedPublicHost := &publicv1.Host{}
 	err = s.outMapper.Copy(ctx, updatedPrivateHost, updatedPublicHost)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -297,13 +297,13 @@ func (s *HostsServer) Update(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostsUpdateResponse{}
+	response = &publicv1.HostsUpdateResponse{}
 	response.SetObject(updatedPublicHost)
 	return
 }
 
 func (s *HostsServer) Delete(ctx context.Context,
-	request *ffv1.HostsDeleteRequest) (response *ffv1.HostsDeleteResponse, err error) {
+	request *publicv1.HostsDeleteRequest) (response *publicv1.HostsDeleteResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.HostsDeleteRequest{}
 	privateRequest.SetId(request.GetId())
@@ -315,6 +315,6 @@ func (s *HostsServer) Delete(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostsDeleteResponse{}
+	response = &publicv1.HostsDeleteResponse{}
 	return
 }

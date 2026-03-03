@@ -1,0 +1,102 @@
+//
+// Copyright (c) 2025 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+// the License. You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+//
+
+syntax = "proto3";
+
+package osac.private.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "osac/private/v1/host_type.proto";
+
+message HostsListRequest {
+  optional int32 offset = 1;
+  optional int32 limit = 2;
+  optional string filter = 3;
+  optional string order = 4;
+}
+
+message HostsListResponse {
+  optional int32 size = 1;
+  optional int32 total = 2;
+  repeated Host items = 3;
+}
+
+message HostsGetRequest {
+  string id = 1;
+}
+
+message HostsGetResponse {
+  Host object = 1;
+}
+
+message HostsCreateRequest {
+  Host object = 1;
+}
+
+message HostsCreateResponse {
+  Host object = 1;
+}
+
+message HostsDeleteRequest {
+  string id = 1;
+}
+
+message HostsDeleteResponse {}
+
+message HostsUpdateRequest {
+  Host object = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message HostsUpdateResponse {
+  Host object = 1;
+}
+
+message HostsSignalRequest {
+  string id = 1;
+}
+
+message HostsSignalResponse {}
+
+service Hosts {
+  rpc List(HostsListRequest) returns (HostsListResponse) {
+    option (google.api.http) = {get: "/api/private/v1/hosts"};
+  }
+  rpc Get(HostsGetRequest) returns (HostsGetResponse) {
+    option (google.api.http) = {
+      get: "/api/private/v1/hosts/{id}"
+      response_body: "object"
+    };
+  }
+  rpc Create(HostsCreateRequest) returns (HostsCreateResponse) {
+    option (google.api.http) = {
+      post: "/api/private/v1/hosts"
+      body: "object"
+      response_body: "object"
+    };
+  }
+  rpc Delete(HostsDeleteRequest) returns (HostsDeleteResponse) {
+    option (google.api.http) = {delete: "/api/private/v1/hosts/{id}"};
+  }
+  rpc Update(HostsUpdateRequest) returns (HostsUpdateResponse) {
+    option (google.api.http) = {
+      patch: "/api/private/v1/hosts/{object.id}"
+      body: "object"
+      response_body: "object"
+    };
+  }
+
+  // Indicates that something changed in the object or the system that may require reconciling the object.
+  rpc Signal(HostsSignalRequest) returns (HostsSignalResponse) {}
+}

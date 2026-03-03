@@ -27,7 +27,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/osac-project/fulfillment-service/internal"
-	eventsv1 "github.com/osac-project/fulfillment-service/internal/api/events/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/network"
 	"github.com/osac-project/fulfillment-service/internal/version"
@@ -132,8 +132,8 @@ func (c *watchCommandRunner) run(cmd *cobra.Command, argv []string) error {
 	}()
 
 	// Start watching events:
-	eventsClient := eventsv1.NewEventsClient(grpcClient)
-	eventsStream, err := eventsClient.Watch(ctx, &eventsv1.EventsWatchRequest{
+	eventsClient := publicv1.NewEventsClient(grpcClient)
+	eventsStream, err := eventsClient.Watch(ctx, &publicv1.EventsWatchRequest{
 		Filter: proto.String(c.args.filter),
 	})
 	if err != nil {

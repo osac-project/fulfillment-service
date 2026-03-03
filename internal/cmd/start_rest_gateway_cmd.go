@@ -32,8 +32,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/osac-project/fulfillment-service/internal"
-	api "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privateapi "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/network"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
 	"github.com/osac-project/fulfillment-service/internal/version"
@@ -144,69 +144,69 @@ func (c *startRestGatewayCommandRunner) run(cmd *cobra.Command, argv []string) e
 	)
 
 	// Register the service handlers:
-	err = api.RegisterClusterTemplatesHandler(ctx, gatewayMux, c.grpcClient)
+	err = publicv1.RegisterClusterTemplatesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = api.RegisterClustersHandler(ctx, gatewayMux, c.grpcClient)
+	err = publicv1.RegisterClustersHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = api.RegisterHostClassesHandler(ctx, gatewayMux, c.grpcClient)
+	err = publicv1.RegisterHostClassesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = api.RegisterHostsHandler(ctx, gatewayMux, c.grpcClient)
+	err = publicv1.RegisterHostsHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = api.RegisterHostPoolsHandler(ctx, gatewayMux, c.grpcClient)
+	err = publicv1.RegisterHostPoolsHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = api.RegisterComputeInstanceTemplatesHandler(ctx, gatewayMux, c.grpcClient)
+	err = publicv1.RegisterComputeInstanceTemplatesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = api.RegisterComputeInstancesHandler(ctx, gatewayMux, c.grpcClient)
+	err = publicv1.RegisterComputeInstancesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
 
 	// Register the private API service handlers:
-	err = privateapi.RegisterClusterTemplatesHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterClusterTemplatesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = privateapi.RegisterClustersHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterClustersHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = privateapi.RegisterEventsHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterEventsHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = privateapi.RegisterHostClassesHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterHostClassesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = privateapi.RegisterHostPoolsHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterHostPoolsHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = privateapi.RegisterHostsHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterHostsHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = privateapi.RegisterHubsHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterHubsHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = privateapi.RegisterComputeInstanceTemplatesHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterComputeInstanceTemplatesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}
-	err = privateapi.RegisterComputeInstancesHandler(ctx, gatewayMux, c.grpcClient)
+	err = privatev1.RegisterComputeInstancesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}

@@ -29,7 +29,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
@@ -114,7 +114,7 @@ func (b *GenericServerBuilder[O]) SetTable(value string) *GenericServerBuilder[O
 // protoreflect.Name - Like string.
 //
 // protoreflect.FullName - This indicates a field of a particular type. For example, if the value is
-// 'fulfillment.v1.Cluster.status' then the field 'status' of the 'fulfillment.v1.Cluster' type will be ignored, but
+// 'osac.public.v1.Cluster.status' then the field 'status' of the 'osac.public.v1.Cluster' type will be ignored, but
 // the 'status' field of other types will not be ignored.
 func (b *GenericServerBuilder[O]) AddIgnoredFields(values ...any) *GenericServerBuilder[O] {
 	b.ignoredFields = append(b.ignoredFields, values...)
@@ -247,7 +247,8 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 
 // findService finds the service descriptor using the service name given to the builder.
 func (b *GenericServerBuilder[O]) findService() (result protoreflect.ServiceDescriptor, err error) {
-	protoregistry.GlobalFiles.RangeFilesByPackage("private.v1", func(desc protoreflect.FileDescriptor) bool {
+	packageFullName := (privatev1.EventType)(0).Descriptor().FullName().Parent()
+	protoregistry.GlobalFiles.RangeFilesByPackage(packageFullName, func(desc protoreflect.FileDescriptor) bool {
 		for i := range desc.Services().Len() {
 			serviceDesc := desc.Services().Get(i)
 			if string(serviceDesc.FullName()) == b.service {

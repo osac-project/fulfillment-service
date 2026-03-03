@@ -30,8 +30,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	eventsv1 "github.com/osac-project/fulfillment-service/internal/api/events/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
@@ -45,26 +45,26 @@ type EventsServerBuilder struct {
 	tenancyLogic auth.TenancyLogic
 }
 
-var _ eventsv1.EventsServer = (*EventsServer)(nil)
+var _ publicv1.EventsServer = (*EventsServer)(nil)
 
 type EventsServer struct {
-	eventsv1.UnimplementedEventsServer
+	publicv1.UnimplementedEventsServer
 
 	logger       *slog.Logger
 	listener     *database.Listener
 	subs         map[string]eventsServerSubInfo
 	subsLock     *sync.RWMutex
 	celEnv       *cel.Env
-	mapper       *GenericMapper[*privatev1.Event, *eventsv1.Event]
+	mapper       *GenericMapper[*privatev1.Event, *publicv1.Event]
 	tenancyLogic auth.TenancyLogic
 }
 
 type eventsServerSubInfo struct {
-	stream     grpc.ServerStreamingServer[eventsv1.EventsWatchResponse]
+	stream     grpc.ServerStreamingServer[publicv1.EventsWatchResponse]
 	subject    *auth.Subject
 	filterSrc  string
 	filterPrg  cel.Program
-	eventsChan chan *eventsv1.Event
+	eventsChan chan *publicv1.Event
 }
 
 func NewEventsServer() *EventsServerBuilder {
@@ -110,7 +110,7 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 	}
 
 	// Create the mappers:
-	mapper, err := NewGenericMapper[*privatev1.Event, *eventsv1.Event]().
+	mapper, err := NewGenericMapper[*privatev1.Event, *publicv1.Event]().
 		SetLogger(b.logger).
 		Build()
 	if err != nil {
@@ -182,7 +182,7 @@ func (b *EventsServerBuilder) createCelEnv() (result *cel.Env, err error) {
 	})
 
 	// Declare the event type:
-	var eventModel *eventsv1.Event
+	var eventModel *publicv1.Event
 	options = append(options, cel.Types(eventModel))
 
 	// Declare the event variable:
@@ -201,8 +201,8 @@ func (s *EventsServer) Start(ctx context.Context) error {
 	return s.listener.Listen(ctx)
 }
 
-func (s *EventsServer) Watch(request *eventsv1.EventsWatchRequest,
-	stream grpc.ServerStreamingServer[eventsv1.EventsWatchResponse]) (err error) {
+func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
+	stream grpc.ServerStreamingServer[publicv1.EventsWatchResponse]) (err error) {
 	// Get the context:
 	ctx := stream.Context()
 
@@ -244,7 +244,7 @@ func (s *EventsServer) Watch(request *eventsv1.EventsWatchRequest,
 		subject:    subject,
 		filterSrc:  filterSrc,
 		filterPrg:  filterPrg,
-		eventsChan: make(chan *eventsv1.Event),
+		eventsChan: make(chan *publicv1.Event),
 	}
 	s.subsLock.Lock()
 	s.subs[subId] = subInfo
@@ -266,7 +266,7 @@ func (s *EventsServer) Watch(request *eventsv1.EventsWatchRequest,
 				logger.DebugContext(ctx, "Subscription channel closed")
 				return nil
 			}
-			err = stream.Send(eventsv1.EventsWatchResponse_builder{
+			err = stream.Send(publicv1.EventsWatchResponse_builder{
 				Event: event,
 			}.Build())
 			if err != nil {
@@ -289,7 +289,7 @@ func (s *EventsServer) compileFilter(ctx context.Context, filterSrc string) (res
 	return
 }
 
-func (s *EventsServer) evalFilter(ctx context.Context, filterPrg cel.Program, event *eventsv1.Event) (result bool,
+func (s *EventsServer) evalFilter(ctx context.Context, filterPrg cel.Program, event *publicv1.Event) (result bool,
 	err error) {
 	activation, err := cel.NewActivation(map[string]any{
 		"event": event,
@@ -333,7 +333,7 @@ func (s *EventsServer) processPayload(ctx context.Context, payload proto.Message
 	}
 
 	// Translate the private event to a public event and process it:
-	public := &eventsv1.Event{}
+	public := &publicv1.Event{}
 	err := s.mapper.Copy(ctx, private, public)
 	if err != nil {
 		return fmt.Errorf("failed to translate event: %w", err)
@@ -414,7 +414,7 @@ func (s *EventsServer) extractMetadata(ctx context.Context, event *privatev1.Eve
 	}
 }
 
-func (s *EventsServer) processEvent(ctx context.Context, public *eventsv1.Event, private *privatev1.Event) error {
+func (s *EventsServer) processEvent(ctx context.Context, public *publicv1.Event, private *privatev1.Event) error {
 	s.subsLock.RLock()
 	defer s.subsLock.RUnlock()
 	for subId, sub := range s.subs {
@@ -467,6 +467,5 @@ func (s *EventsServer) processEvent(ctx context.Context, public *eventsv1.Event,
 
 // Names of the packages whose enums will be available in the filter expressions:
 var eventsServerPackages = map[protoreflect.FullName]bool{
-	"events.v1":      true,
-	"fulfillment.v1": true,
+	publicv1.EventType_EVENT_TYPE_UNSPECIFIED.Descriptor().FullName().Parent(): true,
 }

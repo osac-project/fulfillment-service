@@ -23,7 +23,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	_ "google.golang.org/protobuf/types/known/wrapperspb"
 
-	testsv1 "github.com/osac-project/fulfillment-service/internal/api/tests/v1"
+	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
 )
 
 var _ = Describe("Encoder", func() {
@@ -301,7 +301,7 @@ var _ = Describe("Encoder", func() {
 						Id: "123",
 					}.Build(),
 					Ignored: []any{
-						protoreflect.FullName("tests.v1.Object.id"),
+						protoreflect.FullName("osac.tests.v1.Object.id"),
 					},
 					Expected: `{}`,
 				},
@@ -316,7 +316,7 @@ var _ = Describe("Encoder", func() {
 						}.Build(),
 					}.Build(),
 					Ignored: []any{
-						protoreflect.FullName("tests.v1.Spec.ignore"),
+						protoreflect.FullName("osac.tests.v1.Spec.ignore"),
 					},
 					Expected: `{
 						"ignore": "don't ignore",
@@ -334,7 +334,7 @@ var _ = Describe("Encoder", func() {
 						}.Build(),
 					}.Build(),
 					Ignored: []any{
-						"tests.v1.Spec.ignore",
+						"osac.tests.v1.Spec.ignore",
 					},
 					Expected: `{
 						"ignore": "don't ignore",

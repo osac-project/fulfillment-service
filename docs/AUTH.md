@@ -551,7 +551,7 @@ allow {
   is_client
   grpc_method in {
     # ... existing methods ...
-    "/fulfillment.v1.NewService/NewMethod",
+    "/osac.public.v1.NewService/NewMethod",
   }
 }
 ```

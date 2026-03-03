@@ -25,10 +25,13 @@ breaking:
   - FILE
 
 modules:
-- path: proto
+
+- path: proto/public
+  name: buf.build/osac-project/public-api
+
+- path: proto/private
   name: buf.build/osac-project/private-api
 
 deps:
 - buf.build/googleapis/googleapis
 - buf.build/grpc-ecosystem/grpc-gateway
-- buf.build/osac-project/fulfillment-api:v0.0.34

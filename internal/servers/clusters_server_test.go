@@ -27,9 +27,8 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -236,9 +235,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Creates object", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -251,8 +250,8 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Doesn't create object without template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{}.Build(),
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{}.Build(),
 			}.Build())
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
@@ -263,9 +262,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Takes default node sets from template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -284,12 +283,12 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Rejects node set that isn't in the template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"junk": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"junk": publicv1.ClusterNodeSet_builder{
 								HostClass: "acme_1tib",
 								Size:      1000,
 							}.Build(),
@@ -309,12 +308,12 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Rejects node set with host class that isn't in the template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								HostClass: "hal_9000",
 								Size:      1000,
 							}.Build(),
@@ -334,12 +333,12 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Rejects node set with zero size", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								Size: 0,
 							}.Build(),
 						},
@@ -357,12 +356,12 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Rejects node set with negative size", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								Size: -1,
 							}.Build(),
 						},
@@ -380,12 +379,12 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Accepts node set with explicit size", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								Size: 1000,
 							}.Build(),
 						},
@@ -401,15 +400,15 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Accepts multiple node sets with explicit size", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								Size: 30,
 							}.Build(),
-							"gpu": ffv1.ClusterNodeSet_builder{
+							"gpu": publicv1.ClusterNodeSet_builder{
 								Size: 10,
 							}.Build(),
 						},
@@ -428,12 +427,12 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Merges explicit size for one node set with size for another node set from the template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								Size: 30,
 							}.Build(),
 						},
@@ -452,9 +451,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Rejects template that has been deleted", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_deleted_template",
 					}.Build(),
 				}.Build(),
@@ -470,9 +469,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Doesn't create object if there are missing required template parameters", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_with_parameters",
 					}.Build(),
 				}.Build(),
@@ -488,9 +487,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Doesn't create object if one parameter doesn't exist in the template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_with_parameters",
 						TemplateParameters: map[string]*anypb.Any{
 							"junk": makeAny(wrapperspb.Int32(123)),
@@ -510,9 +509,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Doesn't create object if two parameters don't exist in the template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_with_parameters",
 						TemplateParameters: map[string]*anypb.Any{
 							"junk1": makeAny(wrapperspb.Int32(123)),
@@ -533,9 +532,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Doesn't create object if parameter type doesn't match the template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_with_parameters",
 						TemplateParameters: map[string]*anypb.Any{
 							"my_required_bool": makeAny(wrapperspb.Int32(123)),
@@ -556,9 +555,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Takes default values of parameters from the template", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_with_parameters",
 						TemplateParameters: map[string]*anypb.Any{
 							"my_required_bool": makeAny(wrapperspb.Bool(true)),
@@ -586,9 +585,9 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Allows overriding of default values of template parameters", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_with_parameters",
 						TemplateParameters: map[string]*anypb.Any{
 							"my_required_bool":   makeAny(wrapperspb.Bool(false)),
@@ -612,9 +611,9 @@ var _ = Describe("Clusters server", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-					Object: ffv1.Cluster_builder{
-						Spec: ffv1.ClusterSpec_builder{
+				_, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: "my_template",
 						}.Build(),
 					}.Build(),
@@ -623,7 +622,7 @@ var _ = Describe("Clusters server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.ClustersListRequest_builder{}.Build())
+			response, err := server.List(ctx, publicv1.ClustersListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
 			items := response.GetItems()
@@ -634,9 +633,9 @@ var _ = Describe("Clusters server", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-					Object: ffv1.Cluster_builder{
-						Spec: ffv1.ClusterSpec_builder{
+				_, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: "my_template",
 						}.Build(),
 					}.Build(),
@@ -645,7 +644,7 @@ var _ = Describe("Clusters server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.ClustersListRequest_builder{
+			response, err := server.List(ctx, publicv1.ClustersListRequest_builder{
 				Limit: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -656,9 +655,9 @@ var _ = Describe("Clusters server", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-					Object: ffv1.Cluster_builder{
-						Spec: ffv1.ClusterSpec_builder{
+				_, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: "my_template",
 						}.Build(),
 					}.Build(),
@@ -667,7 +666,7 @@ var _ = Describe("Clusters server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.ClustersListRequest_builder{
+			response, err := server.List(ctx, publicv1.ClustersListRequest_builder{
 				Offset: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -677,11 +676,11 @@ var _ = Describe("Clusters server", func() {
 		It("List objects with filter", func() {
 			// Create a few objects:
 			const count = 10
-			var objects []*ffv1.Cluster
+			var objects []*publicv1.Cluster
 			for range count {
-				response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-					Object: ffv1.Cluster_builder{
-						Spec: ffv1.ClusterSpec_builder{
+				response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: "my_template",
 						}.Build(),
 					}.Build(),
@@ -692,7 +691,7 @@ var _ = Describe("Clusters server", func() {
 
 			// List the objects:
 			for _, object := range objects {
-				response, err := server.List(ctx, ffv1.ClustersListRequest_builder{
+				response, err := server.List(ctx, publicv1.ClustersListRequest_builder{
 					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -703,9 +702,9 @@ var _ = Describe("Clusters server", func() {
 
 		It("Get object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -713,7 +712,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get it:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: createResponse.GetObject().GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -721,7 +720,7 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Returns not found error when getting object that doesn't exist", func() {
-			response, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			response, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: "does-not-exist",
 			}.Build())
 			Expect(err).To(HaveOccurred())
@@ -733,9 +732,9 @@ var _ = Describe("Clusters server", func() {
 
 		It("Update object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -744,12 +743,12 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Update the object:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Spec: ffv1.ClusterSpec_builder{
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+					Spec: publicv1.ClusterSpec_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								HostClass: "acme_1tib",
 								Size:      4,
 							}.Build(),
@@ -764,7 +763,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(nodeSet.GetSize()).To(BeNumerically("==", 4))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -776,9 +775,9 @@ var _ = Describe("Clusters server", func() {
 
 		It("Ignores changes to the status when an object is updated", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -787,10 +786,10 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Try to update the status:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Status: ffv1.ClusterStatus_builder{
+					Status: publicv1.ClusterStatus_builder{
 						ApiUrl:     "https://my.api.com",
 						ConsoleUrl: "https://my.console.com",
 					}.Build(),
@@ -802,7 +801,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(object.GetStatus().GetConsoleUrl()).To(BeEmpty())
 
 			// Get the response and verify that the status hasn't been updated:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -813,9 +812,9 @@ var _ = Describe("Clusters server", func() {
 
 		It("Delete object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -834,13 +833,13 @@ var _ = Describe("Clusters server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Delete the object:
-			_, err = server.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err = server.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -849,7 +848,7 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Returns not found error when deleting object that doesn't exist", func() {
-			response, err := server.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			response, err := server.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: "does_not_exist",
 			}.Build())
 			Expect(err).To(HaveOccurred())
@@ -893,13 +892,13 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Update the object using the public server:
-			_, err = server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			_, err = server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								HostClass: "my_host_class",
 								Size:      4,
 							}.Build(),
@@ -921,12 +920,12 @@ var _ = Describe("Clusters server", func() {
 
 		It("Ignores status during creation", func() {
 			// Try to create an object with status:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
-					Status: ffv1.ClusterStatus_builder{
+					Status: publicv1.ClusterStatus_builder{
 						ApiUrl: "https://your.api",
 					}.Build(),
 				}.Build(),
@@ -935,7 +934,7 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Get the object and verify that the status was ignored:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -968,13 +967,13 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Try to update the status:
-			_, err = server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			_, err = server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
-					Status: ffv1.ClusterStatus_builder{
+					Status: publicv1.ClusterStatus_builder{
 						ApiUrl: "https://your.api",
 					}.Build(),
 				}.Build(),
@@ -990,9 +989,9 @@ var _ = Describe("Clusters server", func() {
 
 		It("Update object with mask", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1001,16 +1000,16 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Update the object using the field mask:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "your_template",
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								Size: 4,
 							}.Build(),
-							"gpu": ffv1.ClusterNodeSet_builder{
+							"gpu": publicv1.ClusterNodeSet_builder{
 								Size: 2,
 							}.Build(),
 						},
@@ -1024,7 +1023,7 @@ var _ = Describe("Clusters server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			object = updateResponse.GetObject()
-			verify := func(object *ffv1.Cluster) {
+			verify := func(object *publicv1.Cluster) {
 				Expect(object.GetSpec().GetTemplate()).To(Equal("my_template"))
 				computeNodeSet := object.GetSpec().GetNodeSets()["compute"]
 				Expect(computeNodeSet.GetSize()).To(BeNumerically("==", 4))
@@ -1034,7 +1033,7 @@ var _ = Describe("Clusters server", func() {
 			verify(object)
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1044,9 +1043,9 @@ var _ = Describe("Clusters server", func() {
 
 		It("Allows removing a node set when multiple exist", func() {
 			// Create a cluster with the default node sets from the template (compute and gpu):
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1058,12 +1057,12 @@ var _ = Describe("Clusters server", func() {
 			Expect(object.GetSpec().GetNodeSets()).To(HaveKey("gpu"))
 
 			// Remove the gpu node set by updating with only the compute node set:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Spec: ffv1.ClusterSpec_builder{
-						NodeSets: map[string]*ffv1.ClusterNodeSet{
-							"compute": ffv1.ClusterNodeSet_builder{
+					Spec: publicv1.ClusterSpec_builder{
+						NodeSets: map[string]*publicv1.ClusterNodeSet{
+							"compute": publicv1.ClusterNodeSet_builder{
 								HostClass: "acme_1tib",
 								Size:      3,
 							}.Build(),
@@ -1081,7 +1080,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(object.GetSpec().GetNodeSets()).ToNot(HaveKey("gpu"))
 
 			// Get and verify the node set was removed:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1092,12 +1091,12 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Sets name when creating", func() {
-			response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Metadata: sharedv1.Metadata_builder{
+			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
 						Name: "my-cluster",
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1106,7 +1105,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(response.GetObject().GetMetadata().GetName()).To(Equal("my-cluster"))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: response.GetObject().GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1115,12 +1114,12 @@ var _ = Describe("Clusters server", func() {
 
 		It("Updates name", func() {
 			// Create the object with an initial name:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Metadata: sharedv1.Metadata_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
 						Name: "my-name",
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1129,10 +1128,10 @@ var _ = Describe("Clusters server", func() {
 			Expect(createResponse.GetObject().GetMetadata().GetName()).To(Equal("my-name"))
 
 			// Update the name:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: createResponse.GetObject().GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Name: "your-name",
 					}.Build(),
 				}.Build(),
@@ -1141,7 +1140,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(updateResponse.GetObject().GetMetadata().GetName()).To(Equal("your-name"))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: createResponse.GetObject().GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1149,10 +1148,10 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Returns not found error when updating object that doesn't exist", func() {
-			response, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			response, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: "does-not-exist",
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Name: "my-name",
 					}.Build(),
 				}.Build(),
@@ -1167,12 +1166,12 @@ var _ = Describe("Clusters server", func() {
 		DescribeTable(
 			"Rejects creation with invalid name",
 			func(name, expectedError string) {
-				response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-					Object: ffv1.Cluster_builder{
-						Metadata: sharedv1.Metadata_builder{
+				response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Metadata: publicv1.Metadata_builder{
 							Name: name,
 						}.Build(),
-						Spec: ffv1.ClusterSpec_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: "my_template",
 						}.Build(),
 					}.Build(),
@@ -1213,12 +1212,12 @@ var _ = Describe("Clusters server", func() {
 
 		It("Rejects update with invalid name", func() {
 			// Create the object with a valid name:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Metadata: sharedv1.Metadata_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
 						Name: "valid-name",
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1226,10 +1225,10 @@ var _ = Describe("Clusters server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Try to update with an invalid name:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: createResponse.GetObject().GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Name: "Invalid_Name",
 					}.Build(),
 				}.Build(),
@@ -1245,12 +1244,12 @@ var _ = Describe("Clusters server", func() {
 		DescribeTable(
 			"Accepts creation with valid names",
 			func(name string) {
-				response, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-					Object: ffv1.Cluster_builder{
-						Metadata: sharedv1.Metadata_builder{
+				response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Metadata: publicv1.Metadata_builder{
 							Name: name,
 						}.Build(),
-						Spec: ffv1.ClusterSpec_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: "my_template",
 						}.Build(),
 					}.Build(),
@@ -1282,9 +1281,9 @@ var _ = Describe("Clusters server", func() {
 
 		It("Adds label by updating", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1293,10 +1292,10 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Delete the label:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							"example.com/my-label": "my-value",
 						},
@@ -1314,7 +1313,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "my-value"))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1325,14 +1324,14 @@ var _ = Describe("Clusters server", func() {
 
 		It("Updates label by updating", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Metadata: sharedv1.Metadata_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							"example.com/my-label": "my-value",
 						},
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1341,10 +1340,10 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Delete the label:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							"example.com/my-label": "your-value",
 						},
@@ -1362,7 +1361,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "your-value"))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1373,14 +1372,14 @@ var _ = Describe("Clusters server", func() {
 
 		It("Deletes label by updating", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Metadata: sharedv1.Metadata_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							"example.com/my-label": "my-value",
 						},
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1389,10 +1388,10 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Delete the label:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{},
 					}.Build(),
 				}.Build(),
@@ -1408,7 +1407,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(labels).To(BeEmpty())
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1419,9 +1418,9 @@ var _ = Describe("Clusters server", func() {
 
 		It("Adds label by updating without specifying the field mask", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1430,10 +1429,10 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Delete the label:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							"example.com/my-label": "my-value",
 						},
@@ -1446,7 +1445,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "my-value"))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1457,14 +1456,14 @@ var _ = Describe("Clusters server", func() {
 
 		It("Updates label by updating without specifying the field mask", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Metadata: sharedv1.Metadata_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							"example.com/my-label": "my-value",
 						},
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1473,10 +1472,10 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Delete the label:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							"example.com/my-label": "your-value",
 						},
@@ -1489,7 +1488,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "your-value"))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -1500,14 +1499,14 @@ var _ = Describe("Clusters server", func() {
 
 		It("Updates label by updating without specifying the field mask", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Metadata: sharedv1.Metadata_builder{
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							"example.com/my-label": "my-value",
 						},
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: "my_template",
 					}.Build(),
 				}.Build(),
@@ -1516,10 +1515,10 @@ var _ = Describe("Clusters server", func() {
 			object := createResponse.GetObject()
 
 			// Delete the label:
-			updateResponse, err := server.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{},
 					}.Build(),
 				}.Build(),
@@ -1530,7 +1529,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(labels).To(BeEmpty())
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.ClustersGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ClustersGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())

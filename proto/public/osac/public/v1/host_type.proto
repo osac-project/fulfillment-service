@@ -1,0 +1,161 @@
+//
+// Copyright (c) 2025 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+// the License. You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+//
+
+syntax = "proto3";
+
+package osac.public.v1;
+
+import "google/protobuf/timestamp.proto";
+import "osac/public/v1/condition_status_type.proto";
+import "osac/public/v1/metadata_type.proto";
+
+// Contains the details of the host.
+//
+// The `spec` contains the desired details, and may be modified by the user. The `status` contains the current status of
+// the host, is provided by the system and can't be modified by the user.
+message Host {
+  // Unique identifier of the host.
+  string id = 1;
+
+  Metadata metadata = 2;
+  HostSpec spec = 4;
+  HostStatus status = 5;
+}
+
+// The spec contains the details of the host as desired by the user.
+message HostSpec {
+  // Desired power state
+  HostPowerState power_state = 1;
+}
+
+// The spec contains the details of the host as desired by the user.
+message HostStatus {
+  // Indicates the overall state of the host.
+  HostState state = 1;
+
+  // Current power state
+  HostPowerState power_state = 2;
+
+  // Contains a list of conditions that describe in detail the status of the host.
+  //
+  // For example, a host that is ready could be represented like this (when converted to JSON):
+  //
+  //    {
+  //      "id": "123",
+  //      "spec": {
+  //      },
+  //      "status": {
+  //        "state": "HOST_STATE_READY",
+  //        "conditions": [
+  //          {
+  //            "type": "HOST_CONDITION_TYPE_READY",
+  //            "status": "CONDITION_STATUS_TRUE",
+  //            "last_transition_time": "2025-03-12 20:15:59+00:00",
+  //            "message": "The host is ready to use",
+  //          },
+  //          {
+  //            "type": "HOST_CONDITION_TYPE_FAILED",
+  //            "status": "CONDITION_STATUS_FALSE",
+  //            "last_transition_time": "2025-03-12 20:10:59+00:00"
+  //          }
+  //        ]
+  //      }
+  //    }
+  //
+  // In this example the `READY` condition is true. That tells us that the host is ready to use via the API URL
+  // provided in the `status.api_url` field.
+  //
+  // The `FAILED` condition is false. That tells us that the host is *not* failed.
+  //
+  // Note that in this example, to make it shorter, only one condition appears. In general all the conditions (except
+  // `UNSPECIFIED`) will appear exactly once.
+  //
+  // Check the documentation of the values of the `HostConditionType` enumerated type to see possible conditions and
+  // reasons.
+  repeated HostCondition conditions = 3;
+}
+
+// Represents the overall state of a host.
+enum HostState {
+  // Unspecified indicates that the state is unknown.
+  HOST_STATE_UNSPECIFIED = 0;
+
+  // Indicates that the host isn't ready yet.
+  HOST_STATE_PROGRESSING = 1;
+
+  // Indicates indicates that the host is ready.
+  HOST_STATE_READY = 2;
+
+  // Indicates indicates that the host is unusable.
+  HOST_STATE_FAILED = 3;
+}
+
+// Contains the details of a condition that describes the status of a host.
+message HostCondition {
+  // Indicates the type of condition.
+  HostConditionType type = 1;
+
+  // Indicates the status of the condition.
+  ConditionStatus status = 2;
+
+  // This time is the last time that the condition was updated.
+  google.protobuf.Timestamp last_transition_time = 3;
+
+  // Contains a the reason of the condition in a format suitable for use by programs.
+  //
+  // The possible values will be documented in the object that contains the condition.
+  optional string reason = 4;
+
+  // Contains a text giving more details of the condition.
+  //
+  // This will usually be progress reports, or error messages, and are intended for use by humans, to debug problems.
+  optional string message = 5;
+}
+
+// Types of conditions used to describe the status of host.
+enum HostConditionType {
+  // Unspecified indicates that the condition is unknown.
+  //
+  // This will never be appear in the `spec.conditions` field of a host.
+  HOST_CONDITION_TYPE_UNSPECIFIED = 0;
+
+  // Indicates that the host isn't completely ready yet.
+  //
+  // Currently there are no `reason` values defined.
+  HOST_CONDITION_TYPE_PROGRESSING = 1;
+
+  // Indicates that the host is ready to use.
+  //
+  // Currently there are no `reason` values defined.
+  HOST_CONDITION_TYPE_READY = 2;
+
+  // Indicates that the host is unusable.
+  //
+  // Currently there are no `reason` values defined.
+  HOST_CONDITION_TYPE_FAILED = 3;
+
+  // Indicates that the host is degraded.
+  HOST_CONDITION_TYPE_DEGRADED = 4;
+}
+
+// Represents the power state of a host.
+enum HostPowerState {
+  // Unspecified indicates that the state is unknown.
+  HOST_POWER_STATE_UNSPECIFIED = 0;
+
+  // Indicates that the host is powered on.
+  HOST_POWER_STATE_ON = 1;
+
+  // Indicates that the host is powered off.
+  HOST_POWER_STATE_OFF = 2;
+}

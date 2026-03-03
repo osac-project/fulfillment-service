@@ -29,8 +29,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
@@ -46,16 +46,16 @@ type ClustersServerBuilder struct {
 	tenancyLogic     auth.TenancyLogic
 }
 
-var _ ffv1.ClustersServer = (*ClustersServer)(nil)
+var _ publicv1.ClustersServer = (*ClustersServer)(nil)
 
 type ClustersServer struct {
-	ffv1.UnimplementedClustersServer
+	publicv1.UnimplementedClustersServer
 
 	logger          *slog.Logger
 	notifier        *database.Notifier
 	private         privatev1.ClustersServer
-	inMapper        *GenericMapper[*ffv1.Cluster, *privatev1.Cluster]
-	outMapper       *GenericMapper[*privatev1.Cluster, *ffv1.Cluster]
+	inMapper        *GenericMapper[*publicv1.Cluster, *privatev1.Cluster]
+	outMapper       *GenericMapper[*privatev1.Cluster, *publicv1.Cluster]
 	jqTool          *jq.Tool
 	hubsDao         *dao.GenericDAO[*privatev1.Hub]
 	kubeClients     map[string]clnt.Client
@@ -122,7 +122,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 
 	// Find the full name of the 'status' field so that we can configure the generic server to ignore it. This is
 	// because users don't have permission to change the status.
-	var object *ffv1.Cluster
+	var object *publicv1.Cluster
 	objectReflect := object.ProtoReflect()
 	objectDesc := objectReflect.Descriptor()
 	statusField := objectDesc.Fields().ByName("status")
@@ -132,7 +132,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 	}
 
 	// Create the mappers:
-	inMapper, err := NewGenericMapper[*ffv1.Cluster, *privatev1.Cluster]().
+	inMapper, err := NewGenericMapper[*publicv1.Cluster, *privatev1.Cluster]().
 		SetLogger(b.logger).
 		SetStrict(true).
 		AddIgnoredFields(statusField.FullName()).
@@ -140,7 +140,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 	if err != nil {
 		return
 	}
-	outMapper, err := NewGenericMapper[*privatev1.Cluster, *ffv1.Cluster]().
+	outMapper, err := NewGenericMapper[*privatev1.Cluster, *publicv1.Cluster]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
@@ -175,7 +175,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 }
 
 func (s *ClustersServer) List(ctx context.Context,
-	request *ffv1.ClustersListRequest) (response *ffv1.ClustersListResponse, err error) {
+	request *publicv1.ClustersListRequest) (response *publicv1.ClustersListResponse, err error) {
 	// Create private request with same parameters:
 	privateRequest := &privatev1.ClustersListRequest{}
 	privateRequest.SetOffset(request.GetOffset())
@@ -190,9 +190,9 @@ func (s *ClustersServer) List(ctx context.Context,
 
 	// Map private response to public format:
 	privateItems := privateResponse.GetItems()
-	publicItems := make([]*ffv1.Cluster, len(privateItems))
+	publicItems := make([]*publicv1.Cluster, len(privateItems))
 	for i, privateItem := range privateItems {
-		publicItem := &ffv1.Cluster{}
+		publicItem := &publicv1.Cluster{}
 		err = s.outMapper.Copy(ctx, privateItem, publicItem)
 		if err != nil {
 			s.logger.ErrorContext(
@@ -206,7 +206,7 @@ func (s *ClustersServer) List(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClustersListResponse{}
+	response = &publicv1.ClustersListResponse{}
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
@@ -214,7 +214,7 @@ func (s *ClustersServer) List(ctx context.Context,
 }
 
 func (s *ClustersServer) Get(ctx context.Context,
-	request *ffv1.ClustersGetRequest) (response *ffv1.ClustersGetResponse, err error) {
+	request *publicv1.ClustersGetRequest) (response *publicv1.ClustersGetResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.ClustersGetRequest{}
 	privateRequest.SetId(request.GetId())
@@ -227,7 +227,7 @@ func (s *ClustersServer) Get(ctx context.Context,
 
 	// Map private response to public format:
 	privateCluster := privateResponse.GetObject()
-	publicCluster := &ffv1.Cluster{}
+	publicCluster := &publicv1.Cluster{}
 	err = s.outMapper.Copy(ctx, privateCluster, publicCluster)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -239,13 +239,13 @@ func (s *ClustersServer) Get(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClustersGetResponse{}
+	response = &publicv1.ClustersGetResponse{}
 	response.SetObject(publicCluster)
 	return
 }
 
 func (s *ClustersServer) Create(ctx context.Context,
-	request *ffv1.ClustersCreateRequest) (response *ffv1.ClustersCreateResponse, err error) {
+	request *publicv1.ClustersCreateRequest) (response *publicv1.ClustersCreateResponse, err error) {
 	// Map the public cluster to private format:
 	publicCluster := request.GetObject()
 	if publicCluster == nil {
@@ -274,7 +274,7 @@ func (s *ClustersServer) Create(ctx context.Context,
 
 	// Map the private response back to public format:
 	createdPrivateCluster := privateResponse.GetObject()
-	createdPublicCluster := &ffv1.Cluster{}
+	createdPublicCluster := &publicv1.Cluster{}
 	err = s.outMapper.Copy(ctx, createdPrivateCluster, createdPublicCluster)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -287,13 +287,13 @@ func (s *ClustersServer) Create(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClustersCreateResponse{}
+	response = &publicv1.ClustersCreateResponse{}
 	response.SetObject(createdPublicCluster)
 	return
 }
 
 func (s *ClustersServer) Update(ctx context.Context,
-	request *ffv1.ClustersUpdateRequest) (response *ffv1.ClustersUpdateResponse, err error) {
+	request *publicv1.ClustersUpdateRequest) (response *publicv1.ClustersUpdateResponse, err error) {
 	// Validate the request:
 	publicCluster := request.GetObject()
 	if publicCluster == nil {
@@ -347,7 +347,7 @@ func (s *ClustersServer) Update(ctx context.Context,
 
 	// Map the private response back to public format:
 	updatedPrivateCluster := privateResponse.GetObject()
-	updatedPublicCluster := &ffv1.Cluster{}
+	updatedPublicCluster := &publicv1.Cluster{}
 	err = s.outMapper.Copy(ctx, updatedPrivateCluster, updatedPublicCluster)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -360,13 +360,13 @@ func (s *ClustersServer) Update(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClustersUpdateResponse{}
+	response = &publicv1.ClustersUpdateResponse{}
 	response.SetObject(updatedPublicCluster)
 	return
 }
 
 func (s *ClustersServer) Delete(ctx context.Context,
-	request *ffv1.ClustersDeleteRequest) (response *ffv1.ClustersDeleteResponse, err error) {
+	request *publicv1.ClustersDeleteRequest) (response *publicv1.ClustersDeleteResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.ClustersDeleteRequest{}
 	privateRequest.SetId(request.GetId())
@@ -378,24 +378,24 @@ func (s *ClustersServer) Delete(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClustersDeleteResponse{}
+	response = &publicv1.ClustersDeleteResponse{}
 	return
 }
 
 func (s *ClustersServer) GetKubeconfig(ctx context.Context,
-	request *ffv1.ClustersGetKubeconfigRequest) (response *ffv1.ClustersGetKubeconfigResponse, err error) {
+	request *publicv1.ClustersGetKubeconfigRequest) (response *publicv1.ClustersGetKubeconfigResponse, err error) {
 	kubeconfig, err := s.getKubeconfig(ctx, request.Id)
 	if err != nil {
 		return
 	}
-	response = &ffv1.ClustersGetKubeconfigResponse{
+	response = &publicv1.ClustersGetKubeconfigResponse{
 		Kubeconfig: string(kubeconfig),
 	}
 	return
 }
 
 func (s *ClustersServer) GetKubeconfigViaHttp(ctx context.Context,
-	request *ffv1.ClustersGetKubeconfigViaHttpRequest) (response *httpbody.HttpBody, err error) {
+	request *publicv1.ClustersGetKubeconfigViaHttpRequest) (response *httpbody.HttpBody, err error) {
 	kubeconfig, err := s.getKubeconfig(ctx, request.Id)
 	if err != nil {
 		return
@@ -470,19 +470,19 @@ func (s *ClustersServer) getKubeconfig(ctx context.Context, clusterId string) (r
 }
 
 func (s *ClustersServer) GetPassword(ctx context.Context,
-	request *ffv1.ClustersGetPasswordRequest) (response *ffv1.ClustersGetPasswordResponse, err error) {
+	request *publicv1.ClustersGetPasswordRequest) (response *publicv1.ClustersGetPasswordResponse, err error) {
 	password, err := s.getPassword(ctx, request.Id)
 	if err != nil {
 		return
 	}
-	response = &ffv1.ClustersGetPasswordResponse{
+	response = &publicv1.ClustersGetPasswordResponse{
 		Password: password,
 	}
 	return
 }
 
 func (s *ClustersServer) GetPasswordViaHttp(ctx context.Context,
-	request *ffv1.ClustersGetPasswordViaHttpRequest) (response *httpbody.HttpBody, err error) {
+	request *publicv1.ClustersGetPasswordViaHttpRequest) (response *httpbody.HttpBody, err error) {
 	password, err := s.getPassword(ctx, request.Id)
 	if err != nil {
 		return

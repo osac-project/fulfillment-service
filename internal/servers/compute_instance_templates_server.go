@@ -21,8 +21,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -34,15 +34,15 @@ type ComputeInstanceTemplatesServerBuilder struct {
 	tenancyLogic     auth.TenancyLogic
 }
 
-var _ ffv1.ComputeInstanceTemplatesServer = (*ComputeInstanceTemplatesServer)(nil)
+var _ publicv1.ComputeInstanceTemplatesServer = (*ComputeInstanceTemplatesServer)(nil)
 
 type ComputeInstanceTemplatesServer struct {
-	ffv1.UnimplementedComputeInstanceTemplatesServer
+	publicv1.UnimplementedComputeInstanceTemplatesServer
 
 	logger    *slog.Logger
 	delegate  privatev1.ComputeInstanceTemplatesServer
-	inMapper  *GenericMapper[*ffv1.ComputeInstanceTemplate, *privatev1.ComputeInstanceTemplate]
-	outMapper *GenericMapper[*privatev1.ComputeInstanceTemplate, *ffv1.ComputeInstanceTemplate]
+	inMapper  *GenericMapper[*publicv1.ComputeInstanceTemplate, *privatev1.ComputeInstanceTemplate]
+	outMapper *GenericMapper[*privatev1.ComputeInstanceTemplate, *publicv1.ComputeInstanceTemplate]
 }
 
 func NewComputeInstanceTemplatesServer() *ComputeInstanceTemplatesServerBuilder {
@@ -85,14 +85,14 @@ func (b *ComputeInstanceTemplatesServerBuilder) Build() (result *ComputeInstance
 	}
 
 	// Create the mappers:
-	inMapper, err := NewGenericMapper[*ffv1.ComputeInstanceTemplate, *privatev1.ComputeInstanceTemplate]().
+	inMapper, err := NewGenericMapper[*publicv1.ComputeInstanceTemplate, *privatev1.ComputeInstanceTemplate]().
 		SetLogger(b.logger).
 		SetStrict(true).
 		Build()
 	if err != nil {
 		return
 	}
-	outMapper, err := NewGenericMapper[*privatev1.ComputeInstanceTemplate, *ffv1.ComputeInstanceTemplate]().
+	outMapper, err := NewGenericMapper[*privatev1.ComputeInstanceTemplate, *publicv1.ComputeInstanceTemplate]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
@@ -122,7 +122,7 @@ func (b *ComputeInstanceTemplatesServerBuilder) Build() (result *ComputeInstance
 }
 
 func (s *ComputeInstanceTemplatesServer) List(ctx context.Context,
-	request *ffv1.ComputeInstanceTemplatesListRequest) (response *ffv1.ComputeInstanceTemplatesListResponse, err error) {
+	request *publicv1.ComputeInstanceTemplatesListRequest) (response *publicv1.ComputeInstanceTemplatesListResponse, err error) {
 	// Create private request with same parameters:
 	privateRequest := &privatev1.ComputeInstanceTemplatesListRequest{}
 	privateRequest.SetOffset(request.GetOffset())
@@ -137,9 +137,9 @@ func (s *ComputeInstanceTemplatesServer) List(ctx context.Context,
 
 	// Map private response to public format:
 	privateItems := privateResponse.GetItems()
-	publicItems := make([]*ffv1.ComputeInstanceTemplate, len(privateItems))
+	publicItems := make([]*publicv1.ComputeInstanceTemplate, len(privateItems))
 	for i, privateItem := range privateItems {
-		publicItem := &ffv1.ComputeInstanceTemplate{}
+		publicItem := &publicv1.ComputeInstanceTemplate{}
 		err = s.outMapper.Copy(ctx, privateItem, publicItem)
 		if err != nil {
 			s.logger.ErrorContext(
@@ -153,7 +153,7 @@ func (s *ComputeInstanceTemplatesServer) List(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstanceTemplatesListResponse{}
+	response = &publicv1.ComputeInstanceTemplatesListResponse{}
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
@@ -161,7 +161,7 @@ func (s *ComputeInstanceTemplatesServer) List(ctx context.Context,
 }
 
 func (s *ComputeInstanceTemplatesServer) Get(ctx context.Context,
-	request *ffv1.ComputeInstanceTemplatesGetRequest) (response *ffv1.ComputeInstanceTemplatesGetResponse, err error) {
+	request *publicv1.ComputeInstanceTemplatesGetRequest) (response *publicv1.ComputeInstanceTemplatesGetResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.ComputeInstanceTemplatesGetRequest{}
 	privateRequest.SetId(request.GetId())
@@ -174,7 +174,7 @@ func (s *ComputeInstanceTemplatesServer) Get(ctx context.Context,
 
 	// Map private response to public format:
 	privateComputeInstanceTemplate := privateResponse.GetObject()
-	publicComputeInstanceTemplate := &ffv1.ComputeInstanceTemplate{}
+	publicComputeInstanceTemplate := &publicv1.ComputeInstanceTemplate{}
 	err = s.outMapper.Copy(ctx, privateComputeInstanceTemplate, publicComputeInstanceTemplate)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -186,13 +186,13 @@ func (s *ComputeInstanceTemplatesServer) Get(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstanceTemplatesGetResponse{}
+	response = &publicv1.ComputeInstanceTemplatesGetResponse{}
 	response.SetObject(publicComputeInstanceTemplate)
 	return
 }
 
 func (s *ComputeInstanceTemplatesServer) Create(ctx context.Context,
-	request *ffv1.ComputeInstanceTemplatesCreateRequest) (response *ffv1.ComputeInstanceTemplatesCreateResponse, err error) {
+	request *publicv1.ComputeInstanceTemplatesCreateRequest) (response *publicv1.ComputeInstanceTemplatesCreateResponse, err error) {
 	// Map the public compute instance template to private format:
 	publicComputeInstanceTemplate := request.GetObject()
 	if publicComputeInstanceTemplate == nil {
@@ -221,7 +221,7 @@ func (s *ComputeInstanceTemplatesServer) Create(ctx context.Context,
 
 	// Map the private response back to public format:
 	createdPrivateComputeInstanceTemplate := privateResponse.GetObject()
-	createdPublicComputeInstanceTemplate := &ffv1.ComputeInstanceTemplate{}
+	createdPublicComputeInstanceTemplate := &publicv1.ComputeInstanceTemplate{}
 	err = s.outMapper.Copy(ctx, createdPrivateComputeInstanceTemplate, createdPublicComputeInstanceTemplate)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -234,13 +234,13 @@ func (s *ComputeInstanceTemplatesServer) Create(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstanceTemplatesCreateResponse{}
+	response = &publicv1.ComputeInstanceTemplatesCreateResponse{}
 	response.SetObject(createdPublicComputeInstanceTemplate)
 	return
 }
 
 func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
-	request *ffv1.ComputeInstanceTemplatesUpdateRequest) (response *ffv1.ComputeInstanceTemplatesUpdateResponse, err error) {
+	request *publicv1.ComputeInstanceTemplatesUpdateRequest) (response *publicv1.ComputeInstanceTemplatesUpdateResponse, err error) {
 	// Validate the request:
 	publicComputeInstanceTemplate := request.GetObject()
 	if publicComputeInstanceTemplate == nil {
@@ -284,7 +284,7 @@ func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
 
 	// Map the private response back to public format:
 	updatedPrivateComputeInstanceTemplate := privateResponse.GetObject()
-	updatedPublicComputeInstanceTemplate := &ffv1.ComputeInstanceTemplate{}
+	updatedPublicComputeInstanceTemplate := &publicv1.ComputeInstanceTemplate{}
 	err = s.outMapper.Copy(ctx, updatedPrivateComputeInstanceTemplate, updatedPublicComputeInstanceTemplate)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -297,13 +297,13 @@ func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstanceTemplatesUpdateResponse{}
+	response = &publicv1.ComputeInstanceTemplatesUpdateResponse{}
 	response.SetObject(updatedPublicComputeInstanceTemplate)
 	return
 }
 
 func (s *ComputeInstanceTemplatesServer) Delete(ctx context.Context,
-	request *ffv1.ComputeInstanceTemplatesDeleteRequest) (response *ffv1.ComputeInstanceTemplatesDeleteResponse, err error) {
+	request *publicv1.ComputeInstanceTemplatesDeleteRequest) (response *publicv1.ComputeInstanceTemplatesDeleteResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.ComputeInstanceTemplatesDeleteRequest{}
 	privateRequest.SetId(request.GetId())
@@ -315,6 +315,6 @@ func (s *ComputeInstanceTemplatesServer) Delete(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstanceTemplatesDeleteResponse{}
+	response = &publicv1.ComputeInstanceTemplatesDeleteResponse{}
 	return
 }

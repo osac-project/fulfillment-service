@@ -27,8 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
@@ -37,7 +37,7 @@ import (
 var _ = Describe("Cluster reconciler", func() {
 	var (
 		ctx               context.Context
-		clustersClient    ffv1.ClustersClient
+		clustersClient    publicv1.ClustersClient
 		hostClassesClient privatev1.HostClassesClient
 		hostClassId       string
 		templatesClient   privatev1.ClusterTemplatesClient
@@ -55,7 +55,7 @@ var _ = Describe("Cluster reconciler", func() {
 		ctx = context.Background()
 
 		// Create the clients:
-		clustersClient = ffv1.NewClustersClient(tool.UserConn())
+		clustersClient = publicv1.NewClustersClient(tool.UserConn())
 		hostClassesClient = privatev1.NewHostClassesClient(tool.AdminConn())
 		templatesClient = privatev1.NewClusterTemplatesClient(tool.AdminConn())
 
@@ -111,9 +111,9 @@ var _ = Describe("Cluster reconciler", func() {
 
 	It("Creates the Kubernetes object when a cluster is created", func() {
 		// Create the cluster
-		response, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		response, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 					TemplateParameters: map[string]*anypb.Any{
 						"my": makeAny(wrapperspb.String("my_value")),
@@ -124,7 +124,7 @@ var _ = Describe("Cluster reconciler", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := response.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -172,9 +172,9 @@ var _ = Describe("Cluster reconciler", func() {
 
 	It("Deletes the Kubernetes object when a cluster is deleted", func() {
 		// Create the cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 					TemplateParameters: map[string]*anypb.Any{
 						"my": makeAny(wrapperspb.String("my_value")),
@@ -204,7 +204,7 @@ var _ = Describe("Cluster reconciler", func() {
 		).Should(Succeed())
 
 		// Delete the cluster:
-		_, err = clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+		_, err = clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -230,15 +230,15 @@ var _ = Describe("Cluster reconciler", func() {
 
 	It("Updates the Kubernetes object when a cluster node set size is changed", func() {
 		// Create the cluster with initial node set size:
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 					TemplateParameters: map[string]*anypb.Any{
 						"my": makeAny(wrapperspb.String("my_value")),
 					},
-					NodeSets: map[string]*ffv1.ClusterNodeSet{
-						"my_node_set": ffv1.ClusterNodeSet_builder{
+					NodeSets: map[string]*publicv1.ClusterNodeSet{
+						"my_node_set": publicv1.ClusterNodeSet_builder{
 							HostClass: hostClassId,
 							Size:      3,
 						}.Build(),
@@ -249,7 +249,7 @@ var _ = Describe("Cluster reconciler", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -283,16 +283,16 @@ var _ = Describe("Cluster reconciler", func() {
 		Expect(nodeRequest["numberOfNodes"]).To(BeNumerically("==", 3))
 
 		// Update the cluster to change the node set size
-		_, err = clustersClient.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-			Object: ffv1.Cluster_builder{
+		_, err = clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+			Object: publicv1.Cluster_builder{
 				Id: object.GetId(),
-				Spec: ffv1.ClusterSpec_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 					TemplateParameters: map[string]*anypb.Any{
 						"my": makeAny(wrapperspb.String("my_value")),
 					},
-					NodeSets: map[string]*ffv1.ClusterNodeSet{
-						"my_node_set": ffv1.ClusterNodeSet_builder{
+					NodeSets: map[string]*publicv1.ClusterNodeSet{
+						"my_node_set": publicv1.ClusterNodeSet_builder{
 							HostClass: hostClassId,
 							Size:      5,
 						}.Build(),

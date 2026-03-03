@@ -1,0 +1,156 @@
+//
+// Copyright (c) 2025 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+// the License. You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+//
+
+syntax = "proto3";
+
+package osac.public.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "osac/public/v1/host_pool_type.proto";
+
+message HostPoolsListRequest {
+  // Index of the first result. If not specified the default value will be zero.
+  optional int32 offset = 1;
+
+  // Maximum number of results to be returned by the server. When not specified all the results will be returned. Note
+  // that there may not be enough results to return, and that the server may decide, for performance reasons, to return
+  // less results than requested.
+  optional int32 limit = 2;
+
+  // Filter criteria.
+  //
+  // The syntax of this parameter is similar to the syntax of the _where_ clause of a SQL statement, but using the names
+  // of the attributes of the host pool instead of the names of the columns of a table. For example, in order to retrieve
+  // all the host pool with a API URL starting with `http:` the value should be:
+  //
+  //     api_url like 'http:%'
+  //
+  // If this isn't provided, or if the value is empty, then all the host pools that the user has permission to see will be
+  // returned.
+  optional string filter = 3;
+
+  // Order criteria.
+  //
+  // The syntax of this parameter is similar to the syntax of the _order by_ clause of a SQL statement, but using the
+  // names of the attributes of the host pool instead of the names of the columns of a table. For example, in order to
+  // sort the host pools descending by API URL the value should be:
+  //
+  //     api_url desc
+  //
+  // If the parameter isn't provided, or if the value is empty, then the order of the results is undefined.
+  optional string order = 4;
+}
+
+message HostPoolsListResponse {
+  // Actual number of items returned. Note that this may be smaller than the value requested in the `limit` parameter
+  // of the request if there are not enough items, or of the system decides that returning that number of items isn't
+  // feasible or convenient for performance reasons.
+  optional int32 size = 1;
+
+  // Total number of items of the collection that match the search criteria, regardless of the number of results
+  // requested with the `limit` parameter.
+  optional int32 total = 2;
+
+  // List of results.
+  repeated HostPool items = 3;
+}
+
+message HostPoolsGetRequest {
+  string id = 1;
+}
+
+message HostPoolsGetResponse {
+  HostPool object = 1;
+}
+
+message HostPoolsCreateRequest {
+  HostPool object = 1;
+}
+
+message HostPoolsCreateResponse {
+  HostPool object = 1;
+}
+
+message HostPoolsUpdateRequest {
+  HostPool object = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message HostPoolsUpdateResponse {
+  HostPool object = 1;
+}
+
+message HostPoolsDeleteRequest {
+  string id = 1;
+}
+
+message HostPoolsDeleteResponse {}
+
+service HostPools {
+  // Retrieves the list of host pools.
+  rpc List(HostPoolsListRequest) returns (HostPoolsListResponse) {
+    option (google.api.http) = {get: "/api/fulfillment/v1/host_pools"};
+  }
+
+  // Retrieves the details of one specific host pool.
+  rpc Get(HostPoolsGetRequest) returns (HostPoolsGetResponse) {
+    option (google.api.http) = {
+      get: "/api/fulfillment/v1/host_pools/{id}"
+      response_body: "object"
+    };
+  }
+
+  // Creates a new host pool.
+  rpc Create(HostPoolsCreateRequest) returns (HostPoolsCreateResponse) {
+    option (google.api.http) = {
+      post: "/api/fulfillment/v1/host_pools"
+      body: "object"
+      response_body: "object"
+    };
+  }
+
+  // Updates an existing host pool.
+  //
+  // In the HTTP+JSON version of the API this is mapped to the `PATCH` verb and the `update_mask` field is automatically
+  // populated from the list of fields present in the request body. For example, to update the `state` of a host pool to
+  // `READY` the request line should be like this:
+  //
+  // ```http
+  // PATCH /api/fulfillment/v1/host_pools/123
+  // ```
+  //
+  // And the request body should be like this:
+  //
+  // ```json
+  // {
+  //   "spec": {
+  //     "host_sets": [{ "host_class": "fc430", "size": 3 }]
+  //   }
+  // }
+  // ```
+  //
+  // The response body will contain the modified object.
+  rpc Update(HostPoolsUpdateRequest) returns (HostPoolsUpdateResponse) {
+    option (google.api.http) = {
+      patch: "/api/fulfillment/v1/host_pools/{object.id}"
+      body: "object"
+      response_body: "object"
+    };
+  }
+
+  // Delete a host pool.
+  rpc Delete(HostPoolsDeleteRequest) returns (HostPoolsDeleteResponse) {
+    option (google.api.http) = {delete: "/api/fulfillment/v1/host_pools/{id}"};
+  }
+}

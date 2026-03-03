@@ -22,8 +22,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -35,15 +35,15 @@ type HostPoolsServerBuilder struct {
 	tenancyLogic     auth.TenancyLogic
 }
 
-var _ ffv1.HostPoolsServer = (*HostPoolsServer)(nil)
+var _ publicv1.HostPoolsServer = (*HostPoolsServer)(nil)
 
 type HostPoolsServer struct {
-	ffv1.UnimplementedHostPoolsServer
+	publicv1.UnimplementedHostPoolsServer
 
 	logger    *slog.Logger
 	delegate  privatev1.HostPoolsServer
-	inMapper  *GenericMapper[*ffv1.HostPool, *privatev1.HostPool]
-	outMapper *GenericMapper[*privatev1.HostPool, *ffv1.HostPool]
+	inMapper  *GenericMapper[*publicv1.HostPool, *privatev1.HostPool]
+	outMapper *GenericMapper[*privatev1.HostPool, *publicv1.HostPool]
 }
 
 func NewHostPoolsServer() *HostPoolsServerBuilder {
@@ -87,7 +87,7 @@ func (b *HostPoolsServerBuilder) Build() (result *HostPoolsServer, err error) {
 
 	// Find the full name of the 'status' field so that we can configure the generic server to ignore it. This is
 	// because users don't have permission to change the status.
-	var object *ffv1.HostPool
+	var object *publicv1.HostPool
 	objectReflect := object.ProtoReflect()
 	objectDesc := objectReflect.Descriptor()
 	statusField := objectDesc.Fields().ByName("status")
@@ -97,7 +97,7 @@ func (b *HostPoolsServerBuilder) Build() (result *HostPoolsServer, err error) {
 	}
 
 	// Create the mappers:
-	inMapper, err := NewGenericMapper[*ffv1.HostPool, *privatev1.HostPool]().
+	inMapper, err := NewGenericMapper[*publicv1.HostPool, *privatev1.HostPool]().
 		SetLogger(b.logger).
 		SetStrict(true).
 		AddIgnoredFields(statusField.FullName()).
@@ -105,7 +105,7 @@ func (b *HostPoolsServerBuilder) Build() (result *HostPoolsServer, err error) {
 	if err != nil {
 		return
 	}
-	outMapper, err := NewGenericMapper[*privatev1.HostPool, *ffv1.HostPool]().
+	outMapper, err := NewGenericMapper[*privatev1.HostPool, *publicv1.HostPool]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
@@ -135,7 +135,7 @@ func (b *HostPoolsServerBuilder) Build() (result *HostPoolsServer, err error) {
 }
 
 func (s *HostPoolsServer) List(ctx context.Context,
-	request *ffv1.HostPoolsListRequest) (response *ffv1.HostPoolsListResponse, err error) {
+	request *publicv1.HostPoolsListRequest) (response *publicv1.HostPoolsListResponse, err error) {
 	// Create private request with same parameters:
 	privateRequest := &privatev1.HostPoolsListRequest{}
 	privateRequest.SetOffset(request.GetOffset())
@@ -151,9 +151,9 @@ func (s *HostPoolsServer) List(ctx context.Context,
 
 	// Map private response to public format:
 	privateItems := privateResponse.GetItems()
-	publicItems := make([]*ffv1.HostPool, len(privateItems))
+	publicItems := make([]*publicv1.HostPool, len(privateItems))
 	for i, privateItem := range privateItems {
-		publicItem := &ffv1.HostPool{}
+		publicItem := &publicv1.HostPool{}
 		err = s.outMapper.Copy(ctx, privateItem, publicItem)
 		if err != nil {
 			s.logger.ErrorContext(
@@ -167,7 +167,7 @@ func (s *HostPoolsServer) List(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostPoolsListResponse{}
+	response = &publicv1.HostPoolsListResponse{}
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
@@ -175,7 +175,7 @@ func (s *HostPoolsServer) List(ctx context.Context,
 }
 
 func (s *HostPoolsServer) Get(ctx context.Context,
-	request *ffv1.HostPoolsGetRequest) (response *ffv1.HostPoolsGetResponse, err error) {
+	request *publicv1.HostPoolsGetRequest) (response *publicv1.HostPoolsGetResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.HostPoolsGetRequest{}
 	privateRequest.SetId(request.GetId())
@@ -188,7 +188,7 @@ func (s *HostPoolsServer) Get(ctx context.Context,
 
 	// Map private response to public format:
 	privateHostPool := privateResponse.GetObject()
-	publicHostPool := &ffv1.HostPool{}
+	publicHostPool := &publicv1.HostPool{}
 	err = s.outMapper.Copy(ctx, privateHostPool, publicHostPool)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -200,13 +200,13 @@ func (s *HostPoolsServer) Get(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostPoolsGetResponse{}
+	response = &publicv1.HostPoolsGetResponse{}
 	response.SetObject(publicHostPool)
 	return
 }
 
 func (s *HostPoolsServer) Create(ctx context.Context,
-	request *ffv1.HostPoolsCreateRequest) (response *ffv1.HostPoolsCreateResponse, err error) {
+	request *publicv1.HostPoolsCreateRequest) (response *publicv1.HostPoolsCreateResponse, err error) {
 	// Map the public host pool to private format:
 	publicHostPool := request.GetObject()
 	if publicHostPool == nil {
@@ -235,7 +235,7 @@ func (s *HostPoolsServer) Create(ctx context.Context,
 
 	// Map the private response back to public format:
 	createdPrivateHostPool := privateResponse.GetObject()
-	createdPublicHostPool := &ffv1.HostPool{}
+	createdPublicHostPool := &publicv1.HostPool{}
 	err = s.outMapper.Copy(ctx, createdPrivateHostPool, createdPublicHostPool)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -248,13 +248,13 @@ func (s *HostPoolsServer) Create(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostPoolsCreateResponse{}
+	response = &publicv1.HostPoolsCreateResponse{}
 	response.SetObject(createdPublicHostPool)
 	return
 }
 
 func (s *HostPoolsServer) Update(ctx context.Context,
-	request *ffv1.HostPoolsUpdateRequest) (response *ffv1.HostPoolsUpdateResponse, err error) {
+	request *publicv1.HostPoolsUpdateRequest) (response *publicv1.HostPoolsUpdateResponse, err error) {
 	// Map the public host pool to private format:
 	publicHostPool := request.GetObject()
 	if publicHostPool == nil {
@@ -284,7 +284,7 @@ func (s *HostPoolsServer) Update(ctx context.Context,
 
 	// Map the private response back to public format:
 	updatedPrivateHostPool := privateResponse.GetObject()
-	updatedPublicHostPool := &ffv1.HostPool{}
+	updatedPublicHostPool := &publicv1.HostPool{}
 	err = s.outMapper.Copy(ctx, updatedPrivateHostPool, updatedPublicHostPool)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -297,13 +297,13 @@ func (s *HostPoolsServer) Update(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostPoolsUpdateResponse{}
+	response = &publicv1.HostPoolsUpdateResponse{}
 	response.SetObject(updatedPublicHostPool)
 	return
 }
 
 func (s *HostPoolsServer) Delete(ctx context.Context,
-	request *ffv1.HostPoolsDeleteRequest) (response *ffv1.HostPoolsDeleteResponse, err error) {
+	request *publicv1.HostPoolsDeleteRequest) (response *publicv1.HostPoolsDeleteResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.HostPoolsDeleteRequest{}
 	privateRequest.SetId(request.GetId())
@@ -315,6 +315,6 @@ func (s *HostPoolsServer) Delete(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.HostPoolsDeleteResponse{}
+	response = &publicv1.HostPoolsDeleteResponse{}
 	return
 }

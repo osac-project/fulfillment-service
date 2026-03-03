@@ -186,8 +186,8 @@ var _ = Describe("Metrics", func() {
 			),
 			Entry(
 				"Versioned service",
-				"/fulfillment.v1.Clusters/Create",
-				"fulfillment.v1.Clusters",
+				"/osac.public.v1.Clusters/Create",
+				"osac.public.v1.Clusters",
 			),
 			Entry(
 				"Complex package",
@@ -214,27 +214,27 @@ var _ = Describe("Metrics", func() {
 			},
 			Entry(
 				"Create",
-				"/fulfillment.v1.Clusters/Create",
+				"/osac.public.v1.Clusters/Create",
 				"Create",
 			),
 			Entry(
 				"Get",
-				"/fulfillment.v1.Clusters/Get",
+				"/osac.public.v1.Clusters/Get",
 				"Get",
 			),
 			Entry(
 				"List",
-				"/fulfillment.v1.Clusters/List",
+				"/osac.public.v1.Clusters/List",
 				"List",
 			),
 			Entry(
 				"Update",
-				"/fulfillment.v1.Clusters/Update",
+				"/osac.public.v1.Clusters/Update",
 				"Update",
 			),
 			Entry(
 				"Delete",
-				"/fulfillment.v1.Clusters/Delete",
+				"/osac.public.v1.Clusters/Delete",
 				"Delete",
 			),
 		)
@@ -328,12 +328,12 @@ var _ = Describe("Metrics", func() {
 	Describe("Stream count", func() {
 		It("Works for stream requests", func() {
 			// Send a stream request:
-			err := callStream("/fulfillment.v1.Events/Watch", nil)
+			err := callStream("/osac.public.v1.Events/Watch", nil)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify the metrics:
 			metrics := server.Metrics()
-			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*service="fulfillment.v1.Events".*\} 1$`))
+			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*service="osac.public.v1.Events".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*method="Watch".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*code="OK".*\} 1$`))
 		})
@@ -399,8 +399,8 @@ var _ = Describe("Metrics", func() {
 			),
 			Entry(
 				"Versioned service",
-				"/fulfillment.v1.Clusters/Create",
-				"fulfillment.v1.Clusters",
+				"/osac.public.v1.Clusters/Create",
+				"osac.public.v1.Clusters",
 			),
 			Entry(
 				"Complex package",
@@ -424,27 +424,27 @@ var _ = Describe("Metrics", func() {
 			},
 			Entry(
 				"Create",
-				"/fulfillment.v1.Clusters/Create",
+				"/osac.public.v1.Clusters/Create",
 				"Create",
 			),
 			Entry(
 				"Get",
-				"/fulfillment.v1.Clusters/Get",
+				"/osac.public.v1.Clusters/Get",
 				"Get",
 			),
 			Entry(
 				"List",
-				"/fulfillment.v1.Clusters/List",
+				"/osac.public.v1.Clusters/List",
 				"List",
 			),
 			Entry(
 				"Update",
-				"/fulfillment.v1.Clusters/Update",
+				"/osac.public.v1.Clusters/Update",
 				"Update",
 			),
 			Entry(
 				"Delete",
-				"/fulfillment.v1.Clusters/Delete",
+				"/osac.public.v1.Clusters/Delete",
 				"Delete",
 			),
 		)
@@ -487,12 +487,12 @@ var _ = Describe("Metrics", func() {
 	Describe("Stream duration", func() {
 		It("Works for stream requests", func() {
 			// Send a stream request:
-			err := callStream("/fulfillment.v1.Events/Watch", nil)
+			err := callStream("/osac.public.v1.Events/Watch", nil)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify the metrics:
 			metrics := server.Metrics()
-			Expect(metrics).To(MatchLine(`^\w+_stream_duration_count\{.*service="fulfillment.v1.Events".*\} 1$`))
+			Expect(metrics).To(MatchLine(`^\w+_stream_duration_count\{.*service="osac.public.v1.Events".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_duration_count\{.*method="Watch".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_duration_count\{.*code="OK".*\} 1$`))
 		})
@@ -577,8 +577,8 @@ var _ = Describe("Metrics", func() {
 			),
 			Entry(
 				"Versioned service",
-				"/fulfillment.v1.Clusters/Create",
-				"fulfillment.v1.Clusters",
+				"/osac.public.v1.Clusters/Create",
+				"osac.public.v1.Clusters",
 			),
 		)
 
@@ -595,12 +595,12 @@ var _ = Describe("Metrics", func() {
 			},
 			Entry(
 				"Create",
-				"/fulfillment.v1.Clusters/Create",
+				"/osac.public.v1.Clusters/Create",
 				"Create",
 			),
 			Entry(
 				"Get",
-				"/fulfillment.v1.Clusters/Get",
+				"/osac.public.v1.Clusters/Get",
 				"Get",
 			),
 		)
@@ -637,13 +637,13 @@ var _ = Describe("Metrics", func() {
 	Describe("Stream client count", func() {
 		It("Records metrics when stream creation fails", func() {
 			// Try to create a stream that fails:
-			stream, err := callStreamClient("/fulfillment.v1.Events/Watch", nil)
+			stream, err := callStreamClient("/osac.public.v1.Events/Watch", nil)
 			Expect(err).To(HaveOccurred())
 			Expect(stream).To(BeNil())
 
 			// Verify the metrics:
 			metrics := server.Metrics()
-			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*service="fulfillment.v1.Events".*\} 1$`))
+			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*service="osac.public.v1.Events".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*method="Watch".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*code="Unavailable".*\} 1$`))
 		})
@@ -653,7 +653,7 @@ var _ = Describe("Metrics", func() {
 			mockStream := &mockClientStream{ctx: ctx, maxRecv: 2, recvErr: io.EOF}
 
 			// Create the stream:
-			stream, err := callStreamClient("/fulfillment.v1.Events/Watch", mockStream)
+			stream, err := callStreamClient("/osac.public.v1.Events/Watch", mockStream)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(stream).ToNot(BeNil())
 
@@ -668,7 +668,7 @@ var _ = Describe("Metrics", func() {
 
 			// Verify the metrics - EOF should be recorded as OK:
 			metrics := server.Metrics()
-			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*service="fulfillment.v1.Events".*\} 1$`))
+			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*service="osac.public.v1.Events".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*method="Watch".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*code="OK".*\} 1$`))
 		})
@@ -678,7 +678,7 @@ var _ = Describe("Metrics", func() {
 			mockStream := &mockClientStream{ctx: ctx, maxRecv: 1, recvErr: grpcstatus.Error(grpccodes.Internal, "error")}
 
 			// Create the stream:
-			stream, err := callStreamClient("/fulfillment.v1.Events/Watch", mockStream)
+			stream, err := callStreamClient("/osac.public.v1.Events/Watch", mockStream)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(stream).ToNot(BeNil())
 
@@ -693,7 +693,7 @@ var _ = Describe("Metrics", func() {
 
 			// Verify the metrics:
 			metrics := server.Metrics()
-			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*service="fulfillment.v1.Events".*\} 1$`))
+			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*service="osac.public.v1.Events".*\} 1$`))
 			Expect(metrics).To(MatchLine(`^\w+_stream_count\{.*code="Internal".*\} 1$`))
 		})
 
@@ -702,7 +702,7 @@ var _ = Describe("Metrics", func() {
 			mockStream := &mockClientStream{ctx: ctx, maxRecv: 3, recvErr: io.EOF}
 
 			// Create the stream:
-			stream, err := callStreamClient("/fulfillment.v1.Events/Watch", mockStream)
+			stream, err := callStreamClient("/osac.public.v1.Events/Watch", mockStream)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Send some messages:
@@ -730,7 +730,7 @@ var _ = Describe("Metrics", func() {
 			mockStream := &mockClientStream{ctx: ctx, maxRecv: 0, recvErr: io.EOF}
 
 			// Create the stream:
-			stream, err := callStreamClient("/fulfillment.v1.Events/Watch", mockStream)
+			stream, err := callStreamClient("/osac.public.v1.Events/Watch", mockStream)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Call RecvMsg multiple times after EOF:

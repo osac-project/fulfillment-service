@@ -1,0 +1,41 @@
+//
+// Copyright (c) 2025 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+// the License. You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+//
+
+syntax = "proto3";
+
+package osac.public.v1;
+
+import "osac/public/v1/metadata_type.proto";
+
+// Describes a set of hosts that share characteristics.
+//
+// For example there could be a host class `acme_1tb` to describe the set of hosts manifactured by ACME and with 1 TiB
+// of RAM, and another `ibm_mi300x` to describe the set of hosts manufactured IBM and with a MI300X GPU.
+//
+// This is similar to the _instance type_ concept used by many cloud providers.
+//
+// The detailed chracteristics of the host (CPU, memory, GPU, etc) will be in the `description` field.
+message HostClass {
+  // Unique identifier of the class.
+  string id = 1;
+
+  // Metadata of the host class.
+  Metadata metadata = 2;
+
+  // Human friendly short description of the host class, only a few words, suitable for displaying in one single
+  // line on a UI or CLI.
+  string title = 3;
+
+  // Human friendly long description of the host class, using Markdown format.
+  string description = 4;
+}

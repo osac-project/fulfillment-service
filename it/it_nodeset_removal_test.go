@@ -21,15 +21,15 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Node set removal", func() {
 	var (
 		ctx                context.Context
-		clustersClient     ffv1.ClustersClient
+		clustersClient     publicv1.ClustersClient
 		hostClassesClient  privatev1.HostClassesClient
 		templatesClient    privatev1.ClusterTemplatesClient
 		workerHostClassId  string
@@ -40,7 +40,7 @@ var _ = Describe("Node set removal", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 
-		clustersClient = ffv1.NewClustersClient(tool.UserConn())
+		clustersClient = publicv1.NewClustersClient(tool.UserConn())
 		hostClassesClient = privatev1.NewHostClassesClient(tool.AdminConn())
 		templatesClient = privatev1.NewClusterTemplatesClient(tool.AdminConn())
 
@@ -86,9 +86,9 @@ var _ = Describe("Node set removal", func() {
 
 	It("Should keep node set removed after edit", func() {
 		// Step 1: Create cluster with 2 node sets
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -97,7 +97,7 @@ var _ = Describe("Node set removal", func() {
 		clusterId := createResponse.Object.Id
 
 		// Step 2: Verify cluster has 2 node sets
-		getResponse, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: clusterId,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -109,8 +109,8 @@ var _ = Describe("Node set removal", func() {
 		updatedSpec := getResponse.Object.Spec
 		delete(updatedSpec.NodeSets, "storage")
 
-		_, err = clustersClient.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-			Object: ffv1.Cluster_builder{
+		_, err = clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+			Object: publicv1.Cluster_builder{
 				Id:       clusterId,
 				Metadata: getResponse.Object.Metadata,
 				Spec:     updatedSpec,
@@ -123,7 +123,7 @@ var _ = Describe("Node set removal", func() {
 
 		// Step 4: Verify the 'storage' node set has been removed
 		// This tests the fix for https://github.com/osac-project/issues/issues/251
-		getResponse, err = clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		getResponse, err = clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: clusterId,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())

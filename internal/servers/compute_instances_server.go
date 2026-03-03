@@ -21,8 +21,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -34,15 +34,15 @@ type ComputeInstancesServerBuilder struct {
 	tenancyLogic     auth.TenancyLogic
 }
 
-var _ ffv1.ComputeInstancesServer = (*ComputeInstancesServer)(nil)
+var _ publicv1.ComputeInstancesServer = (*ComputeInstancesServer)(nil)
 
 type ComputeInstancesServer struct {
-	ffv1.UnimplementedComputeInstancesServer
+	publicv1.UnimplementedComputeInstancesServer
 
 	logger    *slog.Logger
 	delegate  privatev1.ComputeInstancesServer
-	inMapper  *GenericMapper[*ffv1.ComputeInstance, *privatev1.ComputeInstance]
-	outMapper *GenericMapper[*privatev1.ComputeInstance, *ffv1.ComputeInstance]
+	inMapper  *GenericMapper[*publicv1.ComputeInstance, *privatev1.ComputeInstance]
+	outMapper *GenericMapper[*privatev1.ComputeInstance, *publicv1.ComputeInstance]
 }
 
 func NewComputeInstancesServer() *ComputeInstancesServerBuilder {
@@ -85,14 +85,14 @@ func (b *ComputeInstancesServerBuilder) Build() (result *ComputeInstancesServer,
 	}
 
 	// Create the mappers:
-	inMapper, err := NewGenericMapper[*ffv1.ComputeInstance, *privatev1.ComputeInstance]().
+	inMapper, err := NewGenericMapper[*publicv1.ComputeInstance, *privatev1.ComputeInstance]().
 		SetLogger(b.logger).
 		SetStrict(true).
 		Build()
 	if err != nil {
 		return
 	}
-	outMapper, err := NewGenericMapper[*privatev1.ComputeInstance, *ffv1.ComputeInstance]().
+	outMapper, err := NewGenericMapper[*privatev1.ComputeInstance, *publicv1.ComputeInstance]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
@@ -122,7 +122,7 @@ func (b *ComputeInstancesServerBuilder) Build() (result *ComputeInstancesServer,
 }
 
 func (s *ComputeInstancesServer) List(ctx context.Context,
-	request *ffv1.ComputeInstancesListRequest) (response *ffv1.ComputeInstancesListResponse, err error) {
+	request *publicv1.ComputeInstancesListRequest) (response *publicv1.ComputeInstancesListResponse, err error) {
 	// Create private request with same parameters:
 	privateRequest := &privatev1.ComputeInstancesListRequest{}
 	privateRequest.SetOffset(request.GetOffset())
@@ -137,9 +137,9 @@ func (s *ComputeInstancesServer) List(ctx context.Context,
 
 	// Map private response to public format:
 	privateItems := privateResponse.GetItems()
-	publicItems := make([]*ffv1.ComputeInstance, len(privateItems))
+	publicItems := make([]*publicv1.ComputeInstance, len(privateItems))
 	for i, privateItem := range privateItems {
-		publicItem := &ffv1.ComputeInstance{}
+		publicItem := &publicv1.ComputeInstance{}
 		err = s.outMapper.Copy(ctx, privateItem, publicItem)
 		if err != nil {
 			s.logger.ErrorContext(
@@ -153,7 +153,7 @@ func (s *ComputeInstancesServer) List(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstancesListResponse{}
+	response = &publicv1.ComputeInstancesListResponse{}
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
@@ -161,7 +161,7 @@ func (s *ComputeInstancesServer) List(ctx context.Context,
 }
 
 func (s *ComputeInstancesServer) Get(ctx context.Context,
-	request *ffv1.ComputeInstancesGetRequest) (response *ffv1.ComputeInstancesGetResponse, err error) {
+	request *publicv1.ComputeInstancesGetRequest) (response *publicv1.ComputeInstancesGetResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.ComputeInstancesGetRequest{}
 	privateRequest.SetId(request.GetId())
@@ -174,7 +174,7 @@ func (s *ComputeInstancesServer) Get(ctx context.Context,
 
 	// Map private response to public format:
 	privateComputeInstance := privateResponse.GetObject()
-	publicComputeInstance := &ffv1.ComputeInstance{}
+	publicComputeInstance := &publicv1.ComputeInstance{}
 	err = s.outMapper.Copy(ctx, privateComputeInstance, publicComputeInstance)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -186,13 +186,13 @@ func (s *ComputeInstancesServer) Get(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstancesGetResponse{}
+	response = &publicv1.ComputeInstancesGetResponse{}
 	response.SetObject(publicComputeInstance)
 	return
 }
 
 func (s *ComputeInstancesServer) Create(ctx context.Context,
-	request *ffv1.ComputeInstancesCreateRequest) (response *ffv1.ComputeInstancesCreateResponse, err error) {
+	request *publicv1.ComputeInstancesCreateRequest) (response *publicv1.ComputeInstancesCreateResponse, err error) {
 	// Map the public compute instance to private format:
 	publicComputeInstance := request.GetObject()
 	if publicComputeInstance == nil {
@@ -221,7 +221,7 @@ func (s *ComputeInstancesServer) Create(ctx context.Context,
 
 	// Map the private response back to public format:
 	createdPrivateComputeInstance := privateResponse.GetObject()
-	createdPublicComputeInstance := &ffv1.ComputeInstance{}
+	createdPublicComputeInstance := &publicv1.ComputeInstance{}
 	err = s.outMapper.Copy(ctx, createdPrivateComputeInstance, createdPublicComputeInstance)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -234,13 +234,13 @@ func (s *ComputeInstancesServer) Create(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstancesCreateResponse{}
+	response = &publicv1.ComputeInstancesCreateResponse{}
 	response.SetObject(createdPublicComputeInstance)
 	return
 }
 
 func (s *ComputeInstancesServer) Update(ctx context.Context,
-	request *ffv1.ComputeInstancesUpdateRequest) (response *ffv1.ComputeInstancesUpdateResponse, err error) {
+	request *publicv1.ComputeInstancesUpdateRequest) (response *publicv1.ComputeInstancesUpdateResponse, err error) {
 	// Validate the request:
 	publicComputeInstance := request.GetObject()
 	if publicComputeInstance == nil {
@@ -284,7 +284,7 @@ func (s *ComputeInstancesServer) Update(ctx context.Context,
 
 	// Map the private response back to public format:
 	updatedPrivateComputeInstance := privateResponse.GetObject()
-	updatedPublicComputeInstance := &ffv1.ComputeInstance{}
+	updatedPublicComputeInstance := &publicv1.ComputeInstance{}
 	err = s.outMapper.Copy(ctx, updatedPrivateComputeInstance, updatedPublicComputeInstance)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -297,13 +297,13 @@ func (s *ComputeInstancesServer) Update(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstancesUpdateResponse{}
+	response = &publicv1.ComputeInstancesUpdateResponse{}
 	response.SetObject(updatedPublicComputeInstance)
 	return
 }
 
 func (s *ComputeInstancesServer) Delete(ctx context.Context,
-	request *ffv1.ComputeInstancesDeleteRequest) (response *ffv1.ComputeInstancesDeleteResponse, err error) {
+	request *publicv1.ComputeInstancesDeleteRequest) (response *publicv1.ComputeInstancesDeleteResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.ComputeInstancesDeleteRequest{}
 	privateRequest.SetId(request.GetId())
@@ -315,6 +315,6 @@ func (s *ComputeInstancesServer) Delete(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ComputeInstancesDeleteResponse{}
+	response = &publicv1.ComputeInstancesDeleteResponse{}
 	return
 }

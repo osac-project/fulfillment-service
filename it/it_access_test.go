@@ -21,8 +21,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
 
 var _ = Describe("Access control", func() {
@@ -34,86 +34,86 @@ var _ = Describe("Access control", func() {
 
 	Describe("Public API", func() {
 		It("Allows regular users to list cluster templates", func() {
-			client := ffv1.NewClusterTemplatesClient(tool.UserConn())
-			_, err := client.List(ctx, ffv1.ClusterTemplatesListRequest_builder{}.Build())
+			client := publicv1.NewClusterTemplatesClient(tool.UserConn())
+			_, err := client.List(ctx, publicv1.ClusterTemplatesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows regular users to list clusters", func() {
-			client := ffv1.NewClustersClient(tool.UserConn())
-			_, err := client.List(ctx, ffv1.ClustersListRequest_builder{}.Build())
+			client := publicv1.NewClustersClient(tool.UserConn())
+			_, err := client.List(ctx, publicv1.ClustersListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows regular users to list host classes", func() {
-			client := ffv1.NewHostClassesClient(tool.UserConn())
-			_, err := client.List(ctx, ffv1.HostClassesListRequest_builder{}.Build())
+			client := publicv1.NewHostClassesClient(tool.UserConn())
+			_, err := client.List(ctx, publicv1.HostClassesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows regular users to list hosts", func() {
-			client := ffv1.NewHostsClient(tool.UserConn())
-			_, err := client.List(ctx, ffv1.HostsListRequest_builder{}.Build())
+			client := publicv1.NewHostsClient(tool.UserConn())
+			_, err := client.List(ctx, publicv1.HostsListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows regular users to list host pools", func() {
-			client := ffv1.NewHostPoolsClient(tool.UserConn())
-			_, err := client.List(ctx, ffv1.HostPoolsListRequest_builder{}.Build())
+			client := publicv1.NewHostPoolsClient(tool.UserConn())
+			_, err := client.List(ctx, publicv1.HostPoolsListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows regular users to list compute instance templates", func() {
-			client := ffv1.NewComputeInstanceTemplatesClient(tool.UserConn())
-			_, err := client.List(ctx, ffv1.ComputeInstanceTemplatesListRequest_builder{}.Build())
+			client := publicv1.NewComputeInstanceTemplatesClient(tool.UserConn())
+			_, err := client.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows regular users to list compute instances", func() {
-			client := ffv1.NewComputeInstancesClient(tool.UserConn())
-			_, err := client.List(ctx, ffv1.ComputeInstancesListRequest_builder{}.Build())
+			client := publicv1.NewComputeInstancesClient(tool.UserConn())
+			_, err := client.List(ctx, publicv1.ComputeInstancesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows admin users to list cluster templates", func() {
-			client := ffv1.NewClusterTemplatesClient(tool.AdminConn())
-			_, err := client.List(ctx, ffv1.ClusterTemplatesListRequest_builder{}.Build())
+			client := publicv1.NewClusterTemplatesClient(tool.AdminConn())
+			_, err := client.List(ctx, publicv1.ClusterTemplatesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows admin users to list clusters", func() {
-			client := ffv1.NewClustersClient(tool.AdminConn())
-			_, err := client.List(ctx, ffv1.ClustersListRequest_builder{}.Build())
+			client := publicv1.NewClustersClient(tool.AdminConn())
+			_, err := client.List(ctx, publicv1.ClustersListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows admin users to list host classes", func() {
-			client := ffv1.NewHostClassesClient(tool.AdminConn())
-			_, err := client.List(ctx, ffv1.HostClassesListRequest_builder{}.Build())
+			client := publicv1.NewHostClassesClient(tool.AdminConn())
+			_, err := client.List(ctx, publicv1.HostClassesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows admin users to list hosts", func() {
-			client := ffv1.NewHostsClient(tool.AdminConn())
-			_, err := client.List(ctx, ffv1.HostsListRequest_builder{}.Build())
+			client := publicv1.NewHostsClient(tool.AdminConn())
+			_, err := client.List(ctx, publicv1.HostsListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows admin users to list host pools", func() {
-			client := ffv1.NewHostPoolsClient(tool.AdminConn())
-			_, err := client.List(ctx, ffv1.HostPoolsListRequest_builder{}.Build())
+			client := publicv1.NewHostPoolsClient(tool.AdminConn())
+			_, err := client.List(ctx, publicv1.HostPoolsListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows admin users to list compute instance templates", func() {
-			client := ffv1.NewComputeInstanceTemplatesClient(tool.AdminConn())
-			_, err := client.List(ctx, ffv1.ComputeInstanceTemplatesListRequest_builder{}.Build())
+			client := publicv1.NewComputeInstanceTemplatesClient(tool.AdminConn())
+			_, err := client.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Allows admin users to list compute instances", func() {
-			client := ffv1.NewComputeInstancesClient(tool.AdminConn())
-			_, err := client.List(ctx, ffv1.ComputeInstancesListRequest_builder{}.Build())
+			client := publicv1.NewComputeInstancesClient(tool.AdminConn())
+			_, err := client.List(ctx, publicv1.ComputeInstancesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

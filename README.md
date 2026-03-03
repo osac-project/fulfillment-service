@@ -77,22 +77,22 @@ You may need to adjust the commands to use your database details.
 To verify that the gRPC server is working use `grpcurl`. For example, to list the available gRPC services:
 
     $ grpcurl -plaintext localhost:8000 list
-    fulfillment.v1.ClusterOrders
-    fulfillment.v1.ClusterTemplates
-    fulfillment.v1.Clusters
-    fulfillment.v1.Events
+    osac.public.v1.ClusterOrders
+    osac.public.v1.ClusterTemplates
+    osac.public.v1.Clusters
+    osac.public.v1.Events
     grpc.reflection.v1.ServerReflection
     grpc.reflection.v1alpha.ServerReflection
 
 To list the methods available in a service, for example in the `ClusterTemplates` service:
 
-    $ grpcurl -plaintext localhost:8000 list fulfillment.v1.ClusterTemplates
-    fulfillment.v1.ClusterTemplates.Get
-    fulfillment.v1.ClusterTemplates.List
+    $ grpcurl -plaintext localhost:8000 list osac.public.v1.ClusterTemplates
+    osac.public.v1.ClusterTemplates.Get
+    osac.public.v1.ClusterTemplates.List
 
 To invoke a method, for example the `List` method of the `ClusterTemplates` service:
 
-    $ grpcurl -plaintext localhost:8000 fulfillment.v1.ClusterTemplates/List
+    $ grpcurl -plaintext localhost:8000 osac.public.v1.ClusterTemplates/List
     {
       "size": 2,
       "total": 2,
@@ -175,7 +175,7 @@ gRPC server and the REST gateway are working:
 
     $ grpcurl -insecure
     -H "Authorization: Bearer ${token}" \
-    fulfillment-api-osac.apps.mycluster.com:443 fulfillment.v1.ClusterTemplates/List
+    fulfillment-api-osac.apps.mycluster.com:443 osac.public.v1.ClusterTemplates/List
     {
       "size": 2,
       "total": 2,

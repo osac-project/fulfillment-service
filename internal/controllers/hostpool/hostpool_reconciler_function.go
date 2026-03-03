@@ -26,8 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
@@ -247,7 +246,7 @@ func (t *task) setConditionDefaults(value privatev1.HostPoolConditionType) {
 		conditions := t.hostPool.GetStatus().GetConditions()
 		conditions = append(conditions, privatev1.HostPoolCondition_builder{
 			Type:   value,
-			Status: sharedv1.ConditionStatus_CONDITION_STATUS_FALSE,
+			Status: privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
 		}.Build())
 		t.hostPool.GetStatus().SetConditions(conditions)
 	}

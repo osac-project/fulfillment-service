@@ -1,0 +1,120 @@
+//
+// Copyright (c) 2025 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+// the License. You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+//
+
+syntax = "proto3";
+
+package osac.private.v1;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+import "osac/private/v1/condition_status_type.proto";
+import "osac/private/v1/metadata_type.proto";
+
+// Contains the details about the compute instance that are available only for the system.
+message ComputeInstance {
+  // Public data.
+  string id = 1;
+  Metadata metadata = 2;
+  ComputeInstanceSpec spec = 3;
+  ComputeInstanceStatus status = 4;
+}
+
+// Contains the image configuration for a compute instance.
+message ComputeInstanceImage {
+  // Image source type (e.g. "registry").
+  string source_type = 1;
+
+  // Image reference (e.g. OCI image URL).
+  string source_ref = 2;
+}
+
+// Contains the disk configuration for a compute instance.
+message ComputeInstanceDisk {
+  // Disk size in GiB.
+  int32 size_gib = 1;
+
+  // Storage class for the disk.
+  optional string storage_class = 2;
+}
+
+message ComputeInstanceSpec {
+  // Copies of the public fields.
+  string template = 1;
+  map<string, google.protobuf.Any> template_parameters = 2;
+  optional google.protobuf.Timestamp restart_requested_at = 3;
+
+  // Image configuration.
+  optional ComputeInstanceImage image = 4;
+
+  // Number of CPU cores.
+  optional int32 cores = 5;
+
+  // Memory size in GiB.
+  optional int32 memory_gib = 6;
+
+  // SSH public key.
+  optional string ssh_key = 7;
+
+  // Boot disk configuration.
+  optional ComputeInstanceDisk boot_disk = 8;
+
+  // Additional disk configurations.
+  repeated ComputeInstanceDisk additional_disks = 9;
+
+  // Run strategy for the compute instance (e.g. "Always" or "Halted").
+  optional string run_strategy = 10;
+
+  // Name of the secret containing cloud-init user data.
+  optional string user_data_secret_ref = 11;
+}
+
+message ComputeInstanceStatus {
+  // Public fields.
+  ComputeInstanceState state = 1;
+  repeated ComputeInstanceCondition conditions = 2;
+  string ip_address = 3;
+
+  // Identifier of the hub that was selected for this compute instance.
+  string hub = 4;
+
+  optional google.protobuf.Timestamp last_restarted_at = 5;
+}
+
+enum ComputeInstanceState {
+  COMPUTE_INSTANCE_STATE_UNSPECIFIED = 0;
+  COMPUTE_INSTANCE_STATE_STARTING = 1;
+  COMPUTE_INSTANCE_STATE_RUNNING = 2;
+  COMPUTE_INSTANCE_STATE_FAILED = 3;
+  COMPUTE_INSTANCE_STATE_DELETING = 4;
+  COMPUTE_INSTANCE_STATE_STOPPING = 5;
+  COMPUTE_INSTANCE_STATE_STOPPED = 6;
+  COMPUTE_INSTANCE_STATE_PAUSED = 7;
+}
+
+message ComputeInstanceCondition {
+  ComputeInstanceConditionType type = 1;
+  ConditionStatus status = 2;
+  google.protobuf.Timestamp last_transition_time = 3;
+  optional string reason = 4;
+  optional string message = 5;
+}
+
+enum ComputeInstanceConditionType {
+  COMPUTE_INSTANCE_CONDITION_TYPE_UNSPECIFIED = 0;
+  COMPUTE_INSTANCE_CONDITION_TYPE_CONFIGURATION_APPLIED = 1;
+  COMPUTE_INSTANCE_CONDITION_TYPE_AVAILABLE = 2;
+  COMPUTE_INSTANCE_CONDITION_TYPE_RESTART_IN_PROGRESS = 3;
+  COMPUTE_INSTANCE_CONDITION_TYPE_RESTART_FAILED = 4;
+  COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED = 5;
+  COMPUTE_INSTANCE_CONDITION_TYPE_RESTART_REQUIRED = 6;
+}

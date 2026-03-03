@@ -27,9 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
@@ -38,7 +37,7 @@ import (
 var _ = Describe("Public clusters", func() {
 	var (
 		ctx               context.Context
-		clustersClient    ffv1.ClustersClient
+		clustersClient    publicv1.ClustersClient
 		hostClassesClient privatev1.HostClassesClient
 		templatesClient   privatev1.ClusterTemplatesClient
 		hostClassId       string
@@ -50,7 +49,7 @@ var _ = Describe("Public clusters", func() {
 		ctx = context.Background()
 
 		// Create the clients:
-		clustersClient = ffv1.NewClustersClient(tool.UserConn())
+		clustersClient = publicv1.NewClustersClient(tool.UserConn())
 		hostClassesClient = privatev1.NewHostClassesClient(tool.AdminConn())
 		templatesClient = privatev1.NewClusterTemplatesClient(tool.AdminConn())
 
@@ -95,9 +94,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can get a specific cluster", func() {
 		// Create the cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -107,14 +106,14 @@ var _ = Describe("Public clusters", func() {
 
 		// Delete the cluster after the test:
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		// Get the cluster and verify that the returned data is correct
-		response, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		response, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -130,9 +129,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can get the list of clusters", func() {
 		// Create a cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -140,14 +139,14 @@ var _ = Describe("Public clusters", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		// Get the list of clusters and verify that it isn't empty:
-		listResponse, err := clustersClient.List(ctx, ffv1.ClustersListRequest_builder{}.Build())
+		listResponse, err := clustersClient.List(ctx, publicv1.ClustersListRequest_builder{}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResponse).ToNot(BeNil())
 		items := listResponse.GetItems()
@@ -156,9 +155,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can create a cluster", func() {
 		// Create the cluster:
-		response, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		response, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -167,7 +166,7 @@ var _ = Describe("Public clusters", func() {
 		Expect(response).ToNot(BeNil())
 		object := response.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -186,9 +185,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can update a cluster", func() {
 		// Create the cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -196,19 +195,19 @@ var _ = Describe("Public clusters", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		// Update the cluster:
-		updateResponse, err := clustersClient.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-			Object: ffv1.Cluster_builder{
+		updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+			Object: publicv1.Cluster_builder{
 				Id: object.GetId(),
-				Spec: ffv1.ClusterSpec_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
-					NodeSets: map[string]*ffv1.ClusterNodeSet{
+					NodeSets: map[string]*publicv1.ClusterNodeSet{
 						"my-node-set": {
 							HostClass: hostClassId,
 							Size:      4,
@@ -224,7 +223,7 @@ var _ = Describe("Public clusters", func() {
 		Expect(nodeSet.GetSize()).To(BeNumerically("==", 4))
 
 		// Get the cluster and verify that the returned data is correct
-		getResponse, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -236,23 +235,23 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can delete a cluster", func() {
 		// Create the cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
-		_, err = clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+		_, err = clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 
 		// Trying to get the deleted object should either fail if the object has been completely deleted and
 		// archived, or return an object that has the deletion timestamp set.
-		getResponse, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		if err != nil {
@@ -267,7 +266,7 @@ var _ = Describe("Public clusters", func() {
 	})
 
 	It("Returns not found error when getting cluster that doesn't exist", func() {
-		_, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		_, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: "does-not-exist",
 		}.Build())
 		Expect(err).To(HaveOccurred())
@@ -277,10 +276,10 @@ var _ = Describe("Public clusters", func() {
 	})
 
 	It("Returns not found error when updating cluster that doesn't exist", func() {
-		_, err := clustersClient.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-			Object: ffv1.Cluster_builder{
+		_, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+			Object: publicv1.Cluster_builder{
 				Id: "does-not-exist",
-				Metadata: sharedv1.Metadata_builder{
+				Metadata: publicv1.Metadata_builder{
 					Name: "my-name",
 				}.Build(),
 			}.Build(),
@@ -292,7 +291,7 @@ var _ = Describe("Public clusters", func() {
 	})
 
 	It("Returns not found error when deleting cluster that doesn't exist", func() {
-		_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+		_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 			Id: "does-not-exist",
 		}.Build())
 		Expect(err).To(HaveOccurred())
@@ -303,9 +302,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can get the kubeconfig of a cluster", func() {
 		// Create the cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -313,7 +312,7 @@ var _ = Describe("Public clusters", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -400,7 +399,7 @@ var _ = Describe("Public clusters", func() {
 			func(g Gomega) {
 				getKubeconfigResponse, err := clustersClient.GetKubeconfig(
 					ctx,
-					ffv1.ClustersGetKubeconfigRequest_builder{
+					publicv1.ClustersGetKubeconfigRequest_builder{
 						Id: object.GetId(),
 					}.Build(),
 				)
@@ -415,9 +414,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can get the kubeconfig of a cluster via HTTP", func() {
 		// Create the cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -425,7 +424,7 @@ var _ = Describe("Public clusters", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -511,7 +510,7 @@ var _ = Describe("Public clusters", func() {
 			func(g Gomega) {
 				getKubeconfigResponse, err := clustersClient.GetKubeconfigViaHttp(
 					ctx,
-					ffv1.ClustersGetKubeconfigViaHttpRequest_builder{
+					publicv1.ClustersGetKubeconfigViaHttpRequest_builder{
 						Id: object.GetId(),
 					}.Build(),
 				)
@@ -526,9 +525,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can get the admin password of a cluster", func() {
 		// Create the cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -536,7 +535,7 @@ var _ = Describe("Public clusters", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -621,7 +620,7 @@ var _ = Describe("Public clusters", func() {
 		var password string
 		Eventually(
 			func(g Gomega) {
-				getPasswordResponse, err := clustersClient.GetPassword(ctx, ffv1.ClustersGetPasswordRequest_builder{
+				getPasswordResponse, err := clustersClient.GetPassword(ctx, publicv1.ClustersGetPasswordRequest_builder{
 					Id: object.GetId(),
 				}.Build())
 				g.Expect(err).ToNot(HaveOccurred())
@@ -635,9 +634,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Can get the admin password of a cluster via HTTP", func() {
 		// Create the cluster
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -645,7 +644,7 @@ var _ = Describe("Public clusters", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -731,7 +730,7 @@ var _ = Describe("Public clusters", func() {
 			func(g Gomega) {
 				getPasswordResponse, err := clustersClient.GetPasswordViaHttp(
 					ctx,
-					ffv1.ClustersGetPasswordViaHttpRequest_builder{
+					publicv1.ClustersGetPasswordViaHttpRequest_builder{
 						Id: object.GetId(),
 					}.Build(),
 				)
@@ -746,9 +745,9 @@ var _ = Describe("Public clusters", func() {
 
 	It("Sets creator to the name of the user when creating a cluster", func() {
 		// Create the cluster using the client connection:
-		response, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		response, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -757,7 +756,7 @@ var _ = Describe("Public clusters", func() {
 		Expect(response).ToNot(BeNil())
 		object := response.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())

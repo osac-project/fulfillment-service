@@ -27,8 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
@@ -171,7 +170,7 @@ func (t *task) update(ctx context.Context) error {
 		)
 		t.updateCondition(
 			privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_PROGRESSING,
-			sharedv1.ConditionStatus_CONDITION_STATUS_FALSE,
+			privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
 			"ResourcesUnavailable",
 			"The cluster cannot be created because there are no resources available to fulfill the "+
 				"request.",
@@ -270,7 +269,7 @@ func (t *task) setConditionDefaults(value privatev1.ClusterConditionType) {
 		conditions := t.cluster.GetStatus().GetConditions()
 		conditions = append(conditions, privatev1.ClusterCondition_builder{
 			Type:   value,
-			Status: sharedv1.ConditionStatus_CONDITION_STATUS_FALSE,
+			Status: privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
 		}.Build())
 		t.cluster.GetStatus().SetConditions(conditions)
 	}
@@ -403,7 +402,7 @@ func (t *task) getKubeObject(ctx context.Context) (result *unstructured.Unstruct
 }
 
 // updateCondition updates or creates a condition with the specified type, status, reason, and message.
-func (t *task) updateCondition(conditionType privatev1.ClusterConditionType, status sharedv1.ConditionStatus,
+func (t *task) updateCondition(conditionType privatev1.ClusterConditionType, status privatev1.ConditionStatus,
 	reason string, message string) {
 	conditions := t.cluster.GetStatus().GetConditions()
 	updated := false

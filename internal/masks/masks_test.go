@@ -17,8 +17,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 )
 
 var _ = Describe("Calculator", func() {
@@ -168,7 +167,7 @@ var _ = Describe("Calculator", func() {
 					Conditions: []*privatev1.ClusterCondition{
 						privatev1.ClusterCondition_builder{
 							Type:    privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_PROGRESSING,
-							Status:  sharedv1.ConditionStatus_CONDITION_STATUS_TRUE,
+							Status:  privatev1.ConditionStatus_CONDITION_STATUS_TRUE,
 							Reason:  &reason1,
 							Message: &message1,
 						}.Build(),
@@ -181,7 +180,7 @@ var _ = Describe("Calculator", func() {
 					Conditions: []*privatev1.ClusterCondition{
 						privatev1.ClusterCondition_builder{
 							Type:    privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_PROGRESSING,
-							Status:  sharedv1.ConditionStatus_CONDITION_STATUS_FALSE,
+							Status:  privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
 							Reason:  &reason2,
 							Message: &message2,
 						}.Build(),
@@ -202,7 +201,7 @@ var _ = Describe("Calculator", func() {
 					Conditions: []*privatev1.ClusterCondition{
 						privatev1.ClusterCondition_builder{
 							Type:    privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_PROGRESSING,
-							Status:  sharedv1.ConditionStatus_CONDITION_STATUS_TRUE,
+							Status:  privatev1.ConditionStatus_CONDITION_STATUS_TRUE,
 							Reason:  &reason,
 							Message: &message,
 						}.Build(),

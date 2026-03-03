@@ -34,7 +34,7 @@ import (
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/osac-project/fulfillment-service/internal"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/controllers"
 	"github.com/osac-project/fulfillment-service/internal/controllers/cluster"

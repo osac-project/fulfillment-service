@@ -22,16 +22,15 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Labels", func() {
 	var (
 		ctx               context.Context
-		clustersClient    ffv1.ClustersClient
+		clustersClient    publicv1.ClustersClient
 		hostClassesClient privatev1.HostClassesClient
 		templatesClient   privatev1.ClusterTemplatesClient
 		hostClassId       string
@@ -40,7 +39,7 @@ var _ = Describe("Labels", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		clustersClient = ffv1.NewClustersClient(tool.UserConn())
+		clustersClient = publicv1.NewClustersClient(tool.UserConn())
 		hostClassesClient = privatev1.NewHostClassesClient(tool.AdminConn())
 		templatesClient = privatev1.NewClusterTemplatesClient(tool.AdminConn())
 
@@ -86,12 +85,12 @@ var _ = Describe("Labels", func() {
 			"example.com/app": "my-app",
 			"simple":          "value",
 		}
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Metadata: sharedv1.Metadata_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Metadata: publicv1.Metadata_builder{
 					Labels: labels,
 				}.Build(),
-				Spec: ffv1.ClusterSpec_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -99,7 +98,7 @@ var _ = Describe("Labels", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -110,7 +109,7 @@ var _ = Describe("Labels", func() {
 		Expect(metadata.GetLabels()).To(HaveKeyWithValue("example.com/app", "my-app"))
 		Expect(metadata.GetLabels()).To(HaveKeyWithValue("simple", "value"))
 
-		getResponse, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -120,9 +119,9 @@ var _ = Describe("Labels", func() {
 	})
 
 	It("Can update a cluster with labels", func() {
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -130,7 +129,7 @@ var _ = Describe("Labels", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -140,13 +139,13 @@ var _ = Describe("Labels", func() {
 			"example.com/updated": "new-value",
 			"another":             "second",
 		}
-		updateResponse, err := clustersClient.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-			Object: ffv1.Cluster_builder{
+		updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+			Object: publicv1.Cluster_builder{
 				Id: object.GetId(),
-				Metadata: sharedv1.Metadata_builder{
+				Metadata: publicv1.Metadata_builder{
 					Labels: labels,
 				}.Build(),
-				Spec: ffv1.ClusterSpec_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -156,7 +155,7 @@ var _ = Describe("Labels", func() {
 		Expect(metadata.GetLabels()).To(HaveKeyWithValue("example.com/updated", "new-value"))
 		Expect(metadata.GetLabels()).To(HaveKeyWithValue("another", "second"))
 
-		getResponse, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -168,14 +167,14 @@ var _ = Describe("Labels", func() {
 	DescribeTable(
 		"Rejects invalid labels on create and update",
 		func(key string, value string, expected string) {
-			_, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Metadata: sharedv1.Metadata_builder{
+			_, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							key: value,
 						},
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: templateId,
 					}.Build(),
 				}.Build(),
@@ -186,9 +185,9 @@ var _ = Describe("Labels", func() {
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(Equal(expected))
 
-			createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-				Object: ffv1.Cluster_builder{
-					Spec: ffv1.ClusterSpec_builder{
+			createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: templateId,
 					}.Build(),
 				}.Build(),
@@ -196,21 +195,21 @@ var _ = Describe("Labels", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 			DeferCleanup(func() {
-				_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+				_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 					Id: object.GetId(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 			})
 
-			_, err = clustersClient.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-				Object: ffv1.Cluster_builder{
+			_, err = clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
-					Metadata: sharedv1.Metadata_builder{
+					Metadata: publicv1.Metadata_builder{
 						Labels: map[string]string{
 							key: value,
 						},
 					}.Build(),
-					Spec: ffv1.ClusterSpec_builder{
+					Spec: publicv1.ClusterSpec_builder{
 						Template: templateId,
 					}.Build(),
 				}.Build(),

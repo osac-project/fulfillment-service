@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -123,11 +123,11 @@ var _ = Describe("Host pools server", func() {
 		})
 
 		It("Creates object", func() {
-			response, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-				Object: ffv1.HostPool_builder{
-					Spec: ffv1.HostPoolSpec_builder{
-						HostSets: map[string]*ffv1.HostPoolHostSet{
-							"set1": ffv1.HostPoolHostSet_builder{
+			response, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+				Object: publicv1.HostPool_builder{
+					Spec: publicv1.HostPoolSpec_builder{
+						HostSets: map[string]*publicv1.HostPoolHostSet{
+							"set1": publicv1.HostPoolHostSet_builder{
 								HostClass: "class1",
 								Size:      3,
 							}.Build(),
@@ -147,11 +147,11 @@ var _ = Describe("Host pools server", func() {
 			// Create a few objects:
 			const count = 10
 			for i := range count {
-				_, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-					Object: ffv1.HostPool_builder{
-						Spec: ffv1.HostPoolSpec_builder{
-							HostSets: map[string]*ffv1.HostPoolHostSet{
-								fmt.Sprintf("set_%d", i): ffv1.HostPoolHostSet_builder{
+				_, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+					Object: publicv1.HostPool_builder{
+						Spec: publicv1.HostPoolSpec_builder{
+							HostSets: map[string]*publicv1.HostPoolHostSet{
+								fmt.Sprintf("set_%d", i): publicv1.HostPoolHostSet_builder{
 									HostClass: fmt.Sprintf("class_%d", i),
 									Size:      int32(i + 1),
 								}.Build(),
@@ -163,7 +163,7 @@ var _ = Describe("Host pools server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostPoolsListRequest_builder{}.Build())
+			response, err := server.List(ctx, publicv1.HostPoolsListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
 			items := response.GetItems()
@@ -174,11 +174,11 @@ var _ = Describe("Host pools server", func() {
 			// Create a few objects:
 			const count = 10
 			for i := range count {
-				_, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-					Object: ffv1.HostPool_builder{
-						Spec: ffv1.HostPoolSpec_builder{
-							HostSets: map[string]*ffv1.HostPoolHostSet{
-								fmt.Sprintf("set_%d", i): ffv1.HostPoolHostSet_builder{
+				_, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+					Object: publicv1.HostPool_builder{
+						Spec: publicv1.HostPoolSpec_builder{
+							HostSets: map[string]*publicv1.HostPoolHostSet{
+								fmt.Sprintf("set_%d", i): publicv1.HostPoolHostSet_builder{
 									HostClass: fmt.Sprintf("class_%d", i),
 									Size:      int32(i + 1),
 								}.Build(),
@@ -190,7 +190,7 @@ var _ = Describe("Host pools server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostPoolsListRequest_builder{
+			response, err := server.List(ctx, publicv1.HostPoolsListRequest_builder{
 				Limit: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -201,11 +201,11 @@ var _ = Describe("Host pools server", func() {
 			// Create a few objects:
 			const count = 10
 			for i := range count {
-				_, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-					Object: ffv1.HostPool_builder{
-						Spec: ffv1.HostPoolSpec_builder{
-							HostSets: map[string]*ffv1.HostPoolHostSet{
-								fmt.Sprintf("set_%d", i): ffv1.HostPoolHostSet_builder{
+				_, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+					Object: publicv1.HostPool_builder{
+						Spec: publicv1.HostPoolSpec_builder{
+							HostSets: map[string]*publicv1.HostPoolHostSet{
+								fmt.Sprintf("set_%d", i): publicv1.HostPoolHostSet_builder{
 									HostClass: fmt.Sprintf("class_%d", i),
 									Size:      int32(i + 1),
 								}.Build(),
@@ -217,7 +217,7 @@ var _ = Describe("Host pools server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostPoolsListRequest_builder{
+			response, err := server.List(ctx, publicv1.HostPoolsListRequest_builder{
 				Offset: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -227,13 +227,13 @@ var _ = Describe("Host pools server", func() {
 		It("List objects with order", func() {
 			// Create a few objects:
 			const count = 5
-			var objects []*ffv1.HostPool
+			var objects []*publicv1.HostPool
 			for i := range count {
-				response, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-					Object: ffv1.HostPool_builder{
-						Spec: ffv1.HostPoolSpec_builder{
-							HostSets: map[string]*ffv1.HostPoolHostSet{
-								fmt.Sprintf("set_%d", i): ffv1.HostPoolHostSet_builder{
+				response, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+					Object: publicv1.HostPool_builder{
+						Spec: publicv1.HostPoolSpec_builder{
+							HostSets: map[string]*publicv1.HostPoolHostSet{
+								fmt.Sprintf("set_%d", i): publicv1.HostPoolHostSet_builder{
 									HostClass: fmt.Sprintf("class_%d", i),
 									Size:      int32(i + 1),
 								}.Build(),
@@ -246,7 +246,7 @@ var _ = Describe("Host pools server", func() {
 			}
 
 			// List the objects with order:
-			response, err := server.List(ctx, ffv1.HostPoolsListRequest_builder{
+			response, err := server.List(ctx, publicv1.HostPoolsListRequest_builder{
 				Order: proto.String("this.id desc"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -258,13 +258,13 @@ var _ = Describe("Host pools server", func() {
 		It("List objects with filter", func() {
 			// Create a few objects:
 			const count = 10
-			var objects []*ffv1.HostPool
+			var objects []*publicv1.HostPool
 			for i := range count {
-				response, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-					Object: ffv1.HostPool_builder{
-						Spec: ffv1.HostPoolSpec_builder{
-							HostSets: map[string]*ffv1.HostPoolHostSet{
-								fmt.Sprintf("set_%d", i): ffv1.HostPoolHostSet_builder{
+				response, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+					Object: publicv1.HostPool_builder{
+						Spec: publicv1.HostPoolSpec_builder{
+							HostSets: map[string]*publicv1.HostPoolHostSet{
+								fmt.Sprintf("set_%d", i): publicv1.HostPoolHostSet_builder{
 									HostClass: fmt.Sprintf("class_%d", i),
 									Size:      int32(i + 1),
 								}.Build(),
@@ -278,7 +278,7 @@ var _ = Describe("Host pools server", func() {
 
 			// List the objects:
 			for _, object := range objects {
-				response, err := server.List(ctx, ffv1.HostPoolsListRequest_builder{
+				response, err := server.List(ctx, publicv1.HostPoolsListRequest_builder{
 					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -289,11 +289,11 @@ var _ = Describe("Host pools server", func() {
 
 		It("Get object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-				Object: ffv1.HostPool_builder{
-					Spec: ffv1.HostPoolSpec_builder{
-						HostSets: map[string]*ffv1.HostPoolHostSet{
-							"test_set": ffv1.HostPoolHostSet_builder{
+			createResponse, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+				Object: publicv1.HostPool_builder{
+					Spec: publicv1.HostPoolSpec_builder{
+						HostSets: map[string]*publicv1.HostPoolHostSet{
+							"test_set": publicv1.HostPoolHostSet_builder{
 								HostClass: "test_class",
 								Size:      5,
 							}.Build(),
@@ -304,7 +304,7 @@ var _ = Describe("Host pools server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get it:
-			getResponse, err := server.Get(ctx, ffv1.HostPoolsGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostPoolsGetRequest_builder{
 				Id: createResponse.GetObject().GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -313,11 +313,11 @@ var _ = Describe("Host pools server", func() {
 
 		It("Update object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-				Object: ffv1.HostPool_builder{
-					Spec: ffv1.HostPoolSpec_builder{
-						HostSets: map[string]*ffv1.HostPoolHostSet{
-							"original_set": ffv1.HostPoolHostSet_builder{
+			createResponse, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+				Object: publicv1.HostPool_builder{
+					Spec: publicv1.HostPoolSpec_builder{
+						HostSets: map[string]*publicv1.HostPoolHostSet{
+							"original_set": publicv1.HostPoolHostSet_builder{
 								HostClass: "original_class",
 								Size:      3,
 							}.Build(),
@@ -329,12 +329,12 @@ var _ = Describe("Host pools server", func() {
 			object := createResponse.GetObject()
 
 			// Update the object:
-			updateResponse, err := server.Update(ctx, ffv1.HostPoolsUpdateRequest_builder{
-				Object: ffv1.HostPool_builder{
+			updateResponse, err := server.Update(ctx, publicv1.HostPoolsUpdateRequest_builder{
+				Object: publicv1.HostPool_builder{
 					Id: object.GetId(),
-					Spec: ffv1.HostPoolSpec_builder{
-						HostSets: map[string]*ffv1.HostPoolHostSet{
-							"updated_set": ffv1.HostPoolHostSet_builder{
+					Spec: publicv1.HostPoolSpec_builder{
+						HostSets: map[string]*publicv1.HostPoolHostSet{
+							"updated_set": publicv1.HostPoolHostSet_builder{
 								HostClass: "updated_class",
 								Size:      5,
 							}.Build(),
@@ -347,7 +347,7 @@ var _ = Describe("Host pools server", func() {
 			Expect(updateResponse.GetObject().GetSpec().GetHostSets()["updated_set"].GetSize()).To(Equal(int32(5)))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.HostPoolsGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostPoolsGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -357,11 +357,11 @@ var _ = Describe("Host pools server", func() {
 
 		It("Delete object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-				Object: ffv1.HostPool_builder{
-					Spec: ffv1.HostPoolSpec_builder{
-						HostSets: map[string]*ffv1.HostPoolHostSet{
-							"test_set": ffv1.HostPoolHostSet_builder{
+			createResponse, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+				Object: publicv1.HostPool_builder{
+					Spec: publicv1.HostPoolSpec_builder{
+						HostSets: map[string]*publicv1.HostPoolHostSet{
+							"test_set": publicv1.HostPoolHostSet_builder{
 								HostClass: "test_class",
 								Size:      3,
 							}.Build(),
@@ -383,13 +383,13 @@ var _ = Describe("Host pools server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Delete the object:
-			_, err = server.Delete(ctx, ffv1.HostPoolsDeleteRequest_builder{
+			_, err = server.Delete(ctx, publicv1.HostPoolsDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.HostPoolsGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostPoolsGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -399,11 +399,11 @@ var _ = Describe("Host pools server", func() {
 
 		It("Prevents status field updates", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-				Object: ffv1.HostPool_builder{
-					Spec: ffv1.HostPoolSpec_builder{
-						HostSets: map[string]*ffv1.HostPoolHostSet{
-							"test_set": ffv1.HostPoolHostSet_builder{
+			createResponse, err := server.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+				Object: publicv1.HostPool_builder{
+					Spec: publicv1.HostPoolSpec_builder{
+						HostSets: map[string]*publicv1.HostPoolHostSet{
+							"test_set": publicv1.HostPoolHostSet_builder{
 								HostClass: "test_class",
 								Size:      3,
 							}.Build(),
@@ -415,19 +415,19 @@ var _ = Describe("Host pools server", func() {
 			object := createResponse.GetObject()
 
 			// Try to update including status field (should be ignored):
-			updateResponse, err := server.Update(ctx, ffv1.HostPoolsUpdateRequest_builder{
-				Object: ffv1.HostPool_builder{
+			updateResponse, err := server.Update(ctx, publicv1.HostPoolsUpdateRequest_builder{
+				Object: publicv1.HostPool_builder{
 					Id: object.GetId(),
-					Spec: ffv1.HostPoolSpec_builder{
-						HostSets: map[string]*ffv1.HostPoolHostSet{
-							"updated_set": ffv1.HostPoolHostSet_builder{
+					Spec: publicv1.HostPoolSpec_builder{
+						HostSets: map[string]*publicv1.HostPoolHostSet{
+							"updated_set": publicv1.HostPoolHostSet_builder{
 								HostClass: "updated_class",
 								Size:      5,
 							}.Build(),
 						},
 					}.Build(),
-					Status: ffv1.HostPoolStatus_builder{
-						State: ffv1.HostPoolState_HOST_POOL_STATE_READY,
+					Status: publicv1.HostPoolStatus_builder{
+						State: publicv1.HostPoolState_HOST_POOL_STATE_READY,
 						Hosts: []string{"host1", "host2", "host3"},
 					}.Build(),
 				}.Build(),

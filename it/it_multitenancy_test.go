@@ -14,8 +14,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/testing"
 )
 
@@ -190,10 +190,10 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					conn, err := tool.makeGrpcConn(tokenSource)
 					Expect(err).ToNot(HaveOccurred())
 
-					clustersClient := ffv1.NewClustersClient(conn)
-					createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-						Object: ffv1.Cluster_builder{
-							Spec: ffv1.ClusterSpec_builder{
+					clustersClient := publicv1.NewClustersClient(conn)
+					createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+						Object: publicv1.Cluster_builder{
+							Spec: publicv1.ClusterSpec_builder{
 								Template: templateId,
 							}.Build(),
 						}.Build(),
@@ -267,7 +267,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 			DescribeTable(
 				"cross-tenant",
-				func(operation func(client ffv1.ClustersClient, clusterID string) error) {
+				func(operation func(client publicv1.ClustersClient, clusterID string) error) {
 					for clusterTenant, clusters := range tenantClusterMapping {
 						for user, userTenant := range ServiceAccountTenants {
 							// Skip if cluster is owned by the same tenant
@@ -280,7 +280,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 							conn, err := tool.makeGrpcConn(tokenSource)
 							Expect(err).ToNot(HaveOccurred())
 
-							clustersClient := ffv1.NewClustersClient(conn)
+							clustersClient := publicv1.NewClustersClient(conn)
 
 							for _, cluster := range clusters {
 								err := operation(clustersClient, cluster)
@@ -293,18 +293,18 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					}
 
 				},
-				Entry("deletion is not allowed", func(client ffv1.ClustersClient, clusterID string) error {
-					_, err := client.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+				Entry("deletion is not allowed", func(client publicv1.ClustersClient, clusterID string) error {
+					_, err := client.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 						Id: clusterID,
 					}.Build())
 
 					return err
 				}),
-				Entry("update is not allowed", func(client ffv1.ClustersClient, clusterID string) error {
-					_, err := client.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-						Object: ffv1.Cluster_builder{
+				Entry("update is not allowed", func(client publicv1.ClustersClient, clusterID string) error {
+					_, err := client.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+						Object: publicv1.Cluster_builder{
 							Id: clusterID,
-							Spec: ffv1.ClusterSpec_builder{
+							Spec: publicv1.ClusterSpec_builder{
 								Template: "cross-tenant-update-template",
 							}.Build(),
 						}.Build(),
@@ -331,12 +331,12 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					conn, err := tool.makeGrpcConn(tokenSource)
 					Expect(err).ToNot(HaveOccurred())
 
-					hostPoolsClient := ffv1.NewHostPoolsClient(conn)
-					createResponse, err := hostPoolsClient.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-						Object: ffv1.HostPool_builder{
-							Spec: ffv1.HostPoolSpec_builder{
-								HostSets: map[string]*ffv1.HostPoolHostSet{
-									"my-host-set": ffv1.HostPoolHostSet_builder{
+					hostPoolsClient := publicv1.NewHostPoolsClient(conn)
+					createResponse, err := hostPoolsClient.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+						Object: publicv1.HostPool_builder{
+							Spec: publicv1.HostPoolSpec_builder{
+								HostSets: map[string]*publicv1.HostPoolHostSet{
+									"my-host-set": publicv1.HostPoolHostSet_builder{
 										HostClass: "blah",
 										Size:      3,
 									}.Build(),
@@ -412,7 +412,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 			DescribeTable(
 				"cross-tenant",
-				func(operation func(client ffv1.HostPoolsClient, hostPoolID string) error) {
+				func(operation func(client publicv1.HostPoolsClient, hostPoolID string) error) {
 					for hostPoolTenant, hostPools := range tenantHostPoolMapping {
 						for user, userTenant := range ServiceAccountTenants {
 							// Skip if host pool is owned by the same tenant
@@ -425,7 +425,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 							conn, err := tool.makeGrpcConn(tokenSource)
 							Expect(err).ToNot(HaveOccurred())
 
-							hostPoolsClient := ffv1.NewHostPoolsClient(conn)
+							hostPoolsClient := publicv1.NewHostPoolsClient(conn)
 
 							for _, hostPool := range hostPools {
 								err := operation(hostPoolsClient, hostPool)
@@ -438,20 +438,20 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					}
 
 				},
-				Entry("deletion is not allowed", func(client ffv1.HostPoolsClient, hostPoolID string) error {
-					_, err := client.Delete(ctx, ffv1.HostPoolsDeleteRequest_builder{
+				Entry("deletion is not allowed", func(client publicv1.HostPoolsClient, hostPoolID string) error {
+					_, err := client.Delete(ctx, publicv1.HostPoolsDeleteRequest_builder{
 						Id: hostPoolID,
 					}.Build())
 
 					return err
 				}),
-				Entry("update is not allowed", func(client ffv1.HostPoolsClient, hostPoolID string) error {
-					_, err := client.Update(ctx, ffv1.HostPoolsUpdateRequest_builder{
-						Object: ffv1.HostPool_builder{
+				Entry("update is not allowed", func(client publicv1.HostPoolsClient, hostPoolID string) error {
+					_, err := client.Update(ctx, publicv1.HostPoolsUpdateRequest_builder{
+						Object: publicv1.HostPool_builder{
 							Id: hostPoolID,
-							Spec: ffv1.HostPoolSpec_builder{
-								HostSets: map[string]*ffv1.HostPoolHostSet{
-									"my-host-set": ffv1.HostPoolHostSet_builder{
+							Spec: publicv1.HostPoolSpec_builder{
+								HostSets: map[string]*publicv1.HostPoolHostSet{
+									"my-host-set": publicv1.HostPoolHostSet_builder{
 										HostClass: "cross-tenant-update-host-class",
 										Size:      3,
 									}.Build(),
@@ -546,10 +546,10 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					conn, err := tool.makeGrpcConn(tokenSource)
 					Expect(err).ToNot(HaveOccurred())
 
-					clustersClient := ffv1.NewClustersClient(conn)
-					createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-						Object: ffv1.Cluster_builder{
-							Spec: ffv1.ClusterSpec_builder{
+					clustersClient := publicv1.NewClustersClient(conn)
+					createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+						Object: publicv1.Cluster_builder{
+							Spec: publicv1.ClusterSpec_builder{
 								Template: templateId,
 							}.Build(),
 						}.Build(),
@@ -638,12 +638,12 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					conn, err := tool.makeGrpcConn(tokenSource)
 					Expect(err).ToNot(HaveOccurred())
 
-					hostPoolsClient := ffv1.NewHostPoolsClient(conn)
-					createResponse, err := hostPoolsClient.Create(ctx, ffv1.HostPoolsCreateRequest_builder{
-						Object: ffv1.HostPool_builder{
-							Spec: ffv1.HostPoolSpec_builder{
-								HostSets: map[string]*ffv1.HostPoolHostSet{
-									"my-host-set": ffv1.HostPoolHostSet_builder{
+					hostPoolsClient := publicv1.NewHostPoolsClient(conn)
+					createResponse, err := hostPoolsClient.Create(ctx, publicv1.HostPoolsCreateRequest_builder{
+						Object: publicv1.HostPool_builder{
+							Spec: publicv1.HostPoolSpec_builder{
+								HostSets: map[string]*publicv1.HostPoolHostSet{
+									"my-host-set": publicv1.HostPoolHostSet_builder{
 										HostClass: "blah",
 										Size:      3,
 									}.Build(),
@@ -716,17 +716,17 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 	})
 })
 
-func listClusters(ctx context.Context, conn *grpc.ClientConn) *ffv1.ClustersListResponse {
-	clustersClient := ffv1.NewClustersClient(conn)
-	response, err := clustersClient.List(ctx, ffv1.ClustersListRequest_builder{}.Build())
+func listClusters(ctx context.Context, conn *grpc.ClientConn) *publicv1.ClustersListResponse {
+	clustersClient := publicv1.NewClustersClient(conn)
+	response, err := clustersClient.List(ctx, publicv1.ClustersListRequest_builder{}.Build())
 	Expect(err).ToNot(HaveOccurred(), "error listing clusters")
 
 	return response
 }
 
-func listHostPools(ctx context.Context, conn *grpc.ClientConn) *ffv1.HostPoolsListResponse {
-	hostPoolsClient := ffv1.NewHostPoolsClient(conn)
-	response, err := hostPoolsClient.List(ctx, ffv1.HostPoolsListRequest_builder{}.Build())
+func listHostPools(ctx context.Context, conn *grpc.ClientConn) *publicv1.HostPoolsListResponse {
+	hostPoolsClient := publicv1.NewHostPoolsClient(conn)
+	response, err := hostPoolsClient.List(ctx, publicv1.HostPoolsListRequest_builder{}.Build())
 	Expect(err).ToNot(HaveOccurred(), "error listing host pools")
 
 	return response

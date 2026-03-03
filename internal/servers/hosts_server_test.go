@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -123,10 +123,10 @@ var _ = Describe("Hosts server", func() {
 		})
 
 		It("Creates object", func() {
-			response, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-				Object: ffv1.Host_builder{
-					Spec: ffv1.HostSpec_builder{
-						PowerState: ffv1.HostPowerState_HOST_POWER_STATE_OFF,
+			response, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+				Object: publicv1.Host_builder{
+					Spec: publicv1.HostSpec_builder{
+						PowerState: publicv1.HostPowerState_HOST_POWER_STATE_OFF,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -135,17 +135,17 @@ var _ = Describe("Hosts server", func() {
 			object := response.GetObject()
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).ToNot(BeEmpty())
-			Expect(object.GetSpec().GetPowerState()).To(Equal(ffv1.HostPowerState_HOST_POWER_STATE_OFF))
+			Expect(object.GetSpec().GetPowerState()).To(Equal(publicv1.HostPowerState_HOST_POWER_STATE_OFF))
 		})
 
 		It("List objects", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-					Object: ffv1.Host_builder{
-						Spec: ffv1.HostSpec_builder{
-							PowerState: ffv1.HostPowerState_HOST_POWER_STATE_ON,
+				_, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+					Object: publicv1.Host_builder{
+						Spec: publicv1.HostSpec_builder{
+							PowerState: publicv1.HostPowerState_HOST_POWER_STATE_ON,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -153,7 +153,7 @@ var _ = Describe("Hosts server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostsListRequest_builder{}.Build())
+			response, err := server.List(ctx, publicv1.HostsListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
 			items := response.GetItems()
@@ -164,10 +164,10 @@ var _ = Describe("Hosts server", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-					Object: ffv1.Host_builder{
-						Spec: ffv1.HostSpec_builder{
-							PowerState: ffv1.HostPowerState_HOST_POWER_STATE_ON,
+				_, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+					Object: publicv1.Host_builder{
+						Spec: publicv1.HostSpec_builder{
+							PowerState: publicv1.HostPowerState_HOST_POWER_STATE_ON,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -175,7 +175,7 @@ var _ = Describe("Hosts server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostsListRequest_builder{
+			response, err := server.List(ctx, publicv1.HostsListRequest_builder{
 				Limit: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -186,10 +186,10 @@ var _ = Describe("Hosts server", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-					Object: ffv1.Host_builder{
-						Spec: ffv1.HostSpec_builder{
-							PowerState: ffv1.HostPowerState_HOST_POWER_STATE_ON,
+				_, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+					Object: publicv1.Host_builder{
+						Spec: publicv1.HostSpec_builder{
+							PowerState: publicv1.HostPowerState_HOST_POWER_STATE_ON,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -197,7 +197,7 @@ var _ = Describe("Hosts server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostsListRequest_builder{
+			response, err := server.List(ctx, publicv1.HostsListRequest_builder{
 				Offset: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -207,12 +207,12 @@ var _ = Describe("Hosts server", func() {
 		It("List objects with order", func() {
 			// Create a few objects:
 			const count = 5
-			var objects []*ffv1.Host
+			var objects []*publicv1.Host
 			for range count {
-				response, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-					Object: ffv1.Host_builder{
-						Spec: ffv1.HostSpec_builder{
-							PowerState: ffv1.HostPowerState_HOST_POWER_STATE_ON,
+				response, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+					Object: publicv1.Host_builder{
+						Spec: publicv1.HostSpec_builder{
+							PowerState: publicv1.HostPowerState_HOST_POWER_STATE_ON,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -221,7 +221,7 @@ var _ = Describe("Hosts server", func() {
 			}
 
 			// List the objects with order:
-			response, err := server.List(ctx, ffv1.HostsListRequest_builder{
+			response, err := server.List(ctx, publicv1.HostsListRequest_builder{
 				Order: proto.String("this.id desc"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -233,12 +233,12 @@ var _ = Describe("Hosts server", func() {
 		It("List objects with filter", func() {
 			// Create a few objects:
 			const count = 10
-			var objects []*ffv1.Host
+			var objects []*publicv1.Host
 			for range count {
-				response, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-					Object: ffv1.Host_builder{
-						Spec: ffv1.HostSpec_builder{
-							PowerState: ffv1.HostPowerState_HOST_POWER_STATE_ON,
+				response, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+					Object: publicv1.Host_builder{
+						Spec: publicv1.HostSpec_builder{
+							PowerState: publicv1.HostPowerState_HOST_POWER_STATE_ON,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -248,7 +248,7 @@ var _ = Describe("Hosts server", func() {
 
 			// List the objects:
 			for _, object := range objects {
-				response, err := server.List(ctx, ffv1.HostsListRequest_builder{
+				response, err := server.List(ctx, publicv1.HostsListRequest_builder{
 					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -259,17 +259,17 @@ var _ = Describe("Hosts server", func() {
 
 		It("Get object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-				Object: ffv1.Host_builder{
-					Spec: ffv1.HostSpec_builder{
-						PowerState: ffv1.HostPowerState_HOST_POWER_STATE_OFF,
+			createResponse, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+				Object: publicv1.Host_builder{
+					Spec: publicv1.HostSpec_builder{
+						PowerState: publicv1.HostPowerState_HOST_POWER_STATE_OFF,
 					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get it:
-			getResponse, err := server.Get(ctx, ffv1.HostsGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostsGetRequest_builder{
 				Id: createResponse.GetObject().GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -278,10 +278,10 @@ var _ = Describe("Hosts server", func() {
 
 		It("Update object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-				Object: ffv1.Host_builder{
-					Spec: ffv1.HostSpec_builder{
-						PowerState: ffv1.HostPowerState_HOST_POWER_STATE_OFF,
+			createResponse, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+				Object: publicv1.Host_builder{
+					Spec: publicv1.HostSpec_builder{
+						PowerState: publicv1.HostPowerState_HOST_POWER_STATE_OFF,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -289,31 +289,31 @@ var _ = Describe("Hosts server", func() {
 			object := createResponse.GetObject()
 
 			// Update the object:
-			updateResponse, err := server.Update(ctx, ffv1.HostsUpdateRequest_builder{
-				Object: ffv1.Host_builder{
+			updateResponse, err := server.Update(ctx, publicv1.HostsUpdateRequest_builder{
+				Object: publicv1.Host_builder{
 					Id: object.GetId(),
-					Spec: ffv1.HostSpec_builder{
-						PowerState: ffv1.HostPowerState_HOST_POWER_STATE_ON,
+					Spec: publicv1.HostSpec_builder{
+						PowerState: publicv1.HostPowerState_HOST_POWER_STATE_ON,
 					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(updateResponse.GetObject().GetSpec().GetPowerState()).To(Equal(ffv1.HostPowerState_HOST_POWER_STATE_ON))
+			Expect(updateResponse.GetObject().GetSpec().GetPowerState()).To(Equal(publicv1.HostPowerState_HOST_POWER_STATE_ON))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.HostsGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostsGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(getResponse.GetObject().GetSpec().GetPowerState()).To(Equal(ffv1.HostPowerState_HOST_POWER_STATE_ON))
+			Expect(getResponse.GetObject().GetSpec().GetPowerState()).To(Equal(publicv1.HostPowerState_HOST_POWER_STATE_ON))
 		})
 
 		It("Delete object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-				Object: ffv1.Host_builder{
-					Spec: ffv1.HostSpec_builder{
-						PowerState: ffv1.HostPowerState_HOST_POWER_STATE_OFF,
+			createResponse, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+				Object: publicv1.Host_builder{
+					Spec: publicv1.HostSpec_builder{
+						PowerState: publicv1.HostPowerState_HOST_POWER_STATE_OFF,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -331,13 +331,13 @@ var _ = Describe("Hosts server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Delete the object:
-			_, err = server.Delete(ctx, ffv1.HostsDeleteRequest_builder{
+			_, err = server.Delete(ctx, publicv1.HostsDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.HostsGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostsGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -347,10 +347,10 @@ var _ = Describe("Hosts server", func() {
 
 		It("Prevents status field updates", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostsCreateRequest_builder{
-				Object: ffv1.Host_builder{
-					Spec: ffv1.HostSpec_builder{
-						PowerState: ffv1.HostPowerState_HOST_POWER_STATE_OFF,
+			createResponse, err := server.Create(ctx, publicv1.HostsCreateRequest_builder{
+				Object: publicv1.Host_builder{
+					Spec: publicv1.HostSpec_builder{
+						PowerState: publicv1.HostPowerState_HOST_POWER_STATE_OFF,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -358,21 +358,21 @@ var _ = Describe("Hosts server", func() {
 			object := createResponse.GetObject()
 
 			// Try to update including status field (should be ignored):
-			updateResponse, err := server.Update(ctx, ffv1.HostsUpdateRequest_builder{
-				Object: ffv1.Host_builder{
+			updateResponse, err := server.Update(ctx, publicv1.HostsUpdateRequest_builder{
+				Object: publicv1.Host_builder{
 					Id: object.GetId(),
-					Spec: ffv1.HostSpec_builder{
-						PowerState: ffv1.HostPowerState_HOST_POWER_STATE_ON,
+					Spec: publicv1.HostSpec_builder{
+						PowerState: publicv1.HostPowerState_HOST_POWER_STATE_ON,
 					}.Build(),
-					Status: ffv1.HostStatus_builder{
-						PowerState: ffv1.HostPowerState_HOST_POWER_STATE_ON,
+					Status: publicv1.HostStatus_builder{
+						PowerState: publicv1.HostPowerState_HOST_POWER_STATE_ON,
 					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
 			// The spec should be updated but status should remain unchanged:
-			Expect(updateResponse.GetObject().GetSpec().GetPowerState()).To(Equal(ffv1.HostPowerState_HOST_POWER_STATE_ON))
+			Expect(updateResponse.GetObject().GetSpec().GetPowerState()).To(Equal(publicv1.HostPowerState_HOST_POWER_STATE_ON))
 			// Status field should be ignored in updates from public API
 		})
 	})

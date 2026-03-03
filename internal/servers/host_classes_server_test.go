@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -123,8 +123,8 @@ var _ = Describe("Host classes server", func() {
 		})
 
 		It("Creates object", func() {
-			response, err := server.Create(ctx, ffv1.HostClassesCreateRequest_builder{
-				Object: ffv1.HostClass_builder{}.Build(),
+			response, err := server.Create(ctx, publicv1.HostClassesCreateRequest_builder{
+				Object: publicv1.HostClass_builder{}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -137,14 +137,14 @@ var _ = Describe("Host classes server", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.HostClassesCreateRequest_builder{
-					Object: ffv1.HostClass_builder{}.Build(),
+				_, err := server.Create(ctx, publicv1.HostClassesCreateRequest_builder{
+					Object: publicv1.HostClass_builder{}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostClassesListRequest_builder{}.Build())
+			response, err := server.List(ctx, publicv1.HostClassesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
 			items := response.GetItems()
@@ -155,14 +155,14 @@ var _ = Describe("Host classes server", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.HostClassesCreateRequest_builder{
-					Object: ffv1.HostClass_builder{}.Build(),
+				_, err := server.Create(ctx, publicv1.HostClassesCreateRequest_builder{
+					Object: publicv1.HostClass_builder{}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostClassesListRequest_builder{
+			response, err := server.List(ctx, publicv1.HostClassesListRequest_builder{
 				Limit: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -173,14 +173,14 @@ var _ = Describe("Host classes server", func() {
 			// Create a few objects:
 			const count = 10
 			for range count {
-				_, err := server.Create(ctx, ffv1.HostClassesCreateRequest_builder{
-					Object: ffv1.HostClass_builder{}.Build(),
+				_, err := server.Create(ctx, publicv1.HostClassesCreateRequest_builder{
+					Object: publicv1.HostClass_builder{}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.HostClassesListRequest_builder{
+			response, err := server.List(ctx, publicv1.HostClassesListRequest_builder{
 				Offset: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -190,10 +190,10 @@ var _ = Describe("Host classes server", func() {
 		It("List objects with filter", func() {
 			// Create a few objects:
 			const count = 10
-			var objects []*ffv1.HostClass
+			var objects []*publicv1.HostClass
 			for range count {
-				response, err := server.Create(ctx, ffv1.HostClassesCreateRequest_builder{
-					Object: ffv1.HostClass_builder{}.Build(),
+				response, err := server.Create(ctx, publicv1.HostClassesCreateRequest_builder{
+					Object: publicv1.HostClass_builder{}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				objects = append(objects, response.GetObject())
@@ -201,7 +201,7 @@ var _ = Describe("Host classes server", func() {
 
 			// List the objects:
 			for _, object := range objects {
-				response, err := server.List(ctx, ffv1.HostClassesListRequest_builder{
+				response, err := server.List(ctx, publicv1.HostClassesListRequest_builder{
 					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -212,13 +212,13 @@ var _ = Describe("Host classes server", func() {
 
 		It("Get object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostClassesCreateRequest_builder{
-				Object: ffv1.HostClass_builder{}.Build(),
+			createResponse, err := server.Create(ctx, publicv1.HostClassesCreateRequest_builder{
+				Object: publicv1.HostClass_builder{}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get it:
-			getResponse, err := server.Get(ctx, ffv1.HostClassesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostClassesGetRequest_builder{
 				Id: createResponse.GetObject().GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -227,8 +227,8 @@ var _ = Describe("Host classes server", func() {
 
 		It("Update object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostClassesCreateRequest_builder{
-				Object: ffv1.HostClass_builder{
+			createResponse, err := server.Create(ctx, publicv1.HostClassesCreateRequest_builder{
+				Object: publicv1.HostClass_builder{
 					Title:       "My title",
 					Description: "My description.",
 				}.Build(),
@@ -237,8 +237,8 @@ var _ = Describe("Host classes server", func() {
 			object := createResponse.GetObject()
 
 			// Update the object:
-			updateResponse, err := server.Update(ctx, ffv1.HostClassesUpdateRequest_builder{
-				Object: ffv1.HostClass_builder{
+			updateResponse, err := server.Update(ctx, publicv1.HostClassesUpdateRequest_builder{
+				Object: publicv1.HostClass_builder{
 					Id:          object.GetId(),
 					Title:       "Your title",
 					Description: "Your description.",
@@ -249,7 +249,7 @@ var _ = Describe("Host classes server", func() {
 			Expect(updateResponse.GetObject().GetDescription()).To(Equal("Your description."))
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.HostClassesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostClassesGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -259,8 +259,8 @@ var _ = Describe("Host classes server", func() {
 
 		It("Delete object", func() {
 			// Create the object:
-			createResponse, err := server.Create(ctx, ffv1.HostClassesCreateRequest_builder{
-				Object: ffv1.HostClass_builder{}.Build(),
+			createResponse, err := server.Create(ctx, publicv1.HostClassesCreateRequest_builder{
+				Object: publicv1.HostClass_builder{}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
@@ -276,13 +276,13 @@ var _ = Describe("Host classes server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Delete the object:
-			_, err = server.Delete(ctx, ffv1.HostClassesDeleteRequest_builder{
+			_, err = server.Delete(ctx, publicv1.HostClassesDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get and verify:
-			getResponse, err := server.Get(ctx, ffv1.HostClassesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.HostClassesGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())

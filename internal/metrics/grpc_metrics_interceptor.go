@@ -50,7 +50,7 @@ import (
 //
 // The metrics will have the following labels:
 //
-//	service - Name of the gRPC service, for example fulfillment.v1.Clusters.
+//	service - Name of the gRPC service, for example osac.public.v1.Clusters.
 //	method - Name of the gRPC method, for example Create.
 //	code - gRPC response code, for example OK or NotFound.
 //

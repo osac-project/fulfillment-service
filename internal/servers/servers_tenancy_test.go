@@ -23,9 +23,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
@@ -127,9 +126,9 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a cluster using the public server to verify tenant assignment:
-		response, err := clustersServer.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: "my-template",
 				}.Build(),
 			}.Build(),
@@ -198,9 +197,9 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Attempt to create a cluster and verify it fails:
-		response, err := clustersServer.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: "my-template",
 				}.Build(),
 			}.Build(),
@@ -251,12 +250,12 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Attempt to create a cluster with explicitly empty tenants and verify it fails:
-		response, err := clustersServer.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Metadata: sharedv1.Metadata_builder{
+		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Metadata: publicv1.Metadata_builder{
 					Tenants: []string{},
 				}.Build(),
-				Spec: ffv1.ClusterSpec_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: "my-template",
 				}.Build(),
 			}.Build(),

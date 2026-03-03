@@ -1,0 +1,73 @@
+//
+// Copyright (c) 2025 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+// the License. You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+//
+
+syntax = "proto3";
+
+package osac.private.v1;
+
+import "google/protobuf/timestamp.proto";
+import "osac/private/v1/condition_status_type.proto";
+import "osac/private/v1/metadata_type.proto";
+
+// Contains the details about the host that are available only for the system.
+message Host {
+  // Public data.
+  string id = 1;
+  Metadata metadata = 2;
+  HostSpec spec = 3;
+  HostStatus status = 4;
+}
+
+message HostSpec {
+  // Copies of the public fields.
+  HostPowerState power_state = 1;
+}
+
+message HostStatus {
+  // Copies of the public fields.
+  HostState state = 1;
+  HostPowerState power_state = 2;
+  repeated HostCondition conditions = 3;
+
+  // Identifier of the host pool that was selected for this host.
+  string host_pool = 4;
+}
+
+enum HostState {
+  HOST_STATE_UNSPECIFIED = 0;
+  HOST_STATE_PROGRESSING = 1;
+  HOST_STATE_READY = 2;
+  HOST_STATE_FAILED = 3;
+}
+
+message HostCondition {
+  HostConditionType type = 1;
+  ConditionStatus status = 2;
+  google.protobuf.Timestamp last_transition_time = 3;
+  optional string reason = 4;
+  optional string message = 5;
+}
+
+enum HostConditionType {
+  HOST_CONDITION_TYPE_UNSPECIFIED = 0;
+  HOST_CONDITION_TYPE_PROGRESSING = 1;
+  HOST_CONDITION_TYPE_READY = 2;
+  HOST_CONDITION_TYPE_FAILED = 3;
+  HOST_CONDITION_TYPE_DEGRADED = 4;
+}
+
+enum HostPowerState {
+  HOST_POWER_STATE_UNSPECIFIED = 0;
+  HOST_POWER_STATE_ON = 1;
+  HOST_POWER_STATE_OFF = 2;
+}

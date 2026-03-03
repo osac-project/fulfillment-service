@@ -25,8 +25,8 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -192,14 +192,14 @@ var _ = Describe("Compute instances server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			templateParams["memory_gb"] = memoryParam
 
-			response, err := server.Create(ctx, ffv1.ComputeInstancesCreateRequest_builder{
-				Object: ffv1.ComputeInstance_builder{
-					Spec: ffv1.ComputeInstanceSpec_builder{
+			response, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+				Object: publicv1.ComputeInstance_builder{
+					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template:           "general.small",
 						TemplateParameters: templateParams,
 					}.Build(),
-					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+					Status: publicv1.ComputeInstanceStatus_builder{
+						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -209,7 +209,7 @@ var _ = Describe("Compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).ToNot(BeEmpty())
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.small"))
-			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING))
+			Expect(object.GetStatus().GetState()).To(Equal(publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING))
 		})
 
 		It("List objects", func() {
@@ -219,13 +219,13 @@ var _ = Describe("Compute instances server", func() {
 				templateID := fmt.Sprintf("template-%d", i)
 				createTemplate(templateID)
 
-				_, err := server.Create(ctx, ffv1.ComputeInstancesCreateRequest_builder{
-					Object: ffv1.ComputeInstance_builder{
-						Spec: ffv1.ComputeInstanceSpec_builder{
+				_, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+					Object: publicv1.ComputeInstance_builder{
+						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
 						}.Build(),
-						Status: ffv1.ComputeInstanceStatus_builder{
-							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						Status: publicv1.ComputeInstanceStatus_builder{
+							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -233,7 +233,7 @@ var _ = Describe("Compute instances server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, ffv1.ComputeInstancesListRequest_builder{}.Build())
+			response, err := server.List(ctx, publicv1.ComputeInstancesListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
 			items := response.GetItems()
@@ -247,13 +247,13 @@ var _ = Describe("Compute instances server", func() {
 				templateID := fmt.Sprintf("template-limit-%d", i)
 				createTemplate(templateID)
 
-				_, err := server.Create(ctx, ffv1.ComputeInstancesCreateRequest_builder{
-					Object: ffv1.ComputeInstance_builder{
-						Spec: ffv1.ComputeInstanceSpec_builder{
+				_, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+					Object: publicv1.ComputeInstance_builder{
+						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
 						}.Build(),
-						Status: ffv1.ComputeInstanceStatus_builder{
-							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						Status: publicv1.ComputeInstanceStatus_builder{
+							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -261,7 +261,7 @@ var _ = Describe("Compute instances server", func() {
 			}
 
 			// List the objects with limit:
-			response, err := server.List(ctx, ffv1.ComputeInstancesListRequest_builder{
+			response, err := server.List(ctx, publicv1.ComputeInstancesListRequest_builder{
 				Limit: proto.Int32(5),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -277,13 +277,13 @@ var _ = Describe("Compute instances server", func() {
 				templateID := fmt.Sprintf("template-offset-%d", i)
 				createTemplate(templateID)
 
-				_, err := server.Create(ctx, ffv1.ComputeInstancesCreateRequest_builder{
-					Object: ffv1.ComputeInstance_builder{
-						Spec: ffv1.ComputeInstanceSpec_builder{
+				_, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+					Object: publicv1.ComputeInstance_builder{
+						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
 						}.Build(),
-						Status: ffv1.ComputeInstanceStatus_builder{
-							State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						Status: publicv1.ComputeInstanceStatus_builder{
+							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -291,7 +291,7 @@ var _ = Describe("Compute instances server", func() {
 			}
 
 			// List the objects with offset:
-			response, err := server.List(ctx, ffv1.ComputeInstancesListRequest_builder{
+			response, err := server.List(ctx, publicv1.ComputeInstancesListRequest_builder{
 				Offset: proto.Int32(5),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -305,13 +305,13 @@ var _ = Describe("Compute instances server", func() {
 			createTemplate("general.small")
 
 			// Create an object:
-			createResponse, err := server.Create(ctx, ffv1.ComputeInstancesCreateRequest_builder{
-				Object: ffv1.ComputeInstance_builder{
-					Spec: ffv1.ComputeInstanceSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+				Object: publicv1.ComputeInstance_builder{
+					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
 					}.Build(),
-					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+					Status: publicv1.ComputeInstanceStatus_builder{
+						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -323,7 +323,7 @@ var _ = Describe("Compute instances server", func() {
 			Expect(id).ToNot(BeEmpty())
 
 			// Get the object:
-			getResponse, err := server.Get(ctx, ffv1.ComputeInstancesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ComputeInstancesGetRequest_builder{
 				Id: id,
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -332,7 +332,7 @@ var _ = Describe("Compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).To(Equal(id))
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.small"))
-			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING))
+			Expect(object.GetStatus().GetState()).To(Equal(publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING))
 		})
 
 		It("Updates object", func() {
@@ -341,13 +341,13 @@ var _ = Describe("Compute instances server", func() {
 			createTemplate("general.large")
 
 			// Create an object:
-			createResponse, err := server.Create(ctx, ffv1.ComputeInstancesCreateRequest_builder{
-				Object: ffv1.ComputeInstance_builder{
-					Spec: ffv1.ComputeInstanceSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+				Object: publicv1.ComputeInstance_builder{
+					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
 					}.Build(),
-					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+					Status: publicv1.ComputeInstanceStatus_builder{
+						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -359,14 +359,14 @@ var _ = Describe("Compute instances server", func() {
 			Expect(id).ToNot(BeEmpty())
 
 			// Update the object:
-			updateResponse, err := server.Update(ctx, ffv1.ComputeInstancesUpdateRequest_builder{
-				Object: ffv1.ComputeInstance_builder{
+			updateResponse, err := server.Update(ctx, publicv1.ComputeInstancesUpdateRequest_builder{
+				Object: publicv1.ComputeInstance_builder{
 					Id: id,
-					Spec: ffv1.ComputeInstanceSpec_builder{
+					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.large",
 					}.Build(),
-					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
+					Status: publicv1.ComputeInstanceStatus_builder{
+						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -379,7 +379,7 @@ var _ = Describe("Compute instances server", func() {
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).To(Equal(id))
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.large"))
-			Expect(object.GetStatus().GetState()).To(Equal(ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING))
+			Expect(object.GetStatus().GetState()).To(Equal(publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING))
 		})
 
 		It("Deletes object", func() {
@@ -387,13 +387,13 @@ var _ = Describe("Compute instances server", func() {
 			createTemplate("general.small")
 
 			// Create an object:
-			createResponse, err := server.Create(ctx, ffv1.ComputeInstancesCreateRequest_builder{
-				Object: ffv1.ComputeInstance_builder{
-					Spec: ffv1.ComputeInstanceSpec_builder{
+			createResponse, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+				Object: publicv1.ComputeInstance_builder{
+					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
 					}.Build(),
-					Status: ffv1.ComputeInstanceStatus_builder{
-						State: ffv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+					Status: publicv1.ComputeInstanceStatus_builder{
+						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -405,14 +405,14 @@ var _ = Describe("Compute instances server", func() {
 			Expect(id).ToNot(BeEmpty())
 
 			// Delete the object:
-			deleteResponse, err := server.Delete(ctx, ffv1.ComputeInstancesDeleteRequest_builder{
+			deleteResponse, err := server.Delete(ctx, publicv1.ComputeInstancesDeleteRequest_builder{
 				Id: id,
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(deleteResponse).ToNot(BeNil())
 
 			// Verify the object is deleted:
-			getResponse, err := server.Get(ctx, ffv1.ComputeInstancesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ComputeInstancesGetRequest_builder{
 				Id: id,
 			}.Build())
 			Expect(err).To(HaveOccurred())
@@ -421,7 +421,7 @@ var _ = Describe("Compute instances server", func() {
 
 		It("Handles non-existent object", func() {
 			// Try to get a non-existent object:
-			getResponse, err := server.Get(ctx, ffv1.ComputeInstancesGetRequest_builder{
+			getResponse, err := server.Get(ctx, publicv1.ComputeInstancesGetRequest_builder{
 				Id: "non-existent-id",
 			}.Build())
 			Expect(err).To(HaveOccurred())
@@ -430,28 +430,28 @@ var _ = Describe("Compute instances server", func() {
 
 		It("Handles empty object in create request", func() {
 			// Try to create with nil object:
-			response, err := server.Create(ctx, ffv1.ComputeInstancesCreateRequest_builder{}.Build())
+			response, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{}.Build())
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
 		})
 
 		It("Handles empty object in update request", func() {
 			// Try to update with nil object:
-			response, err := server.Update(ctx, ffv1.ComputeInstancesUpdateRequest_builder{}.Build())
+			response, err := server.Update(ctx, publicv1.ComputeInstancesUpdateRequest_builder{}.Build())
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
 		})
 
 		It("Handles empty ID in get request", func() {
 			// Try to get with empty ID:
-			response, err := server.Get(ctx, ffv1.ComputeInstancesGetRequest_builder{}.Build())
+			response, err := server.Get(ctx, publicv1.ComputeInstancesGetRequest_builder{}.Build())
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
 		})
 
 		It("Handles empty ID in delete request", func() {
 			// Try to delete with empty ID:
-			response, err := server.Delete(ctx, ffv1.ComputeInstancesDeleteRequest_builder{}.Build())
+			response, err := server.Delete(ctx, publicv1.ComputeInstancesDeleteRequest_builder{}.Build())
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
 		})

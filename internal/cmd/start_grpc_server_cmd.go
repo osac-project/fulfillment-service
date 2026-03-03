@@ -34,10 +34,8 @@ import (
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/osac-project/fulfillment-service/internal"
-	eventsv1 "github.com/osac-project/fulfillment-service/internal/api/events/v1"
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	metadatav1 "github.com/osac-project/fulfillment-service/internal/api/metadata/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/logging"
@@ -394,14 +392,14 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 
 	// Create the metadata server:
 	c.logger.InfoContext(ctx, "Creating metadata server")
-	metadataServer, err := servers.NewMetadataServer().
+	capabilitiesServer, err := servers.NewCapabilitiesServer().
 		SetLogger(c.logger).
 		AddAutnTrustedTokenIssuers(c.args.trustedTokenIssuers...).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create metadata server: %w", err)
 	}
-	metadatav1.RegisterMetadataServer(grpcServer, metadataServer)
+	publicv1.RegisterCapabilitiesServer(grpcServer, capabilitiesServer)
 
 	// Create the cluster templates server:
 	c.logger.InfoContext(ctx, "Creating cluster templates server")
@@ -414,7 +412,7 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	if err != nil {
 		return fmt.Errorf("failed to create cluster templates server: %w", err)
 	}
-	ffv1.RegisterClusterTemplatesServer(grpcServer, clusterTemplatesServer)
+	publicv1.RegisterClusterTemplatesServer(grpcServer, clusterTemplatesServer)
 
 	// Create the private cluster templates server:
 	c.logger.InfoContext(ctx, "Creating private cluster templates server")
@@ -440,7 +438,7 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	if err != nil {
 		return fmt.Errorf("failed to create clusters server: %w", err)
 	}
-	ffv1.RegisterClustersServer(grpcServer, clustersServer)
+	publicv1.RegisterClustersServer(grpcServer, clustersServer)
 
 	// Create the private clusters server:
 	c.logger.InfoContext(ctx, "Creating private clusters server")
@@ -466,7 +464,7 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	if err != nil {
 		return fmt.Errorf("failed to create host classes server: %w", err)
 	}
-	ffv1.RegisterHostClassesServer(grpcServer, hostClassesServer)
+	publicv1.RegisterHostClassesServer(grpcServer, hostClassesServer)
 
 	// Create the private host classes server:
 	c.logger.InfoContext(ctx, "Creating private host classes server")
@@ -492,7 +490,7 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	if err != nil {
 		return fmt.Errorf("failed to create hosts server: %w", err)
 	}
-	ffv1.RegisterHostsServer(grpcServer, hostsServer)
+	publicv1.RegisterHostsServer(grpcServer, hostsServer)
 
 	// Create the private hosts server:
 	c.logger.InfoContext(ctx, "Creating private hosts server")
@@ -518,7 +516,7 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	if err != nil {
 		return fmt.Errorf("failed to create host pools server: %w", err)
 	}
-	ffv1.RegisterHostPoolsServer(grpcServer, hostPoolsServer)
+	publicv1.RegisterHostPoolsServer(grpcServer, hostPoolsServer)
 
 	// Create the private host pools server:
 	c.logger.InfoContext(ctx, "Creating private host pools server")
@@ -544,7 +542,7 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	if err != nil {
 		return fmt.Errorf("failed to create compute instance templates server: %w", err)
 	}
-	ffv1.RegisterComputeInstanceTemplatesServer(grpcServer, computeInstanceTemplatesServer)
+	publicv1.RegisterComputeInstanceTemplatesServer(grpcServer, computeInstanceTemplatesServer)
 
 	// Create the private compute instance templates server:
 	c.logger.InfoContext(ctx, "Creating private compute instance templates server")
@@ -570,7 +568,7 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	if err != nil {
 		return fmt.Errorf("failed to create compute instances server: %w", err)
 	}
-	ffv1.RegisterComputeInstancesServer(grpcServer, computeInstancesServer)
+	publicv1.RegisterComputeInstancesServer(grpcServer, computeInstancesServer)
 
 	// Create the private compute instances server:
 	c.logger.InfoContext(ctx, "Creating private compute instances server")
@@ -621,7 +619,7 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 			)
 		}
 	}()
-	eventsv1.RegisterEventsServer(grpcServer, eventsServer)
+	publicv1.RegisterEventsServer(grpcServer, eventsServer)
 
 	// Create the private events server:
 	c.logger.InfoContext(ctx, "Creating private events server")

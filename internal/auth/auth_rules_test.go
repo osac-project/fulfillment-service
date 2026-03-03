@@ -135,7 +135,7 @@ var _ = Describe("Authorization rules", Ordered, func() {
 			"context": map[string]any{
 				"request": map[string]any{
 					"http": map[string]any{
-						"path": "/fulfillment.v1.Clusters/Create",
+						"path": "/osac.public.v1.Clusters/Create",
 					},
 				},
 			},
@@ -173,7 +173,7 @@ var _ = Describe("Authorization rules", Ordered, func() {
 			"context": map[string]any{
 				"request": map[string]any{
 					"http": map[string]any{
-						"path": "/fulfillment.v1.Clusters/Create",
+						"path": "/osac.public.v1.Clusters/Create",
 					},
 				},
 			},
@@ -211,7 +211,7 @@ var _ = Describe("Authorization rules", Ordered, func() {
 			"context": map[string]any{
 				"request": map[string]any{
 					"http": map[string]any{
-						"path": "/private.v1.Clusters/Create",
+						"path": "/osac.private.v1.Clusters/Create",
 					},
 				},
 			},

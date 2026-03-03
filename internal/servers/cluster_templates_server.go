@@ -21,8 +21,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -34,15 +34,15 @@ type ClusterTemplatesServerBuilder struct {
 	tenancyLogic     auth.TenancyLogic
 }
 
-var _ ffv1.ClusterTemplatesServer = (*ClusterTemplatesServer)(nil)
+var _ publicv1.ClusterTemplatesServer = (*ClusterTemplatesServer)(nil)
 
 type ClusterTemplatesServer struct {
-	ffv1.UnimplementedClusterTemplatesServer
+	publicv1.UnimplementedClusterTemplatesServer
 
 	logger    *slog.Logger
 	delegate  privatev1.ClusterTemplatesServer
-	inMapper  *GenericMapper[*ffv1.ClusterTemplate, *privatev1.ClusterTemplate]
-	outMapper *GenericMapper[*privatev1.ClusterTemplate, *ffv1.ClusterTemplate]
+	inMapper  *GenericMapper[*publicv1.ClusterTemplate, *privatev1.ClusterTemplate]
+	outMapper *GenericMapper[*privatev1.ClusterTemplate, *publicv1.ClusterTemplate]
 }
 
 func NewClusterTemplatesServer() *ClusterTemplatesServerBuilder {
@@ -85,14 +85,14 @@ func (b *ClusterTemplatesServerBuilder) Build() (result *ClusterTemplatesServer,
 	}
 
 	// Create the mappers:
-	inMapper, err := NewGenericMapper[*ffv1.ClusterTemplate, *privatev1.ClusterTemplate]().
+	inMapper, err := NewGenericMapper[*publicv1.ClusterTemplate, *privatev1.ClusterTemplate]().
 		SetLogger(b.logger).
 		SetStrict(true).
 		Build()
 	if err != nil {
 		return
 	}
-	outMapper, err := NewGenericMapper[*privatev1.ClusterTemplate, *ffv1.ClusterTemplate]().
+	outMapper, err := NewGenericMapper[*privatev1.ClusterTemplate, *publicv1.ClusterTemplate]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
@@ -122,7 +122,7 @@ func (b *ClusterTemplatesServerBuilder) Build() (result *ClusterTemplatesServer,
 }
 
 func (s *ClusterTemplatesServer) List(ctx context.Context,
-	request *ffv1.ClusterTemplatesListRequest) (response *ffv1.ClusterTemplatesListResponse, err error) {
+	request *publicv1.ClusterTemplatesListRequest) (response *publicv1.ClusterTemplatesListResponse, err error) {
 	// Create private request with same parameters:
 	privateRequest := &privatev1.ClusterTemplatesListRequest{}
 	privateRequest.SetOffset(request.GetOffset())
@@ -137,9 +137,9 @@ func (s *ClusterTemplatesServer) List(ctx context.Context,
 
 	// Map private response to public format:
 	privateItems := privateResponse.GetItems()
-	publicItems := make([]*ffv1.ClusterTemplate, len(privateItems))
+	publicItems := make([]*publicv1.ClusterTemplate, len(privateItems))
 	for i, privateItem := range privateItems {
-		publicItem := &ffv1.ClusterTemplate{}
+		publicItem := &publicv1.ClusterTemplate{}
 		err = s.outMapper.Copy(ctx, privateItem, publicItem)
 		if err != nil {
 			s.logger.ErrorContext(
@@ -153,7 +153,7 @@ func (s *ClusterTemplatesServer) List(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClusterTemplatesListResponse{}
+	response = &publicv1.ClusterTemplatesListResponse{}
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
@@ -161,7 +161,7 @@ func (s *ClusterTemplatesServer) List(ctx context.Context,
 }
 
 func (s *ClusterTemplatesServer) Get(ctx context.Context,
-	request *ffv1.ClusterTemplatesGetRequest) (response *ffv1.ClusterTemplatesGetResponse, err error) {
+	request *publicv1.ClusterTemplatesGetRequest) (response *publicv1.ClusterTemplatesGetResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.ClusterTemplatesGetRequest{}
 	privateRequest.SetId(request.GetId())
@@ -174,7 +174,7 @@ func (s *ClusterTemplatesServer) Get(ctx context.Context,
 
 	// Map private response to public format:
 	privateClusterTemplate := privateResponse.GetObject()
-	publicClusterTemplate := &ffv1.ClusterTemplate{}
+	publicClusterTemplate := &publicv1.ClusterTemplate{}
 	err = s.outMapper.Copy(ctx, privateClusterTemplate, publicClusterTemplate)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -186,13 +186,13 @@ func (s *ClusterTemplatesServer) Get(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClusterTemplatesGetResponse{}
+	response = &publicv1.ClusterTemplatesGetResponse{}
 	response.SetObject(publicClusterTemplate)
 	return
 }
 
 func (s *ClusterTemplatesServer) Create(ctx context.Context,
-	request *ffv1.ClusterTemplatesCreateRequest) (response *ffv1.ClusterTemplatesCreateResponse, err error) {
+	request *publicv1.ClusterTemplatesCreateRequest) (response *publicv1.ClusterTemplatesCreateResponse, err error) {
 	// Map the public cluster template to private format:
 	publicClusterTemplate := request.GetObject()
 	if publicClusterTemplate == nil {
@@ -221,7 +221,7 @@ func (s *ClusterTemplatesServer) Create(ctx context.Context,
 
 	// Map the private response back to public format:
 	createdPrivateClusterTemplate := privateResponse.GetObject()
-	createdPublicClusterTemplate := &ffv1.ClusterTemplate{}
+	createdPublicClusterTemplate := &publicv1.ClusterTemplate{}
 	err = s.outMapper.Copy(ctx, createdPrivateClusterTemplate, createdPublicClusterTemplate)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -234,13 +234,13 @@ func (s *ClusterTemplatesServer) Create(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClusterTemplatesCreateResponse{}
+	response = &publicv1.ClusterTemplatesCreateResponse{}
 	response.SetObject(createdPublicClusterTemplate)
 	return
 }
 
 func (s *ClusterTemplatesServer) Update(ctx context.Context,
-	request *ffv1.ClusterTemplatesUpdateRequest) (response *ffv1.ClusterTemplatesUpdateResponse, err error) {
+	request *publicv1.ClusterTemplatesUpdateRequest) (response *publicv1.ClusterTemplatesUpdateResponse, err error) {
 	// Validate the request:
 	publicClusterTemplate := request.GetObject()
 	if publicClusterTemplate == nil {
@@ -284,7 +284,7 @@ func (s *ClusterTemplatesServer) Update(ctx context.Context,
 
 	// Map the private response back to public format:
 	updatedPrivateClusterTemplate := privateResponse.GetObject()
-	updatedPublicClusterTemplate := &ffv1.ClusterTemplate{}
+	updatedPublicClusterTemplate := &publicv1.ClusterTemplate{}
 	err = s.outMapper.Copy(ctx, updatedPrivateClusterTemplate, updatedPublicClusterTemplate)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -297,13 +297,13 @@ func (s *ClusterTemplatesServer) Update(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClusterTemplatesUpdateResponse{}
+	response = &publicv1.ClusterTemplatesUpdateResponse{}
 	response.SetObject(updatedPublicClusterTemplate)
 	return
 }
 
 func (s *ClusterTemplatesServer) Delete(ctx context.Context,
-	request *ffv1.ClusterTemplatesDeleteRequest) (response *ffv1.ClusterTemplatesDeleteResponse, err error) {
+	request *publicv1.ClusterTemplatesDeleteRequest) (response *publicv1.ClusterTemplatesDeleteResponse, err error) {
 	// Create private request:
 	privateRequest := &privatev1.ClusterTemplatesDeleteRequest{}
 	privateRequest.SetId(request.GetId())
@@ -315,6 +315,6 @@ func (s *ClusterTemplatesServer) Delete(ctx context.Context,
 	}
 
 	// Create the public response:
-	response = &ffv1.ClusterTemplatesDeleteResponse{}
+	response = &publicv1.ClusterTemplatesDeleteResponse{}
 	return
 }

@@ -29,8 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/annotations"
@@ -269,7 +268,7 @@ func (t *task) setConditionDefaults(value privatev1.ComputeInstanceConditionType
 	}
 	// Only set default if condition doesn't exist
 	if !exists {
-		t.updateCondition(value, sharedv1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
+		t.updateCondition(value, privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
 	}
 }
 
@@ -429,7 +428,7 @@ func (t *task) removeFinalizer() {
 }
 
 // updateCondition updates or creates a condition with the specified type, status, reason, and message.
-func (t *task) updateCondition(conditionType privatev1.ComputeInstanceConditionType, status sharedv1.ConditionStatus,
+func (t *task) updateCondition(conditionType privatev1.ComputeInstanceConditionType, status privatev1.ConditionStatus,
 	reason string, message string) {
 	conditions := t.computeInstance.GetStatus().GetConditions()
 	updated := false

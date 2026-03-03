@@ -22,16 +22,15 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
-	sharedv1 "github.com/osac-project/fulfillment-service/internal/api/shared/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Annotations", func() {
 	var (
 		ctx               context.Context
-		clustersClient    ffv1.ClustersClient
+		clustersClient    publicv1.ClustersClient
 		hostClassesClient privatev1.HostClassesClient
 		templatesClient   privatev1.ClusterTemplatesClient
 		hostClassId       string
@@ -40,7 +39,7 @@ var _ = Describe("Annotations", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		clustersClient = ffv1.NewClustersClient(tool.UserConn())
+		clustersClient = publicv1.NewClustersClient(tool.UserConn())
 		hostClassesClient = privatev1.NewHostClassesClient(tool.AdminConn())
 		templatesClient = privatev1.NewClusterTemplatesClient(tool.AdminConn())
 
@@ -82,15 +81,15 @@ var _ = Describe("Annotations", func() {
 	})
 
 	It("Can create a cluster with annotations", func() {
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Metadata: sharedv1.Metadata_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Metadata: publicv1.Metadata_builder{
 					Annotations: map[string]string{
 						"example.com/annotation": "my-annotation",
 						"simple":                 "value",
 					},
 				}.Build(),
-				Spec: ffv1.ClusterSpec_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -98,7 +97,7 @@ var _ = Describe("Annotations", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -107,7 +106,7 @@ var _ = Describe("Annotations", func() {
 		Expect(annotations).To(HaveKeyWithValue("example.com/annotation", "my-annotation"))
 		Expect(annotations).To(HaveKeyWithValue("simple", "value"))
 
-		getResponse, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -118,9 +117,9 @@ var _ = Describe("Annotations", func() {
 	})
 
 	It("Can update a cluster with annotations", func() {
-		createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-			Object: ffv1.Cluster_builder{
-				Spec: ffv1.ClusterSpec_builder{
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -128,22 +127,22 @@ var _ = Describe("Annotations", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		DeferCleanup(func() {
-			_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		updateResponse, err := clustersClient.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-			Object: ffv1.Cluster_builder{
+		updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+			Object: publicv1.Cluster_builder{
 				Id: object.GetId(),
-				Metadata: sharedv1.Metadata_builder{
+				Metadata: publicv1.Metadata_builder{
 					Annotations: map[string]string{
 						"example.com/updated": "updated-annotation",
 						"another":             "second",
 					},
 				}.Build(),
-				Spec: ffv1.ClusterSpec_builder{
+				Spec: publicv1.ClusterSpec_builder{
 					Template: templateId,
 				}.Build(),
 			}.Build(),
@@ -154,7 +153,7 @@ var _ = Describe("Annotations", func() {
 		Expect(annotations).To(HaveKeyWithValue("example.com/updated", "updated-annotation"))
 		Expect(annotations).To(HaveKeyWithValue("another", "second"))
 
-		getResponse, err := clustersClient.Get(ctx, ffv1.ClustersGetRequest_builder{
+		getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 			Id: object.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -168,14 +167,14 @@ var _ = Describe("Annotations", func() {
 		"Rejects invalid annotations on create and update",
 		func(key string, expected string) {
 			By("Creating a cluster with an invalid annotation key", func() {
-				_, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-					Object: ffv1.Cluster_builder{
-						Metadata: sharedv1.Metadata_builder{
+				_, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Metadata: publicv1.Metadata_builder{
 							Annotations: map[string]string{
 								key: "",
 							},
 						}.Build(),
-						Spec: ffv1.ClusterSpec_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: templateId,
 						}.Build(),
 					}.Build(),
@@ -188,9 +187,9 @@ var _ = Describe("Annotations", func() {
 			})
 
 			By("Updating a cluster with a valid annotation key", func() {
-				createResponse, err := clustersClient.Create(ctx, ffv1.ClustersCreateRequest_builder{
-					Object: ffv1.Cluster_builder{
-						Spec: ffv1.ClusterSpec_builder{
+				createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: templateId,
 						}.Build(),
 					}.Build(),
@@ -198,20 +197,20 @@ var _ = Describe("Annotations", func() {
 				Expect(err).ToNot(HaveOccurred())
 				object := createResponse.GetObject()
 				DeferCleanup(func() {
-					_, err := clustersClient.Delete(ctx, ffv1.ClustersDeleteRequest_builder{
+					_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 						Id: object.GetId(),
 					}.Build())
 					Expect(err).ToNot(HaveOccurred())
 				})
-				_, err = clustersClient.Update(ctx, ffv1.ClustersUpdateRequest_builder{
-					Object: ffv1.Cluster_builder{
+				_, err = clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+					Object: publicv1.Cluster_builder{
 						Id: object.GetId(),
-						Metadata: sharedv1.Metadata_builder{
+						Metadata: publicv1.Metadata_builder{
 							Annotations: map[string]string{
 								key: "",
 							},
 						}.Build(),
-						Spec: ffv1.ClusterSpec_builder{
+						Spec: publicv1.ClusterSpec_builder{
 							Template: templateId,
 						}.Build(),
 					}.Build(),

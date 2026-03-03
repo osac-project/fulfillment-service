@@ -30,7 +30,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
@@ -318,5 +318,5 @@ func (s *PrivateEventsServer) processEvent(ctx context.Context, event *privatev1
 
 // Names of the packages whose enums will be available in the filter expressions:
 var privateEventsServerPackages = map[protoreflect.FullName]bool{
-	"private.v1": true,
+	privatev1.EventType_EVENT_TYPE_UNSPECIFIED.Descriptor().FullName().Parent(): true,
 }

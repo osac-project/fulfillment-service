@@ -28,7 +28,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	testsv1 "github.com/osac-project/fulfillment-service/internal/api/tests/v1"
+	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
