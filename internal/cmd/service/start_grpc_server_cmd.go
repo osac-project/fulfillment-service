@@ -699,9 +699,9 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	return shutdown.Wait()
 }
 
-// publicMethodRegex is regular expression for the methods that are considered public, including the metadata, and
-// reflection and health methods. These will skip authentication and authorization.
-const publicMethodRegex = `^/(metadata|grpc\.(reflection|health))\..*$`
+// publicMethodRegex is regular expression for the methods that are considered public, including the capabilities, and
+// reflection, health methods. These will skip authentication and authorization.
+const publicMethodRegex = `^/(osac\.public\.v1\.Capabilities/|grpc\.(reflection|health)\.).*$`
 
 // grpcServerUserAgent is the user agent string for the gRPC server.
 const grpcServerUserAgent = "fulfillment-grpc-server"

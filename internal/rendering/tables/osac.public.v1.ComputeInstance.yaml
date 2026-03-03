@@ -11,6 +11,8 @@
 # specific language governing permissions and limitations under the License.
 #
 
+domains:
+
 columns:
 
 - header: ID
@@ -21,20 +23,12 @@ columns:
 
 - header: TEMPLATE
   value: this.spec.template
-  type: private.v1.ClusterTemplate
+  type: osac.public.v1.ComputeInstanceTemplate
   lookup: true
 
 - header: STATE
   value: this.status.state
-  type: fulfillment.v1.ClusterState
+  type: osac.public.v1.ComputeInstanceState
 
-- header: HUB
-  value: this.status.hub
-  type: private.v1.Hub
-  lookup: true
-
-- header: API URL
-  value: "has(this.status.api_url)? this.status.api_url: '-'"
-
-- header: CONSOLE URL
-  value: "has(this.status.console_url)? this.status.console_url: '-'"
+- header: EXTERNAL IP
+  value: this.status.ip_address

@@ -19,17 +19,12 @@ columns:
 - header: NAME
   value: "has(this.metadata.name)? this.metadata.name: '-'"
 
-- header: TEMPLATE
-  value: this.spec.template
-  type: fulfillment.v1.ClusterTemplate
-  lookup: true
-
 - header: STATE
   value: this.status.state
-  type: fulfillment.v1.ClusterState
+  type: osac.private.v1.HostPoolState
 
-- header: API URL
-  value: "has(this.status.api_url)? this.status.api_url: '-'"
+- header: HOST SETS
+  value: "string(size(this.spec.host_sets))"
 
-- header: CONSOLE URL
-  value: "has(this.status.console_url)? this.status.console_url: '-'"
+- header: ALLOCATED HOSTS
+  value: "string(size(this.status.hosts))"
