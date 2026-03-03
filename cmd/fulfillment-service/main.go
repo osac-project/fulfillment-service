@@ -19,7 +19,7 @@ import (
 	"os"
 
 	"github.com/osac-project/fulfillment-service/internal"
-	"github.com/osac-project/fulfillment-service/internal/cmd"
+	"github.com/osac-project/fulfillment-service/internal/cmd/service"
 	"github.com/osac-project/fulfillment-service/internal/exit"
 )
 
@@ -33,10 +33,10 @@ func main() {
 		SetIn(os.Stdin).
 		SetOut(os.Stdout).
 		SetErr(os.Stderr).
-		AddCommand(cmd.NewDevCommand).
-		AddCommand(cmd.NewProbeCommand).
-		AddCommand(cmd.NewStartCommand).
-		AddCommand(cmd.NewVersionCommand).
+		AddCommand(service.NewDevCommand).
+		AddCommand(service.NewProbeCommand).
+		AddCommand(service.NewStartCommand).
+		AddCommand(service.NewVersionCommand).
 		Build()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err.Error())

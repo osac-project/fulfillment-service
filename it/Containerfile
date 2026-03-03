@@ -4,5 +4,5 @@
 
 FROM registry.access.redhat.com/ubi10/ubi:10.1-1763341459
 
-# Note that this assumes that the binary has already been built with 'go build'.
+# Note that this assumes that the binary has already been built with 'go build ./cmd/fulfillment-service'.
 COPY fulfillment-service /usr/local/bin

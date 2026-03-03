@@ -402,6 +402,7 @@ func (t *Tool) buildBinary(ctx context.Context) error {
 			"build",
 			"-ldflags",
 			fmt.Sprintf("-X github.com/osac-project/fulfillment-service/internal.id=%s", version),
+			"./cmd/fulfillment-service",
 		).
 		Build()
 	if err != nil {

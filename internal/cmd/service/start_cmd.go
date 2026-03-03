@@ -11,19 +11,21 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package cmd
+package service
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// NewProbeCommand creates and returns the `probe` command.
-func NewProbeCommand() *cobra.Command {
+// Create creates and returns the `start` command.
+func NewStartCommand() *cobra.Command {
 	result := &cobra.Command{
-		Use:   "probe",
-		Short: "Probes components",
+		Use:   "start",
+		Short: "Starts components",
 		Args:  cobra.NoArgs,
 	}
-	result.AddCommand(NewProbeGrpcServerCommand())
+	result.AddCommand(NewStartControllerCommand())
+	result.AddCommand(NewStartRestGatewayCommand())
+	result.AddCommand(NewStartGrpcServerCommand())
 	return result
 }

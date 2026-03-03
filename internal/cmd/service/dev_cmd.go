@@ -11,11 +11,12 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package cmd
+package service
 
 import (
-	"github.com/osac-project/fulfillment-service/internal/cmd/dev"
 	"github.com/spf13/cobra"
+
+	"github.com/osac-project/fulfillment-service/internal/cmd/service/dev"
 )
 
 func NewDevCommand() *cobra.Command {

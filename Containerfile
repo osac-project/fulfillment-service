@@ -19,7 +19,7 @@ RUN go mod download
 COPY . /source
 RUN \
   version=$(git describe --tags --always) && \
-  go build -ldflags="-X github.com/osac-project/fulfillment-service/internal/version.id=${version}"
+  go build -ldflags="-X github.com/osac-project/fulfillment-service/internal/version.id=${version}" ./cmd/fulfillment-service
 
 FROM registry.access.redhat.com/ubi10/ubi:10.1-1763341459 AS runtime
 
