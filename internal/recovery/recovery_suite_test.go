@@ -19,7 +19,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/osac-project/fulfillment-common/logging"
+
+	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
 func TestRecovery(t *testing.T) {

@@ -22,8 +22,6 @@ import (
 	"syscall"
 
 	"github.com/go-logr/logr"
-	"github.com/osac-project/fulfillment-common/metrics"
-	"github.com/osac-project/fulfillment-common/network"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -35,7 +33,6 @@ import (
 	"k8s.io/klog/v2"
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/osac-project/fulfillment-common/logging"
 	"github.com/osac-project/fulfillment-service/internal"
 	eventsv1 "github.com/osac-project/fulfillment-service/internal/api/events/v1"
 	ffv1 "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
@@ -43,6 +40,9 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/logging"
+	"github.com/osac-project/fulfillment-service/internal/metrics"
+	"github.com/osac-project/fulfillment-service/internal/network"
 	"github.com/osac-project/fulfillment-service/internal/recovery"
 	"github.com/osac-project/fulfillment-service/internal/servers"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
@@ -225,13 +225,20 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 				auth.GrpcExternalAuthType,
 			)
 		}
-		externalAuthInterceptor, err := auth.NewGrpcExternalAuthInterceptor().
+		externalAuthClient, err := network.NewGrpcClient().
 			SetLogger(c.logger).
 			SetAddress(c.args.externalAuthAddress).
 			SetCaPool(caPool).
-			AddPublicMethodRegex(publicMethodRegex).
 			SetUserAgent(userAgent).
 			SetMetricsSubsystem("outbound").
+			Build()
+		if err != nil {
+			return fmt.Errorf("failed to create external auth client: %w", err)
+		}
+		externalAuthInterceptor, err := auth.NewGrpcExternalAuthInterceptor().
+			SetLogger(c.logger).
+			SetGrpcClient(externalAuthClient).
+			AddPublicMethodRegex(publicMethodRegex).
 			Build()
 		if err != nil {
 			return fmt.Errorf("failed to create external auth interceptor: %w", err)

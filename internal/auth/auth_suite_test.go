@@ -15,51 +15,26 @@ package auth
 
 import (
 	"log/slog"
-	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
-	"github.com/osac-project/fulfillment-common/logging"
-	. "github.com/osac-project/fulfillment-common/testing"
+
+	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
-func TestAuthentication(t *testing.T) {
+func TestAuth(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Authentication")
+	RunSpecs(t, "Auth")
 }
 
-// Logger used for tests:
 var logger *slog.Logger
-
-// JSON web key set used for tests:
-var keysBytes []byte
-var keysFile string
 
 var _ = BeforeSuite(func() {
 	var err error
-
-	// Create a temporary file containing the JSON web key set:
-	keysBytes = DefaultJWKS()
-	keysFD, err := os.CreateTemp("", "jwks-*.json")
-	Expect(err).ToNot(HaveOccurred())
-	_, err = keysFD.Write(keysBytes)
-	Expect(err).ToNot(HaveOccurred())
-	err = keysFD.Close()
-	Expect(err).ToNot(HaveOccurred())
-	keysFile = keysFD.Name()
-
-	// Create a logger that writes to the Ginkgo writer, so that the log
-	// messages will be attached to the output of the right test:
 	logger, err = logging.NewLogger().
-		SetLevel("debug").
+		SetLevel(slog.LevelDebug.String()).
 		SetWriter(GinkgoWriter).
 		Build()
-	Expect(err).ToNot(HaveOccurred())
-})
-
-var _ = AfterSuite(func() {
-	// Delete the temporary files:
-	err := os.Remove(keysFile)
 	Expect(err).ToNot(HaveOccurred())
 })

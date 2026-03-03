@@ -39,7 +39,7 @@ type LoopBuilder struct {
 
 // Loop executes a work function in a loop.
 //
-// It is intended for situations where a funcion needs to be executed repeated, and restarted when it finishes.
+// It is intended for situations where a funcion needs to be executed repeatedly, and restarted when it finishes.
 //
 // To prevent the function from running too often, specially when the function fails, the loop will sleep after running
 // the function for the configured interval, minus the time that the function took to run. For example, if the interval
@@ -50,8 +50,8 @@ type LoopBuilder struct {
 //
 // The loop will exit when the context is cancelled.
 //
-// The loop can be woken up by calling the kicking it, with the Kick method, which will interrupt the sleep and start
-// the work function immediately.
+// The loop can be woken up by calling the `Kick` method, which will interrupt the sleep and start the work function
+// immediately.
 type Loop struct {
 	// logger is the logger that will be used to write messages to the log.
 	logger *slog.Logger
@@ -142,7 +142,7 @@ func (b *LoopBuilder) Build() (result *Loop, err error) {
 
 // Run runs the loop until the context is cancelled.
 //
-// The function work will be executed repeatedly. After each execution, the loop will sleep for the configured interval
+// The work function will be executed repeatedly. After each execution, the loop will sleep for the configured interval
 // minus the time that the work function was running. For example, if the interval is 10s and the work function ran for
 // 8s, then after running the work function, it will sleep for 2s. If the work function ran for longer than the
 // interval, it will not sleep.
@@ -177,7 +177,7 @@ func (l *Loop) Run(ctx context.Context) error {
 }
 
 // Kick interrupts the sleep and starts the work function immediately. If the work function is already running it does
-// nothing. Note that it never blocks: it will return inmediately regardless of whether the work function is already
+// nothing. Note that it never blocks: it will return immediately regardless of whether the work function is already
 // running or not.
 func (l *Loop) Kick() {
 	select {

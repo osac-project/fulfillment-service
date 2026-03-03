@@ -19,13 +19,13 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/osac-project/fulfillment-common/network"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/osac-project/fulfillment-service/internal"
+	"github.com/osac-project/fulfillment-service/internal/network"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
 

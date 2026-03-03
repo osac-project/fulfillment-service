@@ -21,11 +21,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
-	"github.com/osac-project/fulfillment-common/logging"
-	. "github.com/osac-project/fulfillment-common/testing"
 
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/logging"
+	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
 
 func TestDAO(t *testing.T) {

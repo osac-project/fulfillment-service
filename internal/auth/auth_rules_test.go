@@ -25,9 +25,10 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
-	"github.com/osac-project/fulfillment-common/testing"
-	"github.com/osac-project/fulfillment-service/internal/jq"
 	"gopkg.in/yaml.v3"
+
+	"github.com/osac-project/fulfillment-service/internal/jq"
+	"github.com/osac-project/fulfillment-service/internal/testing"
 
 	// We need to use these deprecated package because Authorino currently uses version 0 of the Rego language,
 	// which has some significant differences. For more details see here:

@@ -24,9 +24,10 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
-	"github.com/osac-project/fulfillment-common/logging"
 	"k8s.io/klog/v2"
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
 // Config contains configuration options for the integration tests.

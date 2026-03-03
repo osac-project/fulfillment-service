@@ -29,10 +29,10 @@ import (
 	"time"
 
 	"github.com/onsi/gomega/ghttp"
-	"github.com/osac-project/fulfillment-common/auth"
-	"github.com/osac-project/fulfillment-common/network"
-	"github.com/osac-project/fulfillment-common/oauth"
-	"github.com/osac-project/fulfillment-common/testing"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/network"
+	"github.com/osac-project/fulfillment-service/internal/oauth"
+	"github.com/osac-project/fulfillment-service/internal/testing"
 	"go.yaml.in/yaml/v2"
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
@@ -342,9 +342,9 @@ func (t *Tool) checkAddress(ctx context.Context, addr string) error {
 	_, err = net.LookupHost(host)
 	if err != nil {
 		return fmt.Errorf(
-			"failed to lookup host '%s', you may need to add a '127.0.0.1 %[1]s' entry to the "+
-				"'/etc/hosts' file: %w",
-			addr, err,
+			"failed to lookup host '%[1]s', you may need to add a '127.0.0.1 %[1]s' entry to the "+
+				"'/etc/hosts' file: %[2]w",
+			host, err,
 		)
 	}
 	return nil

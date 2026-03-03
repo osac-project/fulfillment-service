@@ -22,8 +22,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/osac-project/fulfillment-common/auth"
-	"github.com/osac-project/fulfillment-common/network"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -37,12 +35,14 @@ import (
 
 	"github.com/osac-project/fulfillment-service/internal"
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/controllers"
 	"github.com/osac-project/fulfillment-service/internal/controllers/cluster"
 	"github.com/osac-project/fulfillment-service/internal/controllers/computeinstance"
 	"github.com/osac-project/fulfillment-service/internal/controllers/host"
 	"github.com/osac-project/fulfillment-service/internal/controllers/hostpool"
 	internalhealth "github.com/osac-project/fulfillment-service/internal/health"
+	"github.com/osac-project/fulfillment-service/internal/network"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )

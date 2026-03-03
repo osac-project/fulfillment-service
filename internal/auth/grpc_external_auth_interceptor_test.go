@@ -15,22 +15,26 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"os"
 
 	envoycorev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyauthv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
-	"github.com/osac-project/fulfillment-common/network"
-	. "github.com/osac-project/fulfillment-common/testing"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
+
+	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
 
 // GrpcExternalAuthMock is a mock implementation of the authv3.AuthorizationServer interface.
@@ -51,10 +55,9 @@ func (m *GrpcExternalAuthMock) Check(ctx context.Context,
 
 var _ = Describe("External authentication and authorization interceptor", func() {
 	var (
-		ctx     context.Context
-		mock    *GrpcExternalAuthMock
-		address string
-		caPool  *x509.CertPool
+		ctx    context.Context
+		client *grpc.ClientConn
+		mock   *GrpcExternalAuthMock
 	)
 
 	BeforeEach(func() {
@@ -63,7 +66,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 		// Create a context:
 		ctx = context.Background()
 
-		// Create the moc:
+		// Create the mock:
 		mock = &GrpcExternalAuthMock{}
 
 		// Get the test certificate files:
@@ -73,23 +76,40 @@ var _ = Describe("External authentication and authorization interceptor", func()
 			_ = os.Remove(keyFile)
 			_ = os.Remove(caFile)
 		})
+		caData, err := os.ReadFile(caFile)
+		Expect(err).ToNot(HaveOccurred())
 
 		// Create the CA pool:
-		caPool, err = network.NewCertPool().
-			SetLogger(logger).
-			AddFile(caFile).
-			Build()
+		caPool, err := x509.SystemCertPool()
 		Expect(err).ToNot(HaveOccurred())
+		ok := caPool.AppendCertsFromPEM(caData)
+		Expect(ok).To(BeTrue())
 
 		// Create the listener:
-		listener, err := network.NewListener().
-			SetLogger(logger).
-			SetAddress("127.0.0.1:0").
-			SetTLSCrt(crtFile).
-			SetTLSKey(keyFile).
-			Build()
+		crt, err := tls.LoadX509KeyPair(crtFile, keyFile)
 		Expect(err).ToNot(HaveOccurred())
-		address = listener.Addr().String()
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		Expect(err).ToNot(HaveOccurred())
+		listener = tls.NewListener(listener, &tls.Config{
+			RootCAs: caPool,
+			Certificates: []tls.Certificate{
+				crt,
+			},
+			NextProtos: []string{"h2"},
+		})
+		address := listener.Addr().String()
+
+		// Create the gRPC client:
+		endpoint := fmt.Sprintf("dns:///%s", address)
+		creds := credentials.NewTLS(&tls.Config{
+			RootCAs: caPool,
+		})
+		options := []grpc.DialOption{
+			grpc.WithTransportCredentials(creds),
+		}
+		client, err = grpc.NewClient(endpoint, options...)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(client.Close)
 
 		// Create the server:
 		server := grpc.NewServer()
@@ -101,24 +121,24 @@ var _ = Describe("External authentication and authorization interceptor", func()
 	Describe("Build", func() {
 		It("Should fail if logger is not set", func() {
 			_, err := NewGrpcExternalAuthInterceptor().
-				SetAddress(address).
+				SetGrpcClient(client).
 				Build()
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("logger is mandatory"))
 		})
 
-		It("Should fail if address is not set", func() {
+		It("Should fail if gRPC client is not set", func() {
 			_, err := NewGrpcExternalAuthInterceptor().
 				SetLogger(logger).
 				Build()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("address is mandatory"))
+			Expect(err.Error()).To(ContainSubstring("gRPC client is mandatory"))
 		})
 
 		It("Should succeed with all required parameters", func() {
 			interceptor, err := NewGrpcExternalAuthInterceptor().
 				SetLogger(logger).
-				SetAddress(address).
+				SetGrpcClient(client).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(interceptor).ToNot(BeNil())
@@ -127,7 +147,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 		It("Should fail with invalid public method regex", func() {
 			_, err := NewGrpcExternalAuthInterceptor().
 				SetLogger(logger).
-				SetAddress(address).
+				SetGrpcClient(client).
 				AddPublicMethodRegex(`[invalid`).
 				Build()
 			Expect(err).To(HaveOccurred())
@@ -141,8 +161,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 			var err error
 			interceptor, err = NewGrpcExternalAuthInterceptor().
 				SetLogger(logger).
-				SetAddress(address).
-				SetCaPool(caPool).
+				SetGrpcClient(client).
 				AddPublicMethodRegex(`^/public\..*$`).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -405,8 +424,7 @@ var _ = Describe("External authentication and authorization interceptor", func()
 			var err error
 			interceptor, err = NewGrpcExternalAuthInterceptor().
 				SetLogger(logger).
-				SetAddress(address).
-				SetCaPool(caPool).
+				SetGrpcClient(client).
 				AddPublicMethodRegex(`^/public\..*$`).
 				Build()
 			Expect(err).ToNot(HaveOccurred())

@@ -15,7 +15,6 @@ package auth
 
 import (
 	"context"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,8 +25,6 @@ import (
 
 	envoycorev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyauthv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
-	"github.com/osac-project/fulfillment-common/network"
-	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -40,14 +37,9 @@ const GrpcExternalAuthType = "external"
 // GrpcExternalAuthInterceptorBuilder contains the data and logic needed to build an interceptor that performs
 // authentication and authorization by calling an external service using the Envoy ext_authz gRPC protocol.
 type GrpcExternalAuthInterceptorBuilder struct {
-	logger            *slog.Logger
-	address           string
-	caPool            *x509.CertPool
-	insecure          bool
-	publicMethods     []string
-	userAgent         string
-	metricsSubsystem  string
-	metricsRegisterer prometheus.Registerer
+	logger        *slog.Logger
+	grpcClient    *grpc.ClientConn
+	publicMethods []string
 }
 
 // GrpcExternalAuthInterceptor is an interceptor that performs authentication and authorization by calling an external
@@ -58,7 +50,6 @@ type GrpcExternalAuthInterceptorBuilder struct {
 // details (like identifiers and tenants) in the authorization request.
 type GrpcExternalAuthInterceptor struct {
 	logger        *slog.Logger
-	grpcClient    *grpc.ClientConn
 	authClient    envoyauthv3.AuthorizationClient
 	publicMethods []*regexp.Regexp
 }
@@ -75,23 +66,10 @@ func (b *GrpcExternalAuthInterceptorBuilder) SetLogger(value *slog.Logger) *Grpc
 	return b
 }
 
-// SetAddress sets the address of the external auth service. This is mandatory.
-func (b *GrpcExternalAuthInterceptorBuilder) SetAddress(value string) *GrpcExternalAuthInterceptorBuilder {
-	b.address = value
-	return b
-}
-
-// SetCaPool sets the CA certificate pool to use for TLS connections to the external auth service. This is optional
-// and only used when insecure is false.
-func (b *GrpcExternalAuthInterceptorBuilder) SetCaPool(value *x509.CertPool) *GrpcExternalAuthInterceptorBuilder {
-	b.caPool = value
-	return b
-}
-
-// SetInsecure sets whether to use an insecure (plaintext) connection to the external auth service. If true, the
-// connection will not use TLS. Defaults to false.
-func (b *GrpcExternalAuthInterceptorBuilder) SetInsecure(value bool) *GrpcExternalAuthInterceptorBuilder {
-	b.insecure = value
+// SetGrpcClient sets the gRPC client that will be used to communicate with the external auth service. This is
+// mandatory.
+func (b *GrpcExternalAuthInterceptorBuilder) SetGrpcClient(value *grpc.ClientConn) *GrpcExternalAuthInterceptorBuilder {
+	b.grpcClient = value
 	return b
 }
 
@@ -107,26 +85,6 @@ func (b *GrpcExternalAuthInterceptorBuilder) AddPublicMethodRegex(value string) 
 	return b
 }
 
-// SetUserAgent sets the user agent string to use when making gRPC calls to the external auth service. This is optional.
-func (b *GrpcExternalAuthInterceptorBuilder) SetUserAgent(value string) *GrpcExternalAuthInterceptorBuilder {
-	b.userAgent = value
-	return b
-}
-
-// SetMetricsSubsystem sets the subsystem that will be used for metrics. This is optional, if not specified then no
-// metrics will be collected.
-func (b *GrpcExternalAuthInterceptorBuilder) SetMetricsSubsystem(value string) *GrpcExternalAuthInterceptorBuilder {
-	b.metricsSubsystem = value
-	return b
-}
-
-// SetMetricsRegisterer sets the metrics registry that will be used for metrics. This is optional, if not specified then
-// the default metrics registry will be used.
-func (b *GrpcExternalAuthInterceptorBuilder) SetMetricsRegisterer(value prometheus.Registerer) *GrpcExternalAuthInterceptorBuilder {
-	b.metricsRegisterer = value
-	return b
-}
-
 // Build uses the data stored in the builder to create and configure a new interceptor.
 func (b *GrpcExternalAuthInterceptorBuilder) Build() (result *GrpcExternalAuthInterceptor, err error) {
 	// Check parameters:
@@ -134,8 +92,8 @@ func (b *GrpcExternalAuthInterceptorBuilder) Build() (result *GrpcExternalAuthIn
 		err = errors.New("logger is mandatory")
 		return
 	}
-	if b.address == "" {
-		err = errors.New("address is mandatory")
+	if b.grpcClient == nil {
+		err = errors.New("gRPC client is mandatory")
 		return
 	}
 
@@ -148,43 +106,16 @@ func (b *GrpcExternalAuthInterceptorBuilder) Build() (result *GrpcExternalAuthIn
 		}
 	}
 
-	// Create the gRPC connection:
-	grpcClient, err := network.NewGrpcClient().
-		SetLogger(b.logger).
-		SetAddress(b.address).
-		SetCaPool(b.caPool).
-		SetInsecure(b.insecure).
-		SetUserAgent(b.userAgent).
-		SetMetricsSubsystem(b.metricsSubsystem).
-		SetMetricsRegisterer(b.metricsRegisterer).
-		Build()
-	if err != nil {
-		err = fmt.Errorf(
-			"failed to create gRPC connection to external service with address '%s': %w",
-			b.address, err,
-		)
-		return
-	}
-
 	// Create the auth authClient:
-	authClient := envoyauthv3.NewAuthorizationClient(grpcClient)
+	authClient := envoyauthv3.NewAuthorizationClient(b.grpcClient)
 
 	// Create and populate the object:
 	result = &GrpcExternalAuthInterceptor{
 		logger:        b.logger,
-		grpcClient:    grpcClient,
 		authClient:    authClient,
 		publicMethods: publicMethods,
 	}
 	return
-}
-
-// Close closes the gRPC connection to the external auth service.
-func (i *GrpcExternalAuthInterceptor) Close() error {
-	if i.grpcClient != nil {
-		return i.grpcClient.Close()
-	}
-	return nil
 }
 
 // UnaryServer is the unary server interceptor function.

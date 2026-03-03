@@ -1,0 +1,13 @@
+apiVersion: operator.authorino.kuadrant.io/v1beta1
+kind: Authorino
+metadata:
+  name: test-authorino
+  namespace: default
+spec:
+  logLevel: debug
+  listener:
+    tls:
+      enabled: false
+  oidcServer:
+    tls:
+      enabled: false

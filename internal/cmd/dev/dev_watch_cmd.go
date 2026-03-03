@@ -21,8 +21,6 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/osac-project/fulfillment-common/auth"
-	"github.com/osac-project/fulfillment-common/network"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -30,6 +28,8 @@ import (
 
 	"github.com/osac-project/fulfillment-service/internal"
 	eventsv1 "github.com/osac-project/fulfillment-service/internal/api/events/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/network"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
 

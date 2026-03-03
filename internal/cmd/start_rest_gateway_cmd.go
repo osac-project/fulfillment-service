@@ -21,7 +21,6 @@ import (
 	"syscall"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/osac-project/fulfillment-common/network"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -35,6 +34,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal"
 	api "github.com/osac-project/fulfillment-service/internal/api/fulfillment/v1"
 	privateapi "github.com/osac-project/fulfillment-service/internal/api/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/network"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
