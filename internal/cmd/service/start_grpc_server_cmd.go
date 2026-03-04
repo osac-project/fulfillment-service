@@ -37,6 +37,7 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/console"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/metrics"
@@ -595,6 +596,51 @@ func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 		return fmt.Errorf("failed to create hubs server: %w", err)
 	}
 	privatev1.RegisterHubsServer(grpcServer, privateHubsServer)
+
+	// Create the console manager and server:
+	c.logger.InfoContext(ctx, "Creating console server")
+	hubConfigProvider := console.HubConfigProviderFromKubeconfigs(
+		func(ctx context.Context, id string) ([]byte, error) {
+			tx, err := txManager.Begin(ctx)
+			if err != nil {
+				return nil, err
+			}
+			defer txManager.End(ctx, tx)
+			txCtx := database.TxIntoContext(ctx, tx)
+			resp, err := privateHubsServer.Get(txCtx, privatev1.HubsGetRequest_builder{
+				Id: id,
+			}.Build())
+			if err != nil {
+				return nil, err
+			}
+			return resp.GetObject().GetKubeconfig(), nil
+		},
+	)
+	kvBackend, err := console.NewKubeVirtBackend().
+		SetLogger(c.logger).
+		SetHubConfigProvider(hubConfigProvider).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create kubevirt backend: %w", err)
+	}
+	consoleManager, err := console.NewManager().
+		SetLogger(c.logger).
+		AddBackend("compute_instance", kvBackend).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create console manager: %w", err)
+	}
+	consoleServer, err := servers.NewConsoleServer().
+		SetLogger(c.logger).
+		SetManager(consoleManager).
+		SetComputeInstancesServer(privateComputeInstancesServer).
+		SetHubServer(privateHubsServer).
+		SetTxManager(txManager).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create console server: %w", err)
+	}
+	publicv1.RegisterConsoleServer(grpcServer, consoleServer)
 
 	// Create the events server:
 	c.logger.InfoContext(ctx, "Creating events server")
