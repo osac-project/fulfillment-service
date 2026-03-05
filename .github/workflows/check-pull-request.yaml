@@ -82,7 +82,7 @@ jobs:
         echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
         IT_DEPLOY_MODE=helm ginkgo run -v it
     - if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: logs-helm
         path: logs
@@ -99,7 +99,7 @@ jobs:
         echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
         IT_DEPLOY_MODE=kustomize ginkgo run -v it
     - if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: logs-kustomize
         path: logs
