@@ -129,6 +129,17 @@ data:
                       timeout: 0s
                       idle_timeout: 0s
 
+                  # This route is for the gRPC bidirectional streaming console sessions. Console sessions can last
+                  # up to 30 minutes (configurable), so we disable the timeout to avoid premature disconnects.
+                  - name: console
+                    match:
+                      safe_regex:
+                        regex: ^/osac\.public\.v1\.Console/Connect$
+                    route:
+                      cluster: grpc-server
+                      timeout: 0s
+                      idle_timeout: 0s
+
                   # This route is for gRPC unary requests, which should be quite fast, so we can safely set a timeout.
                   - name: grpc-server
                     match:
