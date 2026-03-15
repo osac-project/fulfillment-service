@@ -776,6 +776,146 @@ var _ = Describe("Private subnets server", func() {
 			})
 		})
 
+		Context("CIDR overlap validation", func() {
+			// Helper to create a subnet directly in the database
+			createSubnetInDB := func(ctx context.Context, name, ipv4Cidr, ipv6Cidr, virtualNetworkID string) {
+				subnetDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
+					SetLogger(logger).
+					SetTable("subnets").
+					SetAttributionLogic(attribution).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+
+				builder := privatev1.SubnetSpec_builder{
+					VirtualNetwork: virtualNetworkID,
+				}
+				if ipv4Cidr != "" {
+					builder.Ipv4Cidr = proto.String(ipv4Cidr)
+				}
+				if ipv6Cidr != "" {
+					builder.Ipv6Cidr = proto.String(ipv6Cidr)
+				}
+
+				subnet := privatev1.Subnet_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: name,
+					}.Build(),
+					Spec: builder.Build(),
+				}.Build()
+
+				_, err = subnetDao.Create().
+					SetObject(subnet).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			It("rejects subnet with exact same IPv4 CIDR", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				createSubnetInDB(ctx, "existing-subnet", "10.0.1.0/24", "", vn.GetId())
+
+				newSubnet := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, newSubnet, nil)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+				Expect(err.Error()).To(ContainSubstring("overlaps"))
+				Expect(err.Error()).To(ContainSubstring("existing-subnet"))
+			})
+
+			It("rejects subnet with overlapping IPv4 CIDR (new is subset)", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				createSubnetInDB(ctx, "wide-subnet", "10.0.0.0/20", "", vn.GetId())
+
+				newSubnet := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, newSubnet, nil)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			})
+
+			It("rejects subnet with overlapping IPv4 CIDR (new is superset)", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				createSubnetInDB(ctx, "narrow-subnet", "10.0.1.0/24", "", vn.GetId())
+
+				newSubnet := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.0.0/20"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, newSubnet, nil)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			})
+
+			It("accepts subnet with non-overlapping IPv4 CIDR", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				createSubnetInDB(ctx, "first-subnet", "10.0.1.0/24", "", vn.GetId())
+
+				newSubnet := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.2.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, newSubnet, nil)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("allows same CIDR in different VirtualNetworks", func() {
+				vn1 := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				vn2 := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				createSubnetInDB(ctx, "vn1-subnet", "10.0.1.0/24", "", vn1.GetId())
+
+				newSubnet := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						VirtualNetwork: vn2.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, newSubnet, nil)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("rejects subnet with overlapping IPv6 CIDR", func() {
+				vn := createVirtualNetwork(ctx, "", "2001:db8::/32")
+				createSubnetInDB(ctx, "existing-v6", "", "2001:db8:1::/48", vn.GetId())
+
+				newSubnet := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv6Cidr:       proto.String("2001:db8:1::/48"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, newSubnet, nil)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			})
+		})
+
 		// SUB-VAL-12, SUB-VAL-13: Tenant isolation for Delete and List operations
 		// are covered by servers_tenancy_test.go, not validation tests
 	})
