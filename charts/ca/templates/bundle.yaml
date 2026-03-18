@@ -27,14 +27,14 @@ spec:
   target:
     configMap:
       key: bundle.pem
-      namespaceSelector:
-        matchExpressions:
-        - key: kubernetes.io/metadata.name
-          operator: NotIn
-          values:
-          - cert-manager
-          - kube-node-lease
-          - kube-public
-          - kube-system
-          - kube-system
-          - local-path-storage
+    namespaceSelector:
+      matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+        - cert-manager
+        - kube-node-lease
+        - kube-public
+        - kube-system
+        - kube-system
+        - local-path-storage
