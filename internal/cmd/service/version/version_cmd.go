@@ -14,35 +14,42 @@ language governing permissions and limitations under the License.
 package version
 
 import (
-	"github.com/spf13/cobra"
+	"log/slog"
 
-	"github.com/osac-project/fulfillment-service/internal/terminal"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/version"
+	"github.com/spf13/cobra"
 )
 
+// Cmd creates and returns the `version` command.
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
-	result := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "version",
 		Short: "Display version details",
 		Args:  cobra.NoArgs,
 		RunE:  runner.run,
 	}
-	return result
+	return command
 }
 
+// runnerContext contains the data and logic needed to run the `version` command.
 type runnerContext struct {
 }
 
-func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
+// run executes the `version` command.
+func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Get the context:
 	ctx := cmd.Context()
 
-	// Get the console:
-	console := terminal.ConsoleFromContext(ctx)
+	// Get the logger:
+	logger := logging.LoggerFromContext(ctx)
 
-	// Print the version:
-	console.Printf(ctx, "%s\n", version.Get())
+	// Print the values:
+	logger.Info(
+		"Version",
+		slog.String("version", version.Get()),
+	)
 
 	return nil
 }

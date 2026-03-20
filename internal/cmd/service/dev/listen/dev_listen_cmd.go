@@ -11,7 +11,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package dev
+package listen
 
 import (
 	"context"
@@ -25,12 +25,12 @@ import (
 	"github.com/spf13/pflag"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/osac-project/fulfillment-service/internal"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
-func NewListenCommand() *cobra.Command {
-	runner := &listenCommandRunner{}
+func Cmd() *cobra.Command {
+	runner := &runnerContext{}
 	command := &cobra.Command{
 		Use:   "listen",
 		Short: "Listens for notifications",
@@ -48,19 +48,19 @@ func NewListenCommand() *cobra.Command {
 	return command
 }
 
-type listenCommandRunner struct {
+type runnerContext struct {
 	logger  *slog.Logger
 	flags   *pflag.FlagSet
 	channel string
 }
 
-func (c *listenCommandRunner) run(cmd *cobra.Command, argv []string) error {
+func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Get the context:
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
 	// Get the dependencies from the context:
-	c.logger = internal.LoggerFromContext(ctx)
+	c.logger = logging.LoggerFromContext(ctx)
 
 	// Save the flags:
 	c.flags = cmd.Flags()
@@ -112,7 +112,7 @@ func (c *listenCommandRunner) run(cmd *cobra.Command, argv []string) error {
 	return nil
 }
 
-func (c *listenCommandRunner) processPayload(ctx context.Context, payload proto.Message) error {
+func (c *runnerContext) processPayload(ctx context.Context, payload proto.Message) error {
 	c.logger.InfoContext(
 		ctx,
 		"Received payload",

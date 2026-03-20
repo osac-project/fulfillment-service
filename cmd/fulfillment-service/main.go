@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/osac-project/fulfillment-service/internal"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service"
 	"github.com/osac-project/fulfillment-service/internal/exit"
 )
@@ -27,24 +26,9 @@ func main() {
 	// Create a context:
 	ctx := context.Background()
 
-	// Create the tool:
-	tool, err := internal.NewTool().
-		AddArgs(os.Args...).
-		SetIn(os.Stdin).
-		SetOut(os.Stdout).
-		SetErr(os.Stderr).
-		AddCommand(service.NewDevCommand).
-		AddCommand(service.NewProbeCommand).
-		AddCommand(service.NewStartCommand).
-		AddCommand(service.NewVersionCommand).
-		Build()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err.Error())
-		os.Exit(1)
-	}
-
 	// Run the tool:
-	err = tool.Run(ctx)
+	root := service.Root()
+	err := root.ExecuteContext(ctx)
 	if err != nil {
 		exitErr, ok := err.(exit.Error)
 		if ok {

@@ -11,7 +11,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package service
+package grpcserver
 
 import (
 	"context"
@@ -24,13 +24,13 @@ import (
 	"google.golang.org/grpc"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/osac-project/fulfillment-service/internal"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/network"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
-func NewProbeGrpcServerCommand() *cobra.Command {
-	runner := &probeGrpcServerCommandRunner{}
+func Cmd() *cobra.Command {
+	runner := &runnerContext{}
 	command := &cobra.Command{
 		Use:   "grpc-server",
 		Short: "Checks the health of the gRPC server",
@@ -57,7 +57,7 @@ func NewProbeGrpcServerCommand() *cobra.Command {
 	return command
 }
 
-type probeGrpcServerCommandRunner struct {
+type runnerContext struct {
 	logger *slog.Logger
 	flags  *pflag.FlagSet
 	args   struct {
@@ -66,12 +66,12 @@ type probeGrpcServerCommandRunner struct {
 	}
 }
 
-func (c *probeGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) error {
+func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Get the context:
 	ctx := cmd.Context()
 
 	// Get the dependencies from the context:
-	c.logger = internal.LoggerFromContext(ctx)
+	c.logger = logging.LoggerFromContext(ctx)
 
 	// Save the flags:
 	c.flags = cmd.Flags()
@@ -86,7 +86,7 @@ func (c *probeGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	}
 
 	// Calculate the user agent:
-	userAgent := fmt.Sprintf("%s/%s", grpcProbeUserAgent, version.Get())
+	userAgent := fmt.Sprintf("%s/%s", userAgent, version.Get())
 
 	// Create the gRPC client connection:
 	conn, err := network.NewGrpcClient().
@@ -122,7 +122,7 @@ func (c *probeGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) er
 	return nil
 }
 
-func (c *probeGrpcServerCommandRunner) checkHealth(ctx context.Context, conn *grpc.ClientConn) error {
+func (c *runnerContext) checkHealth(ctx context.Context, conn *grpc.ClientConn) error {
 	client := healthv1.NewHealthClient(conn)
 	response, err := client.Check(ctx, &healthv1.HealthCheckRequest{})
 	if err != nil {
@@ -139,5 +139,5 @@ func (c *probeGrpcServerCommandRunner) checkHealth(ctx context.Context, conn *gr
 	return nil
 }
 
-// grpcProbeUserAgent is the user agent string for the gRPC probe.
-const grpcProbeUserAgent = "fulfillment-grpc-probe"
+// userAgent is the user agent string for the gRPC probe.
+const userAgent = "fulfillment-grpc-probe"

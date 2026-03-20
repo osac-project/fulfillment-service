@@ -11,16 +11,23 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package internal
+package dev
 
 import (
-	"testing"
+	"github.com/spf13/cobra"
 
-	. "github.com/onsi/ginkgo/v2/dsl/core"
-	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-service/internal/cmd/service/dev/listen"
+	"github.com/osac-project/fulfillment-service/internal/cmd/service/dev/watch"
 )
 
-func TestInternal(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Internal")
+func Cmd() *cobra.Command {
+	result := &cobra.Command{
+		Use:    "dev",
+		Short:  "Tools for developers",
+		Args:   cobra.NoArgs,
+		Hidden: true,
+	}
+	result.AddCommand(listen.Cmd())
+	result.AddCommand(watch.Cmd())
+	return result
 }

@@ -11,7 +11,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package service
+package grpcserver
 
 import (
 	"context"
@@ -33,7 +33,6 @@ import (
 	"k8s.io/klog/v2"
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/osac-project/fulfillment-service/internal"
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -48,9 +47,9 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
-// NewStartGrpcServerCommand creates and returns the `start grpc-server` command.
-func NewStartGrpcServerCommand() *cobra.Command {
-	runner := &startGrpcServerCommandRunner{}
+// Cmd creates and returns the `start grpc-server` command.
+func Cmd() *cobra.Command {
+	runner := &runnerContext{}
 	command := &cobra.Command{
 		Use:   "grpc-server",
 		Short: "Starts the gRPC server",
@@ -99,8 +98,8 @@ func NewStartGrpcServerCommand() *cobra.Command {
 	return command
 }
 
-// startGrpcServerCommandRunner contains the data and logic needed to run the `start grpc-server` command.
-type startGrpcServerCommandRunner struct {
+// runnerContext contains the data and logic needed to run the `start grpc-server` command.
+type runnerContext struct {
 	logger *slog.Logger
 	flags  *pflag.FlagSet
 	args   struct {
@@ -113,12 +112,12 @@ type startGrpcServerCommandRunner struct {
 }
 
 // run runs the `start grpc-server` command.
-func (c *startGrpcServerCommandRunner) run(cmd *cobra.Command, argv []string) error {
+func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Get the context and create a cancellable version:
 	ctx, cancel := context.WithCancel(cmd.Context())
 
 	// Get the dependencies from the context:
-	c.logger = internal.LoggerFromContext(ctx)
+	c.logger = logging.LoggerFromContext(ctx)
 
 	// Configure the Kubernetes libraries to use the logger:
 	logrLogger := logr.FromSlogHandler(c.logger.Handler())

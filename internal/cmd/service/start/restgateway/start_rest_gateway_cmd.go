@@ -11,7 +11,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package service
+package restgateway
 
 import (
 	"context"
@@ -31,17 +31,17 @@ import (
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/osac-project/fulfillment-service/internal"
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/network"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
-// NewStartRestGatewayCommand creates and returns the `start rest-gateway` command.
-func NewStartRestGatewayCommand() *cobra.Command {
-	runner := &startRestGatewayCommandRunner{}
+// Cmd creates and returns the `start rest-gateway` command.
+func Cmd() *cobra.Command {
+	runner := &runnerContext{}
 	command := &cobra.Command{
 		Use:   "rest-gateway",
 		Short: "Starts the REST gateway",
@@ -62,8 +62,8 @@ func NewStartRestGatewayCommand() *cobra.Command {
 	return command
 }
 
-// startRestGatewayCommandRunner contains the data and logic needed to run the `start rest-gateway` command.
-type startRestGatewayCommandRunner struct {
+// runnerContext contains the data and logic needed to run the `start rest-gateway` command.
+type runnerContext struct {
 	logger       *slog.Logger
 	flags        *pflag.FlagSet
 	grpcClient   *grpc.ClientConn
@@ -75,12 +75,12 @@ type startRestGatewayCommandRunner struct {
 }
 
 // run runs the `start rest-gateway` command.
-func (c *startRestGatewayCommandRunner) run(cmd *cobra.Command, argv []string) error {
+func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Get the context:
 	ctx, cancel := context.WithCancel(cmd.Context())
 
 	// Get the dependencies from the context:
-	c.logger = internal.LoggerFromContext(ctx)
+	c.logger = logging.LoggerFromContext(ctx)
 
 	// Save the flags:
 	c.flags = cmd.Flags()
@@ -117,7 +117,7 @@ func (c *startRestGatewayCommandRunner) run(cmd *cobra.Command, argv []string) e
 
 	// Calculate the user agent:
 	c.logger.InfoContext(ctx, "Calculating user agent")
-	userAgent := fmt.Sprintf("%s/%s", restGatewayUserAgent, version.Get())
+	userAgent := fmt.Sprintf("%s/%s", userAgent, version.Get())
 
 	// Create the gRPC client:
 	c.logger.InfoContext(ctx, "Creating gRPC client")
@@ -321,7 +321,7 @@ func (c *startRestGatewayCommandRunner) run(cmd *cobra.Command, argv []string) e
 	return shutdown.Wait()
 }
 
-func (c *startRestGatewayCommandRunner) handleHealth(
+func (c *runnerContext) handleHealth(
 	w http.ResponseWriter, r *http.Request, p map[string]string) {
 	response, err := c.healthClient.Check(r.Context(), &healthv1.HealthCheckRequest{})
 	if err != nil {
@@ -345,5 +345,5 @@ func (c *startRestGatewayCommandRunner) handleHealth(
 	w.WriteHeader(http.StatusOK)
 }
 
-// restGatewayUserAgent is the user agent string for the REST gateway.
-const restGatewayUserAgent = "fulfillment-rest-gateway"
+// userAgent is the user agent string for the REST gateway.
+const userAgent = "fulfillment-rest-gateway"

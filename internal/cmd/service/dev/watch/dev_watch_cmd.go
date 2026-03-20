@@ -11,7 +11,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package dev
+package watch
 
 import (
 	"context"
@@ -26,19 +26,19 @@ import (
 	"github.com/spf13/pflag"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/osac-project/fulfillment-service/internal"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/network"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
-// NewWatchCommand creates and returns the `listen` command.
-func NewWatchCommand() *cobra.Command {
-	runner := &watchCommandRunner{}
+// Cmd creates and returns the `listen` command.
+func Cmd() *cobra.Command {
+	runner := &runnerContext{}
 	command := &cobra.Command{
 		Use:   "watch",
-		Short: "watches events",
+		Short: "Watch for events",
 		Args:  cobra.NoArgs,
 		RunE:  runner.run,
 	}
@@ -65,8 +65,8 @@ func NewWatchCommand() *cobra.Command {
 	return command
 }
 
-// watchCommandRunner contains the data and logic needed to run the `listen` command.
-type watchCommandRunner struct {
+// runnerContext contains the data and logic needed to run the `listen` command.
+type runnerContext struct {
 	logger *slog.Logger
 	flags  *pflag.FlagSet
 	args   struct {
@@ -77,13 +77,13 @@ type watchCommandRunner struct {
 }
 
 // run runs the `listen` command.
-func (c *watchCommandRunner) run(cmd *cobra.Command, argv []string) error {
+func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Get the context:
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
 	// Get the dependencies from the context:
-	c.logger = internal.LoggerFromContext(ctx)
+	c.logger = logging.LoggerFromContext(ctx)
 
 	// Save the flags:
 	c.flags = cmd.Flags()

@@ -11,7 +11,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package service
+package controller
 
 import (
 	"context"
@@ -33,7 +33,6 @@ import (
 	"k8s.io/klog/v2"
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/osac-project/fulfillment-service/internal"
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/controllers"
@@ -44,14 +43,15 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/subnet"
 	"github.com/osac-project/fulfillment-service/internal/controllers/virtualnetwork"
 	internalhealth "github.com/osac-project/fulfillment-service/internal/health"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/network"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
-// NewStartControllerCommand creates and returns the `start controllers` command.
-func NewStartControllerCommand() *cobra.Command {
-	runner := &startControllerRunner{}
+// Cmd creates and returns the `start controllers` command.
+func Cmd() *cobra.Command {
+	runner := &runnerContext{}
 	command := &cobra.Command{
 		Use:   "controller",
 		Short: "Starts the controller",
@@ -77,8 +77,8 @@ func NewStartControllerCommand() *cobra.Command {
 	return command
 }
 
-// startControllerRunner contains the data and logic needed to run the `start controllers` command.
-type startControllerRunner struct {
+// runnerContext contains the data and logic needed to run the `start controllers` command.
+type runnerContext struct {
 	logger *slog.Logger
 	flags  *pflag.FlagSet
 	args   struct {
@@ -89,14 +89,14 @@ type startControllerRunner struct {
 }
 
 // run runs the `start controllers` command.
-func (r *startControllerRunner) run(cmd *cobra.Command, argv []string) error {
+func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	var err error
 
 	// Get the context:
 	ctx, cancel := context.WithCancel(cmd.Context())
 
 	// Get the dependencies from the context:
-	r.logger = internal.LoggerFromContext(ctx)
+	r.logger = logging.LoggerFromContext(ctx)
 
 	// Configure the Kubernetes libraries to use the logger:
 	logrLogger := logr.FromSlogHandler(r.logger.Handler())
@@ -478,7 +478,7 @@ func (r *startControllerRunner) run(cmd *cobra.Command, argv []string) error {
 }
 
 // waitForServer waits for the server to be ready using the health service.
-func (r *startControllerRunner) waitForServer(ctx context.Context) error {
+func (r *runnerContext) waitForServer(ctx context.Context) error {
 	client := healthv1.NewHealthClient(r.client)
 	request := &healthv1.HealthCheckRequest{}
 	const max = time.Minute
