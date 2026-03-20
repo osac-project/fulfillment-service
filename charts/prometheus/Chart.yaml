@@ -16,4 +16,4 @@ name: prometheus
 description: A Helm chart for Prometheus for use in the OSAC project
 type: application
 version: 0.0.0
-appVersion: "3.8.1"
+appVersion: "3.10.0"

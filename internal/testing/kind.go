@@ -1166,10 +1166,10 @@ const internalIngressPort = 30000
 
 // Versions of components:
 const (
-	certManagerVersion  = "v1.19.2"
-	trustManagerVersion = "v0.20.3"
-	authorinoVersion    = "v0.22.0"
-	envoyGatewayVersion = "v1.6.1"
+	certManagerVersion  = "v1.20.0"
+	trustManagerVersion = "v0.22.0"
+	authorinoVersion    = "v0.23.1"
+	envoyGatewayVersion = "v1.6.5"
 )
 
 // Details of the cert-manager installation:
