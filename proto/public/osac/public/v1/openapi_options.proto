@@ -28,7 +28,7 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
     }
     license: {
       name: "Apache-2.0"
-      url: "https://github.com/innabox/fulfillment-service/blob/main/LICENSE"
+      url: "https://github.com/osac-project/fulfillment-service/blob/main/LICENSE"
     }
   }
   schemes: HTTPS
