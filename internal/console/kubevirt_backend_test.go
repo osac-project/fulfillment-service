@@ -16,7 +16,6 @@ package console
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,11 +23,6 @@ import (
 )
 
 var _ = Describe("KubeVirt Backend", func() {
-	var logger *slog.Logger
-
-	BeforeEach(func() {
-		logger = slog.Default()
-	})
 
 	Describe("Build", func() {
 		It("should fail without logger", func() {

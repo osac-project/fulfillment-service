@@ -15,7 +15,6 @@ package console
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -26,12 +25,10 @@ import (
 
 var _ = Describe("KubeVirt Backend Integration", func() {
 	var (
-		logger   *slog.Logger
 		wsServer *mockWSServer
 	)
 
 	BeforeEach(func() {
-		logger = slog.Default()
 		var err error
 		wsServer, err = newMockWSServer()
 		Expect(err).NotTo(HaveOccurred())

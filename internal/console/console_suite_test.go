@@ -14,6 +14,7 @@ language governing permissions and limitations under the License.
 package console
 
 import (
+	"log/slog"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -24,3 +25,16 @@ func TestConsole(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Console")
 }
+
+// Logger used for tests:
+var logger *slog.Logger
+
+var _ = BeforeSuite(func() {
+	// Create a logger that writes to the Ginkgo writer, so that the log messages will be attached to the output of
+	// the right test:
+	options := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+	handler := slog.NewTextHandler(GinkgoWriter, options)
+	logger = slog.New(handler)
+})

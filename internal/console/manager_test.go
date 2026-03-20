@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log/slog"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -102,13 +101,11 @@ func (b *contextAwareBackend) Connect(ctx context.Context, target Target) (io.Re
 
 var _ = Describe("Manager", func() {
 	var (
-		logger  *slog.Logger
 		backend *mockBackend
 		mgr     *Manager
 	)
 
 	BeforeEach(func() {
-		logger = slog.Default()
 		backend = &mockBackend{
 			connectFunc: func(ctx context.Context, target Target) (io.ReadWriteCloser, error) {
 				return newMockConnection(), nil
@@ -227,7 +224,7 @@ var _ = Describe("Manager", func() {
 	Describe("Session Timeout", func() {
 		It("should cancel the session context after timeout", func() {
 			timeoutMgr, err := NewManager().
-				SetLogger(slog.Default()).
+				SetLogger(logger).
 				SetSessionTimeout(100*time.Millisecond).
 				AddBackend("compute_instance", &contextAwareBackend{}).
 				Build()
@@ -255,7 +252,7 @@ var _ = Describe("Manager", func() {
 
 		It("should allow new session after timeout-expired session is closed", func() {
 			timeoutMgr, err := NewManager().
-				SetLogger(slog.Default()).
+				SetLogger(logger).
 				SetSessionTimeout(50*time.Millisecond).
 				AddBackend("compute_instance", &contextAwareBackend{}).
 				Build()

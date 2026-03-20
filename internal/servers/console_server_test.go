@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -182,13 +181,11 @@ func newFakeClient(objects ...clnt.Object) clnt.Client {
 
 var _ = Describe("Console Server", func() {
 	var (
-		testLogger *slog.Logger
-		ciServer   *mockCIServer
-		hubServer  *mockHubServer
+		ciServer  *mockCIServer
+		hubServer *mockHubServer
 	)
 
 	BeforeEach(func() {
-		testLogger = slog.Default()
 		ciServer = &mockCIServer{}
 		hubServer = &mockHubServer{}
 	})
@@ -221,7 +218,7 @@ var _ = Describe("Console Server", func() {
 
 		It("should fail without manager", func() {
 			_, err := NewConsoleServer().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				SetComputeInstancesServer(ciServer).
 				SetHubServer(hubServer).
 				SetTxManager(&mockTxManager{}).
@@ -232,13 +229,13 @@ var _ = Describe("Console Server", func() {
 
 		It("should fail without compute instances server", func() {
 			mgr, err := console.NewManager().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				AddBackend("compute_instance", &mockBackendForServer{}).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = NewConsoleServer().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				SetManager(mgr).
 				SetHubServer(hubServer).
 				SetTxManager(&mockTxManager{}).
@@ -249,13 +246,13 @@ var _ = Describe("Console Server", func() {
 
 		It("should fail without hubs server", func() {
 			mgr, err := console.NewManager().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				AddBackend("compute_instance", &mockBackendForServer{}).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = NewConsoleServer().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				SetManager(mgr).
 				SetComputeInstancesServer(ciServer).
 				SetTxManager(&mockTxManager{}).
@@ -266,13 +263,13 @@ var _ = Describe("Console Server", func() {
 
 		It("should build successfully with all dependencies", func() {
 			mgr, err := console.NewManager().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				AddBackend("compute_instance", &mockBackendForServer{}).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
 			server, err := NewConsoleServer().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				SetManager(mgr).
 				SetComputeInstancesServer(ciServer).
 				SetHubServer(hubServer).
@@ -292,13 +289,13 @@ var _ = Describe("Console Server", func() {
 		buildServer := func() {
 			backend := &mockBackendForServer{conn: newMockConn("")}
 			mgr, err := console.NewManager().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				AddBackend("compute_instance", backend).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
 			server, err = NewConsoleServer().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				SetManager(mgr).
 				SetComputeInstancesServer(ciServer).
 				SetHubServer(hubServer).
@@ -456,13 +453,13 @@ var _ = Describe("Console Server", func() {
 
 		buildServer := func() {
 			mgr, err := console.NewManager().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				AddBackend("compute_instance", backend).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
 			server, err = NewConsoleServer().
-				SetLogger(testLogger).
+				SetLogger(logger).
 				SetManager(mgr).
 				SetComputeInstancesServer(ciServer).
 				SetHubServer(hubServer).

@@ -16,7 +16,6 @@ package computeinstance
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"sync/atomic"
 
@@ -110,7 +109,7 @@ var _ = Describe("Auto-reconnect", func() {
 		defer conn.Close()
 
 		runner := &runnerContext{
-			logger: slog.Default(),
+			logger: logger,
 			conn:   conn,
 		}
 
@@ -148,7 +147,7 @@ var _ = Describe("Auto-reconnect", func() {
 		defer conn.Close()
 
 		runner := &runnerContext{
-			logger: slog.Default(),
+			logger: logger,
 			conn:   conn,
 		}
 
@@ -171,7 +170,7 @@ var _ = Describe("Auto-reconnect", func() {
 		defer conn.Close()
 
 		runner := &runnerContext{
-			logger: slog.Default(),
+			logger: logger,
 			conn:   conn,
 		}
 
@@ -200,7 +199,7 @@ var _ = Describe("connectOnce edge cases", func() {
 		defer conn.Close()
 
 		runner := &runnerContext{
-			logger: slog.Default(),
+			logger: logger,
 			conn:   conn,
 		}
 
