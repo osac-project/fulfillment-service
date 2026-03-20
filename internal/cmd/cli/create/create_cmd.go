@@ -152,13 +152,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		objectId := objectHelper.GetId(object)
 		objectName := objectHelper.GetName(object)
 		if objectName != "" {
-			c.console.Printf(
+			c.console.Infof(
 				ctx,
 				"Created %s with name '%s' and identifier '%s'.\n",
 				objectSingular, objectName, objectId,
 			)
 		} else {
-			c.console.Printf(
+			c.console.Infof(
 				ctx,
 				"Created %s with identifier '%s'.\n",
 				objectSingular, objectId,

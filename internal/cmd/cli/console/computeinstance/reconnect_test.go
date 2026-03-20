@@ -109,8 +109,9 @@ var _ = Describe("Auto-reconnect", func() {
 		defer conn.Close()
 
 		runner := &runnerContext{
-			logger: logger,
-			conn:   conn,
+			logger:  logger,
+			console: console,
+			conn:    conn,
 		}
 
 		ctx := context.Background()
@@ -147,8 +148,9 @@ var _ = Describe("Auto-reconnect", func() {
 		defer conn.Close()
 
 		runner := &runnerContext{
-			logger: logger,
-			conn:   conn,
+			logger:  logger,
+			console: console,
+			conn:    conn,
 		}
 
 		err = runner.connectOnce(context.Background(), "test-vm")
@@ -170,8 +172,9 @@ var _ = Describe("Auto-reconnect", func() {
 		defer conn.Close()
 
 		runner := &runnerContext{
-			logger: logger,
-			conn:   conn,
+			logger:  logger,
+			console: console,
+			conn:    conn,
 		}
 
 		ctx := context.Background()
@@ -199,8 +202,9 @@ var _ = Describe("connectOnce edge cases", func() {
 		defer conn.Close()
 
 		runner := &runnerContext{
-			logger: logger,
-			conn:   conn,
+			logger:  logger,
+			console: console,
+			conn:    conn,
 		}
 
 		// Should handle EOF gracefully (return nil or io.EOF wrapped error).

@@ -53,7 +53,8 @@ var _ = Describe("Edit command", func() {
 
 		console, err = terminal.NewConsole().
 			SetLogger(logger).
-			SetWriter(output).
+			SetStdout(output).
+			SetStderr(GinkgoWriter).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 

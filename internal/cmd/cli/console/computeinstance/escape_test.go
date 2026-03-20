@@ -19,6 +19,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
 
 func TestConsoleComputeInstance(t *testing.T) {
@@ -27,7 +28,10 @@ func TestConsoleComputeInstance(t *testing.T) {
 }
 
 // Logger used for tests:
-var logger *slog.Logger
+var (
+	logger  *slog.Logger
+	console *terminal.Console
+)
 
 var _ = BeforeSuite(func() {
 	// Create a logger that writes to the Ginkgo writer, so that the log messages will be attached to the output of
@@ -37,6 +41,15 @@ var _ = BeforeSuite(func() {
 	}
 	handler := slog.NewTextHandler(GinkgoWriter, options)
 	logger = slog.New(handler)
+
+	// Same for the console:
+	var err error
+	console, err = terminal.NewConsole().
+		SetLogger(logger).
+		SetStdout(GinkgoWriter).
+		SetStderr(GinkgoWriter).
+		Build()
+	Expect(err).NotTo(HaveOccurred())
 })
 
 var _ = Describe("Escape Detector", func() {

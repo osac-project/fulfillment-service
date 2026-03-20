@@ -41,7 +41,8 @@ import (
 // use the NewConsole function instead.
 type ConsoleBuilder struct {
 	logger *slog.Logger
-	writer io.Writer
+	stdout io.Writer
+	stderr io.Writer
 	helper *reflection.Helper
 }
 
@@ -49,7 +50,8 @@ type ConsoleBuilder struct {
 // function instead.
 type Console struct {
 	logger *slog.Logger
-	writer io.Writer
+	stdout io.Writer
+	stderr io.Writer
 	engine *templating.Engine
 	helper *reflection.Helper
 }
@@ -65,10 +67,17 @@ func (b *ConsoleBuilder) SetLogger(value *slog.Logger) *ConsoleBuilder {
 	return b
 }
 
-// SetWriter sets the writer that the console will use to write messages to the console. This is optional, the default
+// SetStdout sets the writer that the console will use to write messages to the console. This is optional, the default
 // is to use os.Stdout and there is usually no need to change it; it is intended for unit tests.
-func (b *ConsoleBuilder) SetWriter(value io.Writer) *ConsoleBuilder {
-	b.writer = value
+func (b *ConsoleBuilder) SetStdout(value io.Writer) *ConsoleBuilder {
+	b.stdout = value
+	return b
+}
+
+// SetStderr sets the writer that the console will use to write error messages to the console. This is optional, the default
+// is to use os.Stderr and there is usually no need to change it; it is intended for unit tests.
+func (b *ConsoleBuilder) SetStderr(value io.Writer) *ConsoleBuilder {
+	b.stderr = value
 	return b
 }
 
@@ -87,16 +96,21 @@ func (b *ConsoleBuilder) Build() (result *Console, err error) {
 		return
 	}
 
-	// Set the default writer if needed:
-	writer := b.writer
-	if writer == nil {
-		writer = os.Stdout
+	// Set the default writers if needed:
+	stdout := b.stdout
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	stderr := b.stderr
+	if stderr == nil {
+		stderr = os.Stderr
 	}
 
 	// Create the console object first so we can reference its methods when building the template engine:
 	console := &Console{
 		logger: b.logger,
-		writer: writer,
+		stdout: stdout,
+		stderr: stderr,
 		helper: b.helper,
 	}
 
@@ -132,20 +146,42 @@ func (c *Console) SetHelper(value *reflection.Helper) {
 	c.helper = value
 }
 
-func (c *Console) Printf(ctx context.Context, format string, args ...any) {
+// Infof writes a message to the standard output stream of the console.
+func (c *Console) Infof(ctx context.Context, format string, args ...any) {
 	text := fmt.Sprintf(format, args...)
 	c.logger.DebugContext(
 		ctx,
-		"Console printf",
+		"Console info",
 		slog.String("format", format),
 		slog.Any("args", args),
 		slog.Any("text", text),
 	)
-	_, err := c.writer.Write([]byte(text))
+	_, err := c.stdout.Write([]byte(text))
 	if err != nil {
 		c.logger.ErrorContext(
 			ctx,
-			"Failed to write text",
+			"Failed to write info",
+			slog.String("text", text),
+			slog.Any("error", err),
+		)
+	}
+}
+
+// Errorf writes a message to the standard error stream of the console.
+func (c *Console) Errorf(ctx context.Context, format string, args ...any) {
+	text := fmt.Sprintf(format, args...)
+	c.logger.ErrorContext(
+		ctx,
+		"Console error",
+		slog.String("format", format),
+		slog.Any("args", args),
+		slog.Any("text", text),
+	)
+	_, err := c.stderr.Write([]byte(text))
+	if err != nil {
+		c.logger.ErrorContext(
+			ctx,
+			"Failed to write error",
 			slog.String("text", text),
 			slog.Any("error", err),
 		)
@@ -173,7 +209,7 @@ func (c *Console) Render(ctx context.Context, template string, data any) {
 		currentEmpty := len(line) == 0
 		if currentEmpty {
 			if !previousEmpty {
-				_, err := fmt.Fprintf(c.writer, "\n")
+				_, err := fmt.Fprintf(c.stdout, "\n")
 				if err != nil {
 					c.logger.ErrorContext(
 						ctx,
@@ -184,7 +220,7 @@ func (c *Console) Render(ctx context.Context, template string, data any) {
 				previousEmpty = true
 			}
 		} else {
-			_, err := fmt.Fprintf(c.writer, "%s\n", line)
+			_, err := fmt.Fprintf(c.stdout, "%s\n", line)
 			if err != nil {
 				c.logger.ErrorContext(
 					ctx,
@@ -237,9 +273,9 @@ func (c *Console) RenderYaml(ctx context.Context, data any) {
 // doesn't support color or an error occurs, it falls back to plain text output.
 func (c *Console) renderColored(ctx context.Context, text string, format string) error {
 	// If the writer isn't a file then we can't decide if it supports color, so we just print the text:
-	file, ok := c.writer.(*os.File)
+	file, ok := c.stdout.(*os.File)
 	if !ok {
-		_, err := c.writer.Write([]byte(text))
+		_, err := c.stdout.Write([]byte(text))
 		return err
 	}
 
@@ -279,7 +315,7 @@ func (c *Console) renderColored(ctx context.Context, text string, format string)
 
 // Write is an implementation of the io.Write interface that allows the console to be used as a writer if needed.
 func (c *Console) Write(p []byte) (n int, err error) {
-	n, err = c.writer.Write(p)
+	n, err = c.stdout.Write(p)
 	return
 }
 

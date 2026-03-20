@@ -124,7 +124,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	// Display the result:
 	hub = response.Object
-	c.console.Printf(ctx, "Created hub `%s`.\n", hub.GetId())
+	c.console.Infof(ctx, "Created hub `%s`.\n", hub.GetId())
 
 	return nil
 }

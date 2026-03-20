@@ -102,7 +102,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if cfg == nil {
-		c.console.Printf(ctx, "There is no configuration, run the 'login' command.\n")
+		c.console.Errorf(ctx, "There is no configuration, run the 'login' command.\n")
 		return exit.Error(1)
 	}
 
@@ -120,13 +120,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	var selected string
 	if !c.refresh {
 		if token.Access == "" {
-			c.console.Printf(ctx, "No access token available.\n")
+			c.console.Errorf(ctx, "No access token available.\n")
 			return exit.Error(1)
 		}
 		selected = token.Access
 	} else {
 		if token.Refresh == "" {
-			c.console.Printf(ctx, "No refresh token available.\n")
+			c.console.Errorf(ctx, "No refresh token available.\n")
 			return exit.Error(1)
 		}
 		selected = token.Refresh
@@ -138,7 +138,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		parser := jwt.NewParser(jwt.WithJSONNumber())
 		parsed, _, err = parser.ParseUnverified(selected, &jwt.MapClaims{})
 		if err != nil {
-			c.console.Printf(ctx, "Failed to parse token as a JSON web token: %s\n", err)
+			c.console.Errorf(ctx, "Failed to parse token as a JSON web token: %s\n", err)
 			return exit.Error(1)
 		}
 	}
@@ -152,7 +152,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		claims = c.replaceTimeClaims(ctx, claims)
 		c.console.RenderJson(ctx, claims)
 	default:
-		c.console.Printf(ctx, "%s\n", selected)
+		c.console.Infof(ctx, "%s\n", selected)
 	}
 	return nil
 }

@@ -256,7 +256,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	// Display the result:
 	computeInstance = response.Object
-	c.console.Printf(ctx, "Created compute instance '%s'.\n", computeInstance.Id)
+	c.console.Infof(ctx, "Created compute instance '%s'.\n", computeInstance.Id)
 
 	return nil
 }

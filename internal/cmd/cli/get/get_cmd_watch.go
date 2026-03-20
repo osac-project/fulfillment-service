@@ -37,7 +37,7 @@ func (c *runnerContext) watch(ctx context.Context, keys []string) error {
 	eventsClient := publicv1.NewEventsClient(c.conn)
 
 	// Start watching
-	c.console.Printf(ctx, "Watching for changes (Ctrl+C to stop)...\n\n")
+	c.console.Infof(ctx, "Watching for changes (Ctrl+C to stop)...\n\n")
 
 	stream, err := eventsClient.Watch(ctx, &publicv1.EventsWatchRequest{
 		Filter: &filter,
@@ -149,7 +149,7 @@ func (c *runnerContext) displayEvent(ctx context.Context, event *publicv1.Event,
 
 	objectId := c.getObjectId(object)
 
-	c.console.Printf(ctx, "[%s] %s %s '%s'\n", timestamp, eventType, c.objectHelper.Singular(), objectId)
+	c.console.Infof(ctx, "[%s] %s %s '%s'\n", timestamp, eventType, c.objectHelper.Singular(), objectId)
 
 	var render func(context.Context, []proto.Message) error
 	switch c.args.format {
@@ -171,7 +171,7 @@ func (c *runnerContext) displayEvent(ctx context.Context, event *publicv1.Event,
 		)
 	}
 
-	c.console.Printf(ctx, "\n")
+	c.console.Infof(ctx, "\n")
 }
 
 // getObjectId extracts the ID from an object.

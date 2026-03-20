@@ -166,7 +166,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 			"Failed to unmarshal kubeconfig",
 			slog.Any("error", err),
 		)
-		c.console.Printf(ctx, "%s\n", kcText)
+		c.console.Infof(ctx, "%s\n", kcText)
 	} else {
 		c.console.RenderYaml(ctx, kcYaml)
 	}

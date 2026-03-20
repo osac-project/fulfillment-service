@@ -160,7 +160,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			status, ok := grpcstatus.FromError(err)
 			if ok && status.Code() == grpccodes.NotFound {
-				c.console.Printf(
+				c.console.Errorf(
 					ctx,
 					"Can't delete %s '%s' because it doesn't exist.\n",
 					args[0], id,
@@ -172,7 +172,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 				args[0], id, err,
 			)
 		}
-		fmt.Printf("Deleted %s '%s'.\n", args[0], id)
+		c.console.Infof(ctx, "Deleted %s '%s'.\n", args[0], id)
 	}
 
 	return nil

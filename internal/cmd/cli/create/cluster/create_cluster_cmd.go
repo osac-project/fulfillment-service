@@ -190,7 +190,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	// Display the result:
 	cluster = response.Object
-	c.console.Printf(ctx, "Created cluster '%s'.\n", cluster.Id)
+	c.console.Infof(ctx, "Created cluster '%s'.\n", cluster.Id)
 
 	return nil
 }

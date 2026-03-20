@@ -50,7 +50,8 @@ var _ = Describe("Watch e2e", func() {
 		// Create console
 		console, err = terminal.NewConsole().
 			SetLogger(logger).
-			SetWriter(GinkgoWriter).
+			SetStdout(GinkgoWriter).
+			SetStderr(GinkgoWriter).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 

@@ -24,6 +24,7 @@ import (
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/logging"
+	"github.com/osac-project/fulfillment-service/internal/terminal"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	"google.golang.org/grpc"
@@ -80,9 +81,10 @@ Login credentials:
 }
 
 type runnerContext struct {
-	logger *slog.Logger
-	conn   *grpc.ClientConn
-	args   struct {
+	logger  *slog.Logger
+	console *terminal.Console
+	conn    *grpc.ClientConn
+	args    struct {
 		timeout time.Duration
 	}
 }
@@ -91,7 +93,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	key := args[0]
 
+	// Get the logger and console.
 	c.logger = logging.LoggerFromContext(ctx)
+	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Load configuration.
 	cfg, err := config.Load(ctx)
@@ -99,7 +103,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if cfg == nil {
-		fmt.Fprintln(os.Stderr, "Not logged in. Run 'fulfillment-cli login' first.")
+		c.console.Errorf(ctx, "Not logged in. Run 'fulfillment-cli login' first.\n")
 		return exit.Error(1)
 	}
 
@@ -126,7 +130,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Run with auto-reconnect.
 	err = c.connectWithRetry(ctx, instanceID)
 	if ctx.Err() == context.DeadlineExceeded {
-		fmt.Fprintf(os.Stderr, "\nSession timed out after %s.\n", c.args.timeout)
+		c.console.Errorf(ctx, "\nSession timed out after %s.\n", c.args.timeout)
 		return nil
 	}
 	return err
@@ -194,15 +198,15 @@ func (c *runnerContext) connectWithRetry(ctx context.Context, instanceID string)
 
 		consecutiveFailures++
 		if consecutiveFailures > maxConsecutiveRetries {
-			fmt.Fprintf(os.Stderr, "\nGave up reconnecting after %d consecutive failures.\n",
+			c.console.Errorf(ctx, "\nGave up reconnecting after %d consecutive failures.\n",
 				maxConsecutiveRetries)
 			return fmt.Errorf("%s", userFacingError(err))
 		}
 
 		if consecutiveFailures == 1 {
-			fmt.Fprintf(os.Stderr, "\nConnection lost. Reconnecting...\n")
+			c.console.Errorf(ctx, "\nConnection lost. Reconnecting...\n")
 		} else {
-			fmt.Fprintf(os.Stderr, "\nConnection lost. Reconnecting (attempt %d/%d)...\n",
+			c.console.Errorf(ctx, "\nConnection lost. Reconnecting (attempt %d/%d)...\n",
 				consecutiveFailures, maxConsecutiveRetries)
 		}
 
@@ -238,7 +242,7 @@ func (c *runnerContext) connectOnce(ctx context.Context, instanceID string) erro
 	}
 
 	// Wait for connected status.
-	if err := c.waitForConnected(stream, instanceID); err != nil {
+	if err := c.waitForConnected(ctx, stream, instanceID); err != nil {
 		return err
 	}
 
@@ -261,7 +265,8 @@ func (c *runnerContext) connectOnce(ctx context.Context, instanceID string) erro
 }
 
 // waitForConnected receives status messages until the server reports CONNECTED.
-func (c *runnerContext) waitForConnected(stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse], instanceID string) error {
+func (c *runnerContext) waitForConnected(ctx context.Context,
+	stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse], instanceID string) error {
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
@@ -271,10 +276,10 @@ func (c *runnerContext) waitForConnected(stream grpc.BidiStreamingClient[publicv
 		if st := resp.GetStatus(); st != nil {
 			switch st.GetState() {
 			case publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED:
-				fmt.Fprintf(os.Stderr, "Connected to %s. Disconnect: Ctrl+] or Enter ~.\n", instanceID)
+				c.console.Infof(ctx, "Connected to %s. Disconnect: Ctrl+] or Enter ~.\n", instanceID)
 				return nil
 			case publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTING:
-				fmt.Fprintf(os.Stderr, "%s\n", st.GetMessage())
+				c.console.Infof(ctx, "%s\n", st.GetMessage())
 			case publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_ERROR:
 				return fmt.Errorf("server error: %s", st.GetMessage())
 			}
@@ -313,7 +318,7 @@ func (c *runnerContext) proxyIO(ctx context.Context, stream grpc.BidiStreamingCl
 			if st := resp.GetStatus(); st != nil {
 				switch st.GetState() {
 				case publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_DISCONNECTED:
-					fmt.Fprintf(os.Stderr, "\n%s\n", st.GetMessage())
+					c.console.Infof(ctx, "\n%s\n", st.GetMessage())
 					errCh <- nil
 					return
 				case publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_ERROR:
@@ -336,7 +341,7 @@ func (c *runnerContext) proxyIO(ctx context.Context, stream grpc.BidiStreamingCl
 
 				// Check for escape sequence (~. after CR).
 				if escape.feed(data) {
-					fmt.Fprintf(os.Stderr, "\nConnection closed.\n")
+					c.console.Infof(ctx, "\nConnection closed.\n")
 					errCh <- nil
 					return
 				}
