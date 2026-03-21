@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi10/ubi:10.1-1763341459 AS builder
+FROM registry.access.redhat.com/ubi10/ubi:10.1-1773895909 AS builder
 
 # Install packages:
 RUN \
@@ -7,7 +7,6 @@ RUN \
   golang \
   && \
   dnf clean all -y
-
 
 # Copy only the 'go.mod' and 'go.sum' files and try to download the required modules, so that hopefully this will be
 # in a layer that can be cached reused for builds that don't change the dependencies.
@@ -21,7 +20,7 @@ RUN \
   version=$(git describe --tags --always) && \
   go build -ldflags="-X github.com/osac-project/fulfillment-service/internal/version.id=${version}" ./cmd/fulfillment-service
 
-FROM registry.access.redhat.com/ubi10/ubi:10.1-1763341459 AS runtime
+FROM registry.access.redhat.com/ubi10/ubi:10.1-1773895909 AS runtime
 
 RUN \
   dnf install -y \
