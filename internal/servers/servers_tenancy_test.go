@@ -72,11 +72,9 @@ var _ = Describe("Tenancy logic", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(
-			ctx,
-			"cluster_templates",
-			"clusters",
-		)
+		err = dao.CreateTables[*privatev1.ClusterTemplate](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.Cluster](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -105,7 +103,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the template using the DAO directly (this is setup for the test):
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 			SetLogger(logger).
-			SetTable("cluster_templates").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -164,7 +161,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the template using the DAO with setup tenancy:
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 			SetLogger(logger).
-			SetTable("cluster_templates").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(setupTenancy).
 			Build()
@@ -229,7 +225,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the template using the DAO:
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 			SetLogger(logger).
-			SetTable("cluster_templates").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()

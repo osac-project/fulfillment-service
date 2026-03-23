@@ -83,7 +83,6 @@ func (b *PrivateNetworkClassesServerBuilder) Build() (result *PrivateNetworkClas
 	generic, err := NewGenericServer[*privatev1.NetworkClass]().
 		SetLogger(b.logger).
 		SetService(privatev1.NetworkClasses_ServiceDesc.ServiceName).
-		SetTable("network_classes").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

@@ -63,7 +63,7 @@ var _ = Describe("Host pools server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "host_pools")
+		err = dao.CreateTables[*publicv1.HostPool](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 

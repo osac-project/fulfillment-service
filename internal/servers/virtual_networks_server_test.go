@@ -64,13 +64,14 @@ var _ = Describe("Virtual networks server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "virtual_networks", "network_classes")
+		err = dao.CreateTables[*privatev1.VirtualNetwork](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a default NetworkClass for tests:
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetTable("network_classes").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()

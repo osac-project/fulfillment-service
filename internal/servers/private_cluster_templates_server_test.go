@@ -64,7 +64,7 @@ var _ = Describe("Private cluster templates server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "cluster_templates")
+		err = dao.CreateTables[*privatev1.ClusterTemplate](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 

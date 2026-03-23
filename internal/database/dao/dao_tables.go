@@ -17,12 +17,22 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gobuffalo/flect"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"google.golang.org/protobuf/proto"
 )
+
+// TableName calculates the table name from the protobuf message type name. It converts the CamelCase type
+// name to snake_case and pluralizes it. For example, `Cluster` becomes `clusters` and `ComputeInstance` becomes
+// `compute_instances`.
+func TableName[O proto.Message]() string {
+	var object O
+	return flect.Pluralize(flect.Underscore(string(object.ProtoReflect().Descriptor().Name())))
+}
 
 // CreateTables creates the tables, indexes, and archived tables for the provided object names. It gets the current
 // transaction from the context and uses it to run the SQL statements.
-func CreateTables(ctx context.Context, objects ...string) error {
+func CreateTables[O proto.Message](ctx context.Context) error {
 	// Get the transaction from the context:
 	tx, err := database.TxFromContext(ctx)
 	if err != nil {
@@ -30,15 +40,8 @@ func CreateTables(ctx context.Context, objects ...string) error {
 	}
 	defer tx.ReportError(&err)
 
-	// Create tables for each object:
-	for _, object := range objects {
-		err = createTable(ctx, tx, object)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// Create the tables:
+	return createTable(ctx, tx, TableName[O]())
 }
 
 func createTable(ctx context.Context, tx database.Tx, object string) error {

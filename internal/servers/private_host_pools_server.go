@@ -78,7 +78,6 @@ func (b *PrivateHostPoolsServerBuilder) Build() (result *PrivateHostPoolsServer,
 	generic, err := NewGenericServer[*privatev1.HostPool]().
 		SetLogger(b.logger).
 		SetService(privatev1.HostPools_ServiceDesc.ServiceName).
-		SetTable("host_pools").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

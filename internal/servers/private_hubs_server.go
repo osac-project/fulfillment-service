@@ -78,7 +78,6 @@ func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error
 	generic, err := NewGenericServer[*privatev1.Hub]().
 		SetLogger(b.logger).
 		SetService(privatev1.Hubs_ServiceDesc.ServiceName).
-		SetTable("hubs").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

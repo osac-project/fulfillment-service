@@ -38,7 +38,6 @@ type Object interface {
 // GenericDAOBuilder is a builder for creating generic data access objects.
 type GenericDAOBuilder[O Object] struct {
 	logger           *slog.Logger
-	table            string
 	defaultLimit     int32
 	maxLimit         int32
 	eventCallbacks   []EventCallback
@@ -113,12 +112,6 @@ func (b *GenericDAOBuilder[O]) SetLogger(value *slog.Logger) *GenericDAOBuilder[
 	return b
 }
 
-// SetTable sets the table name. This is mandatory.
-func (b *GenericDAOBuilder[O]) SetTable(value string) *GenericDAOBuilder[O] {
-	b.table = value
-	return b
-}
-
 // SetDefaultLimit sets the default number of items returned. It will be used when the value of the limit parameter
 // of the list request is zero. This is optional, and the default is 100.
 func (b *GenericDAOBuilder[O]) SetDefaultLimit(value int) *GenericDAOBuilder[O] {
@@ -163,10 +156,6 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
-	}
-	if b.table == "" {
-		err = errors.New("table is mandatory")
 		return
 	}
 	if b.defaultLimit <= 0 {
@@ -260,7 +249,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 	// Create and populate the object:
 	result = &GenericDAO[O]{
 		logger:           b.logger,
-		table:            b.table,
+		table:            TableName[O](),
 		defaultLimit:     b.defaultLimit,
 		maxLimit:         b.maxLimit,
 		timestampDesc:    timestampDesc,

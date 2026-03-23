@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
@@ -118,105 +119,75 @@ var _ = Describe("Create tables", func() {
 	Describe("Creating tables", func() {
 		It("Creates main table, archived table, and indexes for a single object", func() {
 			// Create tables:
-			err := CreateTables(ctx, "test_object")
+			err := CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify main table exists:
-			Expect(tableExists("test_object")).To(BeTrue())
+			Expect(tableExists("objects")).To(BeTrue())
 
 			// Verify archived table exists:
-			Expect(tableExists("archived_test_object")).To(BeTrue())
+			Expect(tableExists("archived_objects")).To(BeTrue())
 
 			// Verify indexes exist:
-			Expect(indexExists("test_object_by_name")).To(BeTrue())
-			Expect(indexExists("test_object_by_owner")).To(BeTrue())
-			Expect(indexExists("test_object_by_tenant")).To(BeTrue())
-			Expect(indexExists("test_object_by_label")).To(BeTrue())
-		})
-
-		It("Creates tables for multiple objects", func() {
-			// Create tables:
-			err := CreateTables(ctx, "object1", "object2", "object3")
-			Expect(err).ToNot(HaveOccurred())
-
-			// Verify all main tables exist:
-			Expect(tableExists("object1")).To(BeTrue())
-			Expect(tableExists("object2")).To(BeTrue())
-			Expect(tableExists("object3")).To(BeTrue())
-
-			// Verify all archived tables exist:
-			Expect(tableExists("archived_object1")).To(BeTrue())
-			Expect(tableExists("archived_object2")).To(BeTrue())
-			Expect(tableExists("archived_object3")).To(BeTrue())
-
-			// Verify all indexes exist:
-			Expect(indexExists("object1_by_name")).To(BeTrue())
-			Expect(indexExists("object1_by_owner")).To(BeTrue())
-			Expect(indexExists("object1_by_tenant")).To(BeTrue())
-			Expect(indexExists("object1_by_label")).To(BeTrue())
-			Expect(indexExists("object2_by_name")).To(BeTrue())
-			Expect(indexExists("object2_by_owner")).To(BeTrue())
-			Expect(indexExists("object2_by_tenant")).To(BeTrue())
-			Expect(indexExists("object2_by_label")).To(BeTrue())
-			Expect(indexExists("object3_by_name")).To(BeTrue())
-			Expect(indexExists("object3_by_owner")).To(BeTrue())
-			Expect(indexExists("object3_by_tenant")).To(BeTrue())
-			Expect(indexExists("object3_by_label")).To(BeTrue())
+			Expect(indexExists("objects_by_name")).To(BeTrue())
+			Expect(indexExists("objects_by_owner")).To(BeTrue())
+			Expect(indexExists("objects_by_tenant")).To(BeTrue())
+			Expect(indexExists("objects_by_label")).To(BeTrue())
 		})
 
 		It("Can be called multiple times without error", func() {
 			// Create tables first time:
-			err := CreateTables(ctx, "test_object")
+			err := CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create tables second time (should not fail due to "if not exists"):
-			err = CreateTables(ctx, "test_object")
+			err = CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify tables still exist:
-			Expect(tableExists("test_object")).To(BeTrue())
-			Expect(tableExists("archived_test_object")).To(BeTrue())
+			Expect(tableExists("objects")).To(BeTrue())
+			Expect(tableExists("archived_objects")).To(BeTrue())
 		})
 
 		It("Creates main table with correct columns", func() {
 			// Create tables:
-			err := CreateTables(ctx, "test_object")
+			err := CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify all required columns exist:
-			Expect(columnExists("test_object", "id")).To(BeTrue())
-			Expect(columnExists("test_object", "name")).To(BeTrue())
-			Expect(columnExists("test_object", "creation_timestamp")).To(BeTrue())
-			Expect(columnExists("test_object", "deletion_timestamp")).To(BeTrue())
-			Expect(columnExists("test_object", "finalizers")).To(BeTrue())
-			Expect(columnExists("test_object", "creators")).To(BeTrue())
-			Expect(columnExists("test_object", "tenants")).To(BeTrue())
-			Expect(columnExists("test_object", "labels")).To(BeTrue())
-			Expect(columnExists("test_object", "annotations")).To(BeTrue())
-			Expect(columnExists("test_object", "data")).To(BeTrue())
+			Expect(columnExists("objects", "id")).To(BeTrue())
+			Expect(columnExists("objects", "name")).To(BeTrue())
+			Expect(columnExists("objects", "creation_timestamp")).To(BeTrue())
+			Expect(columnExists("objects", "deletion_timestamp")).To(BeTrue())
+			Expect(columnExists("objects", "finalizers")).To(BeTrue())
+			Expect(columnExists("objects", "creators")).To(BeTrue())
+			Expect(columnExists("objects", "tenants")).To(BeTrue())
+			Expect(columnExists("objects", "labels")).To(BeTrue())
+			Expect(columnExists("objects", "annotations")).To(BeTrue())
+			Expect(columnExists("objects", "data")).To(BeTrue())
 		})
 
 		It("Creates archived table with correct columns", func() {
 			// Create tables:
-			err := CreateTables(ctx, "test_object")
+			err := CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify all required columns exist:
-			Expect(columnExists("archived_test_object", "id")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "name")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "creation_timestamp")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "deletion_timestamp")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "archival_timestamp")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "creators")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "tenants")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "labels")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "annotations")).To(BeTrue())
-			Expect(columnExists("archived_test_object", "data")).To(BeTrue())
+			Expect(columnExists("archived_objects", "id")).To(BeTrue())
+			Expect(columnExists("archived_objects", "name")).To(BeTrue())
+			Expect(columnExists("archived_objects", "creation_timestamp")).To(BeTrue())
+			Expect(columnExists("archived_objects", "deletion_timestamp")).To(BeTrue())
+			Expect(columnExists("archived_objects", "archival_timestamp")).To(BeTrue())
+			Expect(columnExists("archived_objects", "creators")).To(BeTrue())
+			Expect(columnExists("archived_objects", "tenants")).To(BeTrue())
+			Expect(columnExists("archived_objects", "labels")).To(BeTrue())
+			Expect(columnExists("archived_objects", "annotations")).To(BeTrue())
+			Expect(columnExists("archived_objects", "data")).To(BeTrue())
 		})
 
 		It("Handles empty object list", func() {
 			// Create tables with no objects:
-			err := CreateTables(ctx)
+			err := CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -227,7 +198,7 @@ var _ = Describe("Create tables", func() {
 			ctxWithoutTx := context.Background()
 
 			// Try to create tables:
-			err := CreateTables(ctxWithoutTx, "test_object")
+			err := CreateTables[*testsv1.Object](ctxWithoutTx)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to get transaction from context"))
 		})
@@ -236,7 +207,7 @@ var _ = Describe("Create tables", func() {
 	Describe("Table structure", func() {
 		It("Creates main table with primary key on id column", func() {
 			// Create tables:
-			err := CreateTables(ctx, "test_object")
+			err := CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify primary key exists:
@@ -247,7 +218,7 @@ var _ = Describe("Create tables", func() {
 				select constraint_name
 				from information_schema.table_constraints
 				where table_schema = 'public'
-				and table_name = 'test_object'
+				and table_name = 'objects'
 				and constraint_type = 'PRIMARY KEY'
 				`,
 			).Scan(&constraintName)
@@ -257,7 +228,7 @@ var _ = Describe("Create tables", func() {
 
 		It("Creates indexes with correct types", func() {
 			// Create tables:
-			err := CreateTables(ctx, "test_object")
+			err := CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify index types:
@@ -270,7 +241,7 @@ var _ = Describe("Create tables", func() {
 				select indexdef
 				from pg_indexes
 				where schemaname = 'public'
-				and indexname = 'test_object_by_name'
+				and indexname = 'objects_by_name'
 				`,
 			).Scan(&indexDef)
 			Expect(err).ToNot(HaveOccurred())
@@ -283,7 +254,7 @@ var _ = Describe("Create tables", func() {
 				select indexdef
 				from pg_indexes
 				where schemaname = 'public'
-				and indexname = 'test_object_by_owner'
+				and indexname = 'objects_by_owner'
 				`,
 			).Scan(&indexDef)
 			Expect(err).ToNot(HaveOccurred())
@@ -297,7 +268,7 @@ var _ = Describe("Create tables", func() {
 				select indexdef
 				from pg_indexes
 				where schemaname = 'public'
-				and indexname = 'test_object_by_tenant'
+				and indexname = 'objects_by_tenant'
 				`,
 			).Scan(&indexDef)
 			Expect(err).ToNot(HaveOccurred())
@@ -311,7 +282,7 @@ var _ = Describe("Create tables", func() {
 				select indexdef
 				from pg_indexes
 				where schemaname = 'public'
-				and indexname = 'test_object_by_label'
+				and indexname = 'objects_by_label'
 				`,
 			).Scan(&indexDef)
 			Expect(err).ToNot(HaveOccurred())

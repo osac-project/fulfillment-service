@@ -41,7 +41,6 @@ import (
 type GenericServerBuilder[O dao.Object] struct {
 	logger           *slog.Logger
 	service          string
-	table            string
 	ignoredFields    []any
 	notifier         *database.Notifier
 	attributionLogic auth.AttributionLogic
@@ -99,12 +98,6 @@ func (b *GenericServerBuilder[O]) SetService(value string) *GenericServerBuilder
 	return b
 }
 
-// SetTable sets the name of the table where the objects will be stored. This is mandatory.
-func (b *GenericServerBuilder[O]) SetTable(value string) *GenericServerBuilder[O] {
-	b.table = value
-	return b
-}
-
 // AddIgnoredFields adds a set of fields to be omitted when mapping objects. The values passed can be of the following
 // types:
 //
@@ -151,10 +144,6 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		err = errors.New("service name is mandatory")
 		return
 	}
-	if b.table == "" {
-		err = errors.New("table name is mandatory")
-		return
-	}
 
 	// Create the path compiler:
 	pathCompiler, err := masks.NewPathCompiler[O]().
@@ -178,7 +167,6 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 	// Create the DAO:
 	daoBuilder := dao.NewGenericDAO[O]()
 	daoBuilder.SetLogger(b.logger)
-	daoBuilder.SetTable(b.table)
 	if b.notifier != nil {
 		daoBuilder.AddEventCallback(s.notifyEvent)
 	}

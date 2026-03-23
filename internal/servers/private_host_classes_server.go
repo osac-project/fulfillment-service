@@ -77,7 +77,6 @@ func (b *PrivateHostClassesServerBuilder) Build() (result *PrivateHostClassesSer
 	generic, err := NewGenericServer[*privatev1.HostClass]().
 		SetLogger(b.logger).
 		SetService(privatev1.HostClasses_ServiceDesc.ServiceName).
-		SetTable("host_classes").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

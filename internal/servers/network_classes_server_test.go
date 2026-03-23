@@ -64,7 +64,7 @@ var _ = Describe("Network classes server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "network_classes")
+		err = dao.CreateTables[*publicv1.NetworkClass](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 

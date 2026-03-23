@@ -68,11 +68,9 @@ var _ = Describe("Compute instances server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(
-			ctx,
-			"compute_instance_templates",
-			"compute_instances",
-		)
+		err = dao.CreateTables[*privatev1.ComputeInstanceTemplate](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.ComputeInstance](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -139,7 +137,6 @@ var _ = Describe("Compute instances server", func() {
 			// Create a template DAO to insert a template
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
 				SetLogger(logger).
-				SetTable("compute_instance_templates").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()

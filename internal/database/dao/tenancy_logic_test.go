@@ -66,7 +66,7 @@ var _ = Describe("Tenancy logic", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the objects table:
-		err = CreateTables(ctx, "objects")
+		err = CreateTables[*testsv1.Object](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -106,7 +106,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -177,7 +176,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -216,7 +214,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -263,7 +260,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -319,7 +315,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -386,7 +381,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -452,7 +446,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -510,7 +503,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -569,7 +561,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -624,7 +615,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -681,7 +671,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -744,7 +733,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -811,7 +799,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -879,7 +866,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -952,7 +938,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -1010,7 +995,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -1059,7 +1043,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -1105,7 +1088,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -1152,7 +1134,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -1181,7 +1162,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -1210,7 +1190,6 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetTable("objects").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()

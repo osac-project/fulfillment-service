@@ -78,7 +78,6 @@ func (b *PrivateClusterTemplatesServerBuilder) Build() (result *PrivateClusterTe
 	generic, err := NewGenericServer[*privatev1.ClusterTemplate]().
 		SetLogger(b.logger).
 		SetService(privatev1.ClusterTemplates_ServiceDesc.ServiceName).
-		SetTable("cluster_templates").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

@@ -64,7 +64,7 @@ var _ = Describe("Private compute instance templates server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "compute_instance_templates")
+		err = dao.CreateTables[*privatev1.ComputeInstanceTemplate](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 

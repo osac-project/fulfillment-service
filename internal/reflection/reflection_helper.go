@@ -22,7 +22,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gertd/go-pluralize"
+	"github.com/gobuffalo/flect"
 	"golang.org/x/exp/maps"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -73,7 +73,6 @@ type Helper struct {
 	connection *grpc.ClientConn
 	packages   map[protoreflect.FullName]int
 	scanOnce   *sync.Once
-	pluralizer *pluralize.Client
 	helpers    []ObjectHelper
 }
 
@@ -132,9 +131,6 @@ func (b *HelperBuilder) Build() (result *Helper, err error) {
 		return
 	}
 
-	// Create the pluralizer:
-	pluralizer := pluralize.NewClient()
-
 	// Prepare the set of packages:
 	packages := make(map[protoreflect.FullName]int, len(b.packages))
 	for name, order := range b.packages {
@@ -146,7 +142,6 @@ func (b *HelperBuilder) Build() (result *Helper, err error) {
 		logger:     b.logger,
 		packages:   packages,
 		connection: b.connection,
-		pluralizer: pluralizer,
 		scanOnce:   &sync.Once{},
 		helpers:    []ObjectHelper{},
 	}
@@ -307,7 +302,7 @@ func (h *Helper) scanService(serviceDesc protoreflect.ServiceDescriptor) {
 	// Calculate the singular and pluran names:
 	objectName := string(objectDesc.Name())
 	objectNameSingular := strings.ToLower(objectName)
-	objectNamePlural := strings.ToLower(h.pluralizer.Plural(objectName))
+	objectNamePlural := strings.ToLower(flect.Pluralize(objectName))
 
 	// Get the descriptors of the fields of the object:
 	objectFields := objectDesc.Fields()

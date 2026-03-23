@@ -84,7 +84,6 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 	// Create the VirtualNetwork DAO for parent validation:
 	virtualNetworkDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 		SetLogger(b.logger).
-		SetTable("virtual_networks").
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		Build()
@@ -96,7 +95,6 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 	generic, err := NewGenericServer[*privatev1.Subnet]().
 		SetLogger(b.logger).
 		SetService(privatev1.Subnets_ServiceDesc.ServiceName).
-		SetTable("subnets").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

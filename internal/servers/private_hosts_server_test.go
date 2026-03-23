@@ -63,7 +63,7 @@ var _ = Describe("Private hosts server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "hosts")
+		err = dao.CreateTables[*privatev1.Host](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 

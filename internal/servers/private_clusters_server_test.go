@@ -68,12 +68,11 @@ var _ = Describe("Private clusters server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(
-			ctx,
-			"cluster_templates",
-			"clusters",
-			"host_classes",
-		)
+		err = dao.CreateTables[*privatev1.ClusterTemplate](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.Cluster](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.HostClass](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -133,7 +132,6 @@ var _ = Describe("Private clusters server", func() {
 			// Ceate the host classes DAO:
 			hoastClassesDao, err := dao.NewGenericDAO[*privatev1.HostClass]().
 				SetLogger(logger).
-				SetTable("host_classes").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
@@ -142,7 +140,6 @@ var _ = Describe("Private clusters server", func() {
 			// Create the templates DAO:
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 				SetLogger(logger).
-				SetTable("cluster_templates").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()

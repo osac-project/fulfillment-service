@@ -68,15 +68,17 @@ var _ = Describe("Private compute instances server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(
-			ctx,
-			"compute_instance_templates",
-			"compute_instances",
-			"subnets",
-			"security_groups",
-			"virtual_networks",
-			"network_classes",
-		)
+		err = dao.CreateTables[*privatev1.ComputeInstanceTemplate](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.ComputeInstance](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.Subnet](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.SecurityGroup](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.VirtualNetwork](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -84,7 +86,6 @@ var _ = Describe("Private compute instances server", func() {
 	createTestNetworkClass := func(ctx context.Context) *privatev1.NetworkClass {
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetTable("network_classes").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -111,7 +112,6 @@ var _ = Describe("Private compute instances server", func() {
 	createTestVirtualNetwork := func(ctx context.Context, networkClassID string) *privatev1.VirtualNetwork {
 		vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 			SetLogger(logger).
-			SetTable("virtual_networks").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -136,7 +136,6 @@ var _ = Describe("Private compute instances server", func() {
 	createTestSubnet := func(ctx context.Context, vnID string, state privatev1.SubnetState) *privatev1.Subnet {
 		subnetDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
 			SetLogger(logger).
-			SetTable("subnets").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -161,7 +160,6 @@ var _ = Describe("Private compute instances server", func() {
 	createTestSecurityGroup := func(ctx context.Context, vnID string, state privatev1.SecurityGroupState) *privatev1.SecurityGroup {
 		sgDao, err := dao.NewGenericDAO[*privatev1.SecurityGroup]().
 			SetLogger(logger).
-			SetTable("security_groups").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -240,7 +238,6 @@ var _ = Describe("Private compute instances server", func() {
 			// Create a template DAO to insert a template
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
 				SetLogger(logger).
-				SetTable("compute_instance_templates").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
@@ -647,7 +644,6 @@ var _ = Describe("Private compute instances server", func() {
 			// Create test template
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
 				SetLogger(logger).
-				SetTable("compute_instance_templates").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()

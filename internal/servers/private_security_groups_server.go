@@ -86,7 +86,6 @@ func (b *PrivateSecurityGroupsServerBuilder) Build() (result *PrivateSecurityGro
 	// Create the VirtualNetwork DAO for parent validation:
 	virtualNetworkDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 		SetLogger(b.logger).
-		SetTable("virtual_networks").
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		Build()
@@ -98,7 +97,6 @@ func (b *PrivateSecurityGroupsServerBuilder) Build() (result *PrivateSecurityGro
 	generic, err := NewGenericServer[*privatev1.SecurityGroup]().
 		SetLogger(b.logger).
 		SetService(privatev1.SecurityGroups_ServiceDesc.ServiceName).
-		SetTable("security_groups").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

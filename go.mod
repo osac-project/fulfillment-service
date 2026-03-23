@@ -6,8 +6,8 @@ require (
 	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
-	github.com/gertd/go-pluralize v0.2.1
 	github.com/go-logr/logr v1.4.3
+	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0

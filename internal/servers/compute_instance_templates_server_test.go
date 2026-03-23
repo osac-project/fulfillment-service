@@ -64,8 +64,7 @@ var _ = Describe("Compute instance templates server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "compute_instance_templates")
-		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*publicv1.ComputeInstanceTemplate](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 

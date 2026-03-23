@@ -66,13 +66,15 @@ var _ = Describe("Private subnets server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "subnets", "virtual_networks", "network_classes")
+		err = dao.CreateTables[*privatev1.Subnet](ctx)
 		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.VirtualNetwork](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
 
 		// Create the subnet DAO:
 		subnetDao, err = dao.NewGenericDAO[*privatev1.Subnet]().
 			SetLogger(logger).
-			SetTable("subnets").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -84,7 +86,6 @@ var _ = Describe("Private subnets server", func() {
 		// Create NetworkClass DAO
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetTable("network_classes").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -118,7 +119,6 @@ var _ = Describe("Private subnets server", func() {
 		// Create VirtualNetwork DAO
 		vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 			SetLogger(logger).
-			SetTable("virtual_networks").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -428,7 +428,6 @@ var _ = Describe("Private subnets server", func() {
 				// Create VirtualNetwork DAO
 				vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 					SetLogger(logger).
-					SetTable("virtual_networks").
 					SetAttributionLogic(attribution).
 					SetTenancyLogic(tenancy).
 					Build()
@@ -472,7 +471,6 @@ var _ = Describe("Private subnets server", func() {
 				// Create VirtualNetwork DAO
 				vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 					SetLogger(logger).
-					SetTable("virtual_networks").
 					SetAttributionLogic(attribution).
 					SetTenancyLogic(tenancy).
 					Build()
@@ -640,7 +638,6 @@ var _ = Describe("Private subnets server", func() {
 				// Create VirtualNetwork DAO
 				vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 					SetLogger(logger).
-					SetTable("virtual_networks").
 					SetAttributionLogic(attribution).
 					SetTenancyLogic(tenancy).
 					Build()
@@ -922,7 +919,6 @@ var _ = Describe("Private subnets server", func() {
 			// Create DAO
 			generic, err = dao.NewGenericDAO[*privatev1.Subnet]().
 				SetLogger(logger).
-				SetTable("subnets").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()

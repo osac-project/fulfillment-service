@@ -83,7 +83,6 @@ func (b *PrivateVirtualNetworksServerBuilder) Build() (result *PrivateVirtualNet
 	// Create the NetworkClass DAO:
 	networkClassDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 		SetLogger(b.logger).
-		SetTable("network_classes").
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		Build()
@@ -95,7 +94,6 @@ func (b *PrivateVirtualNetworksServerBuilder) Build() (result *PrivateVirtualNet
 	generic, err := NewGenericServer[*privatev1.VirtualNetwork]().
 		SetLogger(b.logger).
 		SetService(privatev1.VirtualNetworks_ServiceDesc.ServiceName).
-		SetTable("virtual_networks").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

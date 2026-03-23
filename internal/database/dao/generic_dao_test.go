@@ -87,7 +87,6 @@ var _ = Describe("Generic DAO", func() {
 		It("Can be built if all the required parameters are set", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
@@ -97,7 +96,6 @@ var _ = Describe("Generic DAO", func() {
 
 		It("Fails if logger is not set", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
-				SetTable("objects").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
@@ -105,20 +103,9 @@ var _ = Describe("Generic DAO", func() {
 			Expect(generic).To(BeNil())
 		})
 
-		It("Fails if table is not set", func() {
-			generic, err := NewGenericDAO[*testsv1.Object]().
-				SetLogger(logger).
-				SetAttributionLogic(attribution).
-				SetTenancyLogic(tenancy).
-				Build()
-			Expect(err).To(MatchError("table is mandatory"))
-			Expect(generic).To(BeNil())
-		})
-
 		It("Fails if attribution logic is not set", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).To(MatchError("attribution logic is mandatory"))
@@ -128,7 +115,6 @@ var _ = Describe("Generic DAO", func() {
 		It("Fails if tenancy logic is not set", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetAttributionLogic(attribution).
 				Build()
 			Expect(err).To(MatchError("tenancy logic is mandatory"))
@@ -138,7 +124,6 @@ var _ = Describe("Generic DAO", func() {
 		It("Fails if default limit is zero", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				SetDefaultLimit(0).
@@ -150,7 +135,6 @@ var _ = Describe("Generic DAO", func() {
 		It("Fails if default limit is negative", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				SetDefaultLimit(-1).
@@ -162,7 +146,6 @@ var _ = Describe("Generic DAO", func() {
 		It("Fails if max limit is zero", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				SetMaxLimit(0).
@@ -174,7 +157,6 @@ var _ = Describe("Generic DAO", func() {
 		It("Fails if max limit is negative", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				SetMaxLimit(-1).
@@ -186,7 +168,6 @@ var _ = Describe("Generic DAO", func() {
 		It("Fails if max limit is less than default limit", func() {
 			generic, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				SetMaxLimit(100).
@@ -205,7 +186,7 @@ var _ = Describe("Generic DAO", func() {
 
 		BeforeEach(func() {
 			// Create the tables:
-			err := CreateTables(ctx, "objects")
+			err := CreateTables[*testsv1.Object](ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create the attribution logic:
@@ -241,7 +222,6 @@ var _ = Describe("Generic DAO", func() {
 			// Create the DAO:
 			generic, err = NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetTable("objects").
 				SetDefaultLimit(defaultLimit).
 				SetMaxLimit(maxLimit).
 				SetAttributionLogic(attribution).
@@ -1982,7 +1962,6 @@ var _ = Describe("Generic DAO", func() {
 
 				restrictedDAO, err := NewGenericDAO[*testsv1.Object]().
 					SetLogger(logger).
-					SetTable("objects").
 					SetDefaultLimit(defaultLimit).
 					SetMaxLimit(maxLimit).
 					SetAttributionLogic(attribution).

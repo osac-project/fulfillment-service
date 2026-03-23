@@ -77,7 +77,6 @@ func (b *PrivateComputeInstanceTemplatesServerBuilder) Build() (result *PrivateC
 	generic, err := NewGenericServer[*privatev1.ComputeInstanceTemplate]().
 		SetLogger(b.logger).
 		SetService(privatev1.ComputeInstanceTemplates_ServiceDesc.ServiceName).
-		SetTable("compute_instance_templates").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).

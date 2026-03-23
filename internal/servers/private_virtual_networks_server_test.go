@@ -65,7 +65,9 @@ var _ = Describe("Private virtual networks server", func() {
 		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tables:
-		err = dao.CreateTables(ctx, "virtual_networks", "network_classes")
+		err = dao.CreateTables[*privatev1.VirtualNetwork](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -74,7 +76,6 @@ var _ = Describe("Private virtual networks server", func() {
 		// Create NetworkClass DAO
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetTable("network_classes").
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
@@ -440,7 +441,6 @@ var _ = Describe("Private virtual networks server", func() {
 				// Create NetworkClass without IPv4 support
 				ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 					SetLogger(logger).
-					SetTable("network_classes").
 					SetAttributionLogic(attribution).
 					SetTenancyLogic(tenancy).
 					Build()
@@ -621,7 +621,6 @@ var _ = Describe("Private virtual networks server", func() {
 			// Create DAO
 			generic, err = dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 				SetLogger(logger).
-				SetTable("virtual_networks").
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()

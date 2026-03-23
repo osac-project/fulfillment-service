@@ -93,7 +93,6 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 	// Create the templates DAO:
 	templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 		SetLogger(b.logger).
-		SetTable("cluster_templates").
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		Build()
@@ -104,7 +103,6 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 	// Create the host classes DAO:
 	hostClassesDao, err := dao.NewGenericDAO[*privatev1.HostClass]().
 		SetLogger(b.logger).
-		SetTable("host_classes").
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		Build()
@@ -116,7 +114,6 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 	generic, err := NewGenericServer[*privatev1.Cluster]().
 		SetLogger(b.logger).
 		SetService(privatev1.Clusters_ServiceDesc.ServiceName).
-		SetTable("clusters").
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
