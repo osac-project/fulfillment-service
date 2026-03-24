@@ -447,7 +447,7 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).To(HaveOccurred())
 			var notFoundErr *ErrNotFound
 			Expect(errors.As(err, &notFoundErr)).To(BeTrue())
-			Expect(notFoundErr.ID).To(Equal("does-not-exist"))
+			Expect(notFoundErr.IDs).To(ConsistOf("does-not-exist"))
 		})
 
 		It("Lists objects", func() {
@@ -819,7 +819,7 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).To(HaveOccurred())
 			var notFoundErr *ErrNotFound
 			Expect(errors.As(err, &notFoundErr)).To(BeTrue())
-			Expect(notFoundErr.ID).To(Equal("does_not_exist"))
+			Expect(notFoundErr.IDs).To(ConsistOf("does_not_exist"))
 		})
 
 		Describe("Finalizers", func() {
@@ -1299,7 +1299,7 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).To(HaveOccurred())
 			var notFoundErr *ErrNotFound
 			Expect(errors.As(err, &notFoundErr)).To(BeTrue())
-			Expect(notFoundErr.ID).To(Equal("does-not-exist"))
+			Expect(notFoundErr.IDs).To(ConsistOf("does-not-exist"))
 		})
 
 		Describe("Filtering", func() {
@@ -1998,7 +1998,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).To(HaveOccurred())
 				var notFoundErr *ErrNotFound
 				Expect(errors.As(err, &notFoundErr)).To(BeTrue())
-				Expect(notFoundErr.ID).To(Equal("invisible_object"))
+				Expect(notFoundErr.IDs).To(ConsistOf("invisible_object"))
 
 				// Check exists for invisible object - should return false
 				existsResponse, err := restrictedDAO.Exists().SetId("invisible_object").Do(ctx)
@@ -2009,7 +2009,7 @@ var _ = Describe("Generic DAO", func() {
 				_, err = restrictedDAO.Delete().SetId("invisible_object").Do(ctx)
 				Expect(err).To(HaveOccurred())
 				Expect(errors.As(err, &notFoundErr)).To(BeTrue())
-				Expect(notFoundErr.ID).To(Equal("invisible_object"))
+				Expect(notFoundErr.IDs).To(ConsistOf("invisible_object"))
 
 				// Verify the object still exists in the database (using direct SQL)
 				var count int

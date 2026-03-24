@@ -130,7 +130,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = &ErrNotFound{
-			ID: r.args.id,
+			IDs: []string{r.args.id},
 		}
 		return
 	}

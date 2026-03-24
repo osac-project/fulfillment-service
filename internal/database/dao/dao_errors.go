@@ -15,17 +15,30 @@ package dao
 
 import (
 	"fmt"
+
+	"github.com/dustin/go-humanize/english"
 )
 
-// ErrNotFound is an error type that indicates that a requested object doesn't exist.
+// ErrNotFound is an error type that indicates that one or more requested objects don't exist.
 type ErrNotFound struct {
-	// ID is the identifier of the object that was not found.
-	ID string
+	// IDs contains the identifiers of the objects that were not found.
+	IDs []string
 }
 
 // Error returns the error message.
 func (e *ErrNotFound) Error() string {
-	return fmt.Sprintf("object with identifier '%s' not found", e.ID)
+	switch len(e.IDs) {
+	case 0:
+		return "object not found"
+	case 1:
+		return fmt.Sprintf("object with identifier '%s' not found", e.IDs[0])
+	default:
+		quoted := make([]string, len(e.IDs))
+		for i, id := range e.IDs {
+			quoted[i] = fmt.Sprintf("'%s'", id)
+		}
+		return fmt.Sprintf("objects with identifiers %s not found", english.WordSeries(quoted, "and"))
+	}
 }
 
 // ErrAlreadyExists is an error type that indicates that an object can't be created because it already exists.

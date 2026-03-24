@@ -167,7 +167,7 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = &ErrNotFound{
-			ID: id,
+			IDs: []string{id},
 		}
 		return
 	}

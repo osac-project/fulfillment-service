@@ -21,13 +21,28 @@ import (
 var _ = Describe("Errors", func() {
 	Describe("ErrNotFound", func() {
 		It("Implements the error interface", func() {
-			var err error = &ErrNotFound{ID: "123"}
+			var err error = &ErrNotFound{IDs: []string{"123"}}
 			Expect(err).ToNot(BeNil())
 		})
 
-		It("Returns expected error message", func() {
-			err := &ErrNotFound{ID: "my-id"}
+		It("Returns generic message when there are no identifiers", func() {
+			err := &ErrNotFound{}
+			Expect(err.Error()).To(Equal("object not found"))
+		})
+
+		It("Returns expected message for a single identifier", func() {
+			err := &ErrNotFound{IDs: []string{"my-id"}}
 			Expect(err.Error()).To(Equal("object with identifier 'my-id' not found"))
+		})
+
+		It("Returns expected message for two identifiers", func() {
+			err := &ErrNotFound{IDs: []string{"a", "b"}}
+			Expect(err.Error()).To(Equal("objects with identifiers 'a' and 'b' not found"))
+		})
+
+		It("Returns expected message for three identifiers", func() {
+			err := &ErrNotFound{IDs: []string{"a", "b", "c"}}
+			Expect(err.Error()).To(Equal("objects with identifiers 'a', 'b' and 'c' not found"))
 		})
 	})
 
