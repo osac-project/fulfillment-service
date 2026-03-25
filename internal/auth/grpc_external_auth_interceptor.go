@@ -29,6 +29,7 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // GrpcExternalAuthType is the name of the external authentication type.
@@ -128,7 +129,7 @@ func (i *GrpcExternalAuthInterceptor) UnaryServer(ctx context.Context, request a
 	}
 
 	// Call the external auth service:
-	ctx, err = i.check(ctx, info.FullMethod)
+	ctx, err = i.check(ctx, info.FullMethod, request)
 	if err != nil {
 		return
 	}
@@ -151,7 +152,7 @@ func (i *GrpcExternalAuthInterceptor) StreamServer(server any, stream grpc.Serve
 	}
 
 	// For streaming RPCs, we check auth based on the method only because there is no request body available yet.
-	ctx, err := i.check(stream.Context(), info.FullMethod)
+	ctx, err := i.check(stream.Context(), info.FullMethod, nil)
 	if err != nil {
 		return err
 	}
@@ -195,16 +196,17 @@ func (s *grpcExternalAuthInterceptorStream) SetTrailer(md metadata.MD) {
 }
 
 // check calls the external auth service to check if the request is authenticated and authorized. If granted, it
-// returns a new context containing the subject details extracted from the response.
-func (i *GrpcExternalAuthInterceptor) check(ctx context.Context, method string) (result context.Context,
-	err error) {
+// returns a new context containing the subject details extracted from the response. The grpcRequest parameter is the
+// incoming gRPC request message, which may be nil for streaming RPCs.
+func (i *GrpcExternalAuthInterceptor) check(ctx context.Context, method string,
+	grpcRequest any) (result context.Context, err error) {
 	// Add some details to the logger:
 	logger := i.logger.With(
 		slog.String("method", method),
 	)
 
 	// Build the check request:
-	request, err := i.buildCheckRequest(ctx, method)
+	request, err := i.buildCheckRequest(ctx, method, grpcRequest)
 	if err != nil {
 		logger.ErrorContext(
 			ctx,
@@ -246,8 +248,8 @@ func (i *GrpcExternalAuthInterceptor) check(ctx context.Context, method string) 
 	return
 }
 
-func (i *GrpcExternalAuthInterceptor) buildCheckRequest(ctx context.Context,
-	method string) (result *envoyauthv3.CheckRequest, err error) {
+func (i *GrpcExternalAuthInterceptor) buildCheckRequest(ctx context.Context, method string,
+	request any) (result *envoyauthv3.CheckRequest, err error) {
 	// Extract headers from the incoming context:
 	headers := map[string]string{}
 	md, ok := metadata.FromIncomingContext(ctx)
@@ -256,6 +258,17 @@ func (i *GrpcExternalAuthInterceptor) buildCheckRequest(ctx context.Context,
 			if len(values) > 0 {
 				headers[key] = values[0]
 			}
+		}
+	}
+
+	// Try to extract the object identifier from the request so that the external authorization service can use
+	// it to make fine grained authorization decisions. The identifier is sent in the context extensions of the
+	// check request. For example, Authorino exposes it to OPA policies as `input.context.context_extensions.id`.
+	extensions := map[string]string{}
+	if request != nil {
+		id := i.extractId(ctx, request)
+		if id != "" {
+			extensions["id"] = id
 		}
 	}
 
@@ -269,6 +282,7 @@ func (i *GrpcExternalAuthInterceptor) buildCheckRequest(ctx context.Context,
 					Headers: headers,
 				},
 			},
+			ContextExtensions: extensions,
 		},
 	}
 	return
@@ -380,6 +394,43 @@ func (i *GrpcExternalAuthInterceptor) subjectFromHeader(header *envoycorev3.Head
 	}
 	result = subject
 	return
+}
+
+// extractId tries to extract the identifier of the object from the incoming request message. For get and delete
+// requests, the identifier is directly available via the 'GetId' method. For update requests, the identifier is inside
+// the 'object' field, which is accessed via protobuf reflection.
+func (i *GrpcExternalAuthInterceptor) extractId(ctx context.Context, request any) string {
+	// First try to get the identifier directly from the request. This works for any request message that has a
+	// 'GetId' method, including get and delete requests.
+	type idGetter interface {
+		GetId() string
+	}
+	getter, ok := request.(idGetter)
+	if ok {
+		return getter.GetId()
+	}
+
+	// If the request doesn't have a direct identifier, try to extract it from the nested 'object' field using
+	// protobuf reflection. This is necessary for update requests, for example, where the identifier is inside
+	// the object.
+	message, ok := request.(proto.Message)
+	if !ok {
+		return ""
+	}
+	reflect := message.ProtoReflect()
+	field := reflect.Descriptor().Fields().ByName("object")
+	if field == nil {
+		return ""
+	}
+	if !reflect.Has(field) {
+		return ""
+	}
+	value := reflect.Get(field)
+	getter, ok = value.Message().Interface().(idGetter)
+	if !ok {
+		return ""
+	}
+	return getter.GetId()
 }
 
 func (i *GrpcExternalAuthInterceptor) isPublicMethod(method string) bool {

@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
 
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
 
@@ -393,6 +394,129 @@ var _ = Describe("External authentication and authorization interceptor", func()
 				FullMethod: "/osac.private.v1.Service/Method",
 			}
 			_, err := interceptor.UnaryServer(ctx, nil, info, handler)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should include object identifier in context extensions for get requests", func() {
+			mock.Func = func(ctx context.Context,
+				request *envoyauthv3.CheckRequest) (response *envoyauthv3.CheckResponse, err error) {
+				Expect(request).ToNot(BeNil())
+				extensions := request.GetAttributes().GetContextExtensions()
+				Expect(extensions).To(HaveKeyWithValue("id", "my-cluster-123"))
+				response = makeOkResponse(&Subject{
+					Source: SubjectSourceJwt,
+					User:   "my-user",
+				})
+				return
+			}
+			handler := func(context.Context, any) (any, error) {
+				return nil, nil
+			}
+			info := &grpc.UnaryServerInfo{
+				FullMethod: "/osac.public.v1.Clusters/Get",
+			}
+			request := &publicv1.ClustersGetRequest{
+				Id: "my-cluster-123",
+			}
+			_, err := interceptor.UnaryServer(ctx, request, info, handler)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should include object identifier in context extensions for delete requests", func() {
+			mock.Func = func(ctx context.Context,
+				request *envoyauthv3.CheckRequest) (response *envoyauthv3.CheckResponse, err error) {
+				Expect(request).ToNot(BeNil())
+				extensions := request.GetAttributes().GetContextExtensions()
+				Expect(extensions).To(HaveKeyWithValue("id", "my-cluster-456"))
+				response = makeOkResponse(&Subject{
+					Source: SubjectSourceJwt,
+					User:   "my-user",
+				})
+				return
+			}
+			handler := func(context.Context, any) (any, error) {
+				return nil, nil
+			}
+			info := &grpc.UnaryServerInfo{
+				FullMethod: "/osac.public.v1.Clusters/Delete",
+			}
+			request := &publicv1.ClustersDeleteRequest{
+				Id: "my-cluster-456",
+			}
+			_, err := interceptor.UnaryServer(ctx, request, info, handler)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should include object identifier in context extensions for update requests", func() {
+			mock.Func = func(ctx context.Context,
+				request *envoyauthv3.CheckRequest) (response *envoyauthv3.CheckResponse, err error) {
+				Expect(request).ToNot(BeNil())
+				extensions := request.GetAttributes().GetContextExtensions()
+				Expect(extensions).To(HaveKeyWithValue("id", "my-cluster-789"))
+				response = makeOkResponse(&Subject{
+					Source: SubjectSourceJwt,
+					User:   "my-user",
+				})
+				return
+			}
+			handler := func(context.Context, any) (any, error) {
+				return nil, nil
+			}
+			info := &grpc.UnaryServerInfo{
+				FullMethod: "/osac.public.v1.Clusters/Update",
+			}
+			request := &publicv1.ClustersUpdateRequest{
+				Object: &publicv1.Cluster{
+					Id: "my-cluster-789",
+				},
+			}
+			_, err := interceptor.UnaryServer(ctx, request, info, handler)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should not include object identifier in context extensions for list requests", func() {
+			mock.Func = func(ctx context.Context,
+				request *envoyauthv3.CheckRequest) (response *envoyauthv3.CheckResponse, err error) {
+				Expect(request).ToNot(BeNil())
+				extensions := request.GetAttributes().GetContextExtensions()
+				Expect(extensions).ToNot(HaveKey("id"))
+				response = makeOkResponse(&Subject{
+					Source: SubjectSourceJwt,
+					User:   "my-user",
+				})
+				return
+			}
+			handler := func(context.Context, any) (any, error) {
+				return nil, nil
+			}
+			info := &grpc.UnaryServerInfo{
+				FullMethod: "/osac.public.v1.Clusters/List",
+			}
+			request := &publicv1.ClustersListRequest{}
+			_, err := interceptor.UnaryServer(ctx, request, info, handler)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should not include object identifier when update request has no object", func() {
+			mock.Func = func(ctx context.Context,
+				request *envoyauthv3.CheckRequest) (response *envoyauthv3.CheckResponse, err error) {
+				Expect(request).ToNot(BeNil())
+				extensions := request.GetAttributes().GetContextExtensions()
+				Expect(extensions).ToNot(HaveKey("id"))
+				response = makeOkResponse(&Subject{
+					Source: SubjectSourceJwt,
+					User:   "my-user",
+				})
+				return
+			}
+			handler := func(context.Context, any) (any, error) {
+				return nil, nil
+			}
+			info := &grpc.UnaryServerInfo{
+				FullMethod: "/osac.public.v1.Clusters/Update",
+			}
+			request := &publicv1.ClustersUpdateRequest{}
+			_, err := interceptor.UnaryServer(ctx, request, info, handler)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
