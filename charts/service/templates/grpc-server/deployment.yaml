@@ -49,7 +49,19 @@ spec:
         - name: tls
           mountPath: /etc/fulfillment-grpc-server/tls
         command:
+        {{ if .Values.debug }}
+        - dlv
+        - exec
         - /usr/local/bin/fulfillment-service
+        - --headless
+        - --api-version=2
+        - --listen=:30001
+        - --accept-multiclient
+        - --continue
+        - --
+        {{ else}}
+        - /usr/local/bin/fulfillment-service
+        {{ end }}
         - start
         - grpc-server
         - --log-level={{ .Values.log.level }}
@@ -76,6 +88,12 @@ spec:
         - name: metrics
           containerPort: 8002
           protocol: TCP
+        {{ if .Values.debug }}
+        - name: debug
+          containerPort: 30001
+          hostPort: 30001
+          protocol: TCP
+        {{ end }}
         livenessProbe:
           exec:
             command:

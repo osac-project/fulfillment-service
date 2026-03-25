@@ -26,6 +26,30 @@
                         "processId": "${command:pickGoProcess}"
                 },
                 {
+                        "name": "attach grpc-server",
+                        "type": "go",
+                        "request": "attach",
+                        "mode": "remote",
+                        "host": "127.0.0.1",
+                        "port": 30001
+                },
+                {
+                        "name": "attach rest-gateway",
+                        "type": "go",
+                        "request": "attach",
+                        "mode": "remote",
+                        "host": "127.0.0.1",
+                        "port": 30002
+                },
+                {
+                        "name": "attach controller",
+                        "type": "go",
+                        "request": "attach",
+                        "mode": "remote",
+                        "host": "127.0.0.1",
+                        "port": 30003
+                },
+                {
                         "name": "start grpc-server (guest tenancy)",
                         "type": "go",
                         "request": "launch",

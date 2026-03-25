@@ -1,31 +1,54 @@
-FROM registry.access.redhat.com/ubi10/ubi:10.1-1773895909 AS builder
+# This is the base image, both for the builder and runtime containers.
+ARG BASE=registry.access.redhat.com/ubi10/ubi:10.1-1773895909
+
+# First stage is to build the image that contains the image with all the development tools needed to build the binary.
+FROM ${BASE} AS builder
+
+# Set this to 'true' to build the binary with debugging symbols and disabling optimizations.
+ARG DEBUG=false
 
 # Install packages:
 RUN \
-  dnf install -y \
-  git \
-  golang \
-  && \
+  set -e; \
+  pkgs=(git golang); \
+  dnf install -y "${pkgs[@]}"; \
   dnf clean all -y
 
 # Copy only the 'go.mod' and 'go.sum' files and try to download the required modules, so that hopefully this will be
 # in a layer that can be cached reused for builds that don't change the dependencies.
 WORKDIR /source
-COPY go.mod go.sum /source
-RUN go mod download
+COPY go.mod go.sum /source/
+RUN \
+  set -e; \
+  go mod download
 
 # Copy the rest of the source and build the binary:
-COPY . /source
+COPY . /source/
 RUN \
-  version=$(git describe --tags --always) && \
-  go build -ldflags="-X github.com/osac-project/fulfillment-service/internal/version.id=${version}" ./cmd/fulfillment-service
+  set -e; \
+  version=$(git describe --tags --always); \
+  gcflags=""; \
+  ldflags="-X github.com/osac-project/fulfillment-service/internal/version.id=${version}"; \
+  if [[ "${DEBUG}" == "true" ]]; then \
+    gcflags="all=-N -l"; \
+  fi; \
+  go build -gcflags="${gcflags}" -ldflags="${ldflags}" ./cmd/fulfillment-service
 
-FROM registry.access.redhat.com/ubi10/ubi:10.1-1773895909 AS runtime
+# Second stage is to build the image that contains the binary, without the development tools, except the debugger
+# if enabled.
+FROM ${BASE} AS runtime
 
+# Set this to 'true' to include the 'dlv' debugger in the image.
+ARG DEBUG=false
+
+# Install packages:
 RUN \
-  dnf install -y \
-  openssl \
-  && \
+  set -e; \
+  pkgs=(openssl); \
+  if [[ "${DEBUG}" == "true" ]]; then \
+    pkgs+=(delve); \
+  fi; \
+  dnf install -y "${pkgs[@]}"; \
   dnf clean all -y
 
 # Install the binary:

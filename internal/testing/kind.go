@@ -51,11 +51,12 @@ var examplesFS embed.FS
 // KindBuilder contains the data and logic needed to create an object that helps manage a Kind cluster used for
 // integration tests. Don't create instances of this type directly, use the NewKind function instead.
 type KindBuilder struct {
-	logger   *slog.Logger
-	name     string
-	home     string
-	quiet    bool
-	crdFiles []string
+	logger       *slog.Logger
+	name         string
+	home         string
+	quiet        bool
+	crdFiles     []string
+	portMappings []kindPortMapping
 }
 
 // Kind helps manage a Kind cluster used for integration tests. Don't create instances of this type directly, use the
@@ -66,10 +67,17 @@ type Kind struct {
 	home            string
 	quiet           bool
 	crdFiles        []string
+	portMappings    []kindPortMapping
 	kubeconfigBytes []byte
 	kubeconfigFile  string
 	kubeClient      crclient.WithWatch
 	kubeClientSet   *kubernetes.Clientset
+}
+
+type kindPortMapping struct {
+	listenAddress string
+	hostPort      int
+	containerPort int
 }
 
 // NewKind creates a builder that can then be used to configure and create a new Kind cluster used for integration
@@ -115,6 +123,16 @@ func (b *KindBuilder) SetQuiet(value bool) *KindBuilder {
 	return b
 }
 
+// AddPortMapping adds a port mapping to the cluster.
+func (b *KindBuilder) AddPortMapping(listenAddress string, hostPort int, containerPort int) *KindBuilder {
+	b.portMappings = append(b.portMappings, kindPortMapping{
+		listenAddress: listenAddress,
+		hostPort:      hostPort,
+		containerPort: containerPort,
+	})
+	return b
+}
+
 // Build uses the configuration stored in the builder to create a new Kind cluster
 func (b *KindBuilder) Build() (result *Kind, err error) {
 	// Check parameters:
@@ -152,11 +170,12 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 
 	// Create and populate the object:
 	result = &Kind{
-		logger:   logger,
-		name:     b.name,
-		home:     b.home,
-		quiet:    b.quiet,
-		crdFiles: slices.Clone(b.crdFiles),
+		logger:       logger,
+		name:         b.name,
+		home:         b.home,
+		quiet:        b.quiet,
+		crdFiles:     slices.Clone(b.crdFiles),
+		portMappings: slices.Clone(b.portMappings),
 	}
 	return
 }
@@ -472,20 +491,28 @@ func (k *Kind) createCluster(ctx context.Context) error {
 			)
 		}
 	}()
+	portMappings := []kindPortMapping{{
+		listenAddress: "0.0.0.0",
+		hostPort:      externalIngressPort,
+		containerPort: internalIngressPort,
+	}}
+	portMappings = append(portMappings, k.portMappings...)
+	extraPortMappings := []any{}
+	for _, portMapping := range portMappings {
+		extraPortMappings = append(extraPortMappings, map[string]any{
+			"hostPort":      portMapping.hostPort,
+			"containerPort": portMapping.containerPort,
+			"listenAddress": portMapping.listenAddress,
+		})
+	}
 	configData := map[string]any{
 		"apiVersion": "kind.x-k8s.io/v1alpha4",
 		"kind":       "Cluster",
 		"name":       k.name,
 		"nodes": []any{
 			map[string]any{
-				"role": "control-plane",
-				"extraPortMappings": []any{
-					map[string]any{
-						"containerPort": internalIngressPort,
-						"hostPort":      externalIngressPort,
-						"listenAddress": "0.0.0.0",
-					},
-				},
+				"role":              "control-plane",
+				"extraPortMappings": extraPortMappings,
 			},
 		},
 	}

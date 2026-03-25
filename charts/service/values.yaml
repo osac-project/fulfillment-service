@@ -14,6 +14,10 @@
 # This indicates if the chart is being deployed to an OpenShift or Kind cluster. Valid values are `openshift` and `kind`.
 variant: kind
 
+# This indicates if the debug mode is enabled. This will run the services under the control of the 'dlv' debugger
+# and is intended only for development environments.
+debug: false
+
 # Certificate configuration:
 certs:
 

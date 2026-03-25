@@ -44,7 +44,19 @@ spec:
         - name: tls
           mountPath: /etc/fulfillment-rest-gateway/tls
         command:
+        {{ if .Values.debug }}
+        - dlv
+        - exec
         - /usr/local/bin/fulfillment-service
+        - --headless
+        - --api-version=2
+        - --listen=:30002
+        - --accept-multiclient
+        - --continue
+        - --
+        {{ else}}
+        - /usr/local/bin/fulfillment-service
+        {{ end }}
         - start
         - rest-gateway
         - --log-level={{ .Values.log.level }}
@@ -64,6 +76,12 @@ spec:
         - name: metrics
           containerPort: 8002
           protocol: TCP
+        {{ if .Values.debug }}
+        - name: debug
+          containerPort: 30002
+          hostPort: 30002
+          protocol: TCP
+        {{ end }}
         livenessProbe:
           httpGet:
             path: /healthz

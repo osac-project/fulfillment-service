@@ -79,6 +79,7 @@ type ToolBuilder struct {
 	keepCluster bool
 	keepService bool
 	deployMode  string
+	debug       bool
 }
 
 // Tool is an instance of the integration test tool that sets up the test environment. Don't create instances of this
@@ -89,7 +90,8 @@ type Tool struct {
 	crdFiles        []string
 	keepKind        bool
 	keepService     bool
-	deploymentMode  string
+	deployMode      string
+	debug           bool
 	tmpDir          string
 	cluster         *testing.Kind
 	kubeClient      crclient.Client
@@ -152,6 +154,18 @@ func (b *ToolBuilder) SetDeployMode(value string) *ToolBuilder {
 	return b
 }
 
+// SetDebug sets whether to enable the debug mode. This means that the debugger binary will be added to the container
+// image, and that the services will be started under the control of the debugger. Access to the debugger will be done
+// via the following ports:
+//
+// - gRPC server: 30001
+// - REST gateway: 30002
+// - Controller: 30003
+func (b *ToolBuilder) SetDebug(value bool) *ToolBuilder {
+	b.debug = value
+	return b
+}
+
 // Build uses the data stored in the builder to create a new instance of the integration test tool.
 func (b *ToolBuilder) Build() (result *Tool, err error) {
 	// Check parameters:
@@ -178,12 +192,13 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 
 	// Create and populate the object:
 	result = &Tool{
-		logger:         b.logger,
-		projectDir:     projectDir,
-		crdFiles:       slices.Clone(b.crdFiles),
-		keepKind:       b.keepCluster,
-		keepService:    b.keepService,
-		deploymentMode: b.deployMode,
+		logger:      b.logger,
+		projectDir:  projectDir,
+		crdFiles:    slices.Clone(b.crdFiles),
+		keepKind:    b.keepCluster,
+		keepService: b.keepService,
+		deployMode:  b.deployMode,
+		debug:       b.debug,
 	}
 	return
 }
@@ -238,12 +253,6 @@ func (t *Tool) Setup(ctx context.Context) error {
 
 	// Check that the required command line tools are available:
 	err = t.checkCommands(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Build the binary:
-	err = t.buildBinary(ctx)
 	if err != nil {
 		return err
 	}
@@ -368,54 +377,6 @@ func (t *Tool) checkCommands(ctx context.Context) error {
 	return nil
 }
 
-func (t *Tool) buildBinary(ctx context.Context) error {
-	t.logger.DebugContext(ctx, "Building binary")
-
-	// Get the version from git:
-	versionCmd, err := testing.NewCommand().
-		SetLogger(t.logger).
-		SetHome(t.projectDir).
-		SetDir(t.projectDir).
-		SetName("git").
-		SetArgs(
-			"describe",
-			"--tags",
-			"--always",
-		).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create command to get version from git: %w", err)
-	}
-	versionBytes, _, err := versionCmd.Evaluate(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get version from git: %w", err)
-	}
-	version := string(versionBytes)
-
-	// Build the binary:
-	buildCmd, err := testing.NewCommand().
-		SetLogger(t.logger).
-		SetHome(t.projectDir).
-		SetDir(t.projectDir).
-		SetName("go").
-		SetArgs(
-			"build",
-			"-ldflags",
-			fmt.Sprintf("-X github.com/osac-project/fulfillment-service/internal/version.id=%s", version),
-			"./cmd/fulfillment-service",
-		).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create command to build binary: %w", err)
-	}
-	err = buildCmd.Execute(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to build binary: %w", err)
-	}
-
-	return nil
-}
-
 // buildImage builds the container image and returns the full image reference.
 func (t *Tool) buildImage(ctx context.Context) (result string, err error) {
 	t.logger.DebugContext(ctx, "Building image")
@@ -428,8 +389,9 @@ func (t *Tool) buildImage(ctx context.Context) (result string, err error) {
 		SetName(podmanCmd).
 		SetArgs(
 			"build",
+			"--build-arg", fmt.Sprintf("DEBUG=%t", t.debug),
 			"--tag", imageRef,
-			"--file", filepath.Join("it", "Containerfile"),
+			"--file", "Containerfile",
 			".",
 		).
 		Build()
@@ -482,6 +444,11 @@ func (t *Tool) startCluster(ctx context.Context) error {
 	builder.SetName("fulfillment-service-it")
 	for _, crdFile := range t.crdFiles {
 		builder.AddCrdFile(crdFile)
+	}
+	if t.debug {
+		builder.AddPortMapping("127.0.0.1", 30001, 30001) // gRPC server.
+		builder.AddPortMapping("127.0.0.1", 30002, 30002) // REST gateway.
+		builder.AddPortMapping("127.0.0.1", 30003, 30003) // Controller.
 	}
 	var err error
 	t.cluster, err = builder.Build()
@@ -685,13 +652,13 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 }
 
 func (t *Tool) deployService(ctx context.Context, imageRef string) error {
-	switch t.deploymentMode {
+	switch t.deployMode {
 	case deployModeHelm:
 		return t.deployServiceWithHelm(ctx, imageRef)
 	case deployModeKustomize:
 		return t.deployServiceWithKustomize(ctx, imageRef)
 	default:
-		return fmt.Errorf("unknown deploy mode '%s'", t.deploymentMode)
+		return fmt.Errorf("unknown deploy mode '%s'", t.deployMode)
 	}
 }
 
@@ -699,6 +666,7 @@ func (t *Tool) deployServiceWithHelm(ctx context.Context, imageRef string) error
 	// Prepare the values:
 	valuesData := map[string]any{
 		"variant": "kind",
+		"debug":   t.debug,
 		"log": map[string]any{
 			"level":   "debug",
 			"headers": true,
@@ -865,13 +833,13 @@ func (t *Tool) copyDir(src, dst string) error {
 }
 
 func (t *Tool) undeployService(ctx context.Context) error {
-	switch t.deploymentMode {
+	switch t.deployMode {
 	case deployModeHelm:
 		return t.undeployServiceWithHelm(ctx)
 	case deployModeKustomize:
 		return t.undeployServiceWithKustomize(ctx)
 	default:
-		return fmt.Errorf("unknown deploy mode '%s'", t.deploymentMode)
+		return fmt.Errorf("unknown deploy mode '%s'", t.deployMode)
 	}
 }
 

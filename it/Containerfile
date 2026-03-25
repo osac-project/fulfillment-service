@@ -1,8 +1,0 @@
-# Thi is used to build the container image for the integration tests, where it is faster, specially
-# for the development environment, to build the binar in advance, and then copy the result to the
-# container image. That way the dependencies don't need to be downloaded again.
-
-FROM registry.access.redhat.com/ubi10/ubi:10.1-1773895909
-
-# Note that this assumes that the binary has already been built with 'go build ./cmd/fulfillment-service'.
-COPY fulfillment-service /usr/local/bin

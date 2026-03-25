@@ -45,7 +45,19 @@ spec:
         - name: tls
           mountPath: /etc/fulfillment-controller/tls
         command:
+        {{ if .Values.debug }}
+        - dlv
+        - exec
         - /usr/local/bin/fulfillment-service
+        - --headless
+        - --api-version=2
+        - --listen=:30003
+        - --accept-multiclient
+        - --continue
+        - --
+        {{ else }}
+        - /usr/local/bin/fulfillment-service
+        {{ end }}
         - start
         - controller
         - --log-level={{ .Values.log.level }}
@@ -66,6 +78,12 @@ spec:
         - name: metrics
           containerPort: 8002
           protocol: TCP
+        {{ if .Values.debug }}
+        - name: debug
+          containerPort: 30003
+          hostPort: 30003
+          protocol: TCP
+        {{ end }}
         livenessProbe:
           exec:
             command:

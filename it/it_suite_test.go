@@ -43,6 +43,15 @@ type Config struct {
 	// DeployMode indicates how to deploy the service. Valid values are 'helm' and 'kustomize'.
 	// By default, the service is deployed using Helm.
 	DeployMode string `json:"deploy_mode" envconfig:"deploy_mode" default:"helm"`
+
+	// Debug indicates if the debug mode should be enabled. This means that the debugger binary will be added to
+	// the container image, and that the services will be started under the control of the debugger. Access to the
+	// debugger will be done via the following ports:
+	//
+	// - gRPC server: 30001
+	// - REST gateway: 30002
+	// - Controller: 30003
+	Debug bool `json:"debug" envconfig:"debug" default:"false"`
 }
 
 var (
@@ -83,12 +92,21 @@ var _ = BeforeSuite(func() {
 		slog.Any("values", config),
 	)
 
+	// Debug mode isn't compatible with the Kustomize deployment mode:
+	if config.Debug && config.DeployMode == deployModeKustomize {
+		Fail(
+			"Debug mode isn't compatible with the Kustomize deployment mode, either set IT_DEPLOY_MODE to " +
+				"'helm' or set IT_DEBUG to 'false'",
+		)
+	}
+
 	// Create and setup the tool:
 	tool, err = NewTool().
 		SetLogger(logger).
 		SetKeepCluster(config.KeepKind).
 		SetKeepService(config.KeepService).
 		SetDeployMode(config.DeployMode).
+		SetDebug(config.Debug).
 		AddCrdFile(filepath.Join("crds", "clusterorders.osac.openshift.io.yaml")).
 		AddCrdFile(filepath.Join("crds", "hostedclusters.hypershift.openshift.io.yaml")).
 		Build()

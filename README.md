@@ -289,3 +289,37 @@ To clean up a preserved cluster manually:
 ```bash
 $ kind delete cluster --name fulfillment-service-it
 ```
+
+### Debugging in the integration tests environment
+
+In the integration tests environment you can use the usual Kubernetes tools and logs for
+debugging, but you can also set the `IT_DEBUG` environment variable to `true`. That will add the
+`dlv` debugger to the container image, use it to run the binaries of the gRPC server, the REST
+gateway and the controller, and expose the debugger on the following ports:
+
+| Component    | Port  |
+|--------------|-------|
+| gRPC server  | 30001 |
+| REST gateway | 30002 |
+| Controller   | 30003 |
+
+For example, to connect to the gRPC server debugger from Visual Studio Code, add the following
+configuration to your `.vscode/launch.json` file:
+
+```json
+{
+        "name": "attach grpc-server",
+        "type": "go",
+        "request": "attach",
+        "mode": "remote",
+        "host": "127.0.0.1",
+        "port": 30001
+}
+```
+
+If you use a different development environment, you can connect directly with `dlv` from the
+command line:
+
+```bash
+$ dlv connect 127.0.0.1:30001
+```
