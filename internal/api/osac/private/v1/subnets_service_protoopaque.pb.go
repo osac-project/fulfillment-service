@@ -187,18 +187,16 @@ type SubnetsListRequest_builder struct {
 	Limit *int32
 	// Filter criteria.
 	//
-	// The syntax of this parameter is similar to the syntax of the _where_ clause of a SQL statement, but using the names
-	// of the attributes of the subnet instead of the names of the columns of a table. For example, in order to
-	// retrieve all the subnets with a specific virtual network the value should be:
+	// The value of this parameter is a [CEL](https://cel.dev) expression used to select which objects to return. The
+	// built-in `this` variable refers to the object being tested and `now` refers to the current date and time. If the
+	// expression evaluates to `true` the object is included in the results. For example, to retrieve all subnets with
+	// names starting with `frontend`:
 	//
-	//	virtual_network = 'vn-123'
+	//	this.metadata.name.startsWith("frontend")
 	//
-	// Or to retrieve subnets with names starting with `frontend`:
-	//
-	//	metadata.name like 'frontend-%'
-	//
-	// If this isn't provided, or if the value is empty, then all the subnets that the user has permission to see
-	// will be returned.
+	// If this isn't provided, or if the value is empty, then all the subnets that the user has permission to see will be
+	// returned. Not all CEL constructs are currently supported for implementation reasons; see the filter documentation
+	// (docs/FILTER.md) for the full details.
 	Filter *string
 	// Order criteria.
 	//

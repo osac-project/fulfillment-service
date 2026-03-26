@@ -47,14 +47,16 @@ type HostsListRequest struct {
 	Limit *int32 `protobuf:"varint,2,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
 	// Filter criteria.
 	//
-	// The syntax of this parameter is similar to the syntax of the _where_ clause of a SQL statement, but using the names
-	// of the attributes of the network instead of the names of the columns of a table. For example, in order to retrieve
-	// all the hosts with a title starting with `foo` the value should be:
+	// The value of this parameter is a [CEL](https://cel.dev) expression used to select which objects to return. The
+	// built-in `this` variable refers to the object being tested and `now` refers to the current date and time. If the
+	// expression evaluates to `true` the object is included in the results. For example, to retrieve all hosts with
+	// names starting with `foo`:
 	//
-	//	title like 'foo%'
+	//	this.metadata.name.startsWith("foo")
 	//
 	// If this isn't provided, or if the value is empty, then all the hosts that the user has permission to see will be
-	// returned.
+	// returned. Not all CEL constructs are currently supported for implementation reasons; see the filter documentation
+	// (docs/FILTER.md) for the full details.
 	Filter *string `protobuf:"bytes,3,opt,name=filter,proto3,oneof" json:"filter,omitempty"`
 	// Order criteria.
 	//
@@ -194,14 +196,16 @@ type HostsListRequest_builder struct {
 	Limit *int32
 	// Filter criteria.
 	//
-	// The syntax of this parameter is similar to the syntax of the _where_ clause of a SQL statement, but using the names
-	// of the attributes of the network instead of the names of the columns of a table. For example, in order to retrieve
-	// all the hosts with a title starting with `foo` the value should be:
+	// The value of this parameter is a [CEL](https://cel.dev) expression used to select which objects to return. The
+	// built-in `this` variable refers to the object being tested and `now` refers to the current date and time. If the
+	// expression evaluates to `true` the object is included in the results. For example, to retrieve all hosts with
+	// names starting with `foo`:
 	//
-	//	title like 'foo%'
+	//	this.metadata.name.startsWith("foo")
 	//
 	// If this isn't provided, or if the value is empty, then all the hosts that the user has permission to see will be
-	// returned.
+	// returned. Not all CEL constructs are currently supported for implementation reasons; see the filter documentation
+	// (docs/FILTER.md) for the full details.
 	Filter *string
 	// Order criteria.
 	//
