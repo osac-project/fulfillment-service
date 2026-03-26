@@ -24,6 +24,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"maps"
+	"sync"
 	tmpl "text/template"
 
 	"github.com/google/uuid"
@@ -47,6 +48,8 @@ type Engine struct {
 	dir      string
 	names    []string
 	template *tmpl.Template
+	sources  map[string]fs.FS
+	lock     sync.Mutex
 }
 
 // NewEngine creates a builder that can the be used to create a template engine.
@@ -109,6 +112,7 @@ func (b *EngineBuilder) Build() (result *Engine, err error) {
 		fsys:     b.fsys,
 		dir:      b.dir,
 		template: tmpl.New(""),
+		sources:  map[string]fs.FS{},
 	}
 
 	// Register custom functions first:
@@ -125,7 +129,8 @@ func (b *EngineBuilder) Build() (result *Engine, err error) {
 		"uuid":    e.uuidFunc,
 	})
 
-	// Find and parse the template files from all filesystems:
+	// Discover template names from all filesystems without parsing them yet. Templates will be
+	// loaded and parsed on demand when they are first used.
 	for _, filesystem := range b.fsys {
 		var fsys fs.FS = filesystem
 		if b.dir != "" {
@@ -134,7 +139,7 @@ func (b *EngineBuilder) Build() (result *Engine, err error) {
 				return
 			}
 		}
-		err = e.loadTemplates(fsys)
+		err = e.discoverTemplates(fsys)
 		if err != nil {
 			return
 		}
@@ -145,7 +150,7 @@ func (b *EngineBuilder) Build() (result *Engine, err error) {
 	return
 }
 
-func (e *Engine) loadTemplates(fsys fs.FS) error {
+func (e *Engine) discoverTemplates(fsys fs.FS) error {
 	return fs.WalkDir(fsys, ".", func(name string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -153,13 +158,26 @@ func (e *Engine) loadTemplates(fsys fs.FS) error {
 		if entry.IsDir() {
 			return nil
 		}
-		err = e.parseTemplate(fsys, name)
-		if err != nil {
-			return err
-		}
+		e.sources[name] = fsys
 		e.names = append(e.names, name)
 		return nil
 	})
+}
+
+// ensureLoaded checks if the template with the given name has already been parsed, and if not reads
+// it from its source filesystem and parses it. The mutex serializes the check-and-parse so that
+// concurrent goroutines calling Execute for the same template don't race on parseTemplate.
+func (e *Engine) ensureLoaded(name string) error {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	if t := e.template.Lookup(name); t != nil {
+		return nil
+	}
+	fsys, ok := e.sources[name]
+	if !ok {
+		return fmt.Errorf("failed to find template %q, no template with that name", name)
+	}
+	return e.parseTemplate(fsys, name)
 }
 
 func (e *Engine) parseTemplate(fsys fs.FS, name string) error {
@@ -183,8 +201,12 @@ func (e *Engine) parseTemplate(fsys fs.FS, name string) error {
 // Execute executes the template with the given name and passing the given input data. It writes the result to the given
 // writer.
 func (e *Engine) Execute(writer io.Writer, name string, data any) error {
+	err := e.ensureLoaded(name)
+	if err != nil {
+		return err
+	}
 	buffer := &bytes.Buffer{}
-	err := e.template.ExecuteTemplate(buffer, name, data)
+	err = e.template.ExecuteTemplate(buffer, name, data)
 	if err != nil {
 		return err
 	}
@@ -208,8 +230,8 @@ func (e *Engine) Names() []string {
 	return slices.Clone(e.names)
 }
 
-// AddFS adds one or more filesystems to the engine and loads templates from them. This can be called after the engine
-// has been created to add additional template sources.
+// AddFS adds one or more filesystems to the engine and discovers templates from them. The templates
+// will be loaded and parsed on demand when they are first used.
 func (e *Engine) AddFS(values ...fs.FS) error {
 	for _, filesystem := range values {
 		var fsys fs.FS = filesystem
@@ -220,7 +242,7 @@ func (e *Engine) AddFS(values ...fs.FS) error {
 				return err
 			}
 		}
-		err = e.loadTemplates(fsys)
+		err = e.discoverTemplates(fsys)
 		if err != nil {
 			return err
 		}
@@ -262,12 +284,12 @@ func (e *Engine) base64Func(value any) (result string, err error) {
 //
 //	{{ execute "my.tmpl" . | base64 }}
 func (e *Engine) executeFunc(name string, data any) (result string, err error) {
-	buffer := &bytes.Buffer{}
-	executed := e.template.Lookup(name)
-	if executed == nil {
-		err = fmt.Errorf("failed to find template '%s'", name)
+	err = e.ensureLoaded(name)
+	if err != nil {
 		return
 	}
+	buffer := &bytes.Buffer{}
+	executed := e.template.Lookup(name)
 	err = executed.Execute(buffer, data)
 	if err != nil {
 		return
