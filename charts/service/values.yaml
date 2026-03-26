@@ -67,7 +67,7 @@ log:
 images:
   service: ghcr.io/osac/fulfillment-service:main
   postgres: quay.io/sclorg/postgresql-15-c9s:latest
-  envoy: docker.io/envoyproxy/envoy:v1.33.0
+  envoy: docker.io/envoyproxy/envoy:v1.37.1
 
 # Database configuration:
 database:

@@ -34,7 +34,7 @@ The following table lists the configurable parameters of the chart and their def
 | `log.bodies` | Enable logging of HTTP/gRPC request and response bodies | `false` |
 | `images.service` | Fulfillment service container image | `ghcr.io/osac/fulfillment-service:main` |
 | `images.postgres` | PostgreSQL container image | `quay.io/sclorg/postgresql-15-c9s:latest` |
-| `images.envoy` | Envoy proxy container image | `docker.io/envoyproxy/envoy:v1.33.0` |
+| `images.envoy` | Envoy proxy container image | `docker.io/envoyproxy/envoy:v1.37.1` |
 | `database.storageSize` | Size of database persistent volume | `10Gi` |
 
 ### Example custom values

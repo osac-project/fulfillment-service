@@ -32,7 +32,7 @@ resources:
 images:
 - name: envoy
   newName: docker.io/envoyproxy/envoy
-  newTag: v1.33.0
+  newTag: v1.37.1
 - name: fulfillment-service
   newName: ghcr.io/osac-project/fulfillment-service
   newTag: main
