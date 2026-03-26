@@ -19,13 +19,36 @@ To work with this project you will need the following tools:
 - [jq](https://jqlang.org) - Used by some of the commands in this document.
 - [kind](https://kind.sigs.k8s.io) - Used to create Kubernetes clusters for integration tests.
 
-## Building the binary
+## Building the binaries
 
-To build the `fulfillment-service` binary run `go build`.
+The project contains two binaries: the service and the CLI.
+
+To build the `fulfillment-service` binary:
+
+```bash
+$ go build ./cmd/fulfillment-service
+```
+
+To build the `fulfillment-cli` binary:
+
+```bash
+$ go build ./cmd/fulfillment-cli
+```
 
 ## Running unit tests
 
-To run unit the unit tests run `ginkgo run -r`.
+To run the unit tests of the internal packages:
+
+```bash
+$ ginkgo run -r internal
+```
+
+This avoids running the integration tests (in the `it` package), which can take a long time. To
+run all tests, including integration tests:
+
+```bash
+$ ginkgo run -r
+```
 
 ## Running PostgreSQL
 
@@ -55,7 +78,7 @@ commands:
 
 To run the the gRPC server use a command like this:
 
-    $ ./fulfillment-service  start grpc-server \
+    $ ./fulfillment-service start grpc-server \
     --log-level=debug \
     --log-headers=true \
     --log-bodies=true \
