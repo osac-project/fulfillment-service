@@ -23,10 +23,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"log/slog"
 	"math/big"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -862,54 +860,7 @@ func (k *Kind) installCa(ctx context.Context) (err error) {
 }
 
 func (k *Kind) installAuthorino(ctx context.Context) (err error) {
-	// The authorino operator doesn't currently support adding trusted CA certificates, due to a conflicting use of
-	// the '/etc/ssl/certs' directory, see here for details:
-	//
-	// https://github.com/Kuadrant/authorino-operator/pull/282
-	//
-	// Till that is fixed we need to use an alternative container image that contains the fix. So we need to
-	// download the manifests and then replace the image.
-	response, err := http.Get(authorinoManifests)
-	if err != nil {
-		return
-	}
-	defer response.Body.Close()
-	manifestsBytes, err := io.ReadAll(response.Body)
-	if err != nil {
-		return
-	}
-	manfiestsTexts := string(manifestsBytes)
-	manfiestsTexts = strings.ReplaceAll(
-		manfiestsTexts,
-		"quay.io/kuadrant/authorino-operator:"+authorinoVersion,
-		"quay.io/innabox/authorino-operator:latest",
-	)
-	manifestsDir, err := os.MkdirTemp("", "*.authorino")
-	if err != nil {
-		return
-	}
-	defer func() {
-		err := os.RemoveAll(manifestsDir)
-		if err != nil {
-			k.logger.LogAttrs(
-				ctx,
-				slog.LevelError,
-				"Failed to remove temporary manifests directory",
-				slog.String("dir", manifestsDir),
-				slog.Any("error", err),
-			)
-		}
-	}()
-	manifestsFile := filepath.Join(manifestsDir, "manifests.yaml")
-	if err != nil {
-		return
-	}
-	os.WriteFile(manifestsFile, []byte(manfiestsTexts), 0600)
-	if err != nil {
-		return
-	}
-
-	// Apply the authorino manifest:
+	// Apply the authorino manifests:
 	k.logger.DebugContext(ctx, "Applying authorino manifests")
 	applyCmd, err := NewCommand().
 		SetLogger(k.logger).
@@ -919,7 +870,7 @@ func (k *Kind) installAuthorino(ctx context.Context) (err error) {
 		SetArgs(
 			"apply",
 			"--kubeconfig", k.kubeconfigFile,
-			"--filename", manifestsFile,
+			"--filename", authorinoManifests,
 		).
 		Build()
 	if err != nil {

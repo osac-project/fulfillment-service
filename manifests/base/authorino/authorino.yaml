@@ -31,4 +31,7 @@ spec:
     - name: ca-bundle
       configMaps:
       - ca-bundle
-      mountPath: /etc/ssl/certs
+      items:
+      - key: bundle.pem
+        path: tls-ca-bundle.pem
+      mountPath: /etc/pki/ca-trust/extracted/pem

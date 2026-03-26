@@ -212,14 +212,10 @@ spec:
 .
 ```
 
-Install the _Authorino_ operator. Due to an issue with the configuration of custom CA certificates in the Authorino
-operator (see [here](https://github.com/Kuadrant/authorino-operator/pull/282)) it is necessary to replace the operator
-image. So you need to download the manifests, replace the image, and then apply the result:
+Install the _Authorino_ operator:
 
 ```shell
-$ curl -o authorino.yaml https://raw.githubusercontent.com/Kuadrant/authorino-operator/refs/heads/release-v0.22.0/config/deploy/manifests.yaml
-$ sed -i 's|quay.io/kuadrant/authorino-operator:v0.20.0|quay.io/osac/authorino-operator:latest|g' authorino.yaml
-$ kubectl apply -f authorino.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/Kuadrant/authorino-operator/refs/heads/release-v0.23.1/config/deploy/manifests.yaml
 ```
 
 Deploy the application:
