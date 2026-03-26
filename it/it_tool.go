@@ -42,6 +42,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
@@ -297,8 +299,26 @@ func (t *Tool) Setup(ctx context.Context) error {
 		return err
 	}
 
+	// Install PostgreSQL:
+	err = t.deployPostgres(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create the Keycloak database resources:
+	err = t.createKeycloakDatabaseResources(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Install Keycloak:
 	err = t.deployKeycloak(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create the service database resources:
+	err = t.createServiceDatabaseResources(ctx)
 	if err != nil {
 		return err
 	}
@@ -508,6 +528,167 @@ func (t *Tool) loadCaBundle(ctx context.Context) error {
 	return nil
 }
 
+// createKeycloakDatabaseResources creates the cert-manager Certificate and connection ConfigMap in
+// the keycloak namespace for connecting to the PostgreSQL database. The certificate uses PKCS8
+// encoding with DER additional output format, as required by the Keycloak JDBC driver.
+func (t *Tool) createKeycloakDatabaseResources(ctx context.Context) error {
+	t.logger.DebugContext(ctx, "Creating Keycloak database resources")
+
+	// Create the keycloak namespace if it doesn't exist:
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "keycloak",
+		},
+	}
+	err := t.kubeClient.Create(ctx, ns)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create keycloak namespace: %w", err)
+	}
+
+	// Create the cert-manager Certificate:
+	cert := &unstructured.Unstructured{}
+	cert.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cert-manager.io",
+		Version: "v1",
+		Kind:    "Certificate",
+	})
+	cert.SetNamespace("keycloak")
+	cert.SetName("keycloak-database-client")
+	cert.Object["spec"] = map[string]any{
+		"issuerRef": map[string]any{
+			"kind": "ClusterIssuer",
+			"name": "default-ca",
+		},
+		"usages":     []any{"client auth"},
+		"commonName": "keycloak",
+		"secretName": keycloakDatabaseClientCertSecret,
+		"privateKey": map[string]any{
+			"encoding":       "PKCS8",
+			"rotationPolicy": "Always",
+		},
+		"additionalOutputFormats": []any{
+			map[string]any{"type": "DER"},
+		},
+	}
+	err = t.kubeClient.Create(ctx, cert)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create keycloak database client certificate: %w", err)
+	}
+
+	// Create the ConfigMap with the database connection details:
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "keycloak",
+			Name:      keycloakDatabaseConfigMap,
+		},
+		Data: map[string]string{
+			"url":      "postgres://postgres.postgres.svc.cluster.local:5432/keycloak",
+			"user":     "keycloak",
+			"password": "",
+			"sslmode":  "require",
+		},
+	}
+	err = t.kubeClient.Create(ctx, configMap)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create keycloak database config map: %w", err)
+	}
+
+	// Wait for the certificate secret to be available:
+	secretKey := crclient.ObjectKey{
+		Namespace: "keycloak",
+		Name:      keycloakDatabaseClientCertSecret,
+	}
+	secret := &corev1.Secret{}
+	for i := 0; i < 60; i++ {
+		err = t.kubeClient.Get(ctx, secretKey, secret)
+		if err == nil {
+			return nil
+		}
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get keycloak database client certificate secret: %w", err)
+		}
+		time.Sleep(time.Second)
+	}
+	return fmt.Errorf("keycloak database client certificate secret not available after waiting: %w", err)
+}
+
+// createServiceDatabaseResources creates the cert-manager Certificate and connection ConfigMap in
+// the osac namespace for connecting the fulfillment service to the PostgreSQL database.
+func (t *Tool) createServiceDatabaseResources(ctx context.Context) error {
+	t.logger.DebugContext(ctx, "Creating service database resources")
+
+	// Create the osac namespace if it doesn't exist:
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "osac",
+		},
+	}
+	err := t.kubeClient.Create(ctx, ns)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create osac namespace: %w", err)
+	}
+
+	// Create the cert-manager Certificate:
+	cert := &unstructured.Unstructured{}
+	cert.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cert-manager.io",
+		Version: "v1",
+		Kind:    "Certificate",
+	})
+	cert.SetNamespace("osac")
+	cert.SetName("fulfillment-database-client")
+	cert.Object["spec"] = map[string]any{
+		"issuerRef": map[string]any{
+			"kind": "ClusterIssuer",
+			"name": "default-ca",
+		},
+		"usages":     []any{"client auth"},
+		"commonName": "service",
+		"secretName": serviceDatabaseClientCertSecret,
+		"privateKey": map[string]any{
+			"rotationPolicy": "Always",
+		},
+	}
+	err = t.kubeClient.Create(ctx, cert)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create service database client certificate: %w", err)
+	}
+
+	// Create the ConfigMap with the database connection details:
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "osac",
+			Name:      serviceDatabaseConfigMap,
+		},
+		Data: map[string]string{
+			"url":     "postgres://service@postgres.postgres.svc.cluster.local:5432/service",
+			"sslmode": "verify-full",
+		},
+	}
+	err = t.kubeClient.Create(ctx, configMap)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create service database config map: %w", err)
+	}
+
+	// Wait for the certificate secret to be available:
+	secretKey := crclient.ObjectKey{
+		Namespace: "osac",
+		Name:      serviceDatabaseClientCertSecret,
+	}
+	secret := &corev1.Secret{}
+	for i := 0; i < 60; i++ {
+		err = t.kubeClient.Get(ctx, secretKey, secret)
+		if err == nil {
+			return nil
+		}
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get service database client certificate secret: %w", err)
+		}
+		time.Sleep(time.Second)
+	}
+	return fmt.Errorf("service database client certificate secret not available after waiting: %w", err)
+}
+
 // deployKeycloak installs the Keycloak chart.
 func (t *Tool) deployKeycloak(ctx context.Context) error {
 	// Get the host name:
@@ -525,6 +706,52 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 			"issuerRef": map[string]any{
 				"kind": "ClusterIssuer",
 				"name": "default-ca",
+			},
+		},
+		"database": map[string]any{
+			"connection": []any{
+				map[string]any{
+					"configMap": map[string]any{
+						"name": keycloakDatabaseConfigMap,
+						"items": []any{
+							map[string]any{
+								"key":   "url",
+								"param": "url",
+							},
+							map[string]any{
+								"key":   "user",
+								"param": "user",
+							},
+							map[string]any{
+								"key":   "password",
+								"param": "password",
+							},
+							map[string]any{
+								"key":   "sslmode",
+								"param": "sslmode",
+							},
+						},
+					},
+				},
+				map[string]any{
+					"secret": map[string]any{
+						"name": keycloakDatabaseClientCertSecret,
+						"items": []any{
+							map[string]any{
+								"key":   "tls.crt",
+								"param": "sslcert",
+							},
+							map[string]any{
+								"key":   "key.der",
+								"param": "sslkey",
+							},
+							map[string]any{
+								"key":   "ca.crt",
+								"param": "sslrootcert",
+							},
+						},
+					},
+				},
 			},
 		},
 		"groups": []any{
@@ -651,6 +878,72 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 	return nil
 }
 
+// deployPostgres installs the PostgreSQL chart with databases for Keycloak and the service.
+func (t *Tool) deployPostgres(ctx context.Context) error {
+	t.logger.DebugContext(ctx, "Installing PostgreSQL chart")
+
+	// Prepare a map containing the values for the chart:
+	valuesData := map[string]any{
+		"variant": "kind",
+		"certs": map[string]any{
+			"issuerRef": map[string]any{
+				"kind": "ClusterIssuer",
+				"name": "default-ca",
+			},
+			"caBundle": map[string]any{
+				"configMap": "ca-bundle",
+			},
+		},
+		"databases": []any{
+			map[string]any{
+				"name": "keycloak",
+				"user": "keycloak",
+			},
+			map[string]any{
+				"name": "service",
+				"user": "service",
+			},
+		},
+	}
+	valuesBytes, err := yaml.Marshal(valuesData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal PostgreSQL values to YAML: %w", err)
+	}
+
+	// Write the values to a temporary file:
+	valuesFile := filepath.Join(t.tmpDir, "postgres-values.yaml")
+	err = os.WriteFile(valuesFile, valuesBytes, 0400)
+	if err != nil {
+		return fmt.Errorf("failed to write PostgreSQL values to file: %w", err)
+	}
+
+	// Install the chart:
+	installCmd, err := testing.NewCommand().
+		SetLogger(t.logger).
+		SetHome(t.projectDir).
+		SetDir(t.projectDir).
+		SetName(helmCmd).
+		SetArgs(
+			"upgrade",
+			"--install",
+			"postgres",
+			"charts/postgres",
+			"--kubeconfig", t.kcFile,
+			"--namespace", "postgres",
+			"--create-namespace",
+			"--values", valuesFile,
+			"--wait",
+		).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create PostgreSQL install command: %w", err)
+	}
+	if err = installCmd.Execute(ctx); err != nil {
+		return fmt.Errorf("failed to install PostgreSQL: %w", err)
+	}
+	return nil
+}
+
 func (t *Tool) deployService(ctx context.Context, imageRef string) error {
 	switch t.deployMode {
 	case deployModeHelm:
@@ -686,6 +979,44 @@ func (t *Tool) deployServiceWithHelm(ctx context.Context, imageRef string) error
 		},
 		"auth": map[string]any{
 			"issuerUrl": fmt.Sprintf("https://%s/realms/osac", keycloakAddr),
+		},
+		"database": map[string]any{
+			"connection": []any{
+				map[string]any{
+					"configMap": map[string]any{
+						"name": serviceDatabaseConfigMap,
+						"items": []any{
+							map[string]any{
+								"key":   "url",
+								"param": "url",
+							},
+							map[string]any{
+								"key":   "sslmode",
+								"param": "sslmode",
+							},
+						},
+					},
+				},
+				map[string]any{
+					"secret": map[string]any{
+						"name": serviceDatabaseClientCertSecret,
+						"items": []any{
+							map[string]any{
+								"key":   "tls.crt",
+								"param": "sslcert",
+							},
+							map[string]any{
+								"key":   "tls.key",
+								"param": "sslkey",
+							},
+							map[string]any{
+								"key":   "ca.crt",
+								"param": "sslrootcert",
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 	valuesBytes, err := yaml.Marshal(valuesData)
@@ -1243,6 +1574,14 @@ const userAgent = "fulfillment-it-tool"
 const (
 	keycloakAddr = "keycloak.keycloak.svc.cluster.local:8000"
 	serviceAddr  = "fulfillment-api.osac.svc.cluster.local:8000"
+)
+
+// Names of the database-related Kubernetes resources.
+const (
+	keycloakDatabaseClientCertSecret = "keycloak-database-client-cert"
+	keycloakDatabaseConfigMap        = "keycloak-database-config"
+	serviceDatabaseClientCertSecret  = "fulfillment-database-client-cert"
+	serviceDatabaseConfigMap         = "fulfillment-database-config"
 )
 
 // Name of the Kubernetes service account that is used for emergency administration access.

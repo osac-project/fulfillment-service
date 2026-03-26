@@ -1,5 +1,5 @@
 {{/*
-Copyright (c) 2025 Red Hat Inc.
+Copyright (c) 2026 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -11,16 +11,20 @@ Unless required by applicable law or agreed to in writing, software distributed 
 specific language governing permissions and limitations under the License.
 */}}
 
-{{ if ne .Values.variant "kind" }}
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: cert-manager.io/v1
+kind: Certificate
 metadata:
   namespace: {{ .Release.Namespace }}
-  name: fulfillment-database
+  name: postgres-server
 spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: {{ .Values.database.storageSize }}
-{{ end }}
+  issuerRef:
+    kind: {{ .Values.certs.issuerRef.kind }}
+    name: {{ required "certs.issuerRef.name is required" .Values.certs.issuerRef.name }}
+  dnsNames:
+  - localhost
+  - postgres
+  - postgres.{{ .Release.Namespace }}
+  - postgres.{{ .Release.Namespace }}.svc.cluster.local
+  secretName: postgres-server-cert
+  privateKey:
+    rotationPolicy: Always

@@ -40,18 +40,64 @@ import (
 
 var _ = Describe("Authorization rules", Ordered, func() {
 	var (
-		ctx   context.Context
-		rules string
+		ctx    context.Context
+		tmpDir string
+		rules  string
 	)
 
 	BeforeAll(func() {
+		var err error
+
 		// Create a context:
 		ctx = context.Background()
+
+		// Create a temporary directory:
+		tmpDir, err = os.MkdirTemp("", "*.test")
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			err := os.RemoveAll(tmpDir)
+			Expect(err).ToNot(HaveOccurred())
+		})
 
 		// Find the project directory
 		currentDir, err := os.Getwd()
 		Expect(err).ToNot(HaveOccurred())
 		projectDir, err := filepath.Abs(filepath.Join(currentDir, "..", ".."))
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create a temporary values file:
+		valuesFile := filepath.Join(tmpDir, "values.yaml")
+		valuesData := map[string]any{
+			"certs": map[string]any{
+				"issuerRef": map[string]any{
+					"name": "my-ca",
+				},
+				"caBundle": map[string]any{
+					"configMap": "my-bundle",
+				},
+			},
+			"auth": map[string]any{
+				"issuerUrl": "https://my-issuer.com",
+			},
+			"database": map[string]any{
+				"connection": []any{
+					map[string]any{
+						"configMap": map[string]any{
+							"name": "my-config",
+							"items": []any{
+								map[string]any{
+									"key":   "url",
+									"param": "url",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		valuesBytes, err := yaml.Marshal(valuesData)
+		Expect(err).ToNot(HaveOccurred())
+		err = os.WriteFile(valuesFile, valuesBytes, 0600)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Run the helm template command to generate the manifests:
@@ -64,9 +110,7 @@ var _ = Describe("Authorization rules", Ordered, func() {
 			SetArgs(
 				"template", "fulfillment-service", chartDir,
 				"--namespace", "my-ns",
-				"--set", "certs.issuerRef.name=my-ca",
-				"--set", "certs.caBundle.configMap=my-bundle",
-				"--set", "auth.issuerUrl=https://my-issuer.com",
+				"--values", valuesFile,
 			).
 			Build()
 		Expect(err).ToNot(HaveOccurred())

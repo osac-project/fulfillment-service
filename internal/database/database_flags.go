@@ -23,16 +23,25 @@ import (
 //
 // Will add the following flags:
 //
-//	--db-url Database connection URL.
+//	--db-url      Database connection URL.
+//	--db-url-file File or directory containing the database connection URL or settings.
 func AddFlags(flags *pflag.FlagSet) {
 	_ = flags.String(
 		urlFlagName,
 		"",
 		"Database connection URL.",
 	)
+	_ = flags.String(
+		urlFileFlagName,
+		"",
+		"File or directory containing the database connection settings. When pointing to a file, "+
+			"the URL is read from the file. When pointing to a directory, the tool scans for files "+
+			"named after connection parameters and builds the URL from them.",
+	)
 }
 
 // Names of the flags:
 const (
-	urlFlagName = "db-url"
+	urlFlagName     = "db-url"
+	urlFileFlagName = "db-url-file"
 )

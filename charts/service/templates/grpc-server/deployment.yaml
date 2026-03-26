@@ -32,20 +32,45 @@ spec:
       - name: cas
         configMap:
           name: {{ $caBundleConfigMap }}
-      - name: cert
-        secret:
-          secretName: fulfillment-database-client-cert
       - name: tls
         secret:
           secretName: fulfillment-grpc-server-tls
+      - name: database
+        projected:
+          sources:
+          {{ if .Values.database.connection }}
+          {{ range .Values.database.connection }}
+          {{ if .configMap }}
+          - configMap:
+              name: {{ .configMap.name }}
+              items:
+              {{ range .configMap.items }}
+              - key: {{ .key }}
+                path: {{ .param }}
+              {{ end }}
+          {{ end }}
+          {{ if .secret }}
+          - secret:
+              name: {{ .secret.name }}
+              items:
+              {{ range .secret.items }}
+              - key: {{ .key }}
+                path: {{ .param }}
+              {{ end }}
+          {{ end }}
+          {{ end }}
+          {{ else }}
+          []
+          {{ end }}
       containers:
       - name: grpc-server
         image: {{ .Values.images.service }}
         volumeMounts:
         - name: cas
           mountPath: /etc/fulfillment-grpc-server/tls/cas
-        - name: cert
-          mountPath: /secrets/cert
+        - name: database
+          mountPath: /etc/fulfillment-grpc-server/db
+          readOnly: true
         - name: tls
           mountPath: /etc/fulfillment-grpc-server/tls
         command:
@@ -59,7 +84,7 @@ spec:
         - --accept-multiclient
         - --continue
         - --
-        {{ else}}
+        {{ else }}
         - /usr/local/bin/fulfillment-service
         {{ end }}
         - start
@@ -68,11 +93,7 @@ spec:
         - --log-headers={{ .Values.log.headers }}
         - --log-bodies={{ .Values.log.bodies }}
         - --ca-file=/etc/fulfillment-grpc-server/tls/cas
-        - "--db-url=postgres://client@fulfillment-database:5432/service?\
-          sslmode=verify-full&\
-          sslcert=/secrets/cert/tls.crt&\
-          sslkey=/secrets/cert/tls.key&\
-          sslrootcert=/secrets/cert/ca.crt"
+        - --db-url-file=/etc/fulfillment-grpc-server/db
         - --grpc-listener-address=0.0.0.0:8000
         - --grpc-listener-tls-crt=/etc/fulfillment-grpc-server/tls/tls.crt
         - --grpc-listener-tls-key=/etc/fulfillment-grpc-server/tls/tls.key

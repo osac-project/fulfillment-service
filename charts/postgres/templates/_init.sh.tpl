@@ -1,5 +1,5 @@
 {{/*
-Copyright (c) 2025 Red Hat Inc.
+Copyright (c) 2026 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -11,11 +11,12 @@ Unless required by applicable law or agreed to in writing, software distributed 
 specific language governing permissions and limitations under the License.
 */}}
 
-{{- define "database.access.conf" -}}
-# This is needed by the scripts that setup the database.
-local all all peer
-
-# For any other user we only allow access with certificates.
-hostssl all all 0.0.0.0/0 cert
-hostssl all all ::0/0 cert
+{{- define "database.init.sh" -}}
+#!/bin/bash
+psql <<'.'
+{{- range .Values.databases }}
+create user {{ .user }}{{ if .password }} password '{{ .password }}'{{ end }};
+create database {{ .name }} owner {{ .user }};
+{{- end }}
+.
 {{- end -}}

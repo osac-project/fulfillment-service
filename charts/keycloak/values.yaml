@@ -31,7 +31,45 @@ certs:
 # Image configuration:
 images:
   keycloak: quay.io/keycloak/keycloak:26.3
-  postgres: quay.io/sclorg/postgresql-15-c9s:latest
+
+# Database connection configuration. Keycloak expects an external PostgreSQL database to be available. The database
+# should be created before installing this chart.
+database:
+
+  # List of sources for database connection parameters. Each entry maps keys from a ConfigMap or Secret to named
+  # database connection parameters. Each item has a 'key' field that indicates the name of the key in the ConfigMap or
+  # Secret) and a 'param' field indicating the name of the connection parameter.
+  #
+  # In addition to typical PostgreSQL connection parameters the chart also supports the following parameters:
+  #
+  # - `url`      - The complete PostgreSQL connection URL.
+  # - `host`     - The host name or IP address of the database server.
+  # - `port`     - The port number of the database server.
+  # - `user`     - The PostgreSQL user name.
+  # - `password` - The PostgreSQL password.
+  # - `dbname`   - The PostgreSQL database name.
+  #
+  # For example, if the database URL is stored in a ConfigMap named `db-config` in a key named `uri` and the user name
+  # and password are stored in a Secret named `db-secret` in keys named `user` and `password`, the connection
+  # configuration would look like this:
+  #
+  #   connection:
+  #   - configMap:
+  #       name: db-config
+  #       items:
+  #       - key: uri
+  #         param: url
+  #   - secret:
+  #       name: db-secret
+  #       items:
+  #       - key: user
+  #         param: user
+  #       - key: password
+  #         param: password
+  #
+  # The keys of the ConfigMap and secret don't need to match the parameter names. In the above example the URL is in a
+  # `uri` key but the connection parameter name is `url`.
+  connection: []
 
 # Groups to create in the Keycloak realm. These are copied directoy to the 'groups' field of the realm JSON file, so you
 # need to provide at least the 'name' and 'path' fields, for example:

@@ -30,42 +30,54 @@ spec:
       - name: realm
         secret:
           secretName: keycloak-realm
-      - name: database-client-cert
+      - name: tls
         secret:
-          secretName: keycloak-database-client-cert
-      - name: tls-cert
-        secret:
-          secretName: keycloak-tls-cert
-      initContainers:
-      - name: wait-for-database
-        image: "{{ .Values.images.postgres }}"
-        imagePullPolicy: IfNotPresent
-        command:
-        - /bin/bash
-        - -c
-        - |
-          set -e
-          until pg_isready --host keycloak-database --timeout 1; do
-            sleep 1
-          done
+          secretName: keycloak-tls
+      - name: db
+        projected:
+          sources:
+          {{ if .Values.database.connection }}
+          {{ range .Values.database.connection }}
+          {{ if .configMap }}
+          - configMap:
+              name: {{ .configMap.name }}
+              items:
+              {{ range .configMap.items }}
+              - key: {{ .key }}
+                path: {{ .param }}
+              {{ end }}
+          {{ end }}
+          {{ if .secret }}
+          - secret:
+              name: {{ .secret.name }}
+              items:
+              {{ range .secret.items }}
+              - key: {{ .key }}
+                path: {{ .param }}
+              {{ end }}
+          {{ end }}
+          {{ end }}
+          {{ else }}
+          []
+          {{ end }}
       containers:
-      - name: keycloak
+      - name: server
         image: "{{ .Values.images.keycloak }}"
         imagePullPolicy: IfNotPresent
         volumeMounts:
         - name: realm
           mountPath: /opt/keycloak/data/import
           readOnly: true
-        - name: database-client-cert
-          mountPath: /secrets/database-client
+        - name: tls
+          mountPath: /opt/keycloak/tls
           readOnly: true
-        - name: tls-cert
-          mountPath: /secrets/tls
+        - name: db
+          mountPath: /opt/keycloak/db
           readOnly: true
         env:
-        - name: KEYCLOAK_ADMIN
+        - name: KC_BOOTSTRAP_ADMIN_USERNAME
           value: admin
-        - name: KEYCLOAK_ADMIN_PASSWORD
+        - name: KC_BOOTSTRAP_ADMIN_PASSWORD
           value: admin
         - name: KC_HOSTNAME_STRICT
           value: "true"
@@ -78,28 +90,19 @@ spec:
         - name: KC_HTTPS_PORT
           value: "8000"
         - name: KC_HTTPS_CERTIFICATE_FILE
-          value: "/secrets/tls/tls.crt"
+          value: "/opt/keycloak/tls/tls.crt"
         - name: KC_HTTPS_CERTIFICATE_KEY_FILE
-          value: "/secrets/tls/tls.key"
+          value: "/opt/keycloak/tls/tls.key"
         - name: KC_HOSTNAME
           value: "{{ include "keycloak.hostname" . }}"
         - name: KC_HOSTNAME_PORT
           value: "8000"
         - name: KC_DB
           value: "postgres"
-        - name: KC_DB_URL
-          value: "jdbc:postgresql://keycloak-database:5432/keycloak?\
-          sslmode=require&\
-          sslcert=/secrets/database-client/tls.crt&\
-          sslkey=/secrets/database-client/key.der&\
-          sslrootcert=/secrets/database-client/ca.crt"
-        - name: KC_DB_USERNAME
-          value: keycloak
-        - name: KC_DB_PASSWORD
-          value: ""
-        args:
-        - start
-        - --import-realm
+        command:
+        - /bin/bash
+        - -c
+        - {{ .Files.Get "files/start.sh" | quote }}
         ports:
         - name: https
           containerPort: 8000

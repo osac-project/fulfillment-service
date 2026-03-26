@@ -1,5 +1,5 @@
 {{/*
-Copyright (c) 2025 Red Hat Inc.
+Copyright (c) 2026 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -15,7 +15,11 @@ specific language governing permissions and limitations under the License.
 
 # Enable TLS:
 ssl = on
+{{- if .Values.certs.caBundle.configMap }}
+ssl_ca_file = '/config/ca/bundle.pem'
+{{- else }}
 ssl_ca_file = '/secrets/cert/ca.crt'
+{{- end }}
 ssl_cert_file = '/secrets/cert/tls.crt'
 ssl_key_file = '/secrets/cert/tls.key'
 

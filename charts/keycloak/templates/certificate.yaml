@@ -14,17 +14,14 @@ specific language governing permissions and limitations under the License.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: keycloak-database-server
   namespace: {{ .Release.Namespace }}
+  name: keycloak-tls
 spec:
   issuerRef:
     kind: {{ .Values.certs.issuerRef.kind }}
     name: {{ required "certs.issuerRef.name is required" .Values.certs.issuerRef.name }}
   dnsNames:
-  - localhost
-  - keycloak-database
-  - keycloak-database.{{ .Release.Namespace }}
-  - keycloak-database.{{ .Release.Namespace }}.svc.cluster.local
-  secretName: keycloak-database-server-cert
+  - {{ include "keycloak.hostname" . }}
+  secretName: keycloak-tls
   privateKey:
     rotationPolicy: Always
