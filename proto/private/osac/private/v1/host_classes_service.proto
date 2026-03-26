@@ -27,8 +27,8 @@ message HostClassesListRequest {
 }
 
 message HostClassesListResponse {
-  optional int32 size = 3;
-  optional int32 total = 4;
+  int32 size = 3;
+  int32 total = 4;
   repeated HostClass items = 5;
 }
 

@@ -27,8 +27,8 @@ message HostPoolsListRequest {
 }
 
 message HostPoolsListResponse {
-  optional int32 size = 1;
-  optional int32 total = 2;
+  int32 size = 1;
+  int32 total = 2;
   repeated HostPool items = 3;
 }
 

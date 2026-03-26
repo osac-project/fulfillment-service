@@ -26,8 +26,8 @@ message ComputeInstancesListRequest {
 }
 
 message ComputeInstancesListResponse {
-  optional int32 size = 1;
-  optional int32 total = 2;
+  int32 size = 1;
+  int32 total = 2;
   repeated ComputeInstance items = 3;
 }
 

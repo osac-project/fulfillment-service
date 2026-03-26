@@ -334,8 +334,8 @@ var _ = Describe("Reflection helper", func() {
 				ListFunc: func(ctx context.Context, request *publicv1.ClustersListRequest,
 				) (response *publicv1.ClustersListResponse, err error) {
 					response = publicv1.ClustersListResponse_builder{
-						Size:  proto.Int32(2),
-						Total: proto.Int32(2),
+						Size:  2,
+						Total: 2,
 						Items: []*publicv1.Cluster{
 							publicv1.Cluster_builder{
 								Id: "123",

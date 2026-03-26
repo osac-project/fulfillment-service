@@ -58,11 +58,11 @@ message HostsListResponse {
   // Actual number of items returned. Note that this may be smaller than the value requested in the `limit` parameter
   // of the request if there are not enough items, or of the system decides that returning that number of items isn't
   // feasible or convenient for performance reasons.
-  optional int32 size = 1;
+  int32 size = 1;
 
   // Total number of items of the collection that match the search criteria, regardless of the number of results
   // requested with the `limit` parameter.
-  optional int32 total = 2;
+  int32 total = 2;
 
   // List of results.
   repeated Host items = 3;
