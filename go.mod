@@ -118,7 +118,7 @@ require (
 	github.com/google/cel-go v0.27.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/itchyny/gojq v0.12.18
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/pkg/errors v0.9.1
