@@ -1,0 +1,62 @@
+#
+# Copyright (c) 2025 Red Hat Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing permissions and limitations under
+# the License.
+#
+
+# Generates Python gRPC stubs from the public proto files and publishes the
+# resulting wheel to GitHub Packages as 'osac-public-grpc'.
+
+name: Publish Python client
+
+on:
+  push:
+    tags:
+    - 'v*'
+
+jobs:
+
+  publish-python-client:
+    name: Publish Python client
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: bufbuild/buf-action@v1
+      with:
+        version: '1.50.0'
+        setup_only: true
+        token: ${{ secrets.BUF_TOKEN }}
+
+    - name: Generate Python gRPC stubs
+      run: buf generate --template buf.gen.python.yaml
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Build wheel
+      run: |
+        pip install hatchling build twine
+        # Strip the leading 'v' from the tag (v1.2.3 → 1.2.3).
+        export PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
+        python -m build python/
+
+    - name: Publish to GitHub Packages
+      run: |
+        twine upload \
+          --repository-url https://python.pkg.github.com/${{ github.repository_owner }}/ \
+          --username __token__ \
+          --password ${{ secrets.GITHUB_TOKEN }} \
+          python/dist/*

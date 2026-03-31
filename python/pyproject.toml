@@ -1,0 +1,37 @@
+#
+# Copyright (c) 2025 Red Hat Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing permissions and limitations under
+# the License.
+#
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "osac-public-grpc"
+dynamic = ["version"]
+description = "Python gRPC client stubs for the OSAC public API (osac.public.v1)"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "grpcio>=1.60.0",
+    "protobuf>=4.25.0",
+]
+
+[tool.hatch.version]
+# Version is injected from the git tag by CI (e.g. v1.2.3 → 1.2.3).
+source = "env"
+variable = "PACKAGE_VERSION"
+
+[tool.hatch.build.targets.wheel]
+# Generated stubs live under src/osac/public/v1/ as namespace packages.
+packages = ["src/osac"]
