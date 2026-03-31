@@ -17,7 +17,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/osac-project/fulfillment-service/internal/database"
@@ -82,13 +81,7 @@ func (r *ExistsRequest[O]) do(ctx context.Context) (response *ExistsResponse, er
 
 	// Execute the SQL statement:
 	sql := sqlBuffer.String()
-	r.dao.logger.DebugContext(
-		ctx,
-		"Running SQL query",
-		slog.String("sql", sql),
-		slog.Any("parameters", r.sql.params),
-	)
-	row := r.tx.QueryRow(ctx, sql, r.sql.params...)
+	row := r.queryRow(ctx, sql, r.sql.params...)
 	var count int
 	err = row.Scan(&count)
 	if err != nil {

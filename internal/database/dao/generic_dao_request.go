@@ -23,9 +23,11 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/dustin/go-humanize/english"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -136,13 +138,7 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 
 	// Execute the SQL statement:
 	sql := buffer.String()
-	r.dao.logger.DebugContext(
-		ctx,
-		"Running SQL query",
-		slog.String("sql", sql),
-		slog.Any("parameters", r.sql.params),
-	)
-	row := r.tx.QueryRow(ctx, sql, r.sql.params...)
+	row := r.queryRow(ctx, sql, r.sql.params...)
 	var (
 		name            string
 		creationTs      time.Time
@@ -247,7 +243,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 		`,
 		r.dao.table,
 	)
-	_, err := r.tx.Exec(
+	_, err := r.exec(
 		ctx,
 		sql,
 		args.id,
@@ -264,7 +260,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 		return err
 	}
 	sql = fmt.Sprintf(`delete from %s where id = $1`, r.dao.table)
-	_, err = r.tx.Exec(ctx, sql, args.id)
+	_, err = r.exec(ctx, sql, args.id)
 	return err
 }
 
@@ -627,4 +623,70 @@ func (r *request[O]) equivalentMetadata(x, y protoreflect.Message) bool {
 		}
 	}
 	return true
+}
+
+// queryRow executes a SQL query expected to return a single row. It logs the SQL statement before executing it
+// and delegates to the underlying transaction.
+func (r *request[O]) queryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
+		r.dao.logger.DebugContext(
+			ctx,
+			"Running SQL query",
+			slog.String("sql", r.cleanSQL(sql)),
+			slog.Any("parameters", args),
+		)
+	}
+	return r.tx.QueryRow(ctx, sql, args...)
+}
+
+// query executes a SQL query expected to return multiple rows. It logs the SQL statement before executing it
+// and delegates to the underlying transaction.
+func (r *request[O]) query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
+		r.dao.logger.DebugContext(
+			ctx,
+			"Running SQL query",
+			slog.String("sql", r.cleanSQL(sql)),
+			slog.Any("parameters", args),
+		)
+	}
+	return r.tx.Query(ctx, sql, args...)
+}
+
+// exec executes a SQL statement that doesn't return rows. It logs the SQL statement before executing it and
+// delegates to the underlying transaction.
+func (r *request[O]) exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
+		r.dao.logger.DebugContext(
+			ctx,
+			"Running SQL statement",
+			slog.String("sql", r.cleanSQL(sql)),
+			slog.Any("parameters", args),
+		)
+	}
+	return r.tx.Exec(ctx, sql, args...)
+}
+
+// cleanSQL collapses all sequences of whitespace in the given SQL string into a single space, producing a
+// compact single-line representation suitable for logging.
+func (r *request[O]) cleanSQL(sql string) string {
+	var buf strings.Builder
+	buf.Grow(len(sql))
+	space := true
+	for _, c := range sql {
+		if unicode.IsSpace(c) {
+			if !space {
+				buf.WriteRune(' ')
+				space = true
+			}
+		} else {
+			buf.WriteRune(c)
+			space = false
+		}
+	}
+	result := buf.String()
+	if space && len(result) > 0 {
+		result = result[:len(result)-1]
+	}
+	return result
 }

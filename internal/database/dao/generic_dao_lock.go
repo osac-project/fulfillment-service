@@ -16,7 +16,6 @@ package dao
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"slices"
 	"strings"
 
@@ -89,13 +88,7 @@ func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err
 
 	// Execute the SQL query:
 	sql := buffer.String()
-	r.dao.logger.DebugContext(
-		ctx,
-		"Running SQL query",
-		slog.String("sql", sql),
-		slog.Any("parameters", r.sql.params),
-	)
-	rows, err := r.tx.Query(ctx, sql, r.sql.params...)
+	rows, err := r.query(ctx, sql, r.sql.params...)
 	if err != nil {
 		return
 	}

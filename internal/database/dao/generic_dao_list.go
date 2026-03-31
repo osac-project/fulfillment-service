@@ -16,7 +16,6 @@ package dao
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -96,13 +95,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 		buffer.WriteString(r.sql.filter.String())
 	}
 	sql := buffer.String()
-	r.dao.logger.DebugContext(
-		ctx,
-		"Running SQL query",
-		slog.String("sql", sql),
-		slog.Any("parameters", r.sql.params),
-	)
-	row := r.tx.QueryRow(ctx, sql, r.sql.params...)
+	row := r.queryRow(ctx, sql, r.sql.params...)
 	var total int
 	err = row.Scan(&total)
 	if err != nil {
@@ -158,13 +151,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 
 	// Execute the SQL query:
 	sql = buffer.String()
-	r.dao.logger.DebugContext(
-		ctx,
-		"Running SQL query",
-		slog.String("sql", sql),
-		slog.Any("parameters", r.sql.params),
-	)
-	rows, err := r.tx.Query(ctx, sql, r.sql.params...)
+	rows, err := r.query(ctx, sql, r.sql.params...)
 	if err != nil {
 		return
 	}

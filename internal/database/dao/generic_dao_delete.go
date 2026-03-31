@@ -17,7 +17,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -99,13 +98,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 
 	// Execute the SQL statement:
 	sql := buffer.String()
-	r.dao.logger.DebugContext(
-		ctx,
-		"Running SQL statement",
-		slog.String("sql", sql),
-		slog.Any("parameters", r.sql.params),
-	)
-	row := r.tx.QueryRow(ctx, sql, r.sql.params...)
+	row := r.queryRow(ctx, sql, r.sql.params...)
 	var (
 		name            string
 		creationTs      time.Time

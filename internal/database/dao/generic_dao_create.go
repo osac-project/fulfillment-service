@@ -140,7 +140,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		`,
 		r.dao.table,
 	)
-	row := r.tx.QueryRow(ctx, sql, id, name, finalizers, creators, tenants, labelsData, annotationsData, data)
+	row := r.queryRow(ctx, sql, id, name, finalizers, creators, tenants, labelsData, annotationsData, data)
 	var (
 		creationTs time.Time
 		deletionTs time.Time

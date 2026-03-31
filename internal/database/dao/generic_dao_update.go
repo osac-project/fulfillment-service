@@ -124,7 +124,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		`,
 		r.dao.table,
 	)
-	row := r.tx.QueryRow(ctx, sql, name, finalizers, labelsData, annotationsData, data, tenants, id)
+	row := r.queryRow(ctx, sql, name, finalizers, labelsData, annotationsData, data, tenants, id)
 	var (
 		creationTs time.Time
 		deletionTs time.Time
