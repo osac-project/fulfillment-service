@@ -11,3 +11,8 @@
 /fulfillment-service
 /logs
 __debug_bin*
+
+# Generated Python gRPC stubs and build artifacts (produced by buf generate --template buf.gen.python.yaml)
+/python/src/
+/python/dist/
+/python/*.egg-info/
