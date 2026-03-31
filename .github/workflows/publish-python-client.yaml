@@ -48,10 +48,15 @@ jobs:
 
     - name: Build wheel
       run: |
-        pip install hatchling build twine
+        pip install hatchling==1.26.3 build==1.2.2 twine==5.1.1
         # Strip the leading 'v' from the tag (v1.2.3 → 1.2.3).
         export PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
         python -m build python/
+
+    - name: Verify build artifacts
+      run: |
+        ls -lh python/dist/
+        test -n "$(ls python/dist/*.whl 2>/dev/null)" || { echo "Error: no wheel found in python/dist/"; exit 1; }
 
     - name: Publish to GitHub Packages
       run: |
@@ -59,4 +64,5 @@ jobs:
           --repository-url https://python.pkg.github.com/${{ github.repository_owner }}/ \
           --username __token__ \
           --password ${{ secrets.GITHUB_TOKEN }} \
+          --non-interactive \
           python/dist/*

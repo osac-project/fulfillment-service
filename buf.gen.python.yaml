@@ -24,8 +24,8 @@ inputs:
 - directory: proto/public
 
 plugins:
-- remote: buf.build/protocolbuffers/python
+- remote: buf.build/protocolbuffers/python:v29.3
   out: python/src
 
-- remote: buf.build/grpc/python
+- remote: buf.build/grpc/python:v1.68.1
   out: python/src
