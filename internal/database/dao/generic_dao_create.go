@@ -140,15 +140,18 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		`,
 		r.dao.table,
 	)
-	row := r.queryRow(ctx, sql, id, name, finalizers, creators, tenants, labelsData, annotationsData, data)
 	var (
 		creationTs time.Time
 		deletionTs time.Time
 	)
-	err = row.Scan(
-		&creationTs,
-		&deletionTs,
-	)
+	err = func() error {
+		row := r.queryRow(ctx, createOpType, sql, id, name, finalizers, creators, tenants, labelsData, annotationsData, data)
+		defer r.recordOpDuration(createOpType, time.Now())
+		return row.Scan(
+			&creationTs,
+			&deletionTs,
+		)
+	}()
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {

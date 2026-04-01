@@ -95,9 +95,12 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 		buffer.WriteString(r.sql.filter.String())
 	}
 	sql := buffer.String()
-	row := r.queryRow(ctx, sql, r.sql.params...)
 	var total int
-	err = row.Scan(&total)
+	err = func() error {
+		row := r.queryRow(ctx, countOpType, sql, r.sql.params...)
+		defer r.recordOpDuration(countOpType, time.Now())
+		return row.Scan(&total)
+	}()
 	if err != nil {
 		return
 	}
@@ -151,70 +154,73 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 
 	// Execute the SQL query:
 	sql = buffer.String()
-	rows, err := r.query(ctx, sql, r.sql.params...)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
 	var items []O
-	for rows.Next() {
-		var (
-			id              string
-			name            string
-			creationTs      time.Time
-			deletionTs      time.Time
-			finalizers      []string
-			creators        []string
-			tenants         []string
-			labelsData      []byte
-			annotationsData []byte
-			data            []byte
-		)
-		err = rows.Scan(
-			&id,
-			&name,
-			&creationTs,
-			&deletionTs,
-			&finalizers,
-			&creators,
-			&tenants,
-			&labelsData,
-			&annotationsData,
-			&data,
-		)
+	err = func() error {
+		rows, err := r.query(ctx, listOpType, sql, r.sql.params...)
+		defer r.recordOpDuration(listOpType, time.Now())
 		if err != nil {
-			return
+			return err
 		}
-		item := r.cloneObject(r.newObject())
-		err = r.unmarshalData(data, item)
-		if err != nil {
-			return
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				id              string
+				name            string
+				creationTs      time.Time
+				deletionTs      time.Time
+				finalizers      []string
+				creators        []string
+				tenants         []string
+				labelsData      []byte
+				annotationsData []byte
+				data            []byte
+			)
+			err = rows.Scan(
+				&id,
+				&name,
+				&creationTs,
+				&deletionTs,
+				&finalizers,
+				&creators,
+				&tenants,
+				&labelsData,
+				&annotationsData,
+				&data,
+			)
+			if err != nil {
+				return err
+			}
+			item := r.cloneObject(r.newObject())
+			err = r.unmarshalData(data, item)
+			if err != nil {
+				return err
+			}
+			var labels map[string]string
+			labels, err = r.unmarshalMap(labelsData)
+			if err != nil {
+				return err
+			}
+			var annotations map[string]string
+			annotations, err = r.unmarshalMap(annotationsData)
+			if err != nil {
+				return err
+			}
+			md := r.makeMetadata(makeMetadataArgs{
+				creationTs:  creationTs,
+				deletionTs:  deletionTs,
+				finalizers:  finalizers,
+				creators:    creators,
+				tenants:     tenants,
+				name:        name,
+				labels:      labels,
+				annotations: annotations,
+			})
+			item.SetId(id)
+			r.setMetadata(item, md)
+			items = append(items, item)
 		}
-		var labels map[string]string
-		labels, err = r.unmarshalMap(labelsData)
-		if err != nil {
-			return
-		}
-		var annotations map[string]string
-		annotations, err = r.unmarshalMap(annotationsData)
-		if err != nil {
-			return
-		}
-		md := r.makeMetadata(makeMetadataArgs{
-			creationTs:  creationTs,
-			deletionTs:  deletionTs,
-			finalizers:  finalizers,
-			creators:    creators,
-			tenants:     tenants,
-			name:        name,
-			labels:      labels,
-			annotations: annotations,
-		})
-		item.SetId(id)
-		r.setMetadata(item, md)
-		items = append(items, item)
-	}
-	err = rows.Err()
+		return rows.Err()
+	}()
 	if err != nil {
 		return
 	}

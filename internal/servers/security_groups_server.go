@@ -18,6 +18,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -28,10 +29,11 @@ import (
 )
 
 type SecurityGroupsServerBuilder struct {
-	logger           *slog.Logger
-	notifier         *database.Notifier
-	attributionLogic auth.AttributionLogic
-	tenancyLogic     auth.TenancyLogic
+	logger            *slog.Logger
+	notifier          *database.Notifier
+	attributionLogic  auth.AttributionLogic
+	tenancyLogic      auth.TenancyLogic
+	metricsRegisterer prometheus.Registerer
 }
 
 var _ publicv1.SecurityGroupsServer = (*SecurityGroupsServer)(nil)
@@ -73,6 +75,13 @@ func (b *SecurityGroupsServerBuilder) SetTenancyLogic(value auth.TenancyLogic) *
 	return b
 }
 
+// SetMetricsRegisterer sets the Prometheus registerer used to register the metrics for the underlying database
+// access objects. This is optional. If not set, no metrics will be recorded.
+func (b *SecurityGroupsServerBuilder) SetMetricsRegisterer(value prometheus.Registerer) *SecurityGroupsServerBuilder {
+	b.metricsRegisterer = value
+	return b
+}
+
 func (b *SecurityGroupsServerBuilder) Build() (result *SecurityGroupsServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
@@ -106,6 +115,7 @@ func (b *SecurityGroupsServerBuilder) Build() (result *SecurityGroupsServer, err
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
 		return

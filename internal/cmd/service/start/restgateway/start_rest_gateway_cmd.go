@@ -22,6 +22,7 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -85,6 +86,9 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Save the flags:
 	c.flags = cmd.Flags()
 
+	// prepare the metrics registerer:
+	metricsRegisterer := prometheus.DefaultRegisterer
+
 	// Create the shutdown sequence:
 	shutdown, err := shtdwn.NewSequence().
 		SetLogger(c.logger).
@@ -127,6 +131,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetCaPool(caPool).
 		SetUserAgent(userAgent).
 		SetMetricsSubsystem("outbound").
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return err

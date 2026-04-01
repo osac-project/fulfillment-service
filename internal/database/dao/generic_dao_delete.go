@@ -98,7 +98,6 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 
 	// Execute the SQL statement:
 	sql := buffer.String()
-	row := r.queryRow(ctx, sql, r.sql.params...)
 	var (
 		name            string
 		creationTs      time.Time
@@ -110,17 +109,21 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		annotationsData []byte
 		data            []byte
 	)
-	err = row.Scan(
-		&name,
-		&creationTs,
-		&deletionTs,
-		&finalizers,
-		&creators,
-		&tenants,
-		&labelsData,
-		&annotationsData,
-		&data,
-	)
+	err = func() error {
+		row := r.queryRow(ctx, updateOpType, sql, r.sql.params...)
+		defer r.recordOpDuration(updateOpType, time.Now())
+		return row.Scan(
+			&name,
+			&creationTs,
+			&deletionTs,
+			&finalizers,
+			&creators,
+			&tenants,
+			&labelsData,
+			&annotationsData,
+			&data,
+		)
+	}()
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = &ErrNotFound{
 			IDs: []string{r.args.id},

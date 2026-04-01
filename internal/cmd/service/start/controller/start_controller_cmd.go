@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -105,6 +106,9 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Save the flags:
 	r.flags = cmd.Flags()
 
+	// Prepare the metrics registerer:
+	metricsRegisterer := prometheus.DefaultRegisterer
+
 	// Create the shutdown sequence:
 	r.logger.InfoContext(ctx, "Creating shutdown sequence")
 	shutdown, err := shtdwn.NewSequence().
@@ -149,6 +153,7 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetTokenSource(tokenSource).
 		SetUserAgent(userAgent).
 		SetMetricsSubsystem("outbound").
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC client: %w", err)

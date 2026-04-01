@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -30,10 +31,11 @@ import (
 )
 
 type PrivateSubnetsServerBuilder struct {
-	logger           *slog.Logger
-	notifier         *database.Notifier
-	attributionLogic auth.AttributionLogic
-	tenancyLogic     auth.TenancyLogic
+	logger            *slog.Logger
+	notifier          *database.Notifier
+	attributionLogic  auth.AttributionLogic
+	tenancyLogic      auth.TenancyLogic
+	metricsRegisterer prometheus.Registerer
 }
 
 var _ privatev1.SubnetsServer = (*PrivateSubnetsServer)(nil)
@@ -70,6 +72,13 @@ func (b *PrivateSubnetsServerBuilder) SetTenancyLogic(value auth.TenancyLogic) *
 	return b
 }
 
+// SetMetricsRegisterer sets the Prometheus registerer used to register the metrics for the underlying database
+// access objects. This is optional. If not set, no metrics will be recorded.
+func (b *PrivateSubnetsServerBuilder) SetMetricsRegisterer(value prometheus.Registerer) *PrivateSubnetsServerBuilder {
+	b.metricsRegisterer = value
+	return b
+}
+
 func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
@@ -86,6 +95,7 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 		SetLogger(b.logger).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
 		return
@@ -98,6 +108,7 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
 		return

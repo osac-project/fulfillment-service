@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -39,12 +40,13 @@ import (
 
 // GenericServerBuilder contains the data and logic needed to create new generic servers.
 type GenericServerBuilder[O dao.Object] struct {
-	logger           *slog.Logger
-	service          string
-	ignoredFields    []any
-	notifier         *database.Notifier
-	attributionLogic auth.AttributionLogic
-	tenancyLogic     auth.TenancyLogic
+	logger            *slog.Logger
+	service           string
+	ignoredFields     []any
+	notifier          *database.Notifier
+	attributionLogic  auth.AttributionLogic
+	tenancyLogic      auth.TenancyLogic
+	metricsRegisterer prometheus.Registerer
 }
 
 // GenericServer is a gRPC server that knows how to implement the List, Get, Create, Update and Delete operators for
@@ -133,6 +135,13 @@ func (b *GenericServerBuilder[O]) SetTenancyLogic(value auth.TenancyLogic) *Gene
 	return b
 }
 
+// SetMetricsRegisterer sets the Prometheus registerer used to register the metrics. This is optional. If not set, no
+// metrics will be recorded.
+func (b *GenericServerBuilder[O]) SetMetricsRegisterer(value prometheus.Registerer) *GenericServerBuilder[O] {
+	b.metricsRegisterer = value
+	return b
+}
+
 // Build uses the configuration stored in the builder to create and configure a new generic server.
 func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) {
 	// Check parameters:
@@ -175,6 +184,9 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 	}
 	if b.tenancyLogic != nil {
 		daoBuilder.SetTenancyLogic(b.tenancyLogic)
+	}
+	if b.metricsRegisterer != nil {
+		daoBuilder.SetMetricsRegisterer(b.metricsRegisterer)
 	}
 	s.dao, err = daoBuilder.Build()
 	if err != nil {

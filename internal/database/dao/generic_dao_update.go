@@ -124,17 +124,20 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		`,
 		r.dao.table,
 	)
-	row := r.queryRow(ctx, sql, name, finalizers, labelsData, annotationsData, data, tenants, id)
 	var (
 		creationTs time.Time
 		deletionTs time.Time
 		creators   []string
 	)
-	err = row.Scan(
-		&creationTs,
-		&deletionTs,
-		&creators,
-	)
+	err = func() error {
+		row := r.queryRow(ctx, updateOpType, sql, name, finalizers, labelsData, annotationsData, data, tenants, id)
+		defer r.recordOpDuration(updateOpType, time.Now())
+		return row.Scan(
+			&creationTs,
+			&deletionTs,
+			&creators,
+		)
+	}()
 	if err != nil {
 		return
 	}

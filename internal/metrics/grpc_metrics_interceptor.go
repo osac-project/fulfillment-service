@@ -77,9 +77,7 @@ type GrpcInterceptor struct {
 
 // NewGrpcInterceptor creates a builder that can then be used to configure and create a new metrics interceptor.
 func NewGrpcInterceptor() *GrpcInterceptorBuilder {
-	return &GrpcInterceptorBuilder{
-		registerer: prometheus.DefaultRegisterer,
-	}
+	return &GrpcInterceptorBuilder{}
 }
 
 // SetSubsystem sets the name of the subsystem that will be used to register the metrics with Prometheus. For example,
@@ -96,9 +94,7 @@ func (b *GrpcInterceptorBuilder) SetSubsystem(value string) *GrpcInterceptorBuil
 	return b
 }
 
-// SetRegisterer sets the Prometheus registerer that will be used to register the metrics. The default is to use the
-// default Prometheus registerer and there is usually no need to change that. This is intended for unit tests, where it
-// is convenient to have a registerer that doesn't interfere with the rest of the system.
+// SetRegisterer sets the Prometheus registerer that will be used to register the metrics. this is mandatory.
 func (b *GrpcInterceptorBuilder) SetRegisterer(value prometheus.Registerer) *GrpcInterceptorBuilder {
 	b.registerer = value
 	return b
@@ -111,11 +107,9 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		err = errors.New("subsystem is mandatory")
 		return
 	}
-
-	// Set the default registered if needed:
-	registerer := b.registerer
-	if registerer == nil {
-		registerer = prometheus.DefaultRegisterer
+	if b.registerer == nil {
+		err = errors.New("registerer is mandatory")
+		return
 	}
 
 	// Register the request count metric:
@@ -127,7 +121,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		},
 		requestLabelNames,
 	)
-	err = registerer.Register(requestCount)
+	err = b.registerer.Register(requestCount)
 	if err != nil {
 		registered, ok := err.(prometheus.AlreadyRegisteredError)
 		if ok {
@@ -148,7 +142,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		},
 		requestLabelNames,
 	)
-	err = registerer.Register(requestDuration)
+	err = b.registerer.Register(requestDuration)
 	if err != nil {
 		registered, ok := err.(prometheus.AlreadyRegisteredError)
 		if ok {
@@ -168,7 +162,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		},
 		streamLabelNames,
 	)
-	err = registerer.Register(streamCount)
+	err = b.registerer.Register(streamCount)
 	if err != nil {
 		registered, ok := err.(prometheus.AlreadyRegisteredError)
 		if ok {
@@ -189,7 +183,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		},
 		streamLabelNames,
 	)
-	err = registerer.Register(streamDuration)
+	err = b.registerer.Register(streamDuration)
 	if err != nil {
 		registered, ok := err.(prometheus.AlreadyRegisteredError)
 		if ok {
@@ -209,7 +203,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		},
 		streamLabelNames,
 	)
-	err = registerer.Register(streamMessagesSent)
+	err = b.registerer.Register(streamMessagesSent)
 	if err != nil {
 		registered, ok := err.(prometheus.AlreadyRegisteredError)
 		if ok {
@@ -229,7 +223,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		},
 		streamLabelNames,
 	)
-	err = registerer.Register(streamMessagesReceived)
+	err = b.registerer.Register(streamMessagesReceived)
 	if err != nil {
 		registered, ok := err.(prometheus.AlreadyRegisteredError)
 		if ok {

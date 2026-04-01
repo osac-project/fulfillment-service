@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -127,6 +128,9 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Save the flags:
 	c.flags = cmd.Flags()
 
+	// Prepare the metrics registerer:
+	metricsRegisterer := prometheus.DefaultRegisterer
+
 	// Create the shutdown sequence triggered by typical stop signals:
 	c.logger.InfoContext(ctx, "Creating shutdown sequence")
 	shutdown, err := shtdwn.NewSequence().
@@ -229,6 +233,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 			SetCaPool(caPool).
 			SetUserAgent(userAgent).
 			SetMetricsSubsystem("outbound").
+			SetMetricsRegisterer(metricsRegisterer).
 			Build()
 		if err != nil {
 			return fmt.Errorf("failed to create external auth client: %w", err)
@@ -259,9 +264,11 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		return fmt.Errorf("failed to create panic interceptor: %w", err)
 	}
 
+	// Prepare the metrics interceptor:
 	c.logger.InfoContext(ctx, "Creating metrics interceptor")
 	metricsInterceptor, err := metrics.NewGrpcInterceptor().
 		SetSubsystem("inbound").
+		SetRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create metrics interceptor: %w", err)
@@ -408,6 +415,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create cluster templates server: %w", err)
@@ -421,6 +429,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private cluster templates server: %w", err)
@@ -434,6 +443,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create clusters server: %w", err)
@@ -447,6 +457,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private clusters server: %w", err)
@@ -460,6 +471,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create host classes server: %w", err)
@@ -473,6 +485,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private host classes server: %w", err)
@@ -486,6 +499,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create compute instance templates server: %w", err)
@@ -499,6 +513,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private compute instance templates server: %w", err)
@@ -512,6 +527,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create compute instances server: %w", err)
@@ -525,6 +541,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private compute instances server: %w", err)
@@ -538,6 +555,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create hubs server: %w", err)
@@ -551,6 +569,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create virtual networks server: %w", err)
@@ -564,6 +583,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private virtual networks server: %w", err)
@@ -577,6 +597,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create subnets server: %w", err)
@@ -590,6 +611,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private subnets server: %w", err)
@@ -603,6 +625,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create security groups server: %w", err)
@@ -616,6 +639,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private security groups server: %w", err)
@@ -629,6 +653,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(publicTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create network classes server: %w", err)
@@ -642,6 +667,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
 		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private network classes server: %w", err)

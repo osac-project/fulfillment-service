@@ -18,16 +18,19 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 type PrivateHubsServerBuilder struct {
-	logger           *slog.Logger
-	notifier         *database.Notifier
-	attributionLogic auth.AttributionLogic
-	tenancyLogic     auth.TenancyLogic
+	logger            *slog.Logger
+	notifier          *database.Notifier
+	attributionLogic  auth.AttributionLogic
+	tenancyLogic      auth.TenancyLogic
+	metricsRegisterer prometheus.Registerer
 }
 
 var _ privatev1.HubsServer = (*PrivateHubsServer)(nil)
@@ -63,6 +66,13 @@ func (b *PrivateHubsServerBuilder) SetTenancyLogic(value auth.TenancyLogic) *Pri
 	return b
 }
 
+// SetMetricsRegisterer sets the Prometheus registerer used to register the metrics for the underlying database
+// access objects. This is optional. If not set, no metrics will be recorded.
+func (b *PrivateHubsServerBuilder) SetMetricsRegisterer(value prometheus.Registerer) *PrivateHubsServerBuilder {
+	b.metricsRegisterer = value
+	return b
+}
+
 func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
@@ -81,6 +91,7 @@ func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error
 		SetNotifier(b.notifier).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
 		return

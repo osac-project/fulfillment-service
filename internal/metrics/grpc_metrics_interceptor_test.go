@@ -40,6 +40,17 @@ var _ = Describe("Create", func() {
 		Expect(message).To(ContainSubstring("mandatory"))
 	})
 
+	It("Can't be created without a registerer", func() {
+		interceptor, err := NewGrpcInterceptor().
+			SetSubsystem("my_subsystem").
+			Build()
+		Expect(err).To(HaveOccurred())
+		Expect(interceptor).To(BeNil())
+		message := err.Error()
+		Expect(message).To(ContainSubstring("registerer"))
+		Expect(message).To(ContainSubstring("mandatory"))
+	})
+
 	It("Can be created with a subsystem", func() {
 		interceptor, err := NewGrpcInterceptor().
 			SetSubsystem("my_subsystem").
@@ -47,13 +58,6 @@ var _ = Describe("Create", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		Expect(interceptor).ToNot(BeNil())
-	})
-
-	It("Uses default registerer if nil is passed", func() {
-		builder := NewGrpcInterceptor().
-			SetSubsystem("my_subsystem").
-			SetRegisterer(nil)
-		Expect(builder).ToNot(BeNil())
 	})
 
 	It("Handles already registered metrics gracefully", func() {

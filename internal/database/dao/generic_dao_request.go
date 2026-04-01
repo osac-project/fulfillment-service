@@ -28,6 +28,7 @@ import (
 	"github.com/dustin/go-humanize/english"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -87,7 +88,8 @@ func (r *request[O]) initTenants(ctx context.Context) error {
 	return nil
 }
 
-// get retrieves a single object by its identifier. It can optionally lock the row for update.
+// get retrieves a single object by its identifier. It can optionally lock the row for update. The operation
+// parameter is forwarded to the query methods for metrics labelling.
 func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, err error) {
 	// Initialize the tenants:
 	err = r.initTenants(ctx)
@@ -138,7 +140,6 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 
 	// Execute the SQL statement:
 	sql := buffer.String()
-	row := r.queryRow(ctx, sql, r.sql.params...)
 	var (
 		name            string
 		creationTs      time.Time
@@ -150,17 +151,21 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 		annotationsData []byte
 		data            []byte
 	)
-	err = row.Scan(
-		&name,
-		&creationTs,
-		&deletionTs,
-		&finalizers,
-		&creators,
-		&tenants,
-		&labelsData,
-		&annotationsData,
-		&data,
-	)
+	err = func() error {
+		row := r.queryRow(ctx, getOpType, sql, r.sql.params...)
+		defer r.recordOpDuration(getOpType, time.Now())
+		return row.Scan(
+			&name,
+			&creationTs,
+			&deletionTs,
+			&finalizers,
+			&creators,
+			&tenants,
+			&labelsData,
+			&annotationsData,
+			&data,
+		)
+	}()
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = &ErrNotFound{
 			IDs: []string{id},
@@ -245,6 +250,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 	)
 	_, err := r.exec(
 		ctx,
+		archiveOpType,
 		sql,
 		args.id,
 		args.name,
@@ -260,7 +266,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 		return err
 	}
 	sql = fmt.Sprintf(`delete from %s where id = $1`, r.dao.table)
-	_, err = r.exec(ctx, sql, args.id)
+	_, err = r.exec(ctx, deleteOpType, sql, args.id)
 	return err
 }
 
@@ -625,13 +631,14 @@ func (r *request[O]) equivalentMetadata(x, y protoreflect.Message) bool {
 	return true
 }
 
-// queryRow executes a SQL query expected to return a single row. It logs the SQL statement before executing it
-// and delegates to the underlying transaction.
-func (r *request[O]) queryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+// queryRow executes a SQL query expected to return a single row. It logs the SQL statement and records metrics before
+// delegating to the underlying transaction.
+func (r *request[O]) queryRow(ctx context.Context, op opType, sql string, args ...any) pgx.Row {
 	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
 		r.dao.logger.DebugContext(
 			ctx,
-			"Running SQL query",
+			"Running SQL operation",
+			slog.String("type", string(op)),
 			slog.String("sql", r.cleanSQL(sql)),
 			slog.Any("parameters", args),
 		)
@@ -639,32 +646,50 @@ func (r *request[O]) queryRow(ctx context.Context, sql string, args ...any) pgx.
 	return r.tx.QueryRow(ctx, sql, args...)
 }
 
-// query executes a SQL query expected to return multiple rows. It logs the SQL statement before executing it
-// and delegates to the underlying transaction.
-func (r *request[O]) query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+// query executes a SQL query expected to return multiple rows. It logs the SQL statement and records metrics before
+// delegating to the underlying transaction.
+func (r *request[O]) query(ctx context.Context, op opType, sql string, args ...any) (rows pgx.Rows, err error) {
 	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
 		r.dao.logger.DebugContext(
 			ctx,
-			"Running SQL query",
+			"Running SQL operation",
+			slog.String("type", string(op)),
 			slog.String("sql", r.cleanSQL(sql)),
 			slog.Any("parameters", args),
 		)
 	}
-	return r.tx.Query(ctx, sql, args...)
+	rows, err = r.tx.Query(ctx, sql, args...)
+	return
 }
 
-// exec executes a SQL statement that doesn't return rows. It logs the SQL statement before executing it and
-// delegates to the underlying transaction.
-func (r *request[O]) exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+// exec executes a SQL statement that doesn't return rows. It logs the SQL statement and records metrics
+// before delegating to the underlying transaction. The operation parameter identifies the DAO operation
+// (e.g. "archive") and is used as a metric label.
+func (r *request[O]) exec(ctx context.Context, op opType, sql string, args ...any) (pgconn.CommandTag, error) {
 	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
 		r.dao.logger.DebugContext(
 			ctx,
-			"Running SQL statement",
+			"Running SQL operation",
+			slog.String("type", string(op)),
 			slog.String("sql", r.cleanSQL(sql)),
 			slog.Any("parameters", args),
 		)
 	}
-	return r.tx.Exec(ctx, sql, args...)
+	start := time.Now()
+	tag, err := r.tx.Exec(ctx, sql, args...)
+	r.recordOpDuration(op, start)
+	return tag, err
+}
+
+// recordOpDuration records the elapsed time since start as a Prometheus histogram observation, if metrics
+// are configured.
+func (r *request[O]) recordOpDuration(op opType, start time.Time) {
+	if r.dao.opDurationMetric != nil {
+		r.dao.opDurationMetric.With(prometheus.Labels{
+			tableMetricLabel: r.dao.table,
+			typeMetricLabel:  string(op),
+		}).Observe(time.Since(start).Seconds())
+	}
 }
 
 // cleanSQL collapses all sequences of whitespace in the given SQL string into a single space, producing a

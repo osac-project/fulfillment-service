@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -88,21 +89,24 @@ func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err
 
 	// Execute the SQL query:
 	sql := buffer.String()
-	rows, err := r.query(ctx, sql, r.sql.params...)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
 	ids := make([]string, 0, len(r.args.ids))
-	for rows.Next() {
-		var id string
-		err = rows.Scan(&id)
+	err = func() error {
+		rows, err := r.query(ctx, lockOpType, sql, r.sql.params...)
+		defer r.recordOpDuration(lockOpType, time.Now())
 		if err != nil {
-			return
+			return err
 		}
-		ids = append(ids, id)
-	}
-	err = rows.Err()
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			err = rows.Scan(&id)
+			if err != nil {
+				return err
+			}
+			ids = append(ids, id)
+		}
+		return rows.Err()
+	}()
 	if err != nil {
 		return
 	}

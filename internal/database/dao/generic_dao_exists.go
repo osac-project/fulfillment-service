@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -81,9 +82,12 @@ func (r *ExistsRequest[O]) do(ctx context.Context) (response *ExistsResponse, er
 
 	// Execute the SQL statement:
 	sql := sqlBuffer.String()
-	row := r.queryRow(ctx, sql, r.sql.params...)
 	var count int
-	err = row.Scan(&count)
+	err = func() error {
+		row := r.queryRow(ctx, existsOpType, sql, r.sql.params...)
+		defer r.recordOpDuration(existsOpType, time.Now())
+		return row.Scan(&count)
+	}()
 	if err != nil {
 		return
 	}

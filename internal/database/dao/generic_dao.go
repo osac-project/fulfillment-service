@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"slices"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -37,12 +38,13 @@ type Object interface {
 
 // GenericDAOBuilder is a builder for creating generic data access objects.
 type GenericDAOBuilder[O Object] struct {
-	logger           *slog.Logger
-	defaultLimit     int32
-	maxLimit         int32
-	eventCallbacks   []EventCallback
-	attributionLogic auth.AttributionLogic
-	tenancyLogic     auth.TenancyLogic
+	logger            *slog.Logger
+	defaultLimit      int32
+	maxLimit          int32
+	eventCallbacks    []EventCallback
+	attributionLogic  auth.AttributionLogic
+	tenancyLogic      auth.TenancyLogic
+	metricsRegisterer prometheus.Registerer
 }
 
 // GenericDAO provides generic data access operations for protocol buffers messages. It assumes that objects will be
@@ -61,6 +63,7 @@ type GenericDAOBuilder[O Object] struct {
 //
 // Objects must have field named `id` of string type.
 type GenericDAO[O Object] struct {
+	// Basic fields:
 	logger           *slog.Logger
 	table            string
 	defaultLimit     int32
@@ -76,6 +79,9 @@ type GenericDAO[O Object] struct {
 	filterTranslator *FilterTranslator[O]
 	attributionLogic auth.AttributionLogic
 	tenancyLogic     auth.TenancyLogic
+
+	// Metrics:
+	opDurationMetric *prometheus.HistogramVec
 }
 
 type metadataIface interface {
@@ -148,6 +154,32 @@ func (b *GenericDAOBuilder[O]) SetAttributionLogic(value auth.AttributionLogic) 
 // a default logic that returns no tenants will be used.
 func (b *GenericDAOBuilder[O]) SetTenancyLogic(value auth.TenancyLogic) *GenericDAOBuilder[O] {
 	b.tenancyLogic = value
+	return b
+}
+
+// SetMetricsRegisterer sets the Prometheus registerer used to register the metrics.
+//
+// When enabled the following metrics will be registered:
+//
+//	db_operation_duration_sum - Total time executing database operations, in seconds.
+//	db_operation_duration_count - Total number of database operations measured.
+//	db_operation_duration_bucket - Database operation durations organized in buckets.
+//
+// The metrics will have the following labels:
+//
+//	table - Name of the database table, for example `clusters` or `hosts`.
+//	type - Name of the DAO operation, for example `create`, `get`, `list`, `update`, `delete`,
+//	  `exists`, `lock`, `count` or `archive`.
+//
+// To calculate the average duration for create operations on the clusters table during the last 10 minutes,
+// for example, use a Prometheus expression like this:
+//
+//	rate(db_operation_duration_sum{table="clusters",type="create"}[10m]) /
+//	  rate(db_operation_duration_count{table="clusters",type="create"}[10m])
+//
+// This is optional. If not set, no metrics will be recorded.
+func (b *GenericDAOBuilder[O]) SetMetricsRegisterer(value prometheus.Registerer) *GenericDAOBuilder[O] {
+	b.metricsRegisterer = value
 	return b
 }
 
@@ -246,6 +278,15 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 		return
 	}
 
+	// Register metrics:
+	var opDurationMetric *prometheus.HistogramVec
+	if b.metricsRegisterer != nil {
+		opDurationMetric, err = b.registerOpDurationMetric()
+		if err != nil {
+			return
+		}
+	}
+
 	// Create and populate the object:
 	result = &GenericDAO[O]{
 		logger:           b.logger,
@@ -263,7 +304,60 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 		filterTranslator: filterTranslator,
 		attributionLogic: b.attributionLogic,
 		tenancyLogic:     b.tenancyLogic,
+		opDurationMetric: opDurationMetric,
 	}
+	return
+}
+
+func (b *GenericDAOBuilder[O]) registerOpDurationMetric() (result *prometheus.HistogramVec, err error) {
+	registerer := b.metricsRegisterer
+	if registerer == nil {
+		registerer = prometheus.DefaultRegisterer
+	}
+	const name = "operation_duration"
+	metric := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Subsystem: "db",
+			Name:      name,
+			Help:      "Duration of database operations in seconds.",
+			Buckets: []float64{
+				0.001,
+				0.005,
+				0.01,
+				0.025,
+				0.05,
+				0.1,
+				0.25,
+				0.5,
+				1.0,
+				2.5,
+				5.0,
+			},
+		},
+		[]string{
+			tableMetricLabel,
+			typeMetricLabel,
+		},
+	)
+	err = registerer.Register(metric)
+	if err != nil {
+		var alreadyRegisteredErr prometheus.AlreadyRegisteredError
+		if !errors.As(err, &alreadyRegisteredErr) {
+			return
+		}
+		registered, ok := alreadyRegisteredErr.ExistingCollector.(*prometheus.HistogramVec)
+		if !ok {
+			err = fmt.Errorf(
+				"metric '%s' can't be registered as an histogram vector because it is already registered as a '%T'",
+				name, alreadyRegisteredErr.ExistingCollector,
+			)
+			return
+		}
+		result = registered
+		err = nil
+		return
+	}
+	result = metric
 	return
 }
 
@@ -273,4 +367,26 @@ var (
 	deletionTimestampFieldName = protoreflect.Name("deletion_timestamp")
 	idFieldName                = protoreflect.Name("id")
 	metadataFieldName          = protoreflect.Name("metadata")
+)
+
+// opType is used to describe the types of operations performed by the DAO in logs and metrics.
+type opType string
+
+// Operation types used as metric labels:
+const (
+	archiveOpType opType = "archive"
+	countOpType   opType = "count"
+	createOpType  opType = "create"
+	deleteOpType  opType = "delete"
+	existsOpType  opType = "exists"
+	getOpType     opType = "get"
+	listOpType    opType = "list"
+	lockOpType    opType = "lock"
+	updateOpType  opType = "update"
+)
+
+// Label names and values for metrics:
+const (
+	tableMetricLabel = "table"
+	typeMetricLabel  = "type"
 )
