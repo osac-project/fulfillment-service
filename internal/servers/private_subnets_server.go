@@ -239,10 +239,17 @@ func (s *PrivateSubnetsServer) validateSubnet(ctx context.Context,
 		return err
 	}
 
-	// SUB-VAL-04, SUB-VAL-05, SUB-VAL-06, SUB-VAL-07, SUB-VAL-08: Validate parent VirtualNetwork
-	// Only validate on Create or if virtual_network changed (though it shouldn't on Update)
-	if existingSubnet == nil || spec.GetVirtualNetwork() != existingSubnet.GetSpec().GetVirtualNetwork() {
-		if err := s.validateVirtualNetworkReference(ctx, spec); err != nil {
+	// SUB-VAL-04 through SUB-VAL-08: Validate parent VirtualNetwork reference
+	// On Create: always validate (existence, state, subset, overlap)
+	// On Update: re-validate when CIDRs change (subset + overlap with self-exclusion)
+	// Defense-in-depth: also re-validate if virtual_network changes, though
+	// validateImmutableFieldsSubnet (line ~227) already prevents VN changes on Update.
+	excludeID := ""
+	if existingSubnet != nil {
+		excludeID = existingSubnet.GetId()
+	}
+	if existingSubnet == nil || cidrFieldsChanged(newSubnet, existingSubnet) || spec.GetVirtualNetwork() != existingSubnet.GetSpec().GetVirtualNetwork() {
+		if err := s.validateVirtualNetworkReference(ctx, spec, excludeID); err != nil {
 			return err
 		}
 	}
@@ -288,7 +295,7 @@ func validateCIDRSubset(subnetCIDR string, parentCIDR string, ipVersion string) 
 // validateVirtualNetworkReference validates that the referenced VirtualNetwork exists, is in READY state,
 // and has matching IP families.
 func (s *PrivateSubnetsServer) validateVirtualNetworkReference(ctx context.Context,
-	spec *privatev1.SubnetSpec) error {
+	spec *privatev1.SubnetSpec, excludeID string) error {
 
 	virtualNetworkID := spec.GetVirtualNetwork()
 	if virtualNetworkID == "" {
@@ -347,7 +354,7 @@ func (s *PrivateSubnetsServer) validateVirtualNetworkReference(ctx context.Conte
 	}
 
 	// Validate no CIDR overlap with existing subnets in the same VirtualNetwork:
-	if err := s.validateNoCIDROverlap(ctx, spec); err != nil {
+	if err := s.validateNoCIDROverlap(ctx, spec, excludeID); err != nil {
 		return err
 	}
 
@@ -359,7 +366,7 @@ func (s *PrivateSubnetsServer) validateVirtualNetworkReference(ctx context.Conte
 // Note: this check is not fully atomic; concurrent subnet creation could bypass overlap
 // validation. A locking mechanism would be needed for complete reliability.
 func (s *PrivateSubnetsServer) validateNoCIDROverlap(ctx context.Context,
-	spec *privatev1.SubnetSpec) error {
+	spec *privatev1.SubnetSpec, excludeID string) error {
 
 	// Fetch all existing subnets for the same VirtualNetwork using pagination:
 	filter := fmt.Sprintf("this.spec.virtual_network == '%s'", spec.GetVirtualNetwork())
@@ -387,6 +394,9 @@ func (s *PrivateSubnetsServer) validateNoCIDROverlap(ctx context.Context,
 	}
 
 	for _, existing := range allSubnets {
+		if excludeID != "" && existing.GetId() == excludeID {
+			continue // Skip self on Update
+		}
 		existingSpec := existing.GetSpec()
 
 		// Check IPv4 overlap:
@@ -455,4 +465,13 @@ func validateImmutableFieldsSubnet(newSubnet *privatev1.Subnet, existingSubnet *
 	}
 
 	return nil
+}
+
+// cidrFieldsChanged reports whether the CIDR fields differ between the new and existing subnet.
+// Caller guarantees existingSubnet is non-nil (short-circuit in validateSubnet).
+func cidrFieldsChanged(newSubnet *privatev1.Subnet, existingSubnet *privatev1.Subnet) bool {
+	newSpec := newSubnet.GetSpec()
+	existingSpec := existingSubnet.GetSpec()
+	return newSpec.GetIpv4Cidr() != existingSpec.GetIpv4Cidr() ||
+		newSpec.GetIpv6Cidr() != existingSpec.GetIpv6Cidr()
 }
