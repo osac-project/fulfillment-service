@@ -17,7 +17,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
+	"net/netip"
 
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
@@ -260,14 +260,14 @@ func (s *PrivateVirtualNetworksServer) validateVirtualNetwork(ctx context.Contex
 
 // validateCIDR validates a CIDR string and checks if it matches the expected IP version.
 func validateCIDR(cidrStr string, ipVersion string) error {
-	_, network, err := net.ParseCIDR(cidrStr)
+	prefix, err := netip.ParsePrefix(cidrStr)
 	if err != nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"invalid %s CIDR format '%s': %v", ipVersion, cidrStr, err)
 	}
 
 	// Validate IP version matches field name
-	isIPv4 := network.IP.To4() != nil
+	isIPv4 := prefix.Addr().Is4()
 	if ipVersion == "IPv4" && !isIPv4 {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"field 'ipv4_cidr' contains IPv6 address: %s", cidrStr)

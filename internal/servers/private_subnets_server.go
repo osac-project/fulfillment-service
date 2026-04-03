@@ -18,7 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
+	"net/netip"
 
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
@@ -260,33 +260,33 @@ func (s *PrivateSubnetsServer) validateSubnet(ctx context.Context,
 // validateCIDRSubset validates that subnetCIDR is a proper subset of parentCIDR.
 func validateCIDRSubset(subnetCIDR string, parentCIDR string, ipVersion string) error {
 	// Parse subnet CIDR
-	_, subnetNetwork, err := net.ParseCIDR(subnetCIDR)
+	subnetPrefix, err := netip.ParsePrefix(subnetCIDR)
 	if err != nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"invalid subnet %s CIDR format '%s': %v", ipVersion, subnetCIDR, err)
 	}
+	subnetPrefix = subnetPrefix.Masked()
 
 	// Parse parent CIDR
-	_, parentNetwork, err := net.ParseCIDR(parentCIDR)
+	parentPrefix, err := netip.ParsePrefix(parentCIDR)
 	if err != nil {
 		return grpcstatus.Errorf(grpccodes.Internal,
 			"invalid parent %s CIDR format '%s': %v", ipVersion, parentCIDR, err)
 	}
+	parentPrefix = parentPrefix.Masked()
 
 	// Check parent contains subnet network address
-	if !parentNetwork.Contains(subnetNetwork.IP) {
+	if !parentPrefix.Contains(subnetPrefix.Addr()) {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"subnet %s CIDR '%s' is not within parent VirtualNetwork CIDR '%s'",
 			ipVersion, subnetCIDR, parentCIDR)
 	}
 
 	// Check subnet mask is more specific than parent mask (prevents subnet larger than parent)
-	subnetMaskSize, _ := subnetNetwork.Mask.Size()
-	parentMaskSize, _ := parentNetwork.Mask.Size()
-	if subnetMaskSize < parentMaskSize {
+	if subnetPrefix.Bits() < parentPrefix.Bits() {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"subnet %s CIDR '%s' (/%d) is less specific than parent CIDR '%s' (/%d)",
-			ipVersion, subnetCIDR, subnetMaskSize, parentCIDR, parentMaskSize)
+			ipVersion, subnetCIDR, subnetPrefix.Bits(), parentCIDR, parentPrefix.Bits())
 	}
 
 	return nil
@@ -437,15 +437,15 @@ func (s *PrivateSubnetsServer) validateNoCIDROverlap(ctx context.Context,
 
 // cidrsOverlap returns true if two CIDRs overlap (one contains any part of the other).
 func cidrsOverlap(cidrA, cidrB string) (bool, error) {
-	_, netA, errA := net.ParseCIDR(cidrA)
-	_, netB, errB := net.ParseCIDR(cidrB)
+	prefixA, errA := netip.ParsePrefix(cidrA)
+	prefixB, errB := netip.ParsePrefix(cidrB)
 	if errA != nil || errB != nil {
 		return false, fmt.Errorf(
 			"failed to parse CIDRs: %q: %v, %q: %v",
 			cidrA, errA, cidrB, errB,
 		)
 	}
-	return netA.Contains(netB.IP) || netB.Contains(netA.IP), nil
+	return prefixA.Overlaps(prefixB), nil
 }
 
 // validateImmutableFieldsSubnet validates that immutable fields have not been changed.
