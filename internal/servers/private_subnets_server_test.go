@@ -774,32 +774,59 @@ var _ = Describe("Private subnets server", func() {
 			})
 		})
 
-		Context("CIDR overlap validation", func() {
-			// Helper to create a subnet directly in the database
-			createSubnetInDB := func(ctx context.Context, name, ipv4Cidr, ipv6Cidr, virtualNetworkID string) {
-				builder := privatev1.SubnetSpec_builder{
-					VirtualNetwork: virtualNetworkID,
-				}
-				if ipv4Cidr != "" {
-					builder.Ipv4Cidr = proto.String(ipv4Cidr)
-				}
-				if ipv6Cidr != "" {
-					builder.Ipv6Cidr = proto.String(ipv6Cidr)
-				}
+		Context("cidrFieldsChanged helper", func() {
+			DescribeTable("returns correct result",
+				func(newIpv4, newIpv6, existIpv4, existIpv6 string, expected bool) {
+					newSubnet := privatev1.Subnet_builder{
+						Spec: privatev1.SubnetSpec_builder{
+							Ipv4Cidr: proto.String(newIpv4),
+							Ipv6Cidr: proto.String(newIpv6),
+						}.Build(),
+					}.Build()
+					existingSubnet := privatev1.Subnet_builder{
+						Spec: privatev1.SubnetSpec_builder{
+							Ipv4Cidr: proto.String(existIpv4),
+							Ipv6Cidr: proto.String(existIpv6),
+						}.Build(),
+					}.Build()
+					Expect(cidrFieldsChanged(newSubnet, existingSubnet)).To(Equal(expected))
+				},
+				Entry("both same", "10.0.1.0/24", "2001:db8::/48", "10.0.1.0/24", "2001:db8::/48", false),
+				Entry("IPv4 differs", "10.0.2.0/24", "2001:db8::/48", "10.0.1.0/24", "2001:db8::/48", true),
+				Entry("IPv6 differs", "10.0.1.0/24", "2001:db8:1::/48", "10.0.1.0/24", "2001:db8::/48", true),
+				Entry("both differ", "10.0.2.0/24", "2001:db8:1::/48", "10.0.1.0/24", "2001:db8::/48", true),
+			)
+		})
 
-				subnet := privatev1.Subnet_builder{
-					Metadata: privatev1.Metadata_builder{
-						Name: name,
-					}.Build(),
-					Spec: builder.Build(),
-				}.Build()
-
-				_, err := subnetDao.Create().
-					SetObject(subnet).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
+		// Helper to create a subnet directly in the database
+		createSubnetInDB := func(ctx context.Context, name, ipv4Cidr, ipv6Cidr, virtualNetworkID string) *privatev1.Subnet {
+			builder := privatev1.SubnetSpec_builder{
+				VirtualNetwork: virtualNetworkID,
+			}
+			if ipv4Cidr != "" {
+				builder.Ipv4Cidr = proto.String(ipv4Cidr)
+			}
+			if ipv6Cidr != "" {
+				builder.Ipv6Cidr = proto.String(ipv6Cidr)
 			}
 
+			subnet := privatev1.Subnet_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: name,
+				}.Build(),
+				Spec: builder.Build(),
+			}.Build()
+
+			response, err := subnetDao.Create().
+				SetObject(subnet).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			return response.GetObject()
+		}
+
+		createSubnetForUpdate := createSubnetInDB
+
+		Context("CIDR overlap validation", func() {
 			It("rejects subnet with exact same IPv4 CIDR", func() {
 				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
 				createSubnetInDB(ctx, "existing-subnet", "10.0.1.0/24", "", vn.GetId())
@@ -903,6 +930,248 @@ var _ = Describe("Private subnets server", func() {
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			})
+		})
+
+		Context("CIDR overlap validation on Update", func() {
+			It("rejects update that creates IPv4 CIDR overlap with sibling", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				createSubnetInDB(ctx, "subnet-a", "10.0.1.0/24", "", vn.GetId())
+				subnetB := createSubnetForUpdate(ctx, "subnet-b", "10.0.2.0/24", "", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Id: subnetB.GetId(),
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetB)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+				Expect(err.Error()).To(ContainSubstring("overlaps"))
+			})
+
+			It("rejects update that creates IPv6 CIDR overlap with sibling", func() {
+				vn := createVirtualNetwork(ctx, "", "2001:db8::/32")
+				createSubnetInDB(ctx, "subnet-a", "", "2001:db8:1::/48", vn.GetId())
+				subnetB := createSubnetForUpdate(ctx, "subnet-b", "", "2001:db8:2::/48", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Id: subnetB.GetId(),
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv6Cidr:       proto.String("2001:db8:1::/48"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetB)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+				Expect(err.Error()).To(ContainSubstring("overlaps"))
+			})
+
+			It("allows update with non-overlapping CIDR change", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				createSubnetInDB(ctx, "subnet-a", "10.0.1.0/24", "", vn.GetId())
+				subnetB := createSubnetForUpdate(ctx, "subnet-b", "10.0.2.0/24", "", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.3.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetB)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("allows update with unchanged CIDRs (validation skipped)", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				subnetA := createSubnetForUpdate(ctx, "subnet-a", "10.0.1.0/24", "", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetA)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("exercises excludeID self-exclusion on dual-stack partial CIDR update", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "2001:db8::/32")
+				subnetA := createSubnetForUpdate(ctx, "subnet-a", "10.0.1.0/24", "2001:db8:1::/48", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv6Cidr:       proto.String("2001:db8:2::/48"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetA)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("allows metadata-only update without triggering CIDR validation", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				subnetA := createSubnetForUpdate(ctx, "subnet-a", "10.0.1.0/24", "", vn.GetId())
+
+				createSubnetInDB(ctx, "subnet-b", "10.0.1.0/25", "", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "subnet-a-renamed",
+					}.Build(),
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetA)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("validates when adding IPv6 CIDR to IPv4-only subnet (single to dual-stack)", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "2001:db8::/32")
+				subnetA := createSubnetForUpdate(ctx, "subnet-a", "10.0.1.0/24", "", vn.GetId())
+				createSubnetInDB(ctx, "subnet-b", "10.0.2.0/24", "2001:db8:1::/48", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv6Cidr:       proto.String("2001:db8:1::/48"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetA)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			})
+
+			It("validates when removing IPv6 CIDR from dual-stack subnet (dual to single-stack)", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "2001:db8::/32")
+				subnetA := createSubnetForUpdate(ctx, "subnet-a", "10.0.1.0/24", "2001:db8:1::/48", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetA)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("validates when both CIDRs change simultaneously", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "2001:db8::/32")
+				createSubnetInDB(ctx, "subnet-a", "10.0.1.0/24", "2001:db8:1::/48", vn.GetId())
+				subnetB := createSubnetForUpdate(ctx, "subnet-b", "10.0.2.0/24", "2001:db8:2::/48", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv6Cidr:       proto.String("2001:db8:1::/48"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetB)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			})
+		})
+
+		Context("soft-deleted subnet CIDR blocking", func() {
+			It("soft-deleted subnet still blocks CIDR reuse (pre-existing behavior, regression guard)", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				subnetA := createSubnetInDB(ctx, "subnet-a", "10.0.1.0/24", "", vn.GetId())
+
+				_, err := tx.Exec(ctx, "UPDATE subnets SET deletion_timestamp = now() WHERE id = $1", subnetA.GetId())
+				Expect(err).ToNot(HaveOccurred())
+
+				newSubnet := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err = server.validateSubnet(ctx, newSubnet, nil)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("overlaps"))
+			})
+		})
+
+		Context("CIDR subset validation on Update", func() {
+			It("rejects update that moves CIDR outside parent VirtualNetwork", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				subnetA := createSubnetForUpdate(ctx, "subnet-a", "10.0.1.0/24", "", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("192.168.1.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetA)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(err.Error()).To(ContainSubstring("not within parent"))
+			})
+
+			It("rejects update that widens CIDR beyond parent", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/24", "")
+				subnetA := createSubnetForUpdate(ctx, "subnet-a", "10.0.0.0/25", "", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.0.0/16"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetA)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(err.Error()).To(ContainSubstring("less specific"))
+			})
+
+			It("allows update that stays within parent CIDR", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+				subnetA := createSubnetForUpdate(ctx, "subnet-a", "10.0.1.0/24", "", vn.GetId())
+
+				updated := privatev1.Subnet_builder{
+					Spec: privatev1.SubnetSpec_builder{
+						Ipv4Cidr:       proto.String("10.0.2.0/24"),
+						VirtualNetwork: vn.GetId(),
+					}.Build(),
+				}.Build()
+
+				err := server.validateSubnet(ctx, updated, subnetA)
+				Expect(err).ToNot(HaveOccurred())
 			})
 		})
 
