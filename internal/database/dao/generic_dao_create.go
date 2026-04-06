@@ -144,9 +144,12 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		creationTs time.Time
 		deletionTs time.Time
 	)
-	err = func() error {
+	err = func() (err error) {
+		start := time.Now()
 		row := r.queryRow(ctx, createOpType, sql, id, name, finalizers, creators, tenants, labelsData, annotationsData, data)
-		defer r.recordOpDuration(createOpType, time.Now())
+		defer func() {
+			r.recordOpDuration(createOpType, start, err)
+		}()
 		return row.Scan(
 			&creationTs,
 			&deletionTs,

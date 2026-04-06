@@ -109,9 +109,12 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		annotationsData []byte
 		data            []byte
 	)
-	err = func() error {
+	err = func() (err error) {
+		start := time.Now()
 		row := r.queryRow(ctx, updateOpType, sql, r.sql.params...)
-		defer r.recordOpDuration(updateOpType, time.Now())
+		defer func() {
+			r.recordOpDuration(updateOpType, start, err)
+		}()
 		return row.Scan(
 			&name,
 			&creationTs,

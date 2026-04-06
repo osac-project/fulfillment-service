@@ -167,6 +167,8 @@ func (b *GenericDAOBuilder[O]) SetTenancyLogic(value auth.TenancyLogic) *Generic
 //
 // The metrics will have the following labels:
 //
+//	error - The PostgreSQL error code, for example `23505` for unique violations. It will be empty
+//	  when the operation succeeds.
 //	table - Name of the database table, for example `clusters` or `hosts`.
 //	type - Name of the DAO operation, for example `create`, `get`, `list`, `update`, `delete`,
 //	  `exists`, `lock`, `count` or `archive`.
@@ -335,6 +337,7 @@ func (b *GenericDAOBuilder[O]) registerOpDurationMetric() (result *prometheus.Hi
 			},
 		},
 		[]string{
+			errorMetricLabel,
 			tableMetricLabel,
 			typeMetricLabel,
 		},
@@ -387,6 +390,7 @@ const (
 
 // Label names and values for metrics:
 const (
+	errorMetricLabel = "error"
 	tableMetricLabel = "table"
 	typeMetricLabel  = "type"
 )

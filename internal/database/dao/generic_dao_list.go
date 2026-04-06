@@ -96,9 +96,12 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 	}
 	sql := buffer.String()
 	var total int
-	err = func() error {
+	err = func() (err error) {
+		start := time.Now()
 		row := r.queryRow(ctx, countOpType, sql, r.sql.params...)
-		defer r.recordOpDuration(countOpType, time.Now())
+		defer func() {
+			r.recordOpDuration(countOpType, start, err)
+		}()
 		return row.Scan(&total)
 	}()
 	if err != nil {
@@ -155,9 +158,12 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 	// Execute the SQL query:
 	sql = buffer.String()
 	var items []O
-	err = func() error {
+	err = func() (err error) {
+		start := time.Now()
 		rows, err := r.query(ctx, listOpType, sql, r.sql.params...)
-		defer r.recordOpDuration(listOpType, time.Now())
+		defer func() {
+			r.recordOpDuration(listOpType, start, err)
+		}()
 		if err != nil {
 			return err
 		}

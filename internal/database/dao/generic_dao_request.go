@@ -151,9 +151,12 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 		annotationsData []byte
 		data            []byte
 	)
-	err = func() error {
+	err = func() (err error) {
+		start := time.Now()
 		row := r.queryRow(ctx, getOpType, sql, r.sql.params...)
-		defer r.recordOpDuration(getOpType, time.Now())
+		defer func() {
+			r.recordOpDuration(getOpType, start, err)
+		}()
 		return row.Scan(
 			&name,
 			&creationTs,
@@ -631,8 +634,8 @@ func (r *request[O]) equivalentMetadata(x, y protoreflect.Message) bool {
 	return true
 }
 
-// queryRow executes a SQL query expected to return a single row. It logs the SQL statement and records metrics before
-// delegating to the underlying transaction.
+// queryRow executes a SQL query expected to return a single row. It logs the SQL statement before delegating to the
+// underlying transaction.
 func (r *request[O]) queryRow(ctx context.Context, op opType, sql string, args ...any) pgx.Row {
 	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
 		r.dao.logger.DebugContext(
@@ -646,8 +649,8 @@ func (r *request[O]) queryRow(ctx context.Context, op opType, sql string, args .
 	return r.tx.QueryRow(ctx, sql, args...)
 }
 
-// query executes a SQL query expected to return multiple rows. It logs the SQL statement and records metrics before
-// delegating to the underlying transaction.
+// query executes a SQL query expected to return multiple rows. It logs the SQL statement before delegating to the
+// underlying transaction.
 func (r *request[O]) query(ctx context.Context, op opType, sql string, args ...any) (rows pgx.Rows, err error) {
 	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
 		r.dao.logger.DebugContext(
@@ -662,9 +665,8 @@ func (r *request[O]) query(ctx context.Context, op opType, sql string, args ...a
 	return
 }
 
-// exec executes a SQL statement that doesn't return rows. It logs the SQL statement and records metrics
-// before delegating to the underlying transaction. The operation parameter identifies the DAO operation
-// (e.g. "archive") and is used as a metric label.
+// exec executes a SQL statement that doesn't return rows. It logs the SQL statement before delegating to the
+// underlying transaction.
 func (r *request[O]) exec(ctx context.Context, op opType, sql string, args ...any) (pgconn.CommandTag, error) {
 	if r.dao.logger.Enabled(ctx, slog.LevelDebug) {
 		r.dao.logger.DebugContext(
@@ -677,15 +679,24 @@ func (r *request[O]) exec(ctx context.Context, op opType, sql string, args ...an
 	}
 	start := time.Now()
 	tag, err := r.tx.Exec(ctx, sql, args...)
-	r.recordOpDuration(op, start)
+	r.recordOpDuration(op, start, err)
 	return tag, err
 }
 
-// recordOpDuration records the elapsed time since start as a Prometheus histogram observation, if metrics
-// are configured.
-func (r *request[O]) recordOpDuration(op opType, start time.Time) {
+// recordOpDuration records the elapsed time since start as a Prometheus histogram observation, if metrics are
+// configured. The err parameter is the error returned by the SQL operation. When it is nil the `error` label will be
+// empty, otherwise it will contain the PostgreSQL error code.
+func (r *request[O]) recordOpDuration(op opType, start time.Time, err error) {
 	if r.dao.opDurationMetric != nil {
+		code := ""
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) {
+				code = pgErr.Code
+			}
+		}
 		r.dao.opDurationMetric.With(prometheus.Labels{
+			errorMetricLabel: code,
 			tableMetricLabel: r.dao.table,
 			typeMetricLabel:  string(op),
 		}).Observe(time.Since(start).Seconds())

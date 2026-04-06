@@ -104,6 +104,36 @@ var _ = Describe("Metrics", func() {
 			))
 		})
 
+		It("Includes empty error label for successful operations", func() {
+			_, err := dao.Create().
+				SetObject(testsv1.Object_builder{}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			metrics := metricsServer.Metrics()
+			Expect(metrics).To(MatchLine(
+				`^\w+_operation_duration_count\{.*error="".*\} .*$`,
+			))
+		})
+
+		It("Includes error code label for failed operations", func() {
+			object := testsv1.Object_builder{}.Build()
+			object.SetId("duplicate")
+			_, err := dao.Create().
+				SetObject(object).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = dao.Create().
+				SetObject(object).
+				Do(ctx)
+			Expect(err).To(HaveOccurred())
+
+			metrics := metricsServer.Metrics()
+			Expect(metrics).To(MatchLine(
+				`^\w+_operation_duration_count\{.*error="23505".*\} .*$`,
+			))
+		})
+
 		DescribeTable(
 			"Includes operation label",
 			func(operation string, action func()) {

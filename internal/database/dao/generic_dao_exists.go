@@ -83,9 +83,12 @@ func (r *ExistsRequest[O]) do(ctx context.Context) (response *ExistsResponse, er
 	// Execute the SQL statement:
 	sql := sqlBuffer.String()
 	var count int
-	err = func() error {
+	err = func() (err error) {
+		start := time.Now()
 		row := r.queryRow(ctx, existsOpType, sql, r.sql.params...)
-		defer r.recordOpDuration(existsOpType, time.Now())
+		defer func() {
+			r.recordOpDuration(existsOpType, start, err)
+		}()
 		return row.Scan(&count)
 	}()
 	if err != nil {

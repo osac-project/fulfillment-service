@@ -90,9 +90,12 @@ func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err
 	// Execute the SQL query:
 	sql := buffer.String()
 	ids := make([]string, 0, len(r.args.ids))
-	err = func() error {
+	err = func() (err error) {
+		start := time.Now()
 		rows, err := r.query(ctx, lockOpType, sql, r.sql.params...)
-		defer r.recordOpDuration(lockOpType, time.Now())
+		defer func() {
+			r.recordOpDuration(lockOpType, start, err)
+		}()
 		if err != nil {
 			return err
 		}
