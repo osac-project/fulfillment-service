@@ -243,7 +243,7 @@ func (s *PrivateSubnetsServer) validateSubnet(ctx context.Context,
 	// On Create: always validate (existence, state, subset, overlap)
 	// On Update: re-validate when CIDRs change (subset + overlap with self-exclusion)
 	// Defense-in-depth: also re-validate if virtual_network changes, though
-	// validateImmutableFieldsSubnet (line ~227) already prevents VN changes on Update.
+	// validateImmutableFieldsSubnet already prevents VN changes on Update.
 	excludeID := ""
 	if existingSubnet != nil {
 		excludeID = existingSubnet.GetId()

@@ -259,6 +259,8 @@ func (s *PrivateVirtualNetworksServer) validateVirtualNetwork(ctx context.Contex
 }
 
 // validateCIDR validates a CIDR string and checks if it matches the expected IP version.
+// Note: non-canonical CIDRs (e.g., 10.0.1.5/24 instead of 10.0.1.0/24) are accepted.
+// Adding a canonicalization check requires auditing existing data first.
 func validateCIDR(cidrStr string, ipVersion string) error {
 	prefix, err := netip.ParsePrefix(cidrStr)
 	if err != nil {
