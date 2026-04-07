@@ -23,6 +23,8 @@ spec:
     matchLabels:
       app: fulfillment-rest-gateway
   replicas: 1
+  strategy:
+    type: {{ if .Values.debug }}Recreate{{ else }}RollingUpdate{{ end }}
   template:
     metadata:
       labels:

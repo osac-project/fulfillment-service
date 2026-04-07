@@ -23,6 +23,8 @@ spec:
     matchLabels:
       app: fulfillment-grpc-server
   replicas: 1
+  strategy:
+    type: {{ if .Values.debug }}Recreate{{ else }}RollingUpdate{{ end }}
   template:
     metadata:
       labels:
