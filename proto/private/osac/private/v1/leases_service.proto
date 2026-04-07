@@ -1,0 +1,123 @@
+//
+// Copyright (c) 2025 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+// the License. You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+//
+
+syntax = "proto3";
+
+package osac.private.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "osac/private/v1/lease_type.proto";
+
+// Request message for listing leases.
+message LeasesListRequest {
+  optional int32 offset = 1;
+  optional int32 limit = 2;
+  optional string filter = 3;
+}
+
+// Response message for listing leases.
+message LeasesListResponse {
+  int32 size = 1;
+  int32 total = 2;
+  repeated Lease items = 3;
+}
+
+// Request message for getting a lease by identifier.
+message LeasesGetRequest {
+  string id = 1;
+}
+
+// Response message for getting a lease.
+message LeasesGetResponse {
+  Lease object = 1;
+}
+
+// Request message for creating a lease.
+message LeasesCreateRequest {
+  Lease object = 1;
+}
+
+// Response message for creating a lease.
+message LeasesCreateResponse {
+  Lease object = 1;
+}
+
+// Request message for deleting a lease.
+message LeasesDeleteRequest {
+  string id = 1;
+}
+
+// Response message for deleting a lease.
+message LeasesDeleteResponse {}
+
+// Request message for updating a lease.
+message LeasesUpdateRequest {
+  Lease object = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+// Response message for updating a lease.
+message LeasesUpdateResponse {
+  Lease object = 1;
+}
+
+// Request message for signaling a lease.
+message LeasesSignalRequest {
+  string id = 1;
+}
+
+// Response message for signaling a lease.
+message LeasesSignalResponse {}
+
+// Leases provides operations for managing lease objects used for distributed coordination such as leader election.
+service Leases {
+  // List returns a paginated list of leases, optionally filtered by a CEL expression.
+  rpc List(LeasesListRequest) returns (LeasesListResponse) {
+    option (google.api.http) = {get: "/api/private/v1/leases"};
+  }
+
+  // Get returns a single lease by its identifier.
+  rpc Get(LeasesGetRequest) returns (LeasesGetResponse) {
+    option (google.api.http) = {
+      get: "/api/private/v1/leases/{id}"
+      response_body: "object"
+    };
+  }
+
+  // Create creates a new lease.
+  rpc Create(LeasesCreateRequest) returns (LeasesCreateResponse) {
+    option (google.api.http) = {
+      post: "/api/private/v1/leases"
+      body: "object"
+      response_body: "object"
+    };
+  }
+
+  // Delete deletes a lease by its identifier.
+  rpc Delete(LeasesDeleteRequest) returns (LeasesDeleteResponse) {
+    option (google.api.http) = {delete: "/api/private/v1/leases/{id}"};
+  }
+
+  // Update updates an existing lease. The update mask controls which fields are modified.
+  rpc Update(LeasesUpdateRequest) returns (LeasesUpdateResponse) {
+    option (google.api.http) = {
+      patch: "/api/private/v1/leases/{object.id}"
+      body: "object"
+      response_body: "object"
+    };
+  }
+
+  // Signal indicates that something changed in the lease or the system that may require reconciling the lease.
+  rpc Signal(LeasesSignalRequest) returns (LeasesSignalResponse) {}
+}

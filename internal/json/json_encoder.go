@@ -26,6 +26,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -41,6 +42,7 @@ type Encoder struct {
 	ignoredFieldNames     map[protoreflect.Name]bool
 	ignoredFieldFullNames map[protoreflect.FullName]bool
 	anyDesc               protoreflect.MessageDescriptor
+	durationDesc          protoreflect.MessageDescriptor
 	timestampDesc         protoreflect.MessageDescriptor
 	jsonApi               jsoniter.API
 }
@@ -82,9 +84,11 @@ func (b *EncoderBuilder) Build() (result *Encoder, err error) {
 	// Get descriptors of well known types:
 	var (
 		anyValue       *anypb.Any
+		durationValue  *durationpb.Duration
 		timestampValue *timestamppb.Timestamp
 	)
 	anyDesc := anyValue.ProtoReflect().Descriptor()
+	durationDesc := durationValue.ProtoReflect().Descriptor()
 	timestampDesc := timestampValue.ProtoReflect().Descriptor()
 
 	// Create the JSON API:
@@ -121,6 +125,7 @@ func (b *EncoderBuilder) Build() (result *Encoder, err error) {
 		ignoredFieldNames:     ignoredFieldNames,
 		ignoredFieldFullNames: ignoredFieldFullNames,
 		anyDesc:               anyDesc,
+		durationDesc:          durationDesc,
 		timestampDesc:         timestampDesc,
 		jsonApi:               jsonApi,
 	}
@@ -148,7 +153,7 @@ func (e *Encoder) Marshal(object proto.Message) (result []byte, err error) {
 
 func (e *Encoder) marshalMessage(stream *jsoniter.Stream, message protoreflect.Message) (err error) {
 	descriptor := message.Descriptor()
-	if descriptor == e.anyDesc || descriptor == e.timestampDesc {
+	if descriptor == e.anyDesc || descriptor == e.durationDesc || descriptor == e.timestampDesc {
 		err = e.marshalWellKnown(stream, message.Interface())
 		return
 	}

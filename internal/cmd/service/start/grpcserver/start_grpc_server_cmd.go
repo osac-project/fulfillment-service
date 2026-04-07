@@ -674,6 +674,20 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 	privatev1.RegisterNetworkClassesServer(grpcServer, privateNetworkClassesServer)
 
+	// Create the private leases server:
+	c.logger.InfoContext(ctx, "Creating private leases server")
+	privateLeasesServer, err := servers.NewPrivateLeasesServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(privateTenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private leases server: %w", err)
+	}
+	privatev1.RegisterLeasesServer(grpcServer, privateLeasesServer)
+
 	// Create the console manager and server:
 	c.logger.InfoContext(ctx, "Creating console server")
 	hubConfigProvider := console.HubConfigProviderFromKubeconfigs(

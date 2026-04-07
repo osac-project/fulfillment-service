@@ -21,6 +21,7 @@ import "osac/private/v1/compute_instance_template_type.proto";
 import "osac/private/v1/compute_instance_type.proto";
 import "osac/private/v1/host_class_type.proto";
 import "osac/private/v1/hub_type.proto";
+import "osac/private/v1/lease_type.proto";
 import "osac/private/v1/network_class_type.proto";
 import "osac/private/v1/security_group_type.proto";
 import "osac/private/v1/subnet_type.proto";
@@ -46,6 +47,7 @@ message Event {
     Subnet subnet = 12;
     VirtualNetwork virtual_network = 13;
     SecurityGroup security_group = 14;
+    Lease lease = 15;
   }
 }
 
