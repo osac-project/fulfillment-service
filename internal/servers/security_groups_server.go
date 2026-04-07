@@ -288,6 +288,7 @@ func (s *SecurityGroupsServer) Update(ctx context.Context,
 	// Delegate to the private server with the merged object:
 	privateRequest := &privatev1.SecurityGroupsUpdateRequest{}
 	privateRequest.SetObject(existingPrivateSecurityGroup)
+	privateRequest.SetLock(request.GetLock())
 	privateResponse, err := s.delegate.Update(ctx, privateRequest)
 	if err != nil {
 		return nil, err

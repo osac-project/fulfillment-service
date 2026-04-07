@@ -123,6 +123,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 			tenants,
 			labels,
 			annotations,
+			version,
 			data
 		from
 			 %s
@@ -179,6 +180,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				tenants         []string
 				labelsData      []byte
 				annotationsData []byte
+				version         int32
 				data            []byte
 			)
 			err = rows.Scan(
@@ -191,6 +193,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				&tenants,
 				&labelsData,
 				&annotationsData,
+				&version,
 				&data,
 			)
 			if err != nil {
@@ -220,6 +223,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				name:        name,
 				labels:      labels,
 				annotations: annotations,
+				version:     version,
 			})
 			item.SetId(id)
 			r.setMetadata(item, md)

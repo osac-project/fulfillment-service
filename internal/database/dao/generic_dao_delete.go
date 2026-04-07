@@ -90,6 +90,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			tenants,
 			labels,
 			annotations,
+			version,
 			data
 		`,
 		r.dao.table,
@@ -107,6 +108,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		tenants         []string
 		labelsData      []byte
 		annotationsData []byte
+		version         int32
 		data            []byte
 	)
 	err = func() (err error) {
@@ -124,6 +126,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			&tenants,
 			&labelsData,
 			&annotationsData,
+			&version,
 			&data,
 		)
 	}()
@@ -158,6 +161,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
+		version:     version,
 	})
 	object.SetId(r.args.id)
 	r.setMetadata(object, metadata)
@@ -181,6 +185,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		name:            name,
 		labelsData:      labelsData,
 		annotationsData: annotationsData,
+		version:         version,
 		data:            data,
 	})
 	if err != nil {

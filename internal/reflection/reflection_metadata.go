@@ -20,4 +20,5 @@ type Metadata interface {
 	SetLabels(map[string]string)
 	GetAnnotations() map[string]string
 	SetAnnotations(map[string]string)
+	GetVersion() int32
 }

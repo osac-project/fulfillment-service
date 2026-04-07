@@ -112,6 +112,11 @@ message ClustersCreateResponse {
 message ClustersUpdateRequest {
   Cluster object = 1;
   google.protobuf.FieldMask update_mask = 2;
+
+  // Lock enables optimistic locking. When set to true, the server verifies that the current version of the object
+  // matches the value of the metadata.version field of the submitted object. If they differ the update will be
+  // rejected. This is useful to prevent lost updates when multiple clients are modifying the same object concurrently.
+  bool lock = 3;
 }
 
 message ClustersUpdateResponse {

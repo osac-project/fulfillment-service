@@ -295,6 +295,7 @@ func (s *ComputeInstancesServer) Update(ctx context.Context,
 	privateRequest := &privatev1.ComputeInstancesUpdateRequest{}
 	privateRequest.SetObject(privateComputeInstance)
 	privateRequest.SetUpdateMask(updateMask)
+	privateRequest.SetLock(request.GetLock())
 	privateResponse, err := s.delegate.Update(ctx, privateRequest)
 	if err != nil {
 		return nil, err

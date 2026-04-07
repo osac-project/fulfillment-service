@@ -61,4 +61,7 @@ message Metadata {
   // Keys follow the same rules as label keys, including the optional DNS subdomain prefix and the 1-63 character name
   // restrictions. Values can be any string.
   map<string, string> annotations = 8;
+
+  // Version is a numeric field that is automatically incremented with every change to the object.
+  int32 version = 9;
 }

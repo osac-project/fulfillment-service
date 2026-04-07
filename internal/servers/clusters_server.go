@@ -350,6 +350,7 @@ func (s *ClustersServer) Update(ctx context.Context,
 	privateRequest := &privatev1.ClustersUpdateRequest{}
 	privateRequest.SetObject(privateCluster)
 	privateRequest.SetUpdateMask(updateMask)
+	privateRequest.SetLock(request.GetLock())
 	privateResponse, err := s.private.Update(ctx, privateRequest)
 	if err != nil {
 		return nil, err

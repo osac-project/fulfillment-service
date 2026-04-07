@@ -59,6 +59,7 @@ type GenericDAOBuilder[O Object] struct {
 //   - `tenants` - The list of tenants for the object.
 //   - `labels` - The labels assigned to the object.
 //   - `annotations` - The annotations assigned to the object.
+//   - `version` - The version number, automatically incremented on every update.
 //   - `data` - The serialized object, using the protocol buffers JSON serialization.
 //
 // Objects must have field named `id` of string type.
@@ -102,6 +103,8 @@ type metadataIface interface {
 	SetLabels(map[string]string)
 	GetAnnotations() map[string]string
 	SetAnnotations(map[string]string)
+	GetVersion() int32
+	SetVersion(int32)
 }
 
 // NewGenericDAO creates a builder that can then be used to configure and create a generic DAO.
@@ -368,6 +371,7 @@ func (b *GenericDAOBuilder[O]) registerOpDurationMetric() (result *prometheus.Hi
 var (
 	creationTimestampFieldName = protoreflect.Name("creation_timestamp")
 	deletionTimestampFieldName = protoreflect.Name("deletion_timestamp")
+	versionFieldName           = protoreflect.Name("version")
 	idFieldName                = protoreflect.Name("id")
 	metadataFieldName          = protoreflect.Name("metadata")
 )

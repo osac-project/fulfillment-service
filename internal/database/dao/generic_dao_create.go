@@ -136,13 +136,15 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		)
 		returning
 			creation_timestamp,
-			deletion_timestamp
+			deletion_timestamp,
+			version
 		`,
 		r.dao.table,
 	)
 	var (
 		creationTs time.Time
 		deletionTs time.Time
+		version    int32
 	)
 	err = func() (err error) {
 		start := time.Now()
@@ -153,6 +155,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		return row.Scan(
 			&creationTs,
 			&deletionTs,
+			&version,
 		)
 	}()
 	if err != nil {
@@ -174,6 +177,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
+		version:     version,
 	})
 	created.SetId(id)
 	r.setMetadata(created, metadata)

@@ -81,6 +81,7 @@ type metadataIface interface {
 	GetName() string
 	GetLabels() map[string]string
 	GetAnnotations() map[string]string
+	GetVersion() int32
 }
 
 // NewGenericServer creates a builder that can then be used to configure and create a new generic server.
@@ -434,6 +435,7 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 	type requestIface interface {
 		GetObject() O
 		GetUpdateMask() *fieldmaskpb.FieldMask
+		GetLock() bool
 	}
 	type responseIface interface {
 		SetObject(O)
@@ -517,8 +519,13 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 	// Save the result:
 	updateResponse, err := s.dao.Update().
 		SetObject(object).
+		SetLock(requestMsg.GetLock()).
 		Do(ctx)
 	if err != nil {
+		var conflictErr *dao.ErrConflict
+		if errors.As(err, &conflictErr) {
+			return grpcstatus.Errorf(grpccodes.Aborted, "%s", conflictErr.Error())
+		}
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
 			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)

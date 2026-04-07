@@ -27,12 +27,19 @@ type UpdateRequest[O Object] struct {
 	request[O]
 	args struct {
 		object O
+		lock   bool
 	}
 }
 
 // SetObject sets the object to update.
 func (r *UpdateRequest[O]) SetObject(value O) *UpdateRequest[O] {
 	r.args.object = value
+	return r
+}
+
+// SetLock sets whether to enable optimistic locking. This is optional and defaults to false.
+func (r *UpdateRequest[O]) SetLock(value bool) *UpdateRequest[O] {
+	r.args.lock = value
 	return r
 }
 
@@ -65,6 +72,25 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		return
 	}
 
+	// Get the requestedMetadata:
+	requestedMetadata := r.getMetadata(r.args.object)
+	currentMetadata := r.getMetadata(current)
+
+	// If optimistic locking is enabled then we need to compare the version provided by the caller with the version
+	// of the current object. If they are different then we need to return a conflict error.
+	if r.args.lock {
+		requestedVersion := requestedMetadata.GetVersion()
+		currentVersion := currentMetadata.GetVersion()
+		if requestedVersion != currentVersion {
+			err = &ErrConflict{
+				ID:               id,
+				RequestedVersion: requestedVersion,
+				CurrentVersion:   currentVersion,
+			}
+			return
+		}
+	}
+
 	// Do nothing if there are no changes:
 	if r.equivalent(current, r.args.object) {
 		response = &UpdateResponse[O]{
@@ -73,39 +99,40 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		return
 	}
 
-	// Get the metadata:
-	metadata := r.getMetadata(r.args.object)
-	finalizers := r.getFinalizers(metadata)
+	// Get the requested finalizers, name, labels and annotations:
+	requestedFinalizers := r.getFinalizers(requestedMetadata)
 	var (
-		name        string
-		labels      map[string]string
-		annotations map[string]string
+		requestedName        string
+		requestedLabels      map[string]string
+		requestedAnnotations map[string]string
 	)
-	if metadata != nil {
-		name = metadata.GetName()
-		labels = metadata.GetLabels()
-		annotations = metadata.GetAnnotations()
+	if requestedMetadata != nil {
+		requestedName = requestedMetadata.GetName()
+		requestedLabels = requestedMetadata.GetLabels()
+		requestedAnnotations = requestedMetadata.GetAnnotations()
 	}
 
-	// Get the tenants:
-	tenants, err := r.calculateTenants(ctx, current, r.args.object)
+	// Get the requested tenants::
+	requestedTenants, err := r.calculateTenants(ctx, current, r.args.object)
 	if err != nil {
 		return
 	}
 
-	// Save the object:
-	data, err := r.marshalData(r.args.object)
+	// Marshal the requestedData, labels and annotations:
+	requestedData, err := r.marshalData(r.args.object)
 	if err != nil {
 		return
 	}
-	labelsData, err := r.marshalMap(labels)
+	requestedLabelsData, err := r.marshalMap(requestedLabels)
 	if err != nil {
 		return
 	}
-	annotationsData, err := r.marshalMap(annotations)
+	requestedAnnotationsData, err := r.marshalMap(requestedAnnotations)
 	if err != nil {
 		return
 	}
+
+	// Prepare the SQL statement:
 	sql := fmt.Sprintf(
 		`
 		update %s set
@@ -114,54 +141,74 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 			labels = $3,
 			annotations = $4,
 			data = $5,
-			tenants = $6
+			tenants = $6,
+			version = version + 1
 		where
 			id = $7
 		returning
 			creation_timestamp,
 			deletion_timestamp,
-			creators
+			creators,
+			version
 		`,
 		r.dao.table,
 	)
+
+	// Run the SQL statement:
 	var (
-		creationTs time.Time
-		deletionTs time.Time
-		creators   []string
+		updatedCreationTs time.Time
+		updatedDeletionTs time.Time
+		updatedCreators   []string
+		updatedVersion    int32
 	)
 	err = func() (err error) {
-		row := r.queryRow(ctx, updateOpType, sql, name, finalizers, labelsData, annotationsData, data, tenants, id)
+		row := r.queryRow(
+			ctx,
+			updateOpType,
+			sql,
+			requestedName,
+			requestedFinalizers,
+			requestedLabelsData,
+			requestedAnnotationsData,
+			requestedData,
+			requestedTenants,
+			id,
+		)
 		start := time.Now()
 		defer func() {
 			r.recordOpDuration(updateOpType, start, err)
 		}()
 		return row.Scan(
-			&creationTs,
-			&deletionTs,
-			&creators,
+			&updatedCreationTs,
+			&updatedDeletionTs,
+			&updatedCreators,
+			&updatedVersion,
 		)
 	}()
 	if err != nil {
 		return
 	}
-	object := r.cloneObject(r.args.object)
-	metadata = r.makeMetadata(makeMetadataArgs{
-		creationTs:  creationTs,
-		deletionTs:  deletionTs,
-		finalizers:  finalizers,
-		creators:    creators,
-		tenants:     tenants,
-		name:        name,
-		labels:      labels,
-		annotations: annotations,
+
+	// Prepare the result:
+	updatedObject := r.cloneObject(r.args.object)
+	updatedMetadata := r.makeMetadata(makeMetadataArgs{
+		creationTs:  updatedCreationTs,
+		deletionTs:  updatedDeletionTs,
+		finalizers:  requestedFinalizers,
+		creators:    updatedCreators,
+		tenants:     requestedTenants,
+		name:        requestedName,
+		labels:      requestedLabels,
+		annotations: requestedAnnotations,
+		version:     updatedVersion,
 	})
-	object.SetId(id)
-	r.setMetadata(object, metadata)
+	updatedObject.SetId(id)
+	r.setMetadata(updatedObject, updatedMetadata)
 
 	// Fire the event:
 	err = r.fireEvent(ctx, Event{
 		Type:   EventTypeUpdated,
-		Object: object,
+		Object: updatedObject,
 	})
 	if err != nil {
 		return
@@ -169,24 +216,25 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 
 	// If the object has been deleted and there are no finalizers we can now archive the object and fire the
 	// delete event:
-	if deletionTs.Unix() != 0 && len(finalizers) == 0 {
+	if updatedDeletionTs.Unix() != 0 && len(requestedFinalizers) == 0 {
 		err = r.archive(ctx, archiveArgs{
 			id:              id,
-			creationTs:      creationTs,
-			deletionTs:      deletionTs,
-			creators:        creators,
-			tenants:         tenants,
-			name:            name,
-			labelsData:      labelsData,
-			annotationsData: annotationsData,
-			data:            data,
+			creationTs:      updatedCreationTs,
+			deletionTs:      updatedDeletionTs,
+			creators:        updatedCreators,
+			tenants:         requestedTenants,
+			name:            requestedName,
+			labelsData:      requestedLabelsData,
+			annotationsData: requestedAnnotationsData,
+			version:         updatedVersion,
+			data:            requestedData,
 		})
 		if err != nil {
 			return
 		}
 		err = r.fireEvent(ctx, Event{
 			Type:   EventTypeDeleted,
-			Object: object,
+			Object: updatedObject,
 		})
 		if err != nil {
 			return
@@ -195,7 +243,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 
 	// Create and return the response:
 	response = &UpdateResponse[O]{
-		object: object,
+		object: updatedObject,
 	}
 	return
 }

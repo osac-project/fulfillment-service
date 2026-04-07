@@ -287,6 +287,7 @@ func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
 	// Delegate to the private server with the merged object:
 	privateRequest := &privatev1.ComputeInstanceTemplatesUpdateRequest{}
 	privateRequest.SetObject(existingPrivateComputeInstanceTemplate)
+	privateRequest.SetLock(request.GetLock())
 	privateResponse, err := s.delegate.Update(ctx, privateRequest)
 	if err != nil {
 		return nil, err

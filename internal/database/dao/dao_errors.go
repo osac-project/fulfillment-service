@@ -52,6 +52,27 @@ func (e *ErrAlreadyExists) Error() string {
 	return fmt.Sprintf("object with identifier '%s' already exists", e.ID)
 }
 
+// ErrConflict is an error type that indicates that an update was rejected because the object's current version does not
+// match the version specified by the caller in the request. This is used to implement optimistic locking.
+type ErrConflict struct {
+	// ID is the identifier of the object.
+	ID string
+
+	// RequestedVersion is the version that the caller specified in the request.
+	RequestedVersion int32
+
+	// CurrentVersion is the current version of the object in the database.
+	CurrentVersion int32
+}
+
+// Error returns the error message.
+func (e *ErrConflict) Error() string {
+	return fmt.Sprintf(
+		"object with identifier '%s' has been modified: requested version %d but current version is %d",
+		e.ID, e.RequestedVersion, e.CurrentVersion,
+	)
+}
+
 // ErrDenied is an error type that indicates a requested operation is not allowed. The reason string is a human friendly
 // description that will never contain technical details, so it can be safely returned to the user as part of the error
 // response, for example as the message of a gRPC status error.

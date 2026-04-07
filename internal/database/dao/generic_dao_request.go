@@ -125,6 +125,7 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 			tenants,
 			labels,
 			annotations,
+			version,
 			data
 		from
 			%s
@@ -149,6 +150,7 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 		tenants         []string
 		labelsData      []byte
 		annotationsData []byte
+		version         int32
 		data            []byte
 	)
 	err = func() (err error) {
@@ -166,6 +168,7 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 			&tenants,
 			&labelsData,
 			&annotationsData,
+			&version,
 			&data,
 		)
 	}()
@@ -202,6 +205,7 @@ func (r *request[O]) get(ctx context.Context, id string, lock bool) (result O, e
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
+		version:     version,
 	})
 	object.SetId(id)
 	r.setMetadata(object, metadata)
@@ -220,6 +224,7 @@ type archiveArgs struct {
 	name            string
 	labelsData      []byte
 	annotationsData []byte
+	version         int32
 	data            []byte
 }
 
@@ -236,6 +241,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 			tenants,
 			labels,
 			annotations,
+			version,
 			data
 		) values (
 		 	$1,
@@ -246,7 +252,8 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 			$6,
 			$7,
 			$8,
-			$9
+			$9,
+			$10
 		)
 		`,
 		r.dao.table,
@@ -263,6 +270,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 		args.tenants,
 		args.labelsData,
 		args.annotationsData,
+		args.version,
 		args.data,
 	)
 	if err != nil {
@@ -453,6 +461,7 @@ type makeMetadataArgs struct {
 	name        string
 	labels      map[string]string
 	annotations map[string]string
+	version     int32
 }
 
 func (r *request[O]) makeMetadata(args makeMetadataArgs) metadataIface {
@@ -469,6 +478,7 @@ func (r *request[O]) makeMetadata(args makeMetadataArgs) metadataIface {
 	result.SetTenants(r.filterTenants(args.tenants))
 	result.SetLabels(args.labels)
 	result.SetAnnotations(args.annotations)
+	result.SetVersion(args.version)
 	return result
 }
 
@@ -622,7 +632,8 @@ func (r *request[O]) equivalentMetadata(x, y protoreflect.Message) bool {
 	fields := x.Descriptor().Fields()
 	for i := range fields.Len() {
 		field := fields.Get(i)
-		if field.Name() == creationTimestampFieldName || field.Name() == deletionTimestampFieldName {
+		if field.Name() == creationTimestampFieldName || field.Name() == deletionTimestampFieldName ||
+			field.Name() == versionFieldName {
 			continue
 		}
 		xv := x.Get(field)

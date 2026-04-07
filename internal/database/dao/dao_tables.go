@@ -73,6 +73,7 @@ func createMainTable(ctx context.Context, tx database.Tx, object string) error {
 			tenants text[] not null default '{}',
 			labels jsonb not null default '{}'::jsonb,
 			annotations jsonb not null default '{}'::jsonb,
+			version integer not null default 0,
 			data jsonb not null
 		)
 		`,
@@ -95,6 +96,7 @@ func createArchivedTable(ctx context.Context, tx database.Tx, object string) err
 			tenants text[] not null default '{}',
 			labels jsonb not null default '{}'::jsonb,
 			annotations jsonb not null default '{}'::jsonb,
+			version integer not null default 0,
 			data jsonb not null
 		)
 		`,

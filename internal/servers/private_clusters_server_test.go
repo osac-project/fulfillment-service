@@ -16,6 +16,7 @@ package servers
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
@@ -1039,6 +1040,143 @@ var _ = Describe("Private clusters server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(Equal("cannot change spec.template_parameters: template parameters are immutable"))
+		})
+
+		Describe("Version", func() {
+			createCluster := func() *privatev1.Cluster {
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-id",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				return response.GetObject()
+			}
+
+			It("Is zero on create", func() {
+				object := createCluster()
+				Expect(object.GetMetadata().GetVersion()).To(BeZero())
+			})
+
+			It("Is zero when retrieved after create", func() {
+				object := createCluster()
+				id := object.GetId()
+				getResponse, err := server.Get(ctx, privatev1.ClustersGetRequest_builder{
+					Id: id,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object = getResponse.GetObject()
+				Expect(object.GetMetadata().GetVersion()).To(BeZero())
+			})
+
+			It("Is zero when listed after create", func() {
+				object := createCluster()
+				id := object.GetId()
+				listResponse, err := server.List(ctx, privatev1.ClustersListRequest_builder{
+					Filter: proto.String(fmt.Sprintf("this.id == %q", id)),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				items := listResponse.GetItems()
+				Expect(items).To(HaveLen(1))
+				item := items[0]
+				Expect(item.GetMetadata().GetVersion()).To(BeZero())
+			})
+
+			It("Increments on update", func() {
+				// Create the object:
+				object := createCluster()
+				version := object.GetMetadata().GetVersion()
+
+				// Update the object and verify that the version has been incremented:
+				object.GetStatus().SetHub("hub-v1")
+				updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: object,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object = updateResponse.GetObject()
+				Expect(object.GetMetadata().GetVersion()).To(BeNumerically(">", version))
+			})
+
+			It("Does not increment on no-op update", func() {
+				// Create the object and get the initialversion:
+				object := createCluster()
+				version := object.GetMetadata().GetVersion()
+
+				// Send an update request that doesn't really update anything, and then verify that the
+				// version has not been incremented:
+				updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: object,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object = updateResponse.GetObject()
+				Expect(object.GetMetadata().GetVersion()).To(Equal(version))
+			})
+
+			It("Lock succeeds when version matches", func() {
+				// Create the object:
+				object := createCluster()
+
+				// Update with lock enabled and the right version:
+				object.GetStatus().SetHub("your-hub-id")
+				_, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: object,
+					Lock:   true,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("Lock fails when version does not match", func() {
+				// Create the object:
+				object := createCluster()
+
+				// Try to update with lock enabled but a wrong version:
+				object.GetMetadata().SetVersion(math.MaxInt32)
+				object.GetStatus().SetHub("your-hub-id")
+				_, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: object,
+					Lock:   true,
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.Aborted))
+
+				// Verify that our changes were not applied:
+				getResponse, err := server.Get(ctx, privatev1.ClustersGetRequest_builder{
+					Id: object.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object = getResponse.GetObject()
+				Expect(object.GetStatus().GetHub()).To(Equal("my-hub-id"))
+			})
+
+			It("Lock is not enabled by default", func() {
+				// Create the object:
+				object := createCluster()
+
+				// Send an update with a wrong version in the metadata but without enabling lock. The update
+				// should succeed because optimistic locking is not enabled.
+				object.GetMetadata().SetVersion(math.MaxInt32)
+				object.GetStatus().SetHub("your-hub-id")
+				_, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: object,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				// Verify that our changes were applied:
+				getResponse, err := server.Get(ctx, privatev1.ClustersGetRequest_builder{
+					Id: object.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object = getResponse.GetObject()
+				Expect(object.GetStatus().GetHub()).To(Equal("your-hub-id"))
+
+			})
 		})
 	})
 })
