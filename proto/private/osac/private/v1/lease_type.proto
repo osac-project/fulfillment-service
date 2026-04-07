@@ -19,10 +19,10 @@ import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "osac/private/v1/metadata_type.proto";
 
-// Lease is a coordination primitive similar to the Kubernetes Lease concept. It is used to implement distributed
-// leader election, allowing multiple instances of a component to run while ensuring only one is actively performing
-// work at any given time. The holder of the lease periodically renews it to signal liveness. If the holder fails to
-// renew before the lease duration expires, another instance can take over.
+// Lease is a coordination primitive used to implement distributed leader election, allowing multiple instances of a
+// component to run while ensuring only one is actively performing work at any given time. The holder of the lease
+// periodically renews it to signal liveness. If the holder fails to renew before the lease duration expires, another
+// instance can take over.
 message Lease {
   // Unique identifier of the lease.
   string id = 1;
@@ -38,20 +38,16 @@ message Lease {
 message LeaseSpec {
   // Identity of the current holder of the lease. This is typically a unique identifier for the instance that holds
   // the lease, such as a hostname or a combination of hostname and process identifier.
-  string holder_identity = 1;
+  string holder = 1;
 
   // Duration that the lease is valid after its last renewal. If the holder fails to renew the lease within this
   // duration, the lease is considered expired and another instance may take over.
-  google.protobuf.Duration lease_duration = 2;
+  google.protobuf.Duration duration = 2;
 
   // Time when the current holder first acquired the lease.
-  google.protobuf.Timestamp acquire_time = 3;
+  google.protobuf.Timestamp acquire_timestamp = 3;
 
   // Time when the holder last renewed the lease. Other instances compare this time plus the lease duration against
   // the current time to determine if the lease has expired.
-  google.protobuf.Timestamp renew_time = 4;
-
-  // Number of times the lease has transitioned from one holder to another. This is incremented each time a new
-  // holder acquires the lease.
-  int32 lease_transitions = 5;
+  google.protobuf.Timestamp renew_timestamp = 4;
 }

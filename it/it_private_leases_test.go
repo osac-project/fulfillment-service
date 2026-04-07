@@ -44,7 +44,7 @@ var _ = Describe("Private leases", func() {
 			Object: privatev1.Lease_builder{
 				Id: id,
 				Spec: privatev1.LeaseSpec_builder{
-					HolderIdentity: "controller-0",
+					Holder: "controller-0",
 				}.Build(),
 			}.Build(),
 		}.Build())

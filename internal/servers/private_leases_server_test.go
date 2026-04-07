@@ -129,10 +129,10 @@ var _ = Describe("Private leases server", func() {
 			response, err := leasesServer.Create(ctx, privatev1.LeasesCreateRequest_builder{
 				Object: privatev1.Lease_builder{
 					Spec: privatev1.LeaseSpec_builder{
-						HolderIdentity: "controller-0",
-						LeaseDuration:  durationpb.New(15_000_000_000),
-						AcquireTime:    timestamppb.Now(),
-						RenewTime:      timestamppb.Now(),
+						Holder:           "controller-0",
+						Duration:         durationpb.New(15_000_000_000),
+						AcquireTimestamp: timestamppb.Now(),
+						RenewTimestamp:   timestamppb.Now(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -141,7 +141,7 @@ var _ = Describe("Private leases server", func() {
 			object := response.GetObject()
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).ToNot(BeEmpty())
-			Expect(object.GetSpec().GetHolderIdentity()).To(Equal("controller-0"))
+			Expect(object.GetSpec().GetHolder()).To(Equal("controller-0"))
 		})
 
 		It("Lists leases", func() {
@@ -153,8 +153,8 @@ var _ = Describe("Private leases server", func() {
 							Name: fmt.Sprintf("lease-%d", i),
 						}.Build(),
 						Spec: privatev1.LeaseSpec_builder{
-							HolderIdentity: fmt.Sprintf("controller-%d", i),
-							LeaseDuration:  durationpb.New(15_000_000_000),
+							Holder:   fmt.Sprintf("controller-%d", i),
+							Duration: durationpb.New(15_000_000_000),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -173,7 +173,7 @@ var _ = Describe("Private leases server", func() {
 				_, err := leasesServer.Create(ctx, privatev1.LeasesCreateRequest_builder{
 					Object: privatev1.Lease_builder{
 						Spec: privatev1.LeaseSpec_builder{
-							HolderIdentity: fmt.Sprintf("controller-%d", i),
+							Holder: fmt.Sprintf("controller-%d", i),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -194,7 +194,7 @@ var _ = Describe("Private leases server", func() {
 						Name: "my-lease",
 					}.Build(),
 					Spec: privatev1.LeaseSpec_builder{
-						HolderIdentity: "controller-0",
+						Holder: "controller-0",
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -213,8 +213,8 @@ var _ = Describe("Private leases server", func() {
 			createResponse, err := leasesServer.Create(ctx, privatev1.LeasesCreateRequest_builder{
 				Object: privatev1.Lease_builder{
 					Spec: privatev1.LeaseSpec_builder{
-						HolderIdentity: "controller-0",
-						LeaseDuration:  durationpb.New(15_000_000_000),
+						Holder:   "controller-0",
+						Duration: durationpb.New(15_000_000_000),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -231,10 +231,10 @@ var _ = Describe("Private leases server", func() {
 			createResponse, err := leasesServer.Create(ctx, privatev1.LeasesCreateRequest_builder{
 				Object: privatev1.Lease_builder{
 					Spec: privatev1.LeaseSpec_builder{
-						HolderIdentity: "controller-0",
-						LeaseDuration:  durationpb.New(15_000_000_000),
-						AcquireTime:    timestamppb.Now(),
-						RenewTime:      timestamppb.Now(),
+						Holder:           "controller-0",
+						Duration:         durationpb.New(15_000_000_000),
+						AcquireTimestamp: timestamppb.Now(),
+						RenewTimestamp:   timestamppb.Now(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -246,18 +246,17 @@ var _ = Describe("Private leases server", func() {
 				Object: privatev1.Lease_builder{
 					Id: object.GetId(),
 					Spec: privatev1.LeaseSpec_builder{
-						HolderIdentity: "controller-0",
-						LeaseDuration:  durationpb.New(15_000_000_000),
-						AcquireTime:    object.GetSpec().GetAcquireTime(),
-						RenewTime:      newRenewTime,
+						RenewTimestamp: newRenewTime,
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
-					Paths: []string{"spec.renew_time"},
+					Paths: []string{
+						"spec.renew_timestamp",
+					},
 				},
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(proto.Equal(updateResponse.GetObject().GetSpec().GetRenewTime(), newRenewTime)).To(BeTrue())
+			Expect(proto.Equal(updateResponse.GetObject().GetSpec().GetRenewTimestamp(), newRenewTime)).To(BeTrue())
 		})
 
 		It("Deletes a lease", func() {
@@ -267,7 +266,7 @@ var _ = Describe("Private leases server", func() {
 						Finalizers: []string{"test"},
 					}.Build(),
 					Spec: privatev1.LeaseSpec_builder{
-						HolderIdentity: "controller-0",
+						Holder: "controller-0",
 					}.Build(),
 				}.Build(),
 			}.Build())
