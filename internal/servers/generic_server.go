@@ -453,6 +453,7 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 	// Fetch the current representation of the object:
 	getResponse, err := s.dao.Get().
 		SetId(id).
+		SetLock(true).
 		Do(ctx)
 	if err != nil {
 		var notFoundErr *dao.ErrNotFound
