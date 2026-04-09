@@ -16,9 +16,9 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattn/go-colorable v0.1.14
-	github.com/mattn/go-isatty v0.0.20
+	github.com/mattn/go-isatty v0.0.21
 	github.com/neilotoole/jsoncolor v0.7.2
-	github.com/open-policy-agent/opa v1.15.1
+	github.com/open-policy-agent/opa v1.15.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	go.uber.org/mock v0.6.0
@@ -115,7 +115,7 @@ require (
 	github.com/bits-and-blooms/bitset v1.24.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
-	github.com/google/cel-go v0.27.0
+	github.com/google/cel-go v0.28.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/itchyny/gojq v0.12.19
 	github.com/jackc/pgx/v5 v5.9.1
