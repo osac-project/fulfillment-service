@@ -76,13 +76,15 @@ var _ = Describe("Private virtual networks server", func() {
 		// Create NetworkClass DAO
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
 				SupportsIpv6:      true,
@@ -441,13 +443,15 @@ var _ = Describe("Private virtual networks server", func() {
 				// Create NetworkClass without IPv4 support
 				ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 					SetLogger(logger).
-					SetAttributionLogic(attribution).
 					SetTenancyLogic(tenancy).
 					Build()
 				Expect(err).ToNot(HaveOccurred())
 
 				nc := privatev1.NetworkClass_builder{
 					ImplementationStrategy: "no-ipv4-class",
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"shared"},
+					}.Build(),
 					Capabilities: privatev1.NetworkClassCapabilities_builder{
 						SupportsIpv4: false,
 						SupportsIpv6: true,
@@ -463,6 +467,9 @@ var _ = Describe("Private virtual networks server", func() {
 				nc = response.GetObject()
 
 				vn := privatev1.VirtualNetwork_builder{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"shared"},
+					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     proto.String("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
@@ -621,7 +628,6 @@ var _ = Describe("Private virtual networks server", func() {
 			// Create DAO
 			generic, err = dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -629,6 +635,9 @@ var _ = Describe("Private virtual networks server", func() {
 
 		It("creates VirtualNetwork and generates ID", func() {
 			vn := privatev1.VirtualNetwork_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{"shared"},
+				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					Ipv4Cidr:     proto.String("10.0.0.0/16"),
 					Region:       "us-west-1",
@@ -648,6 +657,9 @@ var _ = Describe("Private virtual networks server", func() {
 
 		It("retrieves VirtualNetwork by ID", func() {
 			vn := privatev1.VirtualNetwork_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{"shared"},
+				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					Ipv4Cidr:     proto.String("10.0.0.0/16"),
 					Region:       "us-west-1",
@@ -675,7 +687,8 @@ var _ = Describe("Private virtual networks server", func() {
 			for i := range count {
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name: fmt.Sprintf("vn-%d", i),
+						Name:    fmt.Sprintf("vn-%d", i),
+						Tenants: []string{"shared"},
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     proto.String(fmt.Sprintf("10.%d.0.0/16", i)),
@@ -704,7 +717,8 @@ var _ = Describe("Private virtual networks server", func() {
 			for i := range 5 {
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name: fmt.Sprintf("vn-%d", i),
+						Name:    fmt.Sprintf("vn-%d", i),
+						Tenants: []string{"shared"},
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     proto.String(fmt.Sprintf("10.%d.0.0/16", i)),
@@ -731,7 +745,8 @@ var _ = Describe("Private virtual networks server", func() {
 		It("updates VirtualNetwork", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name: "original-name",
+					Name:    "original-name",
+					Tenants: []string{"shared"},
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					Ipv4Cidr:     proto.String("10.0.0.0/16"),
@@ -767,6 +782,7 @@ var _ = Describe("Private virtual networks server", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
 					Finalizers: []string{"test-finalizer"},
+					Tenants:    []string{"shared"},
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					Ipv4Cidr:     proto.String("10.0.0.0/16"),

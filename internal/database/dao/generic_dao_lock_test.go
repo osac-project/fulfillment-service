@@ -32,6 +32,7 @@ import (
 var _ = Describe("Lock", func() {
 	var (
 		ctx     context.Context
+		ctrl    *gomock.Controller
 		pool    *pgxpool.Pool
 		tm      database.TxManager
 		generic *GenericDAO[*testsv1.Object]
@@ -42,6 +43,10 @@ var _ = Describe("Lock", func() {
 
 		// Create a context:
 		ctx = context.Background()
+
+		// Create the mock controller:
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
 
 		// Prepare the database pool:
 		db := server.MakeDatabase()
@@ -67,23 +72,17 @@ var _ = Describe("Lock", func() {
 		err = tm.End(ctx, setupTx)
 		Expect(err).ToNot(HaveOccurred())
 
-		// Create the tenancy logic mock:
-		tenancyLogic := auth.NewMockTenancyLogic(ctrl)
-		tenancyLogic.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(collections.NewSet("my_tenant"), nil).
+		// Create a tenancy logic without restrictions:
+		tenancy := auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(collections.NewUniversal[string](), nil).
 			AnyTimes()
-		tenancyLogic.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(collections.NewSet("my_tenant"), nil).
-			AnyTimes()
-		tenancyLogic.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("my_tenant"), nil).
-			AnyTimes()
+		DeferCleanup(ctrl.Finish)
 
 		// Create the DAO:
 		generic, err = NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
-			SetTenancyLogic(tenancyLogic).
+			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 	})
@@ -156,7 +155,9 @@ var _ = Describe("Lock", func() {
 		})
 		ctx = database.TxIntoContext(ctx, tx)
 
-		_, err = generic.Lock().AddId("obj1").Do(ctx)
+		_, err = generic.Lock().
+			AddId("obj1").
+			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 
 		checkLocked("obj1")
@@ -192,7 +193,9 @@ var _ = Describe("Lock", func() {
 		})
 		ctx = database.TxIntoContext(ctx, tx)
 
-		_, err = generic.Lock().AddId("does-not-exist").Do(ctx)
+		_, err = generic.Lock().
+			AddId("does-not-exist").
+			Do(ctx)
 		Expect(err).To(HaveOccurred())
 		var notFoundErr *ErrNotFound
 		Expect(errors.As(err, &notFoundErr)).To(BeTrue())
@@ -220,31 +223,15 @@ var _ = Describe("Lock", func() {
 		Expect(notFoundErr.IDs).To(ConsistOf("does-not-exist"))
 	})
 
-	It("Fails when object isn't visible due to tenancy", func() {
-		createObject("invisible", "other_tenant")
-
-		tx, err := tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		_, err = generic.Lock().AddId("invisible").Do(ctx)
-		Expect(err).To(HaveOccurred())
-		var notFoundErr *ErrNotFound
-		Expect(errors.As(err, &notFoundErr)).To(BeTrue())
-		Expect(notFoundErr.IDs).To(ConsistOf("invisible"))
-	})
-
 	It("Unlocks object when transaction is committed", func() {
 		createObject("obj1", "my_tenant")
 
 		tx, err := tm.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		ctx = database.TxIntoContext(ctx, tx)
-		_, err = generic.Lock().AddId("obj1").Do(ctx)
+		_, err = generic.Lock().
+			AddId("obj1").
+			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 
 		err = tm.End(ctx, tx)
@@ -258,7 +245,9 @@ var _ = Describe("Lock", func() {
 		tx, err := tm.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		ctx = database.TxIntoContext(ctx, tx)
-		_, err = generic.Lock().AddId("obj1").Do(ctx)
+		_, err = generic.Lock().
+			AddId("obj1").
+			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 
 		rollbackErr := errors.New("force rollback")
@@ -291,7 +280,9 @@ var _ = Describe("Lock", func() {
 				return
 			}
 			ctx := database.TxIntoContext(ctx, tx2)
-			_, lockErr := generic.Lock().AddIds("b", "a").Do(ctx)
+			_, lockErr := generic.Lock().
+				AddIds("b", "a").
+				Do(ctx)
 			err = tm.End(ctx, tx2)
 			done <- errors.Join(lockErr, err)
 		}()

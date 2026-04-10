@@ -133,7 +133,6 @@ var _ = Describe("Private clusters server", func() {
 			// Ceate the host classes DAO:
 			hoastClassesDao, err := dao.NewGenericDAO[*privatev1.HostClass]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -141,7 +140,6 @@ var _ = Describe("Private clusters server", func() {
 			// Create the templates DAO:
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -153,7 +151,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.HostClass_builder{
 						Id: "acme-1ti-id",
 						Metadata: privatev1.Metadata_builder{
-							Name: "acme-1ti-name",
+							Name:    "acme-1ti-name",
+							Tenants: []string{"shared"},
 						}.Build(),
 						Title:       "ACME 1TiB",
 						Description: "ACME 1TiB.",
@@ -166,7 +165,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.HostClass_builder{
 						Id: "acme-gpu-id",
 						Metadata: privatev1.Metadata_builder{
-							Name: "acme-gpu-name",
+							Name:    "acme-gpu-name",
+							Tenants: []string{"shared"},
 						}.Build(),
 						Title:       "ACME GPU",
 						Description: "ACME GPU.",
@@ -181,7 +181,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.ClusterTemplate_builder{
 						Id: "my-template-id",
 						Metadata: privatev1.Metadata_builder{
-							Name: "my-template-name",
+							Name:    "my-template-name",
+							Tenants: []string{"shared"},
 						}.Build(),
 						Title:       "My template",
 						Description: "My template",
@@ -208,6 +209,9 @@ var _ = Describe("Private clusters server", func() {
 							Id:          fmt.Sprintf("my-template-id-%d", i),
 							Title:       fmt.Sprintf("My template %d", i),
 							Description: fmt.Sprintf("My template %d", i),
+							Metadata: privatev1.Metadata_builder{
+								Tenants: []string{"shared"},
+							}.Build(),
 							NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 								"compute": privatev1.ClusterTemplateNodeSet_builder{
 									HostClass: "acme-1ti-id",
@@ -275,7 +279,7 @@ var _ = Describe("Private clusters server", func() {
 			Expect(err).To(HaveOccurred())
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
-			Expect(status.Code()).To(Equal(grpccodes.NotFound))
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(Equal(
 				"there is no template with identifier or name 'does-not-exist'",
 			))

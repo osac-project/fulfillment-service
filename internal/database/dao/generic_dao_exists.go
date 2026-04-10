@@ -26,22 +26,24 @@ import (
 // ExistsRequest represents a request to check if an object exists by its identifier.
 type ExistsRequest[O Object] struct {
 	request[O]
-	args struct {
-		id string
-	}
+	id string
 }
 
 // SetId sets the identifier of the object to check.
 func (r *ExistsRequest[O]) SetId(value string) *ExistsRequest[O] {
-	r.args.id = value
+	r.id = value
 	return r
 }
 
 // Do executes the exists operation and returns the response.
 func (r *ExistsRequest[O]) Do(ctx context.Context) (response *ExistsResponse, err error) {
+	err = r.init(ctx)
+	if err != nil {
+		return
+	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
@@ -49,25 +51,22 @@ func (r *ExistsRequest[O]) Do(ctx context.Context) (response *ExistsResponse, er
 }
 
 func (r *ExistsRequest[O]) do(ctx context.Context) (response *ExistsResponse, err error) {
-	// Initialize the tenants:
-	err = r.initTenants(ctx)
+	// Add the tenancy filter:
+	err = r.addTenancyFilter(ctx)
 	if err != nil {
 		return
 	}
 
 	// Add the id parameter:
-	if r.args.id == "" {
+	if r.id == "" {
 		err = errors.New("object identifier is mandatory")
 		return
 	}
-	r.sql.params = append(r.sql.params, r.args.id)
-	r.sql.filter.WriteString("id = $1")
-
-	// Add the tenancy filter:
-	err = r.addTenancyFilter()
-	if err != nil {
-		return
+	r.sql.params = append(r.sql.params, r.id)
+	if r.sql.filter.Len() > 0 {
+		r.sql.filter.WriteString(` and`)
 	}
+	fmt.Fprintf(&r.sql.filter, ` id = $%d`, len(r.sql.params))
 
 	// Build the SQL statement:
 	sqlBuffer := &strings.Builder{}

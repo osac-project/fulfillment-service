@@ -75,7 +75,6 @@ var _ = Describe("Private subnets server", func() {
 		// Create the subnet DAO:
 		subnetDao, err = dao.NewGenericDAO[*privatev1.Subnet]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
@@ -86,13 +85,15 @@ var _ = Describe("Private subnets server", func() {
 		// Create NetworkClass DAO
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
 				SupportsIpv6:      true,
@@ -119,12 +120,14 @@ var _ = Describe("Private subnets server", func() {
 		// Create VirtualNetwork DAO
 		vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		builder := privatev1.VirtualNetwork_builder{
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				NetworkClass: nc.GetImplementationStrategy(),
 				Region:       "us-west-1",
@@ -428,7 +431,6 @@ var _ = Describe("Private subnets server", func() {
 				// Create VirtualNetwork DAO
 				vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 					SetLogger(logger).
-					SetAttributionLogic(attribution).
 					SetTenancyLogic(tenancy).
 					Build()
 				Expect(err).ToNot(HaveOccurred())
@@ -436,6 +438,9 @@ var _ = Describe("Private subnets server", func() {
 				nc := createNetworkClass(ctx)
 
 				vn := privatev1.VirtualNetwork_builder{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"shared"},
+					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     proto.String("10.0.0.0/16"),
 						NetworkClass: nc.GetImplementationStrategy(),
@@ -471,7 +476,6 @@ var _ = Describe("Private subnets server", func() {
 				// Create VirtualNetwork DAO
 				vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 					SetLogger(logger).
-					SetAttributionLogic(attribution).
 					SetTenancyLogic(tenancy).
 					Build()
 				Expect(err).ToNot(HaveOccurred())
@@ -479,6 +483,9 @@ var _ = Describe("Private subnets server", func() {
 				nc := createNetworkClass(ctx)
 
 				vn := privatev1.VirtualNetwork_builder{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"shared"},
+					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     proto.String("10.0.0.0/16"),
 						NetworkClass: nc.GetImplementationStrategy(),
@@ -638,7 +645,6 @@ var _ = Describe("Private subnets server", func() {
 				// Create VirtualNetwork DAO
 				vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 					SetLogger(logger).
-					SetAttributionLogic(attribution).
 					SetTenancyLogic(tenancy).
 					Build()
 				Expect(err).ToNot(HaveOccurred())
@@ -692,6 +698,9 @@ var _ = Describe("Private subnets server", func() {
 				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
 
 				subnet := privatev1.Subnet_builder{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"shared"},
+					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
 						Ipv4Cidr:       proto.String("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
@@ -789,7 +798,8 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name: name,
+						Name:    name,
+						Tenants: []string{"shared"},
 					}.Build(),
 					Spec: builder.Build(),
 				}.Build()
@@ -919,7 +929,6 @@ var _ = Describe("Private subnets server", func() {
 			// Create DAO
 			generic, err = dao.NewGenericDAO[*privatev1.Subnet]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -929,6 +938,9 @@ var _ = Describe("Private subnets server", func() {
 			vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
 
 			subnet := privatev1.Subnet_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{"shared"},
+				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       proto.String("10.0.1.0/24"),
 					VirtualNetwork: vn.GetId(),
@@ -949,6 +961,9 @@ var _ = Describe("Private subnets server", func() {
 			vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
 
 			subnet := privatev1.Subnet_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{"shared"},
+				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       proto.String("10.0.1.0/24"),
 					VirtualNetwork: vn.GetId(),
@@ -977,7 +992,8 @@ var _ = Describe("Private subnets server", func() {
 			for i := 0; i < count; i++ {
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name: fmt.Sprintf("subnet-%d", i),
+						Name:    fmt.Sprintf("subnet-%d", i),
+						Tenants: []string{"shared"},
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
 						Ipv4Cidr:       proto.String(fmt.Sprintf("10.%d.0.0/16", i)),
@@ -1008,7 +1024,8 @@ var _ = Describe("Private subnets server", func() {
 			for i := range 3 {
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name: fmt.Sprintf("vn1-subnet-%d", i),
+						Name:    fmt.Sprintf("vn1-subnet-%d", i),
+						Tenants: []string{"shared"},
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
 						Ipv4Cidr:       proto.String(fmt.Sprintf("10.0.%d.0/24", i)),
@@ -1026,7 +1043,8 @@ var _ = Describe("Private subnets server", func() {
 			for i := range 2 {
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name: fmt.Sprintf("vn2-subnet-%d", i),
+						Name:    fmt.Sprintf("vn2-subnet-%d", i),
+						Tenants: []string{"shared"},
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
 						Ipv4Cidr:       proto.String(fmt.Sprintf("192.168.%d.0/24", i)),
@@ -1056,7 +1074,8 @@ var _ = Describe("Private subnets server", func() {
 
 			subnet := privatev1.Subnet_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name: "original-name",
+					Name:    "original-name",
+					Tenants: []string{"shared"},
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       proto.String("10.0.1.0/24"),
@@ -1093,6 +1112,7 @@ var _ = Describe("Private subnets server", func() {
 			subnet := privatev1.Subnet_builder{
 				Metadata: privatev1.Metadata_builder{
 					Finalizers: []string{"test-finalizer"},
+					Tenants:    []string{"shared"},
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       proto.String("10.0.1.0/24"),

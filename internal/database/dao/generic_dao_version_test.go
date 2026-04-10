@@ -15,9 +15,7 @@ package dao
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"math"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
@@ -33,6 +31,8 @@ import (
 var _ = Describe("Version", func() {
 	var (
 		ctx     context.Context
+		ctrl    *gomock.Controller
+		tenancy *auth.MockTenancyLogic
 		tx      database.Tx
 		generic *GenericDAO[*testsv1.Object]
 	)
@@ -42,6 +42,10 @@ var _ = Describe("Version", func() {
 
 		// Create a context:
 		ctx = context.Background()
+
+		// Create the mock controller:
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
 
 		// Prepare the database pool:
 		db := server.MakeDatabase()
@@ -70,41 +74,16 @@ var _ = Describe("Version", func() {
 		err = CreateTables[*testsv1.Object](ctx)
 		Expect(err).ToNot(HaveOccurred())
 
-		// Create the attribution logic:
-		attributionLogic := auth.NewMockAttributionLogic(ctrl)
-		attributionLogic.EXPECT().DetermineAssignedCreators(gomock.Any()).
-			Return(
-				collections.NewSet("my_user"),
-				nil,
-			).
-			AnyTimes()
-
-		// Create the tenancy logic:
-		tenancyLogic := auth.NewMockTenancyLogic(ctrl)
-		tenancyLogic.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(
-				collections.NewSet("my_tenant"),
-				nil,
-			).
-			AnyTimes()
-		tenancyLogic.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(
-				collections.NewSet("my_tenant"),
-				nil,
-			).
-			AnyTimes()
-		tenancyLogic.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(
-				collections.NewSet("my_tenant"),
-				nil,
-			).
+		// Create a tenancy logic without restrictions:
+		tenancy = auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(collections.NewUniversal[string](), nil).
 			AnyTimes()
 
 		// Create the DAO:
 		generic, err = NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetAttributionLogic(attributionLogic).
-			SetTenancyLogic(tenancyLogic).
+			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 	})
@@ -122,6 +101,7 @@ var _ = Describe("Version", func() {
 		response, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
+					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -136,6 +116,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
+					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -155,6 +136,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
+					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -175,6 +157,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
+					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -204,33 +187,12 @@ var _ = Describe("Version", func() {
 		checkDatabaseVersion(object.GetId(), 2)
 	})
 
-	It("Does not increment on no-op update", func() {
-		createResponse, err := generic.Create().
-			SetObject(
-				testsv1.Object_builder{
-					MyString: "my_value",
-				}.Build(),
-			).
-			Do(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		object := createResponse.GetObject()
-		Expect(object.GetMetadata().GetVersion()).To(Equal(int32(0)))
-
-		// Update with the same data:
-		updateResponse, err := generic.Update().
-			SetObject(object).
-			Do(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		object = updateResponse.GetObject()
-		Expect(object.GetMetadata().GetVersion()).To(Equal(int32(0)))
-		checkDatabaseVersion(object.GetId(), 0)
-	})
-
 	It("Increments on each distinct update", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					MyInt32: 0,
+					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					MyInt32:  0,
 				}.Build(),
 			).
 			Do(ctx)
@@ -253,6 +215,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
+					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -290,6 +253,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
+					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
 					MyString: "v0",
 				}.Build(),
 			).
@@ -320,93 +284,5 @@ var _ = Describe("Version", func() {
 		object = updateResponse.GetObject()
 		Expect(object.GetMetadata().GetVersion()).To(Equal(int32(4)))
 		checkDatabaseVersion(object.GetId(), 4)
-	})
-
-	Describe("Optimistic locking", func() {
-		It("Succeeds when version matches", func() {
-			// Create the object:
-			createResponse, err := generic.Create().
-				SetObject(
-					testsv1.Object_builder{
-						MyString: "my-value",
-					}.Build(),
-				).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			object := createResponse.GetObject()
-			version := object.GetMetadata().GetVersion()
-
-			// Update without locking a few times:
-			for i := 1; i <= 2; i++ {
-				object.MyString = fmt.Sprintf("your-value-%d", i)
-				updateResponse, err := generic.Update().
-					SetObject(object).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				object = updateResponse.GetObject()
-				Expect(object.GetMetadata().GetVersion()).To(BeNumerically(">", version))
-				version = object.GetMetadata().GetVersion()
-			}
-
-			// Update with lock enabled and the right version:
-			object.MyString = "their-value"
-			updateResponse, err := generic.Update().
-				SetObject(object).
-				SetLock(true).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			object = updateResponse.GetObject()
-			Expect(object.GetMetadata().GetVersion()).To(BeNumerically(">", version))
-		})
-
-		It("Fails when version does not match", func() {
-			// Create the object:
-			createResponse, err := generic.Create().
-				SetObject(
-					testsv1.Object_builder{
-						MyString: "my-value",
-					}.Build(),
-				).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			object := createResponse.GetObject()
-			version := object.GetMetadata().GetVersion()
-
-			// Set a stale version in the metadata and try to update with lock enabled:
-			object.GetMetadata().SetVersion(math.MaxInt32)
-			object.MyString = "your-value"
-			_, err = generic.Update().
-				SetObject(object).
-				SetLock(true).
-				Do(ctx)
-			Expect(err).To(HaveOccurred())
-			var conflictErr *ErrConflict
-			Expect(errors.As(err, &conflictErr)).To(BeTrue())
-			Expect(conflictErr.ID).To(Equal(object.GetId()))
-			Expect(conflictErr.RequestedVersion).To(BeNumerically("==", math.MaxInt32))
-			Expect(conflictErr.CurrentVersion).To(BeNumerically("==", version))
-		})
-
-		It("Is dsabled by default", func() {
-			// Create the object:
-			createResponse, err := generic.Create().
-				SetObject(
-					testsv1.Object_builder{
-						MyString: "my-value",
-					}.Build(),
-				).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			object := createResponse.GetObject()
-
-			// Send an update with a wrong version in the metadata but without enabling lock. The update
-			// should succeed because optimistic locking is disabled.
-			object.GetMetadata().SetVersion(math.MaxInt32)
-			object.MyString = "your-value"
-			_, err = generic.Update().
-				SetObject(object).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		})
 	})
 })

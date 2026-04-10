@@ -41,9 +41,13 @@ func (r *DeleteRequest[O]) SetId(value string) *DeleteRequest[O] {
 
 // Do executes the delete operation and returns the response.
 func (r *DeleteRequest[O]) Do(ctx context.Context) (response *DeleteResponse, err error) {
+	err = r.init(ctx)
+	if err != nil {
+		return
+	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
@@ -51,8 +55,8 @@ func (r *DeleteRequest[O]) Do(ctx context.Context) (response *DeleteResponse, er
 }
 
 func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, err error) {
-	// Initialize the tenants:
-	err = r.initTenants(ctx)
+	// Add the tenancy filter:
+	err = r.addTenancyFilter(ctx)
 	if err != nil {
 		return
 	}
@@ -62,14 +66,11 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		err = errors.New("object identifier is mandatory")
 		return
 	}
-	r.sql.params = append(r.sql.params, r.args.id)
-	r.sql.filter.WriteString("id = $1")
-
-	// Add the tenancy filter:
-	err = r.addTenancyFilter()
-	if err != nil {
-		return
+	if r.sql.filter.Len() > 0 {
+		r.sql.filter.WriteString(` and`)
 	}
+	r.sql.params = append(r.sql.params, r.args.id)
+	fmt.Fprintf(&r.sql.filter, ` id = $%d`, len(r.sql.params))
 
 	// Set the deletion timestamp of the row and simultaneousyly retrieve the data, as we need it to fire the event
 	// later:

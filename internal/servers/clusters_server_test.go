@@ -139,7 +139,6 @@ var _ = Describe("Clusters server", func() {
 			// Create the host classes DAO:
 			hostClassesDao, err := dao.NewGenericDAO[*privatev1.HostClass]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -147,87 +146,127 @@ var _ = Describe("Clusters server", func() {
 			// Create the templates DAO:
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create the the host classes:
-			_, err = hostClassesDao.Create().SetObject(privatev1.HostClass_builder{
-				Id:          "acme_1tib",
-				Title:       "ACME 1TiB",
-				Description: "ACME 1TiB.",
-			}.Build()).Do(ctx)
+			_, err = hostClassesDao.Create().
+				SetObject(
+					privatev1.HostClass_builder{
+						Id:          "acme_1tib",
+						Title:       "ACME 1TiB",
+						Description: "ACME 1TiB.",
+						Metadata: privatev1.Metadata_builder{
+							Tenants: []string{"shared"},
+						}.Build(),
+					}.Build()).
+				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			_, err = hostClassesDao.Create().SetObject(privatev1.HostClass_builder{
-				Id:          "acme_gpu",
-				Title:       "ACME GPU",
-				Description: "ACME GPU.",
-			}.Build()).Do(ctx)
+			_, err = hostClassesDao.Create().
+				SetObject(
+					privatev1.HostClass_builder{
+						Id:          "acme_gpu",
+						Title:       "ACME GPU",
+						Description: "ACME GPU.",
+						Metadata: privatev1.Metadata_builder{
+							Tenants: []string{"shared"},
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			_, err = hostClassesDao.Create().SetObject(privatev1.HostClass_builder{
-				Id:          "hal_9000",
-				Title:       "HAL 9000",
-				Description: "Heuristically programmed ALgorithmic computer.",
-			}.Build()).Do(ctx)
+			_, err = hostClassesDao.Create().
+				SetObject(
+					privatev1.HostClass_builder{
+						Id:          "hal_9000",
+						Title:       "HAL 9000",
+						Description: "Heuristically programmed ALgorithmic computer.",
+						Metadata: privatev1.Metadata_builder{
+							Tenants: []string{"shared"},
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create a usable template:
-			_, err = templatesDao.Create().SetObject(privatev1.ClusterTemplate_builder{
-				Id:          "my_template",
-				Title:       "My template",
-				Description: "My template",
-				NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
-					"compute": privatev1.ClusterTemplateNodeSet_builder{
-						HostClass: "acme_1tib",
-						Size:      3,
+			_, err = templatesDao.Create().
+				SetObject(
+					privatev1.ClusterTemplate_builder{
+						Id:          "my_template",
+						Title:       "My template",
+						Description: "My template",
+						Metadata: privatev1.Metadata_builder{
+							Tenants: []string{"shared"},
+						}.Build(),
+						NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
+							"compute": privatev1.ClusterTemplateNodeSet_builder{
+								HostClass: "acme_1tib",
+								Size:      3,
+							}.Build(),
+							"gpu": privatev1.ClusterTemplateNodeSet_builder{
+								HostClass: "acme_gpu",
+								Size:      1,
+							}.Build(),
+						},
 					}.Build(),
-					"gpu": privatev1.ClusterTemplateNodeSet_builder{
-						HostClass: "acme_gpu",
-						Size:      1,
-					}.Build(),
-				},
-			}.Build()).Do(ctx)
+				).
+				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create a template that has been deleted. Note that we add a finalizer to ensure that it will
 			// not be completely deleted and archived, as we will use it to verify that clusters can't be
 			// created using deleted templates.
-			_, err = templatesDao.Create().SetObject(privatev1.ClusterTemplate_builder{
-				Id:          "my_deleted_template",
-				Title:       "My deleted template",
-				Description: "My deleted template",
-				Metadata: privatev1.Metadata_builder{
-					Finalizers: []string{"a"},
-				}.Build(),
-			}.Build()).Do(ctx)
+			_, err = templatesDao.Create().
+				SetObject(
+					privatev1.ClusterTemplate_builder{
+						Id:          "my_deleted_template",
+						Title:       "My deleted template",
+						Description: "My deleted template",
+						Metadata: privatev1.Metadata_builder{
+							Finalizers: []string{"a"},
+							Tenants:    []string{"shared"},
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			_, err = templatesDao.Delete().SetId("my_deleted_template").Do(ctx)
+			_, err = templatesDao.Delete().
+				SetId("my_deleted_template").
+				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create a template with parameters:
-			_, err = templatesDao.Create().SetObject(privatev1.ClusterTemplate_builder{
-				Id:          "my_with_parameters",
-				Title:       "My with parameters",
-				Description: "My with parameters.",
-				Parameters: []*privatev1.ClusterTemplateParameterDefinition{
-					privatev1.ClusterTemplateParameterDefinition_builder{
-						Name:        "my_required_bool",
-						Title:       "My required bool",
-						Description: "My required bool.",
-						Required:    true,
-						Type:        "type.googleapis.com/google.protobuf.BoolValue",
+			_, err = templatesDao.Create().
+				SetObject(
+					privatev1.ClusterTemplate_builder{
+						Id:          "my_with_parameters",
+						Title:       "My with parameters",
+						Description: "My with parameters.",
+						Metadata: privatev1.Metadata_builder{
+							Tenants: []string{"shared"},
+						}.Build(),
+						Parameters: []*privatev1.ClusterTemplateParameterDefinition{
+							privatev1.ClusterTemplateParameterDefinition_builder{
+								Name:        "my_required_bool",
+								Title:       "My required bool",
+								Description: "My required bool.",
+								Required:    true,
+								Type:        "type.googleapis.com/google.protobuf.BoolValue",
+							}.Build(),
+							privatev1.ClusterTemplateParameterDefinition_builder{
+								Name:        "my_optional_string",
+								Title:       "My optional string",
+								Description: "My optional string.",
+								Required:    false,
+								Type:        "type.googleapis.com/google.protobuf.StringValue",
+								Default:     makeAny(wrapperspb.String("my value")),
+							}.Build(),
+						},
 					}.Build(),
-					privatev1.ClusterTemplateParameterDefinition_builder{
-						Name:        "my_optional_string",
-						Title:       "My optional string",
-						Description: "My optional string.",
-						Required:    false,
-						Type:        "type.googleapis.com/google.protobuf.StringValue",
-						Default:     makeAny(wrapperspb.String("my value")),
-					}.Build(),
-				},
-			}.Build()).Do(ctx)
+				).
+				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -448,13 +487,16 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		It("Rejects template that has been deleted", func() {
-			response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
-				Object: publicv1.Cluster_builder{
-					Spec: publicv1.ClusterSpec_builder{
-						Template: "my_deleted_template",
+			response, err := server.Create(
+				ctx,
+				publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
+							Template: "my_deleted_template",
+						}.Build(),
 					}.Build(),
 				}.Build(),
-			}.Build())
+			)
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
 			status, ok := grpcstatus.FromError(err)
@@ -859,7 +901,6 @@ var _ = Describe("Clusters server", func() {
 			// Create the DAO:
 			dao, err := dao.NewGenericDAO[*privatev1.Cluster]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -868,6 +909,9 @@ var _ = Describe("Clusters server", func() {
 			createResponse, err := dao.Create().
 				SetObject(
 					privatev1.Cluster_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenants: []string{"shared"},
+						}.Build(),
 						Spec: privatev1.ClusterSpec_builder{
 							Template: "my_template",
 							NodeSets: map[string]*privatev1.ClusterNodeSet{
@@ -942,13 +986,15 @@ var _ = Describe("Clusters server", func() {
 			// Use the DAO directly to create an object with status:
 			dao, err := dao.NewGenericDAO[*privatev1.Cluster]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			createResponse, err := dao.Create().
 				SetObject(
 					privatev1.Cluster_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenants: []string{"shared"},
+						}.Build(),
 						Spec: privatev1.ClusterSpec_builder{
 							Template: "my_template",
 						}.Build(),

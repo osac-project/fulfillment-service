@@ -86,13 +86,15 @@ var _ = Describe("Private compute instances server", func() {
 	createTestNetworkClass := func(ctx context.Context) *privatev1.NetworkClass {
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
 				SupportsIpv6:      true,
@@ -112,12 +114,14 @@ var _ = Describe("Private compute instances server", func() {
 	createTestVirtualNetwork := func(ctx context.Context, networkClassID string) *privatev1.VirtualNetwork {
 		vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		vn := privatev1.VirtualNetwork_builder{
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Ipv4Cidr:     proto.String("10.0.0.0/16"),
 				NetworkClass: networkClassID,
@@ -136,12 +140,14 @@ var _ = Describe("Private compute instances server", func() {
 	createTestSubnet := func(ctx context.Context, vnID string, state privatev1.SubnetState) *privatev1.Subnet {
 		subnetDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		subnet := privatev1.Subnet_builder{
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Spec: privatev1.SubnetSpec_builder{
 				VirtualNetwork: vnID,
 				Ipv4Cidr:       proto.String("10.0.1.0/24"),
@@ -160,12 +166,14 @@ var _ = Describe("Private compute instances server", func() {
 	createTestSecurityGroup := func(ctx context.Context, vnID string, state privatev1.SecurityGroupState) *privatev1.SecurityGroup {
 		sgDao, err := dao.NewGenericDAO[*privatev1.SecurityGroup]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		sg := privatev1.SecurityGroup_builder{
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Spec: privatev1.SecurityGroupSpec_builder{
 				VirtualNetwork: vnID,
 			}.Build(),
@@ -238,7 +246,6 @@ var _ = Describe("Private compute instances server", func() {
 			// Create a template DAO to insert a template
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -253,6 +260,9 @@ var _ = Describe("Private compute instances server", func() {
 				Id:          templateID,
 				Title:       "Test Template",
 				Description: "Test template for validation",
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{"shared"},
+				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{
 						Name:        "cpu_count",
@@ -644,7 +654,6 @@ var _ = Describe("Private compute instances server", func() {
 			// Create test template
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -658,6 +667,9 @@ var _ = Describe("Private compute instances server", func() {
 				Id:          "test-template",
 				Title:       "Test Template",
 				Description: "Test template for network validation",
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{"shared"},
+				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{
 						Name:        "cpu_count",

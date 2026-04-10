@@ -42,7 +42,6 @@ type GenericDAOBuilder[O Object] struct {
 	defaultLimit      int32
 	maxLimit          int32
 	eventCallbacks    []EventCallback
-	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
 }
@@ -78,7 +77,6 @@ type GenericDAO[O Object] struct {
 	marshalOptions   protojson.MarshalOptions
 	unmarshalOptions protojson.UnmarshalOptions
 	filterTranslator *FilterTranslator[O]
-	attributionLogic auth.AttributionLogic
 	tenancyLogic     auth.TenancyLogic
 
 	// Metrics:
@@ -144,17 +142,7 @@ func (b *GenericDAOBuilder[O]) AddEventCallback(value EventCallback) *GenericDAO
 	return b
 }
 
-// SetAttributionLogic sets the attribution logic that will be used to determine the creators for objects. The logic
-// receives the context as a parameter and should return the names of the creators. If not provided, a default logic
-// that returns no creators will be recorded.
-func (b *GenericDAOBuilder[O]) SetAttributionLogic(value auth.AttributionLogic) *GenericDAOBuilder[O] {
-	b.attributionLogic = value
-	return b
-}
-
-// SetTenancyLogic sets the tenancy logic that will be used to determine the tenants value for objects.
-// The logic receives the context as a parameter and should return the names of the tenants. If not provided,
-// a default logic that returns no tenants will be used.
+// SetTenancyLogic sets the tenancy logic. This is mandatory.
 func (b *GenericDAOBuilder[O]) SetTenancyLogic(value auth.TenancyLogic) *GenericDAOBuilder[O] {
 	b.tenancyLogic = value
 	return b
@@ -209,10 +197,6 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 				"is %d",
 			b.maxLimit, b.defaultLimit,
 		)
-		return
-	}
-	if b.attributionLogic == nil {
-		err = errors.New("attribution logic is mandatory")
 		return
 	}
 	if b.tenancyLogic == nil {
@@ -307,7 +291,6 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 		marshalOptions:   marshalOptions,
 		unmarshalOptions: unmarshalOptions,
 		filterTranslator: filterTranslator,
-		attributionLogic: b.attributionLogic,
 		tenancyLogic:     b.tenancyLogic,
 		opDurationMetric: opDurationMetric,
 	}
@@ -369,11 +352,8 @@ func (b *GenericDAOBuilder[O]) registerOpDurationMetric() (result *prometheus.Hi
 
 // Names of well known fields:
 var (
-	creationTimestampFieldName = protoreflect.Name("creation_timestamp")
-	deletionTimestampFieldName = protoreflect.Name("deletion_timestamp")
-	versionFieldName           = protoreflect.Name("version")
-	idFieldName                = protoreflect.Name("id")
-	metadataFieldName          = protoreflect.Name("metadata")
+	idFieldName       = protoreflect.Name("id")
+	metadataFieldName = protoreflect.Name("metadata")
 )
 
 // opType is used to describe the types of operations performed by the DAO in logs and metrics.

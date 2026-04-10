@@ -95,7 +95,6 @@ func (b *PrivateSecurityGroupsServerBuilder) Build() (result *PrivateSecurityGro
 	// Create the VirtualNetwork DAO for parent validation:
 	virtualNetworkDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 		SetLogger(b.logger).
-		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()

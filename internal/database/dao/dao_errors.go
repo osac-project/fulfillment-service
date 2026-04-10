@@ -58,8 +58,8 @@ type ErrConflict struct {
 	// ID is the identifier of the object.
 	ID string
 
-	// RequestedVersion is the version that the caller specified in the request.
-	RequestedVersion int32
+	// RequestVersion is the version that the caller specified in the request.
+	RequestVersion int32
 
 	// CurrentVersion is the current version of the object in the database.
 	CurrentVersion int32
@@ -69,7 +69,7 @@ type ErrConflict struct {
 func (e *ErrConflict) Error() string {
 	return fmt.Sprintf(
 		"object with identifier '%s' has been modified: requested version %d but current version is %d",
-		e.ID, e.RequestedVersion, e.CurrentVersion,
+		e.ID, e.RequestVersion, e.CurrentVersion,
 	)
 }
 

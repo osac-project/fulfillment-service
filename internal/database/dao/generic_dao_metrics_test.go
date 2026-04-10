@@ -19,8 +19,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
 	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
@@ -28,6 +31,8 @@ import (
 var _ = Describe("Metrics", func() {
 	var (
 		ctx           context.Context
+		ctrl          *gomock.Controller
+		tenancy       *auth.MockTenancyLogic
 		metricsServer *MetricsServer
 		dao           *GenericDAO[*testsv1.Object]
 	)
@@ -37,6 +42,10 @@ var _ = Describe("Metrics", func() {
 
 		// Create a context:
 		ctx = context.Background()
+
+		// Create the mock controller:
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
 
 		// Prepare the database:
 		db := server.MakeDatabase()
@@ -69,10 +78,15 @@ var _ = Describe("Metrics", func() {
 		metricsServer = NewMetricsServer()
 		DeferCleanup(metricsServer.Close)
 
+		// Create a tenancy logic without restrictions:
+		tenancy = auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(collections.NewUniversal[string](), nil).
+			AnyTimes()
+
 		// Create the DAO with metrics enabled:
 		dao, err = NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			SetMetricsRegisterer(metricsServer.Registry()).
 			Build()
@@ -82,7 +96,13 @@ var _ = Describe("Metrics", func() {
 	Describe("SQL duration", func() {
 		It("Honours subsystem", func() {
 			_, err := dao.Create().
-				SetObject(testsv1.Object_builder{}.Build()).
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenants: []string{"my-tenant"},
+						}.Build(),
+					}.Build(),
+				).
 				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -94,7 +114,13 @@ var _ = Describe("Metrics", func() {
 
 		It("Includes table label", func() {
 			_, err := dao.Create().
-				SetObject(testsv1.Object_builder{}.Build()).
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenants: []string{"my-tenant"},
+						}.Build(),
+					}.Build(),
+				).
 				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -106,7 +132,13 @@ var _ = Describe("Metrics", func() {
 
 		It("Includes empty error label for successful operations", func() {
 			_, err := dao.Create().
-				SetObject(testsv1.Object_builder{}.Build()).
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenants: []string{"my-tenant"},
+						}.Build(),
+					}.Build(),
+				).
 				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -117,7 +149,11 @@ var _ = Describe("Metrics", func() {
 		})
 
 		It("Includes error code label for failed operations", func() {
-			object := testsv1.Object_builder{}.Build()
+			object := testsv1.Object_builder{
+				Metadata: testsv1.Metadata_builder{
+					Tenants: []string{"my-tenant"},
+				}.Build(),
+			}.Build()
 			object.SetId("duplicate")
 			_, err := dao.Create().
 				SetObject(object).
@@ -149,7 +185,13 @@ var _ = Describe("Metrics", func() {
 				"create",
 				func() {
 					_, err := dao.Create().
-						SetObject(testsv1.Object_builder{}.Build()).
+						SetObject(
+							testsv1.Object_builder{
+								Metadata: testsv1.Metadata_builder{
+									Tenants: []string{"my-tenant"},
+								}.Build(),
+							}.Build(),
+						).
 						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 				},
@@ -159,7 +201,13 @@ var _ = Describe("Metrics", func() {
 				"get",
 				func() {
 					response, err := dao.Create().
-						SetObject(testsv1.Object_builder{}.Build()).
+						SetObject(
+							testsv1.Object_builder{
+								Metadata: testsv1.Metadata_builder{
+									Tenants: []string{"my-tenant"},
+								}.Build(),
+							}.Build(),
+						).
 						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 					_, err = dao.Get().
@@ -172,7 +220,8 @@ var _ = Describe("Metrics", func() {
 				"List",
 				"list",
 				func() {
-					_, err := dao.List().Do(ctx)
+					_, err := dao.List().
+						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 				},
 			),
@@ -180,7 +229,8 @@ var _ = Describe("Metrics", func() {
 				"Count",
 				"count",
 				func() {
-					_, err := dao.List().Do(ctx)
+					_, err := dao.List().
+						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 				},
 			),
@@ -189,7 +239,13 @@ var _ = Describe("Metrics", func() {
 				"update",
 				func() {
 					response, err := dao.Create().
-						SetObject(testsv1.Object_builder{}.Build()).
+						SetObject(
+							testsv1.Object_builder{
+								Metadata: testsv1.Metadata_builder{
+									Tenants: []string{"my-tenant"},
+								}.Build(),
+							}.Build(),
+						).
 						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 					object := response.GetObject()
@@ -205,7 +261,13 @@ var _ = Describe("Metrics", func() {
 				"delete",
 				func() {
 					response, err := dao.Create().
-						SetObject(testsv1.Object_builder{}.Build()).
+						SetObject(
+							testsv1.Object_builder{
+								Metadata: testsv1.Metadata_builder{
+									Tenants: []string{"my-tenant"},
+								}.Build(),
+							}.Build(),
+						).
 						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 					_, err = dao.Delete().
@@ -219,7 +281,13 @@ var _ = Describe("Metrics", func() {
 				"exists",
 				func() {
 					response, err := dao.Create().
-						SetObject(testsv1.Object_builder{}.Build()).
+						SetObject(
+							testsv1.Object_builder{
+								Metadata: testsv1.Metadata_builder{
+									Tenants: []string{"my-tenant"},
+								}.Build(),
+							}.Build(),
+						).
 						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 					_, err = dao.Exists().
@@ -233,7 +301,13 @@ var _ = Describe("Metrics", func() {
 				"lock",
 				func() {
 					response, err := dao.Create().
-						SetObject(testsv1.Object_builder{}.Build()).
+						SetObject(
+							testsv1.Object_builder{
+								Metadata: testsv1.Metadata_builder{
+									Tenants: []string{"my-tenant"},
+								}.Build(),
+							}.Build(),
+						).
 						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 					_, err = dao.Lock().
@@ -247,7 +321,13 @@ var _ = Describe("Metrics", func() {
 				"archive",
 				func() {
 					response, err := dao.Create().
-						SetObject(testsv1.Object_builder{}.Build()).
+						SetObject(
+							testsv1.Object_builder{
+								Metadata: testsv1.Metadata_builder{
+									Tenants: []string{"my-tenant"},
+								}.Build(),
+							}.Build(),
+						).
 						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
 					_, err = dao.Delete().
@@ -261,7 +341,13 @@ var _ = Describe("Metrics", func() {
 		It("Counts multiple operations correctly", func() {
 			for range 3 {
 				_, err := dao.Create().
-					SetObject(testsv1.Object_builder{}.Build()).
+					SetObject(
+						testsv1.Object_builder{
+							Metadata: testsv1.Metadata_builder{
+								Tenants: []string{"my-tenant"},
+							}.Build(),
+						}.Build(),
+					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 			}
@@ -275,13 +361,18 @@ var _ = Describe("Metrics", func() {
 		It("Does not record metrics when subsystem is not set", func() {
 			noMetricsDao, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
 			_, err = noMetricsDao.Create().
-				SetObject(testsv1.Object_builder{}.Build()).
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenants: []string{"my-tenant"},
+						}.Build(),
+					}.Build(),
+				).
 				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -294,7 +385,6 @@ var _ = Describe("Metrics", func() {
 
 			dao1, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				SetMetricsRegisterer(registry).
 				Build()
@@ -303,18 +393,11 @@ var _ = Describe("Metrics", func() {
 
 			dao2, err := NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				SetMetricsRegisterer(registry).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(dao2).ToNot(BeNil())
-		})
-
-		It("Uses default registerer when nil is passed", func() {
-			builder := NewGenericDAO[*testsv1.Object]().
-				SetMetricsRegisterer(nil)
-			Expect(builder).ToNot(BeNil())
 		})
 	})
 })

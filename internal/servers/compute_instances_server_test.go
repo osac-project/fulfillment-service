@@ -137,7 +137,6 @@ var _ = Describe("Compute instances server", func() {
 			// Create a template DAO to insert a template
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
 				SetLogger(logger).
-				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
@@ -152,6 +151,9 @@ var _ = Describe("Compute instances server", func() {
 				Id:          templateID,
 				Title:       "Test Template",
 				Description: "Test template for validation",
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{"shared"},
+				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{
 						Name:        "cpu_count",

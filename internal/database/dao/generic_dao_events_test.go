@@ -20,16 +20,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 var _ = Describe("Generic DAO events", func() {
 	var (
-		ctx  context.Context
-		pool *pgxpool.Pool
-		tm   database.TxManager
+		ctx     context.Context
+		ctrl    *gomock.Controller
+		pool    *pgxpool.Pool
+		tm      database.TxManager
+		tenancy *auth.MockTenancyLogic
 	)
 
 	BeforeEach(func() {
@@ -37,6 +42,10 @@ var _ = Describe("Generic DAO events", func() {
 
 		// Create a context:
 		ctx = context.Background()
+
+		// Create the mock controller:
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
 
 		// Prepare the database connection pool:
 		db := server.MakeDatabase()
@@ -60,6 +69,12 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(err).ToNot(HaveOccurred())
 		err = tm.End(ctx, tx)
 		Expect(err).ToNot(HaveOccurred())
+
+		// Create a tenancy logic without restrictions:
+		tenancy = auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(collections.NewUniversal[string](), nil).
+			AnyTimes()
 	})
 
 	// runWithTx starts a transaction, runs the given function using it, and ends the transaction when it finishes.
@@ -76,7 +91,6 @@ var _ = Describe("Generic DAO events", func() {
 		var event *Event
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(_ context.Context, e Event) error {
 				event = &e
@@ -86,7 +100,13 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		runWithTx(func(ctx context.Context) {
-			_, err = generic.Create().SetObject(&privatev1.Cluster{}).Do(ctx)
+			_, err = generic.Create().
+				SetObject(&privatev1.Cluster{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+				}).
+				Do(ctx)
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(err).ToNot(HaveOccurred())
@@ -99,7 +119,6 @@ var _ = Describe("Generic DAO events", func() {
 		var event *Event
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(_ context.Context, e Event) error {
 				event = &e
@@ -110,7 +129,13 @@ var _ = Describe("Generic DAO events", func() {
 
 		var object *privatev1.Cluster
 		runWithTx(func(ctx context.Context) {
-			response, createErr := generic.Create().SetObject(&privatev1.Cluster{}).Do(ctx)
+			response, createErr := generic.Create().
+				SetObject(&privatev1.Cluster{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+				}).
+				Do(ctx)
 			err = createErr
 			if err == nil {
 				object = response.GetObject()
@@ -119,12 +144,17 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		runWithTx(func(ctx context.Context) {
-			_, err = generic.Update().SetObject(&privatev1.Cluster{
-				Id: object.Id,
-				Status: &privatev1.ClusterStatus{
-					ApiUrl: "https://api.example.com",
-				},
-			}).Do(ctx)
+			_, err = generic.Update().
+				SetObject(&privatev1.Cluster{
+					Id: object.Id,
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+					Status: &privatev1.ClusterStatus{
+						ApiUrl: "https://api.example.com",
+					},
+				}).
+				Do(ctx)
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(event).ToNot(BeNil())
@@ -136,7 +166,6 @@ var _ = Describe("Generic DAO events", func() {
 		var event *Event
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(_ context.Context, e Event) error {
 				event = &e
@@ -147,7 +176,13 @@ var _ = Describe("Generic DAO events", func() {
 
 		var object *privatev1.Cluster
 		runWithTx(func(ctx context.Context) {
-			response, createErr := generic.Create().SetObject(&privatev1.Cluster{}).Do(ctx)
+			response, createErr := generic.Create().
+				SetObject(&privatev1.Cluster{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+				}).
+				Do(ctx)
 			err = createErr
 			if err == nil {
 				object = response.GetObject()
@@ -155,7 +190,9 @@ var _ = Describe("Generic DAO events", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 		runWithTx(func(ctx context.Context) {
-			_, err = generic.Delete().SetId(object.GetId()).Do(ctx)
+			_, err = generic.Delete().
+				SetId(object.GetId()).
+				Do(ctx)
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(event).ToNot(BeNil())
@@ -166,7 +203,6 @@ var _ = Describe("Generic DAO events", func() {
 	It("Fails to create object if callback returns an error", func() {
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(context.Context, Event) error {
 				return errors.New("my error")
@@ -175,7 +211,13 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(err).ToNot(HaveOccurred())
 		var object *privatev1.Cluster
 		runWithTx(func(ctx context.Context) {
-			response, createErr := generic.Create().SetObject(&privatev1.Cluster{}).Do(ctx)
+			response, createErr := generic.Create().
+				SetObject(&privatev1.Cluster{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+				}).
+				Do(ctx)
 			err = createErr
 			if err == nil {
 				object = response.GetObject()
@@ -194,13 +236,18 @@ var _ = Describe("Generic DAO events", func() {
 		// Create the DAO, without callbacks, just to do the insert:
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		var object *privatev1.Cluster
 		runWithTx(func(ctx context.Context) {
-			response, createErr := generic.Create().SetObject(&privatev1.Cluster{}).Do(ctx)
+			response, createErr := generic.Create().
+				SetObject(&privatev1.Cluster{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+				}).
+				Do(ctx)
 			err = createErr
 			if err == nil {
 				object = response.GetObject()
@@ -211,7 +258,6 @@ var _ = Describe("Generic DAO events", func() {
 		// Create the DAO again, this time with the callback, to do the delete:
 		generic, err = NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(context.Context, Event) error {
 				return errors.New("my error")
@@ -219,14 +265,18 @@ var _ = Describe("Generic DAO events", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		runWithTx(func(ctx context.Context) {
-			_, err = generic.Delete().SetId(object.GetId()).Do(ctx)
+			_, err = generic.Delete().
+				SetId(object.GetId()).
+				Do(ctx)
 		})
 		Expect(err).To(MatchError("my error"))
 
 		// Check that the object is still there:
 		var exists bool
 		runWithTx(func(ctx context.Context) {
-			response, existsErr := generic.Exists().SetId(object.GetId()).Do(ctx)
+			response, existsErr := generic.Exists().
+				SetId(object.GetId()).
+				Do(ctx)
 			err = existsErr
 			if err == nil {
 				exists = response.GetExists()
@@ -236,56 +286,25 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(exists).To(BeTrue())
 	})
 
-	It("Doesn't fire update event if there are no changes", func() {
-		// Create the DAO again:
-		called := false
-		generic, err := NewGenericDAO[*privatev1.Cluster]().
-			SetLogger(logger).
-			SetAttributionLogic(attribution).
-			SetTenancyLogic(tenancy).
-			AddEventCallback(func(_ context.Context, event Event) error {
-				if event.Type == EventTypeUpdated {
-					called = true
-				}
-				return nil
-			}).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Create the object:
-		var object *privatev1.Cluster
-		runWithTx(func(ctx context.Context) {
-			response, createErr := generic.Create().SetObject(&privatev1.Cluster{}).Do(ctx)
-			err = createErr
-			if err == nil {
-				object = response.GetObject()
-			}
-		})
-		Expect(err).ToNot(HaveOccurred())
-
-		// Update without changes and verify the result:
-		runWithTx(func(ctx context.Context) {
-			_, err = generic.Update().SetObject(object).Do(ctx)
-		})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(called).To(BeFalse())
-	})
-
 	It("Fails to update object if callback returns an error", func() {
 		// Create the DAO, without callbacks, just to do the insert:
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		var object *privatev1.Cluster
 		runWithTx(func(ctx context.Context) {
-			response, createErr := generic.Create().SetObject(&privatev1.Cluster{
-				Status: &privatev1.ClusterStatus{
-					ApiUrl: "https://my.api",
-				},
-			}).Do(ctx)
+			response, createErr := generic.Create().
+				SetObject(&privatev1.Cluster{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+					Status: &privatev1.ClusterStatus{
+						ApiUrl: "https://my.api",
+					},
+				}).
+				Do(ctx)
 			err = createErr
 			if err == nil {
 				object = response.GetObject()
@@ -296,7 +315,6 @@ var _ = Describe("Generic DAO events", func() {
 		// Create the DAO again, this time with the callback, to do the update:
 		generic, err = NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(_ context.Context, _ Event) error {
 				return errors.New("my error")
@@ -304,12 +322,17 @@ var _ = Describe("Generic DAO events", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		runWithTx(func(ctx context.Context) {
-			_, err = generic.Update().SetObject(&privatev1.Cluster{
-				Id: object.GetId(),
-				Status: &privatev1.ClusterStatus{
-					ApiUrl: "https://your.api",
-				},
-			}).Do(ctx)
+			_, err = generic.Update().
+				SetObject(&privatev1.Cluster{
+					Id: object.GetId(),
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+					Status: &privatev1.ClusterStatus{
+						ApiUrl: "https://your.api",
+					},
+				}).
+				Do(ctx)
 		})
 		Expect(err).To(MatchError("my error"))
 
@@ -335,7 +358,6 @@ var _ = Describe("Generic DAO events", func() {
 		called2 := false
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(context.Context, Event) error {
 				called1 = true
@@ -349,7 +371,13 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		runWithTx(func(ctx context.Context) {
-			_, err = generic.Create().SetObject(&privatev1.Cluster{}).Do(ctx)
+			_, err = generic.Create().
+				SetObject(&privatev1.Cluster{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+				}).
+				Do(ctx)
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(called1).To(BeTrue())
@@ -361,7 +389,6 @@ var _ = Describe("Generic DAO events", func() {
 		called2 := false
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(context.Context, Event) error {
 				called1 = true
@@ -375,7 +402,13 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		runWithTx(func(ctx context.Context) {
-			_, err = generic.Create().SetObject(&privatev1.Cluster{}).Do(ctx)
+			_, err = generic.Create().
+				SetObject(&privatev1.Cluster{
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+				}).
+				Do(ctx)
 		})
 		Expect(err).To(MatchError("my error 1"))
 		Expect(called1).To(BeTrue())
@@ -387,7 +420,6 @@ var _ = Describe("Generic DAO events", func() {
 		events := []Event{}
 		generic, err := NewGenericDAO[*privatev1.Cluster]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			AddEventCallback(func(_ context.Context, event Event) error {
 				events = append(events, event)
@@ -403,6 +435,7 @@ var _ = Describe("Generic DAO events", func() {
 				SetObject(
 					privatev1.Cluster_builder{
 						Metadata: privatev1.Metadata_builder{
+							Tenants: []string{"my-tenant"},
 							Finalizers: []string{
 								"my-finalizer",
 							},

@@ -41,9 +41,13 @@ func (r *CreateRequest[O]) SetObject(value O) *CreateRequest[O] {
 
 // Do executes the create operation and returns the response.
 func (r *CreateRequest[O]) Do(ctx context.Context) (response *CreateResponse[O], err error) {
+	err = r.init(ctx)
+	if err != nil {
+		return
+	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
@@ -51,12 +55,6 @@ func (r *CreateRequest[O]) Do(ctx context.Context) (response *CreateResponse[O],
 }
 
 func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O], err error) {
-	// Initialize the tenants:
-	err = r.initTenants(ctx)
-	if err != nil {
-		return
-	}
-
 	// If the object is nil, create an empty one:
 	if reflect.ValueOf(r.object).IsNil() {
 		r.object = r.newObject()
@@ -75,29 +73,27 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		name        string
 		labels      map[string]string
 		annotations map[string]string
+		tenants     []string
+		creators    []string
 	)
 	if metadata != nil {
 		name = metadata.GetName()
 		labels = metadata.GetLabels()
 		annotations = metadata.GetAnnotations()
+		tenants = metadata.GetTenants()
+		creators = metadata.GetCreators()
 	}
 
-	// Calculate the creators:
-	creators, err := r.calculateCreators(ctx)
-	if err != nil {
-		return
-	}
-
-	// Calculate the tenants:
-	tenants, err := r.calculateTenants(ctx, r.object, r.object)
-	if err != nil {
-		return
-	}
-
-	// Validate that tenants is not empty:
+	// Validate that tenants are not empty:
 	if len(tenants) == 0 {
 		err = errors.New("cannot create object with empty tenants")
 		return
+	}
+
+	// The list of creators may be empty, but not nil, as otherwise that results in a null database column, and
+	// that violates the database constraints.
+	if creators == nil {
+		creators = []string{}
 	}
 
 	// Save the object:
@@ -148,7 +144,19 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 	)
 	err = func() (err error) {
 		start := time.Now()
-		row := r.queryRow(ctx, createOpType, sql, id, name, finalizers, creators, tenants, labelsData, annotationsData, data)
+		row := r.queryRow(
+			ctx,
+			createOpType,
+			sql,
+			id,
+			name,
+			finalizers,
+			creators,
+			tenants,
+			labelsData,
+			annotationsData,
+			data,
+		)
 		defer func() {
 			r.recordOpDuration(createOpType, start, err)
 		}()

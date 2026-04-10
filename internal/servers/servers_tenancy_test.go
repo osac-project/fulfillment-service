@@ -103,15 +103,21 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the template using the DAO directly (this is setup for the test):
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
-		_, err = templatesDao.Create().SetObject(privatev1.ClusterTemplate_builder{
-			Id:          "my-template",
-			Title:       "My template",
-			Description: "My template",
-		}.Build()).Do(ctx)
+		_, err = templatesDao.Create().
+			SetObject(
+				privatev1.ClusterTemplate_builder{
+					Id:          "my-template",
+					Title:       "My template",
+					Description: "My template",
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant", "your-tenant"},
+					}.Build(),
+				}.Build(),
+			).
+			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create the public clusters server that uses the tenancy logic:
@@ -123,13 +129,16 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a cluster using the public server to verify tenant assignment:
-		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
-			Object: publicv1.Cluster_builder{
-				Spec: publicv1.ClusterSpec_builder{
-					Template: "my-template",
+		response, err := clustersServer.Create(
+			ctx,
+			publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
+						Template: "my-template",
+					}.Build(),
 				}.Build(),
 			}.Build(),
-		}.Build())
+		)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response).ToNot(BeNil())
 
@@ -146,49 +155,42 @@ var _ = Describe("Tenancy logic", func() {
 	})
 
 	It("Rejects object creation when assigned tenants are empty", func() {
-		// Create a tenancy logic that returns at least one tenant for setup:
-		setupTenancy := auth.NewMockTenancyLogic(ctrl)
-		setupTenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(collections.NewSet("setup-tenant"), nil).
-			AnyTimes()
-		setupTenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(collections.NewSet("setup-tenant"), nil).
-			AnyTimes()
-		setupTenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("setup-tenant"), nil).
-			AnyTimes()
-
 		// Create the template using the DAO with setup tenancy:
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
-			SetTenancyLogic(setupTenancy).
+			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
-		_, err = templatesDao.Create().SetObject(privatev1.ClusterTemplate_builder{
-			Id:          "my-template",
-			Title:       "My template",
-			Description: "My template",
-		}.Build()).Do(ctx)
+		_, err = templatesDao.Create().
+			SetObject(privatev1.ClusterTemplate_builder{
+				Id:          "my-template",
+				Title:       "My template",
+				Description: "My template",
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{"my-tenant"},
+				}.Build(),
+			}.Build(),
+			).
+			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 
-		// Create a tenancy logic that returns empty tenants:
-		emptyTenancy := auth.NewMockTenancyLogic(ctrl)
-		emptyTenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
+		// Create a tenancy logic that doesn't return assignable tenants:
+		tenancy := auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
 			Return(collections.NewSet[string](), nil).
 			AnyTimes()
-		emptyTenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(collections.NewSet[string](), nil).
+		tenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
+			Return(collections.NewSet("my-tenant"), nil).
 			AnyTimes()
-		emptyTenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet[string](), nil).
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(collections.NewSet("my-tenant"), nil).
 			AnyTimes()
 
 		// Create the clusters server with the empty tenancy logic:
 		clustersServer, err := NewClustersServer().
 			SetLogger(logger).
 			SetAttributionLogic(attribution).
-			SetTenancyLogic(emptyTenancy).
+			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
@@ -225,15 +227,21 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the template using the DAO:
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
-		_, err = templatesDao.Create().SetObject(privatev1.ClusterTemplate_builder{
-			Id:          "my-template",
-			Title:       "My template",
-			Description: "My template",
-		}.Build()).Do(ctx)
+		_, err = templatesDao.Create().
+			SetObject(
+				privatev1.ClusterTemplate_builder{
+					Id:          "my-template",
+					Title:       "My template",
+					Description: "My template",
+					Metadata: privatev1.Metadata_builder{
+						Tenants: []string{"my-tenant"},
+					}.Build(),
+				}.Build(),
+			).
+			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create the clusters server:

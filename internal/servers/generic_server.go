@@ -19,9 +19,11 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
+	"github.com/dustin/go-humanize/english"
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -32,6 +34,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/masks"
@@ -52,28 +55,30 @@ type GenericServerBuilder[O dao.Object] struct {
 // GenericServer is a gRPC server that knows how to implement the List, Get, Create, Update and Delete operators for
 // any object that has identifier and metadata fields.
 type GenericServer[O dao.Object] struct {
-	logger         *slog.Logger
-	service        string
-	dao            *dao.GenericDAO[O]
-	template       proto.Message
-	metadataField  protoreflect.FieldDescriptor
-	nameField      protoreflect.FieldDescriptor
-	listRequest    proto.Message
-	listResponse   proto.Message
-	getRequest     proto.Message
-	getResponse    proto.Message
-	createRequest  proto.Message
-	createResponse proto.Message
-	updateRequest  proto.Message
-	updateResponse proto.Message
-	deleteRequest  proto.Message
-	deleteResponse proto.Message
-	signalRequest  proto.Message
-	signalResponse proto.Message
-	notifier       *database.Notifier
-	pathCompiler   *masks.PathCompiler[O]
-	pathCache      map[string]*masks.Path[O]
-	pathCacheLock  *sync.Mutex
+	logger           *slog.Logger
+	service          string
+	dao              *dao.GenericDAO[O]
+	attributionLogic auth.AttributionLogic
+	tenancyLogic     auth.TenancyLogic
+	template         proto.Message
+	metadataField    protoreflect.FieldDescriptor
+	nameField        protoreflect.FieldDescriptor
+	listRequest      proto.Message
+	listResponse     proto.Message
+	getRequest       proto.Message
+	getResponse      proto.Message
+	createRequest    proto.Message
+	createResponse   proto.Message
+	updateRequest    proto.Message
+	updateResponse   proto.Message
+	deleteRequest    proto.Message
+	deleteResponse   proto.Message
+	signalRequest    proto.Message
+	signalResponse   proto.Message
+	notifier         *database.Notifier
+	pathCompiler     *masks.PathCompiler[O]
+	pathCache        map[string]*masks.Path[O]
+	pathCacheLock    *sync.Mutex
 }
 
 type metadataIface interface {
@@ -81,6 +86,10 @@ type metadataIface interface {
 	GetName() string
 	GetLabels() map[string]string
 	GetAnnotations() map[string]string
+	GetCreators() []string
+	SetCreators([]string)
+	GetTenants() []string
+	SetTenants([]string)
 	GetVersion() int32
 }
 
@@ -154,6 +163,14 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		err = errors.New("service name is mandatory")
 		return
 	}
+	if b.attributionLogic == nil {
+		err = errors.New("attribution logic is mandatory")
+		return
+	}
+	if b.tenancyLogic == nil {
+		err = errors.New("tenancy logic is mandatory")
+		return
+	}
 
 	// Create the path compiler:
 	pathCompiler, err := masks.NewPathCompiler[O]().
@@ -166,25 +183,22 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 
 	// Create the object early so that we can use its methods as callbacks:
 	s := &GenericServer[O]{
-		logger:        b.logger,
-		service:       b.service,
-		notifier:      b.notifier,
-		pathCompiler:  pathCompiler,
-		pathCache:     map[string]*masks.Path[O]{},
-		pathCacheLock: &sync.Mutex{},
+		logger:           b.logger,
+		service:          b.service,
+		attributionLogic: b.attributionLogic,
+		tenancyLogic:     b.tenancyLogic,
+		notifier:         b.notifier,
+		pathCompiler:     pathCompiler,
+		pathCache:        map[string]*masks.Path[O]{},
+		pathCacheLock:    &sync.Mutex{},
 	}
 
 	// Create the DAO:
 	daoBuilder := dao.NewGenericDAO[O]()
 	daoBuilder.SetLogger(b.logger)
+	daoBuilder.SetTenancyLogic(b.tenancyLogic)
 	if b.notifier != nil {
 		daoBuilder.AddEventCallback(s.notifyEvent)
-	}
-	if b.attributionLogic != nil {
-		daoBuilder.SetAttributionLogic(b.attributionLogic)
-	}
-	if b.tenancyLogic != nil {
-		daoBuilder.SetTenancyLogic(b.tenancyLogic)
 	}
 	if b.metricsRegisterer != nil {
 		daoBuilder.SetMetricsRegisterer(b.metricsRegisterer)
@@ -306,17 +320,15 @@ func (b *GenericServerBuilder[O]) findRequestAndResponse(service protoreflect.Se
 }
 
 func (s *GenericServer[O]) List(ctx context.Context, request any, response any) error {
+	// Extract the request message:
 	type requestIface interface {
 		GetOffset() int32
 		GetLimit() int32
 		GetFilter() string
 	}
-	type responseIface interface {
-		SetSize(int32)
-		SetTotal(int32)
-		SetItems([]O)
-	}
 	requestMsg := request.(requestIface)
+
+	// List the objects:
 	daoResponse, err := s.dao.List().
 		SetFilter(requestMsg.GetFilter()).
 		SetOffset(requestMsg.GetOffset()).
@@ -334,33 +346,41 @@ func (s *GenericServer[O]) List(ctx context.Context, request any, response any) 
 		)
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to list")
 	}
+
+	// Create the response message:
+	type responseIface interface {
+		SetSize(int32)
+		SetTotal(int32)
+		SetItems([]O)
+	}
 	responseMsg := proto.Clone(s.listResponse).(responseIface)
 	responseMsg.SetSize(daoResponse.GetSize())
 	responseMsg.SetTotal(daoResponse.GetTotal())
 	responseMsg.SetItems(daoResponse.GetItems())
 	s.setPointer(response, responseMsg)
+
 	return nil
 }
 
 func (s *GenericServer[O]) Get(ctx context.Context, request any, response any) error {
+	// Extract the object identifier from the request:
 	type requestIface interface {
 		GetId() string
 	}
-	type responseIface interface {
-		SetObject(O)
-	}
 	requestMsg := request.(requestIface)
-	id := requestMsg.GetId()
-	if id == "" {
+	requestId := requestMsg.GetId()
+	if requestId == "" {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "identifier is mandatory")
 	}
+
+	// Fetch the object:
 	daoResponse, err := s.dao.Get().
-		SetId(id).
+		SetId(requestId).
 		Do(ctx)
 	if err != nil {
 		var notFoundErr *dao.ErrNotFound
 		if errors.As(err, &notFoundErr) {
-			return grpcstatus.Errorf(grpccodes.NotFound, "object with identifier '%s' not found", id)
+			return grpcstatus.Errorf(grpccodes.NotFound, "object with identifier '%s' not found", requestId)
 		}
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
@@ -369,41 +389,67 @@ func (s *GenericServer[O]) Get(ctx context.Context, request any, response any) e
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to get",
-			slog.String("id", id),
+			slog.String("id", requestId),
 			slog.Any("error", err),
 		)
-		return grpcstatus.Errorf(grpccodes.Internal, "failed to get object with identifier '%s'", id)
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to get object with identifier '%s'", requestId)
 	}
 	object := daoResponse.GetObject()
+
+	// Create the response message:
+	type responseIface interface {
+		SetObject(O)
+	}
 	responseMsg := proto.Clone(s.getResponse).(responseIface)
 	responseMsg.SetObject(object)
 	s.setPointer(response, responseMsg)
+
 	return nil
 }
 
 func (s *GenericServer[O]) Create(ctx context.Context, request any, response any) error {
+	// Extract the object from the request message:
 	type requestIface interface {
 		GetObject() O
 	}
-	type responseIface interface {
-		SetObject(O)
-	}
 	requestMsg := request.(requestIface)
-	object := requestMsg.GetObject()
-	if !s.isNil(object) {
-		metadata := s.getMetadata(object)
-		if metadata != nil {
-			err := s.validateMetadata(metadata)
+	requestObject := requestMsg.GetObject()
+	if s.isNil(requestObject) {
+		requestObject = proto.Clone(s.template).(O)
+	} else {
+		requestMetadata := s.getMetadata(requestObject)
+		if requestMetadata != nil {
+			err := s.validateMetadata(requestMetadata)
 			if err != nil {
 				return err
 			}
 		}
 	}
-	daoRequest := s.dao.Create()
-	if !s.isNil(object) {
-		daoRequest.SetObject(object)
+
+	// Calculate the assigned creators:
+	assignedCreators, err := s.determineAssignedCreators(ctx)
+	if err != nil {
+		return err
 	}
-	daoResponse, err := daoRequest.Do(ctx)
+	err = s.setCreators(ctx, requestObject, assignedCreators)
+	if err != nil {
+		return err
+	}
+
+	// Calculate the assigned tenants:
+	assignedTenants, err := s.determineAssignedTenants(ctx, requestObject, requestObject)
+	if err != nil {
+		return err
+	}
+	err = s.setTenants(ctx, requestObject, assignedTenants)
+	if err != nil {
+		return err
+	}
+
+	// Save the object:
+	daoResponse, err := s.dao.Create().
+		SetObject(requestObject).
+		Do(ctx)
 	if err != nil {
 		var alreadyExistsErr *dao.ErrAlreadyExists
 		if errors.As(err, &alreadyExistsErr) {
@@ -424,35 +470,39 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 		)
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to create object")
 	}
-	object = daoResponse.GetObject()
+	responseObject := daoResponse.GetObject()
+
+	// Create the response message:
+	type responseIface interface {
+		SetObject(O)
+	}
 	responseMsg := proto.Clone(s.createResponse).(responseIface)
-	responseMsg.SetObject(object)
+	responseMsg.SetObject(responseObject)
 	s.setPointer(response, responseMsg)
+
 	return nil
 }
 
 func (s *GenericServer[O]) Update(ctx context.Context, request any, response any) error {
+	// Extract the object from the request message:
 	type requestIface interface {
 		GetObject() O
 		GetUpdateMask() *fieldmaskpb.FieldMask
 		GetLock() bool
 	}
-	type responseIface interface {
-		SetObject(O)
-	}
 	requestMsg := request.(requestIface)
-	input := requestMsg.GetObject()
-	if s.isNil(input) {
+	requestObject := requestMsg.GetObject()
+	if s.isNil(requestObject) {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
 	}
-	id := input.GetId()
-	if id == "" {
+	requestId := requestObject.GetId()
+	if requestId == "" {
 		return grpcstatus.Errorf(grpccodes.Internal, "object identifier is mandatory")
 	}
 
 	// Fetch the current representation of the object:
 	getResponse, err := s.dao.Get().
-		SetId(id).
+		SetId(requestId).
 		SetLock(true).
 		Do(ctx)
 	if err != nil {
@@ -461,7 +511,7 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 			return grpcstatus.Errorf(
 				grpccodes.NotFound,
 				"object with identifier '%s' not found",
-				id,
+				requestId,
 			)
 		}
 		var deniedErr *dao.ErrDenied
@@ -471,83 +521,123 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to get object",
-			slog.String("id", id),
+			slog.String("id", requestId),
 			slog.Any("error", err),
 		)
 		return grpcstatus.Errorf(
 			grpccodes.Internal,
 			"failed to get object with identifier '%s'",
-			id,
+			requestId,
 		)
 	}
-	object := getResponse.GetObject()
-	if s.isNil(object) {
+	currentObject := getResponse.GetObject()
+	if s.isNil(currentObject) {
 		return grpcstatus.Errorf(
 			grpccodes.InvalidArgument,
 			"object with identifier '%s' doesn't exist",
-			id,
+			requestId,
 		)
 	}
 
-	// Update the fields indicated in the mask, or all the fields if there is no mask:
-	mask := requestMsg.GetUpdateMask()
-	if mask != nil {
-		fieldPaths, err := s.compilePaths(mask.GetPaths())
+	// If optimistic locking is enabled then compare the version provided by the caller with the current
+	// version before applying any changes:
+	if requestMsg.GetLock() {
+		requestMetadata := s.getMetadata(requestObject)
+		currentMetadata := s.getMetadata(currentObject)
+		if requestMetadata != nil && currentMetadata != nil {
+			if requestMetadata.GetVersion() != currentMetadata.GetVersion() {
+				return grpcstatus.Errorf(
+					grpccodes.Aborted,
+					"object with identifier '%s' has been modified: requested version is %d "+
+						"but current version is %d",
+					requestId, requestMetadata.GetVersion(), currentMetadata.GetVersion(),
+				)
+			}
+		}
+	}
+
+	// Clone the current object so that in-place modifications (mask application, tenant calculation) don't
+	// affect the original that we use for the equivalence comparison later.
+	tmpObject := proto.Clone(currentObject).(O)
+
+	// Update the fields indicated in the update mask, or all the fields if there is no update mask:
+	requestMask := requestMsg.GetUpdateMask()
+	if requestMask != nil {
+		fieldPaths, err := s.compilePaths(requestMask.GetPaths())
 		if err != nil {
 			return err
 		}
 		for _, fieldPath := range fieldPaths {
-			value, ok := fieldPath.Get(input)
+			value, ok := fieldPath.Get(requestObject)
 			if ok {
-				fieldPath.Set(object, value)
+				fieldPath.Set(tmpObject, value)
 			} else {
-				fieldPath.Clear(object)
+				fieldPath.Clear(tmpObject)
 			}
 		}
 	} else {
-		object = input
+		tmpObject = requestObject
 	}
 
-	// Validate the metadata:
-	metadata := s.getMetadata(object)
-	if metadata != nil {
-		err = s.validateMetadata(metadata)
+	// Validate the resulting metadata:
+	tmpMetadata := s.getMetadata(tmpObject)
+	if tmpMetadata != nil {
+		err = s.validateMetadata(tmpMetadata)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Save the result:
-	updateResponse, err := s.dao.Update().
-		SetObject(object).
-		SetLock(requestMsg.GetLock()).
-		Do(ctx)
+	// Calculate the tenants for the updated object:
+	assignedTenants, err := s.determineAssignedTenants(ctx, tmpObject, currentObject)
 	if err != nil {
-		var conflictErr *dao.ErrConflict
-		if errors.As(err, &conflictErr) {
-			return grpcstatus.Errorf(grpccodes.Aborted, "%s", conflictErr.Error())
-		}
-		var deniedErr *dao.ErrDenied
-		if errors.As(err, &deniedErr) {
-			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
-		}
-		s.logger.ErrorContext(
-			ctx,
-			"Failed to update object",
-			slog.String("id", id),
-			slog.Any("error", err),
-		)
-		return grpcstatus.Errorf(
-			grpccodes.Internal,
-			"failed to update object with identifier '%s'",
-			id,
-		)
+		return err
 	}
-	object = updateResponse.GetObject()
+	err = s.setTenants(ctx, tmpObject, assignedTenants)
+	if err != nil {
+		return err
+	}
 
+	// Save the object only if there is any actual difference:
+	var responseObject O
+	if !s.equivalentObjects(tmpObject, currentObject) {
+		updateResponse, err := s.dao.Update().
+			SetObject(tmpObject).
+			Do(ctx)
+		if err != nil {
+			var conflictErr *dao.ErrConflict
+			if errors.As(err, &conflictErr) {
+				return grpcstatus.Errorf(grpccodes.Aborted, "%s", conflictErr.Error())
+			}
+			var deniedErr *dao.ErrDenied
+			if errors.As(err, &deniedErr) {
+				return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+			}
+			s.logger.ErrorContext(
+				ctx,
+				"Failed to update object",
+				slog.String("id", requestId),
+				slog.Any("error", err),
+			)
+			return grpcstatus.Errorf(
+				grpccodes.Internal,
+				"failed to update object with identifier '%s'",
+				requestId,
+			)
+		}
+		responseObject = updateResponse.GetObject()
+	} else {
+		responseObject = tmpObject
+	}
+
+	// Create the response message:
+	type responseIface interface {
+		SetObject(O)
+	}
 	responseMsg := proto.Clone(s.updateResponse).(responseIface)
-	responseMsg.SetObject(object)
+	responseMsg.SetObject(responseObject)
 	s.setPointer(response, responseMsg)
+
 	return nil
 }
 
@@ -579,18 +669,19 @@ func (s *GenericServer[O]) compilePath(path string) (result *masks.Path[O], err 
 }
 
 func (s *GenericServer[O]) Delete(ctx context.Context, request any, response any) error {
+	// Extract object identifier from the request:
 	type requestIface interface {
 		GetId() string
 	}
-	type responseIface interface {
-	}
 	requestMsg := request.(requestIface)
-	id := requestMsg.GetId()
-	if id == "" {
+	requestId := requestMsg.GetId()
+	if requestId == "" {
 		return grpcstatus.Errorf(grpccodes.Internal, "object identifier is mandatory")
 	}
+
+	// Delete the object:
 	_, err := s.dao.Delete().
-		SetId(id).
+		SetId(requestId).
 		Do(ctx)
 	if err != nil {
 		var notFoundErr *dao.ErrNotFound
@@ -598,7 +689,7 @@ func (s *GenericServer[O]) Delete(ctx context.Context, request any, response any
 			return grpcstatus.Errorf(
 				grpccodes.NotFound,
 				"object with identifier '%s' not found",
-				id,
+				requestId,
 			)
 		}
 		var deniedErr *dao.ErrDenied
@@ -608,31 +699,37 @@ func (s *GenericServer[O]) Delete(ctx context.Context, request any, response any
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to delete object",
-			slog.String("id", id),
+			slog.String("id", requestId),
 			slog.Any("error", err),
 		)
 		return grpcstatus.Errorf(
 			grpccodes.Internal,
 			"failed to delete object with identifier '%s'",
-			id,
+			requestId,
 		)
 	}
-	responseMsg := proto.Clone(s.deleteResponse).(responseIface)
+
+	// Create the response message:
+	responseMsg := proto.Clone(s.deleteResponse)
 	s.setPointer(response, responseMsg)
+
 	return nil
 }
 
 func (s *GenericServer[O]) Signal(ctx context.Context, request any, response any) error {
+	// Extract the object identifier from the request:
 	type requestIface interface {
 		GetId() string
 	}
 	requestMsg := request.(requestIface)
-	id := requestMsg.GetId()
-	if id == "" {
+	requestId := requestMsg.GetId()
+	if requestId == "" {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "identifier is mandatory")
 	}
+
+	// Fetch the current representation of the object:
 	daoResponse, err := s.dao.Get().
-		SetId(id).
+		SetId(requestId).
 		Do(ctx)
 	if err != nil {
 		var notFoundErr *dao.ErrNotFound
@@ -640,7 +737,7 @@ func (s *GenericServer[O]) Signal(ctx context.Context, request any, response any
 			return grpcstatus.Errorf(
 				grpccodes.NotFound,
 				"object with identifier '%s' not found",
-				id,
+				requestId,
 			)
 		}
 		var deniedErr *dao.ErrDenied
@@ -650,44 +747,47 @@ func (s *GenericServer[O]) Signal(ctx context.Context, request any, response any
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to signal object",
-			slog.String("id", id),
+			slog.String("id", requestId),
 			slog.Any("error", err),
 		)
 		return grpcstatus.Errorf(
 			grpccodes.Internal,
 			"failed to signal object with identifier '%s'",
-			id,
+			requestId,
 		)
 	}
 	object := daoResponse.GetObject()
-	event := privatev1.Event_builder{
-		Id:   uuid.New(),
-		Type: privatev1.EventType_EVENT_TYPE_OBJECT_SIGNALED,
-	}.Build()
-	err = s.setPayload(event, object)
-	if err != nil {
-		return err
-	}
+
+	// Send the signal event:
 	if s.notifier != nil {
+		event := privatev1.Event_builder{
+			Id:   uuid.New(),
+			Type: privatev1.EventType_EVENT_TYPE_OBJECT_SIGNALED,
+		}.Build()
+		err = s.setPayload(event, object)
+		if err != nil {
+			return err
+		}
 		err = s.notifier.Notify(ctx, event)
 		if err != nil {
 			s.logger.ErrorContext(
 				ctx,
 				"Failed to send signal notification",
-				slog.String("id", id),
+				slog.String("id", requestId),
 				slog.Any("error", err),
 			)
 		}
 	}
+
+	// Create the response:
 	responseMsg := proto.Clone(s.signalResponse)
 	s.setPointer(response, responseMsg)
+
 	return nil
 }
 
 // notifyEvent converts the DAO event into an API event and publishes it using the PostgreSQL NOTIFY command.
 func (s *GenericServer[O]) notifyEvent(ctx context.Context, e dao.Event) error {
-	// TODO: This is the only part of the generic server that depends on specific object types. Is there a way
-	// to avoid that?
 	event := &privatev1.Event{}
 	event.SetId(uuid.New())
 	switch e.Type {
@@ -986,4 +1086,279 @@ func (s *GenericServer[O]) getMetadata(object O) metadataIface {
 		return nil
 	}
 	return objectReflect.Get(s.metadataField).Message().Interface().(metadataIface)
+}
+
+func (s *GenericServer[O]) setMetadata(object O, metadata metadataIface) {
+	objectReflect := object.ProtoReflect()
+	if metadata != nil {
+		objectReflect.Set(s.metadataField, protoreflect.ValueOfMessage(metadata.ProtoReflect()))
+	} else {
+		objectReflect.Clear(s.metadataField)
+	}
+}
+
+// determineAssignedCreators calls the attribution logic to determine the creators that will be assigned to an object that
+// is being created or updated. In case of error it returns a gRPC error that can be directly returned to the client.
+func (s *GenericServer[O]) determineAssignedCreators(ctx context.Context) (result collections.Set[string], err error) {
+	result, err = s.attributionLogic.DetermineAssignedCreators(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine assigned creators",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assigned creators")
+		return
+	}
+	return
+}
+
+// setCreators sets the creators in the object's metadata, creating the metadata if necessary. In case of error it
+// returns a gRPC error that can be directly returned to the client.
+func (s *GenericServer[O]) setCreators(ctx context.Context, object O, creators collections.Set[string]) error {
+	metadata := s.getMetadata(object)
+	if metadata == nil {
+		metadata = s.newMetadata()
+		s.setMetadata(object, metadata)
+	}
+	if !creators.Finite() {
+		s.logger.ErrorContext(
+			ctx,
+			"Trying to set an infinite creator set",
+			slog.Any("object", object),
+		)
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to set creators")
+	}
+	metadata.SetCreators(creators.Inclusions())
+	return nil
+}
+
+// determineAssignedTenants calls the tenancy logic to determine what tenants will be assigned to an object that is
+// being created or updated. In case of error it returns a gRPC error that can be directly returned to the client.
+func (s *GenericServer[O]) determineAssignedTenants(ctx context.Context,
+	requestObject, currentObject O) (result collections.Set[string], err error) {
+	// Check that there are visible tenants:
+	visibleTenants, err := s.tenancyLogic.DetermineVisibleTenants(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine visible tenants",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine visible tenants")
+		return
+	}
+	if visibleTenants.Empty() {
+		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no visible tenants")
+		return
+	}
+
+	// Determine the tenants that can be assigned to the object:
+	assignableTenants, err := s.tenancyLogic.DetermineAssignableTenants(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine assignable tenants",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assignable tenants")
+		return
+	}
+	if assignableTenants.Empty() {
+		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no assignable tenants")
+		return
+	}
+
+	// Determine the tenants that are assigned by default to the object:
+	defaultTenants, err := s.tenancyLogic.DetermineDefaultTenants(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine default tenants",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default tenants")
+		return
+	}
+	if defaultTenants.Empty() {
+		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no default tenants")
+		return
+	}
+
+	// Get the tenants from the request and current object:
+	requestTenants, err := s.getTenants(ctx, requestObject)
+	if err != nil {
+		return
+	}
+	currentTenants, err := s.getTenants(ctx, currentObject)
+	if err != nil {
+		return
+	}
+
+	// Check that the user isn't tring to assign tenants that are invisible to them:
+	invisibleTenants := requestTenants.Difference(visibleTenants)
+	if !invisibleTenants.Empty() {
+		s.logger.WarnContext(
+			ctx,
+			"User is trying to assign tenants that are invisible to them",
+			slog.Any("visible", visibleTenants.Inclusions()),
+			slog.Any("requested", requestTenants.Inclusions()),
+		)
+		invisibleIds := invisibleTenants.Inclusions()
+		if len(invisibleIds) == 1 {
+			err = grpcstatus.Errorf(
+				grpccodes.PermissionDenied,
+				"tenant '%s' doesn't exist",
+				invisibleIds[0],
+			)
+			return
+		}
+		sort.Strings(invisibleIds)
+		for i, invisibleId := range invisibleIds {
+			invisibleIds[i] = fmt.Sprintf("'%s'", invisibleId)
+		}
+		err = grpcstatus.Errorf(
+			grpccodes.PermissionDenied,
+			"tenants %s don't exist",
+			english.WordSeries(invisibleIds, "and"),
+		)
+		return
+	}
+
+	// Check that the user isn't tring to assign tenants that are unassignableTenants to them:
+	unassignableTenants := requestTenants.Difference(assignableTenants)
+	if !unassignableTenants.Empty() {
+		s.logger.WarnContext(
+			ctx,
+			"User is trying to assign tenants that are unassignable",
+			slog.Any("assignable", assignableTenants.Inclusions()),
+			slog.Any("requested", requestTenants.Inclusions()),
+		)
+		unassignableIds := unassignableTenants.Inclusions()
+		if len(unassignableIds) == 1 {
+			err = grpcstatus.Errorf(
+				grpccodes.PermissionDenied,
+				"tenant '%s' can't be assigned",
+				unassignableIds[0],
+			)
+			return
+		}
+		sort.Strings(unassignableIds)
+		for i, unassignableId := range unassignableIds {
+			unassignableIds[i] = fmt.Sprintf("'%s'", unassignableId)
+		}
+		err = grpcstatus.Errorf(
+			grpccodes.PermissionDenied,
+			"tenants %s can't be assigned",
+			english.WordSeries(unassignableIds, "and"),
+		)
+		return
+	}
+
+	// Start with the tenants from the request, or the current tenants, or the default tenants:
+	var initialTenants collections.Set[string]
+	if !requestTenants.Empty() {
+		initialTenants = requestTenants
+	} else if !currentTenants.Empty() {
+		initialTenants = currentTenants
+	} else {
+		initialTenants = defaultTenants
+	}
+
+	// To the initial tenants we add the assignable tenants that are visible to the user:
+	result = initialTenants.Union(assignableTenants.Intersection(visibleTenants.Negate()))
+	return
+}
+
+// getTenants extracts the tenants from an object's metadata. In case of error it returns a gRPC error that can be
+// directly returned to the client.
+func (s *GenericServer[O]) getTenants(ctx context.Context, object O) (result collections.Set[string], err error) {
+	var tenants []string
+	metadata := s.getMetadata(object)
+	if metadata != nil {
+		tenants = metadata.GetTenants()
+	}
+	result = collections.NewSet(tenants...)
+	return
+}
+
+// setTenants sets the tenants in the object's metadata, creating the metadata if necessary. In case of error it
+// returns a gRPC error that can be directly returned to the client.
+func (s *GenericServer[O]) setTenants(ctx context.Context, object O, tenants collections.Set[string]) error {
+	metadata := s.getMetadata(object)
+	if metadata == nil {
+		metadata = s.newMetadata()
+		s.setMetadata(object, metadata)
+	}
+	if !tenants.Finite() {
+		s.logger.ErrorContext(
+			ctx,
+			"Trying to set an infinite tenant set",
+			slog.Any("object", object),
+		)
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to set tenants")
+	}
+	metadata.SetTenants(tenants.Inclusions())
+	return nil
+}
+
+// newMetadata creates a new empty metadata message for the object type.
+func (s *GenericServer[O]) newMetadata() metadataIface {
+	var object O
+	objectReflect := object.ProtoReflect()
+	return objectReflect.NewField(s.metadataField).Message().Interface().(metadataIface)
+}
+
+// equivalentObjects checks if two objects are equivalentObjects, meaning they are equal except for the creation
+// timestamp, deletion timestamp, and version fields in the metadata.
+func (s *GenericServer[O]) equivalentObjects(x, y O) bool {
+	return s.equivalentMessages(x.ProtoReflect(), y.ProtoReflect())
+}
+
+func (s *GenericServer[O]) equivalentMessages(x, y protoreflect.Message) bool {
+	if x.IsValid() != y.IsValid() {
+		return false
+	}
+	fields := x.Descriptor().Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		xPresent := x.Has(field)
+		yPresent := y.Has(field)
+		if xPresent != yPresent {
+			return false
+		}
+		if !xPresent && !yPresent {
+			continue
+		}
+		xValue := x.Get(field)
+		yValue := y.Get(field)
+		if field.Name() == "metadata" {
+			if !s.equivalentMetadata(xValue.Message(), yValue.Message()) {
+				return false
+			}
+		} else if !xValue.Equal(yValue) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *GenericServer[O]) equivalentMetadata(x, y protoreflect.Message) bool {
+	if x.IsValid() != y.IsValid() {
+		return false
+	}
+	fields := x.Descriptor().Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+		name := field.Name()
+		if name == "creation_timestamp" || name == "deletion_timestamp" || name == "version" {
+			continue
+		}
+		xv := x.Get(field)
+		yv := y.Get(field)
+		if !xv.Equal(yv) {
+			return false
+		}
+	}
+	return true
 }

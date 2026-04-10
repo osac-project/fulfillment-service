@@ -25,36 +25,38 @@ import (
 // ListRequest represents a request to list objects with pagination and filtering.
 type ListRequest[O Object] struct {
 	request[O]
-	args struct {
-		filter string
-		limit  int32
-		offset int32
-	}
+	filter string
+	limit  int32
+	offset int32
 }
 
 // SetFilter sets the CEL expression that defines which objects should be returned.
 func (r *ListRequest[O]) SetFilter(value string) *ListRequest[O] {
-	r.args.filter = value
+	r.filter = value
 	return r
 }
 
 // SetLimit sets the maximum number of items to return.
 func (r *ListRequest[O]) SetLimit(value int32) *ListRequest[O] {
-	r.args.limit = value
+	r.limit = value
 	return r
 }
 
 // SetOffset sets the starting point for pagination.
 func (r *ListRequest[O]) SetOffset(value int32) *ListRequest[O] {
-	r.args.offset = value
+	r.offset = value
 	return r
 }
 
 // Do executes the list operation and returns the response.
 func (r *ListRequest[O]) Do(ctx context.Context) (response *ListResponse[O], err error) {
+	err = r.init(ctx)
+	if err != nil {
+		return
+	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
@@ -62,26 +64,23 @@ func (r *ListRequest[O]) Do(ctx context.Context) (response *ListResponse[O], err
 }
 
 func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err error) {
-	// Initialize the tenants:
-	err = r.initTenants(ctx)
+	// Add tenant visibility filter:
+	err = r.addTenancyFilter(ctx)
 	if err != nil {
 		return
 	}
 
-	// Calculate the filter:
-	if r.args.filter != "" {
+	// Calculate the requested filter:
+	if r.filter != "" {
 		var filter string
-		filter, err = r.dao.filterTranslator.Translate(ctx, r.args.filter)
+		filter, err = r.dao.filterTranslator.Translate(ctx, r.filter)
 		if err != nil {
 			return
 		}
+		if r.sql.filter.Len() > 0 {
+			r.sql.filter.WriteString(` and `)
+		}
 		r.sql.filter.WriteString(filter)
-	}
-
-	// Add tenant visibility filter:
-	err = r.addTenancyFilter()
-	if err != nil {
-		return
 	}
 
 	// Calculate the order clause:
@@ -91,7 +90,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 	var buffer strings.Builder
 	fmt.Fprintf(&buffer, `select count(*) from %s`, r.dao.table)
 	if r.sql.filter.Len() > 0 {
-		buffer.WriteString(" where ")
+		buffer.WriteString(` where `)
 		buffer.WriteString(r.sql.filter.String())
 	}
 	sql := buffer.String()
@@ -131,21 +130,21 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 		r.dao.table,
 	)
 	if r.sql.filter.Len() > 0 {
-		buffer.WriteString(" where ")
+		buffer.WriteString(` where `)
 		buffer.WriteString(r.sql.filter.String())
 	}
 	if order != "" {
-		buffer.WriteString(" order by ")
+		buffer.WriteString(` order by `)
 		buffer.WriteString(order)
 	}
 
 	// Add the offset:
-	offset := max(r.args.offset, 0)
+	offset := max(r.offset, 0)
 	r.sql.params = append(r.sql.params, offset)
-	fmt.Fprintf(&buffer, " offset $%d", len(r.sql.params))
+	fmt.Fprintf(&buffer, ` offset $%d`, len(r.sql.params))
 
 	// Add the limit:
-	limit := r.args.limit
+	limit := r.limit
 	if limit < 0 {
 		limit = 0
 	} else if limit == 0 {
@@ -154,7 +153,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 		limit = r.dao.maxLimit
 	}
 	r.sql.params = append(r.sql.params, limit)
-	fmt.Fprintf(&buffer, " limit $%d", len(r.sql.params))
+	fmt.Fprintf(&buffer, ` limit $%d`, len(r.sql.params))
 
 	// Execute the SQL query:
 	sql = buffer.String()

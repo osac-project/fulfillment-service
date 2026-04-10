@@ -72,7 +72,6 @@ var _ = Describe("Virtual networks server", func() {
 		// Create a default NetworkClass for tests:
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
@@ -80,6 +79,9 @@ var _ = Describe("Virtual networks server", func() {
 		nc := privatev1.NetworkClass_builder{
 			Id:                     "default",
 			ImplementationStrategy: "ovn-kubernetes",
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
 				SupportsIpv6:      true,

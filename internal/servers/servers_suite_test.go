@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
@@ -35,6 +36,7 @@ var (
 	server      *DatabaseServer
 	attribution auth.AttributionLogic
 	tenancy     auth.TenancyLogic
+	visibility  collections.Set[string]
 )
 
 var _ = BeforeSuite(func() {
@@ -58,6 +60,9 @@ var _ = BeforeSuite(func() {
 		SetLogger(logger).
 		Build()
 	Expect(err).ToNot(HaveOccurred())
+
+	// Create the set of visible tenants:
+	visibility = collections.NewUniversal[string]()
 
 	// Create the database server:
 	server = MakeDatabaseServer()

@@ -102,7 +102,6 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 	// Create the templates DAO:
 	templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 		SetLogger(b.logger).
-		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
@@ -113,7 +112,6 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 	// Create the host classes DAO:
 	hostClassesDao, err := dao.NewGenericDAO[*privatev1.HostClass]().
 		SetLogger(b.logger).
-		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
@@ -249,7 +247,7 @@ func (s *PrivateClustersServer) lookupTemplate(ctx context.Context,
 	switch response.GetSize() {
 	case 0:
 		err = grpcstatus.Errorf(
-			grpccodes.NotFound,
+			grpccodes.InvalidArgument,
 			"there is no template with identifier or name '%s'",
 			key,
 		)

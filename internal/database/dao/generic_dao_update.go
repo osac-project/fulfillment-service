@@ -17,7 +17,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -25,29 +28,24 @@ import (
 // UpdateRequest represents a request to update an existing object.
 type UpdateRequest[O Object] struct {
 	request[O]
-	args struct {
-		object O
-		lock   bool
-	}
+	object O
 }
 
 // SetObject sets the object to update.
 func (r *UpdateRequest[O]) SetObject(value O) *UpdateRequest[O] {
-	r.args.object = value
-	return r
-}
-
-// SetLock sets whether to enable optimistic locking. This is optional and defaults to false.
-func (r *UpdateRequest[O]) SetLock(value bool) *UpdateRequest[O] {
-	r.args.lock = value
+	r.object = value
 	return r
 }
 
 // Do executes the update operation and returns the response.
 func (r *UpdateRequest[O]) Do(ctx context.Context) (response *UpdateResponse[O], err error) {
+	err = r.init(ctx)
+	if err != nil {
+		return
+	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
@@ -55,160 +53,124 @@ func (r *UpdateRequest[O]) Do(ctx context.Context) (response *UpdateResponse[O],
 }
 
 func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O], err error) {
-	// Initialize the tenants:
-	err = r.initTenants(ctx)
+	// Add the where clause to filter by tenant:
+	err = r.addTenancyFilter(ctx)
 	if err != nil {
 		return
 	}
 
-	// Get the current object:
-	id := r.args.object.GetId()
+	// Add the where clause to filter by identifier:
+	id := r.object.GetId()
 	if id == "" {
 		err = errors.New("object identifier is mandatory")
 		return
 	}
-	current, err := r.get(ctx, id, true)
-	if err != nil {
-		return
+	r.sql.params = append(r.sql.params, id)
+	if r.sql.filter.Len() > 0 {
+		r.sql.filter.WriteString(` and`)
 	}
+	fmt.Fprintf(&r.sql.filter, ` id = $%d`, len(r.sql.params))
 
-	// Get the requestedMetadata:
-	requestedMetadata := r.getMetadata(r.args.object)
-	currentMetadata := r.getMetadata(current)
-
-	// If optimistic locking is enabled then we need to compare the version provided by the caller with the version
-	// of the current object. If they are different then we need to return a conflict error.
-	if r.args.lock {
-		requestedVersion := requestedMetadata.GetVersion()
-		currentVersion := currentMetadata.GetVersion()
-		if requestedVersion != currentVersion {
-			err = &ErrConflict{
-				ID:               id,
-				RequestedVersion: requestedVersion,
-				CurrentVersion:   currentVersion,
-			}
-			return
-		}
-	}
-
-	// Do nothing if there are no changes:
-	if r.equivalent(current, r.args.object) {
-		response = &UpdateResponse[O]{
-			object: current,
-		}
-		return
-	}
-
-	// Get the requested finalizers, name, labels and annotations:
-	requestedFinalizers := r.getFinalizers(requestedMetadata)
+	// Get the requested finalizers, name, labels, annotations and tenants:
+	metadata := r.getMetadata(r.object)
+	finalizers := r.getFinalizers(metadata)
 	var (
-		requestedName        string
-		requestedLabels      map[string]string
-		requestedAnnotations map[string]string
+		name        string
+		labels      map[string]string
+		annotations map[string]string
+		tenants     []string
 	)
-	if requestedMetadata != nil {
-		requestedName = requestedMetadata.GetName()
-		requestedLabels = requestedMetadata.GetLabels()
-		requestedAnnotations = requestedMetadata.GetAnnotations()
+	if metadata != nil {
+		name = metadata.GetName()
+		labels = metadata.GetLabels()
+		annotations = metadata.GetAnnotations()
+		tenants = metadata.GetTenants()
 	}
 
-	// Get the requested tenants::
-	requestedTenants, err := r.calculateTenants(ctx, current, r.args.object)
+	// Marshal the data, labels and annotations:
+	data, err := r.marshalData(r.object)
 	if err != nil {
 		return
 	}
-
-	// Marshal the requestedData, labels and annotations:
-	requestedData, err := r.marshalData(r.args.object)
+	labelsData, err := r.marshalMap(labels)
 	if err != nil {
 		return
 	}
-	requestedLabelsData, err := r.marshalMap(requestedLabels)
-	if err != nil {
-		return
-	}
-	requestedAnnotationsData, err := r.marshalMap(requestedAnnotations)
+	annotationsData, err := r.marshalMap(annotations)
 	if err != nil {
 		return
 	}
 
-	// Prepare the SQL statement:
-	sql := fmt.Sprintf(
-		`
-		update %s set
-			name = $1,
-			finalizers = $2,
-			labels = $3,
-			annotations = $4,
-			data = $5,
-			tenants = $6,
-			version = version + 1
-		where
-			id = $7
-		returning
-			creation_timestamp,
-			deletion_timestamp,
-			creators,
-			version
-		`,
-		r.dao.table,
-	)
+	// Build the SQL statement. When optimistic locking is enabled add a version condition to the where clause
+	// so that the update only succeeds if the version matches.
+	var buffer strings.Builder
+	fmt.Fprintf(&buffer, `update %s set`, r.dao.table)
+	addColumn := func(name string, value any) {
+		r.sql.params = append(r.sql.params, value)
+		fmt.Fprintf(&buffer, ` %s = $%d,`, name, len(r.sql.params))
+	}
+	addColumn("name", name)
+	addColumn("finalizers", finalizers)
+	addColumn("labels", labelsData)
+	addColumn("annotations", annotationsData)
+	addColumn("tenants", tenants)
+	addColumn("data", data)
+	fmt.Fprintf(&buffer, ` version = version + 1`)
+	fmt.Fprintf(&buffer, ` where %s`, r.sql.filter.String())
+	fmt.Fprintf(&buffer, ` returning creation_timestamp, deletion_timestamp, creators, version`)
 
 	// Run the SQL statement:
+	sql := buffer.String()
 	var (
-		updatedCreationTs time.Time
-		updatedDeletionTs time.Time
-		updatedCreators   []string
-		updatedVersion    int32
+		creationTs time.Time
+		deletionTs time.Time
+		creators   []string
+		version    int32
 	)
 	err = func() (err error) {
-		row := r.queryRow(
-			ctx,
-			updateOpType,
-			sql,
-			requestedName,
-			requestedFinalizers,
-			requestedLabelsData,
-			requestedAnnotationsData,
-			requestedData,
-			requestedTenants,
-			id,
-		)
+		row := r.queryRow(ctx, updateOpType, sql, r.sql.params...)
 		start := time.Now()
 		defer func() {
 			r.recordOpDuration(updateOpType, start, err)
 		}()
-		return row.Scan(
-			&updatedCreationTs,
-			&updatedDeletionTs,
-			&updatedCreators,
-			&updatedVersion,
+		err = row.Scan(
+			&creationTs,
+			&deletionTs,
+			&creators,
+			&version,
 		)
+		return
 	}()
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = &ErrNotFound{
+			IDs: []string{id},
+		}
+		return
+	}
 	if err != nil {
 		return
 	}
 
 	// Prepare the result:
-	updatedObject := r.cloneObject(r.args.object)
-	updatedMetadata := r.makeMetadata(makeMetadataArgs{
-		creationTs:  updatedCreationTs,
-		deletionTs:  updatedDeletionTs,
-		finalizers:  requestedFinalizers,
-		creators:    updatedCreators,
-		tenants:     requestedTenants,
-		name:        requestedName,
-		labels:      requestedLabels,
-		annotations: requestedAnnotations,
-		version:     updatedVersion,
+	object := r.cloneObject(r.object)
+	metadata = r.makeMetadata(makeMetadataArgs{
+		creationTs:  creationTs,
+		deletionTs:  deletionTs,
+		finalizers:  finalizers,
+		creators:    creators,
+		tenants:     tenants,
+		name:        name,
+		labels:      labels,
+		annotations: annotations,
+		version:     version,
 	})
-	updatedObject.SetId(id)
-	r.setMetadata(updatedObject, updatedMetadata)
+	object.SetId(id)
+	r.setMetadata(object, metadata)
 
 	// Fire the event:
 	err = r.fireEvent(ctx, Event{
 		Type:   EventTypeUpdated,
-		Object: updatedObject,
+		Object: object,
 	})
 	if err != nil {
 		return
@@ -216,25 +178,25 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 
 	// If the object has been deleted and there are no finalizers we can now archive the object and fire the
 	// delete event:
-	if updatedDeletionTs.Unix() != 0 && len(requestedFinalizers) == 0 {
+	if deletionTs.Unix() != 0 && len(finalizers) == 0 {
 		err = r.archive(ctx, archiveArgs{
 			id:              id,
-			creationTs:      updatedCreationTs,
-			deletionTs:      updatedDeletionTs,
-			creators:        updatedCreators,
-			tenants:         requestedTenants,
-			name:            requestedName,
-			labelsData:      requestedLabelsData,
-			annotationsData: requestedAnnotationsData,
-			version:         updatedVersion,
-			data:            requestedData,
+			creationTs:      creationTs,
+			deletionTs:      deletionTs,
+			creators:        creators,
+			tenants:         tenants,
+			name:            name,
+			labelsData:      labelsData,
+			annotationsData: annotationsData,
+			version:         version,
+			data:            data,
 		})
 		if err != nil {
 			return
 		}
 		err = r.fireEvent(ctx, Event{
 			Type:   EventTypeDeleted,
-			Object: updatedObject,
+			Object: object,
 		})
 		if err != nil {
 			return
@@ -243,7 +205,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 
 	// Create and return the response:
 	response = &UpdateResponse[O]{
-		object: updatedObject,
+		object: object,
 	}
 	return
 }

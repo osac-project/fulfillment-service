@@ -15,42 +15,167 @@ package dao
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 // GetRequest represents a request to get a single object by its identifier.
 type GetRequest[O Object] struct {
 	request[O]
-	args struct {
-		id   string
-		lock bool
-	}
+	id   string
+	lock bool
 }
 
 // SetId sets the identifier of the object to retrieve.
 func (r *GetRequest[O]) SetId(value string) *GetRequest[O] {
-	r.args.id = value
+	r.id = value
 	return r
 }
 
 // SetLock sets whether to lock the object for update.
 func (r *GetRequest[O]) SetLock(value bool) *GetRequest[O] {
-	r.args.lock = value
+	r.lock = value
 	return r
 }
 
 // Do executes the get operation and returns the response.
 func (r *GetRequest[O]) Do(ctx context.Context) (response *GetResponse[O], err error) {
-	r.tx, err = database.TxFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer r.tx.ReportError(&err)
-	object, err := r.get(ctx, r.args.id, r.args.lock)
+	err = r.init(ctx)
 	if err != nil {
 		return
 	}
+	r.tx, err = database.TxFromContext(ctx)
+	if err != nil {
+		return
+	}
+	defer r.tx.ReportError(&err)
+	response, err = r.do(ctx)
+	return
+}
+
+func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err error) {
+	// Add the where clause to filter by tenant:
+	err = r.addTenancyFilter(ctx)
+	if err != nil {
+		return
+	}
+
+	// Add the where clause to filter by identifier:
+	if r.id == "" {
+		err = errors.New("object identifier is mandatory")
+		return
+	}
+	r.sql.params = append(r.sql.params, r.id)
+	if r.sql.filter.Len() > 0 {
+		r.sql.filter.WriteString(` and`)
+	}
+	fmt.Fprintf(&r.sql.filter, ` id = $%d`, len(r.sql.params))
+
+	// Create the SQL statement:
+	var buffer strings.Builder
+	fmt.Fprintf(
+		&buffer,
+		`
+		select
+			name,
+			creation_timestamp,
+			deletion_timestamp,
+			finalizers,
+			creators,
+			tenants,
+			labels,
+			annotations,
+			version,
+			data
+		from
+			%s
+		where
+			%s
+		`,
+		r.dao.table,
+		r.sql.filter.String(),
+	)
+	if r.lock {
+		buffer.WriteString(" for update")
+	}
+
+	// Execute the SQL statement:
+	sql := buffer.String()
+	var (
+		name            string
+		creationTs      time.Time
+		deletionTs      time.Time
+		finalizers      []string
+		creators        []string
+		tenants         []string
+		labelsData      []byte
+		annotationsData []byte
+		version         int32
+		data            []byte
+	)
+	err = func() (err error) {
+		start := time.Now()
+		row := r.queryRow(ctx, getOpType, sql, r.sql.params...)
+		defer func() {
+			r.recordOpDuration(getOpType, start, err)
+		}()
+		return row.Scan(
+			&name,
+			&creationTs,
+			&deletionTs,
+			&finalizers,
+			&creators,
+			&tenants,
+			&labelsData,
+			&annotationsData,
+			&version,
+			&data,
+		)
+	}()
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = &ErrNotFound{
+			IDs: []string{r.id},
+		}
+		return
+	}
+	if err != nil {
+		return
+	}
+
+	// Prepare the object:
+	object := r.cloneObject(r.newObject())
+	err = r.unmarshalData(data, object)
+	if err != nil {
+		return
+	}
+	labels, err := r.unmarshalMap(labelsData)
+	if err != nil {
+		return
+	}
+	annotations, err := r.unmarshalMap(annotationsData)
+	if err != nil {
+		return
+	}
+	metadata := r.makeMetadata(makeMetadataArgs{
+		creationTs:  creationTs,
+		deletionTs:  deletionTs,
+		finalizers:  finalizers,
+		creators:    creators,
+		tenants:     tenants,
+		name:        name,
+		labels:      labels,
+		annotations: annotations,
+		version:     version,
+	})
+	object.SetId(r.id)
+	r.setMetadata(object, metadata)
+
+	// Create the response:
 	response = &GetResponse[O]{
 		object: object,
 	}

@@ -75,7 +75,6 @@ var _ = Describe("Subnets server", func() {
 		// Create a default NetworkClass for tests:
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
@@ -83,6 +82,9 @@ var _ = Describe("Subnets server", func() {
 		nc := privatev1.NetworkClass_builder{
 			Id:                     "default",
 			ImplementationStrategy: "ovn-kubernetes",
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
 				SupportsIpv6:      true,
@@ -102,12 +104,14 @@ var _ = Describe("Subnets server", func() {
 		// Create a default VirtualNetwork for tests:
 		vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 			SetLogger(logger).
-			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		vn := privatev1.VirtualNetwork_builder{
+			Metadata: privatev1.Metadata_builder{
+				Tenants: []string{"shared"},
+			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Region:       "us-east-1",
 				NetworkClass: "default",

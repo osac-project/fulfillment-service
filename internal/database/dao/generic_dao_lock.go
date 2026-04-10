@@ -26,15 +26,13 @@ import (
 // LockRequest represents a request to lock one or multiple objects.
 type LockRequest[O Object] struct {
 	request[O]
-	args struct {
-		ids []string
-	}
+	ids []string
 }
 
 // AddId adds an identifier of the object to lock.
 func (r *LockRequest[O]) AddId(value string) *LockRequest[O] {
-	if !slices.Contains(r.args.ids, value) {
-		r.args.ids = append(r.args.ids, value)
+	if !slices.Contains(r.ids, value) {
+		r.ids = append(r.ids, value)
 	}
 	return r
 }
@@ -42,8 +40,8 @@ func (r *LockRequest[O]) AddId(value string) *LockRequest[O] {
 // AddIds adds multple identifiers of the objects to lock.
 func (r *LockRequest[O]) AddIds(values ...string) *LockRequest[O] {
 	for _, value := range values {
-		if !slices.Contains(r.args.ids, value) {
-			r.args.ids = append(r.args.ids, value)
+		if !slices.Contains(r.ids, value) {
+			r.ids = append(r.ids, value)
 		}
 	}
 	return r
@@ -51,9 +49,13 @@ func (r *LockRequest[O]) AddIds(values ...string) *LockRequest[O] {
 
 // Do executes the lock operation and returns the response.
 func (r *LockRequest[O]) Do(ctx context.Context) (response *LockResponse[O], err error) {
+	err = r.init(ctx)
+	if err != nil {
+		return
+	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
@@ -61,21 +63,18 @@ func (r *LockRequest[O]) Do(ctx context.Context) (response *LockResponse[O], err
 }
 
 func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err error) {
-	// Initialize the tenants:
-	err = r.initTenants(ctx)
+	// Add tenant visibility filter:
+	err = r.addTenancyFilter(ctx)
 	if err != nil {
 		return
 	}
 
 	// Calculate the filter:
-	r.sql.params = append(r.sql.params, r.args.ids)
-	fmt.Fprintf(&r.sql.filter, "id = any($%d)", len(r.sql.params))
-
-	// Add tenant visibility filter:
-	err = r.addTenancyFilter()
-	if err != nil {
-		return
+	r.sql.params = append(r.sql.params, r.ids)
+	if r.sql.filter.Len() > 0 {
+		r.sql.filter.WriteString(` and`)
 	}
+	fmt.Fprintf(&r.sql.filter, ` id = any($%d)`, len(r.sql.params))
 
 	// Prepare the SQL statement that will lock the rows. Note that the 'order by id' clause is important to avoid
 	// potential deadlocks.
@@ -89,7 +88,7 @@ func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err
 
 	// Execute the SQL query:
 	sql := buffer.String()
-	ids := make([]string, 0, len(r.args.ids))
+	ids := make([]string, 0, len(r.ids))
 	err = func() (err error) {
 		start := time.Now()
 		rows, err := r.query(ctx, lockOpType, sql, r.sql.params...)
@@ -117,7 +116,7 @@ func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err
 	// If the identifiers returned aren't exactly the ones requested then something failed. The only reasonable
 	// explanation is that some of the objects were not found, and that should be reported as a not found error.
 	var notFoundIds []string
-	for _, id := range r.args.ids {
+	for _, id := range r.ids {
 		_, found := slices.BinarySearch(ids, id)
 		if !found {
 			notFoundIds = append(notFoundIds, id)
