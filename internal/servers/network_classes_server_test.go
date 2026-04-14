@@ -281,5 +281,61 @@ var _ = Describe("Network classes server", func() {
 			object := getResponse.GetObject()
 			Expect(object.GetMetadata().GetDeletionTimestamp()).ToNot(BeNil())
 		})
+
+		It("Rejects creation without fqn", func() {
+			_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+				Object: privatev1.NetworkClass_builder{
+					Title:                  "Test Network Class",
+					ImplementationStrategy: "ovn-kubernetes",
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("fqn"))
+		})
+
+		It("Rejects changing fqn on update", func() {
+			// Create the object:
+			privateObj := createNetworkClass()
+
+			// Try to change fqn:
+			_, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+				Object: privatev1.NetworkClass_builder{
+					Id:                     privateObj.GetId(),
+					Title:                  privateObj.GetTitle(),
+					ImplementationStrategy: privateObj.GetImplementationStrategy(),
+					Fqn:                    "osac.templates.changed",
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("fqn"))
+			Expect(err.Error()).To(ContainSubstring("immutable"))
+		})
+
+		It("Generates UUID for id ignoring caller-provided value", func() {
+			callerProvidedId := "my-custom-id"
+			response, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+				Object: privatev1.NetworkClass_builder{
+					Id:                     callerProvidedId,
+					Title:                  "Test Network Class",
+					ImplementationStrategy: "ovn-kubernetes",
+					Fqn:                    "osac.templates.ovn_kubernetes",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.GetObject().GetId()).ToNot(Equal(callerProvidedId))
+			Expect(response.GetObject().GetId()).ToNot(BeEmpty())
+		})
+
+		It("Preserves fqn through create and get", func() {
+			// Create with fqn:
+			privateObj := createNetworkClass()
+
+			// Get and verify fqn is preserved:
+			getResponse, err := publicServer.Get(ctx, publicv1.NetworkClassesGetRequest_builder{
+				Id: privateObj.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getResponse.GetObject().GetFqn()).To(Equal("osac.templates.ovn_kubernetes"))
+		})
 	})
 })
