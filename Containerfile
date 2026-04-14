@@ -22,11 +22,19 @@ RUN \
   set -e; \
   go mod download
 
+# Version can be passed as a build arg to avoid requiring git inside the container.
+# This is necessary when building from a git worktree, where the .git reference
+# cannot be resolved inside the container context.
+ARG VERSION=""
+
 # Copy the rest of the source and build the binary:
 COPY . /source/
 RUN \
   set -e; \
-  version=$(git describe --tags --always); \
+  version="${VERSION}"; \
+  if [[ -z "${version}" ]]; then \
+    version=$(git describe --tags --always 2>/dev/null || echo "dev"); \
+  fi; \
   gcflags=""; \
   ldflags="-X github.com/osac-project/fulfillment-service/internal/version.id=${version}"; \
   if [[ "${DEBUG}" == "true" ]]; then \

@@ -403,6 +403,18 @@ func (t *Tool) buildImage(ctx context.Context) (result string, err error) {
 	t.logger.DebugContext(ctx, "Building image")
 	imageTag := time.Now().Format("20060102150405")
 	imageRef := fmt.Sprintf("%s:%s", imageName, imageTag)
+
+	// Resolve the version on the host so that the container build does not
+	// need access to the .git directory. This is required when building from
+	// a git worktree, where the .git file is a pointer that cannot be
+	// resolved inside the container context.
+	versionBytes, versionErr := exec.CommandContext(ctx, "git", "-C", t.projectDir, "describe", "--tags", "--always").Output()
+	gitVersion := "dev"
+	if versionErr == nil {
+		gitVersion = string(versionBytes)
+		gitVersion = gitVersion[:len(gitVersion)-1] // trim trailing newline
+	}
+
 	buildCmd, err := testing.NewCommand().
 		SetLogger(t.logger).
 		SetHome(t.projectDir).
@@ -411,6 +423,7 @@ func (t *Tool) buildImage(ctx context.Context) (result string, err error) {
 		SetArgs(
 			"build",
 			"--build-arg", fmt.Sprintf("DEBUG=%t", t.debug),
+			"--build-arg", fmt.Sprintf("VERSION=%s", gitVersion),
 			"--tag", imageRef,
 			"--file", "Containerfile",
 			".",
