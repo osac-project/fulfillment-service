@@ -82,6 +82,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
+			Fqn:                    "osac.templates.test_strategy",
 			Metadata: privatev1.Metadata_builder{
 				Tenants: []string{"shared"},
 			}.Build(),
@@ -449,6 +450,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				nc := privatev1.NetworkClass_builder{
 					ImplementationStrategy: "no-ipv4-class",
+					Fqn:                    "osac.templates.no_ipv4_class",
 					Metadata: privatev1.Metadata_builder{
 						Tenants: []string{"shared"},
 					}.Build(),

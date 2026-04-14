@@ -82,6 +82,7 @@ var _ = Describe("Subnets server", func() {
 		nc := privatev1.NetworkClass_builder{
 			Id:                     "default",
 			ImplementationStrategy: "ovn-kubernetes",
+			Fqn:                    "osac.templates.ovn_kubernetes",
 			Metadata: privatev1.Metadata_builder{
 				Tenants: []string{"shared"},
 			}.Build(),

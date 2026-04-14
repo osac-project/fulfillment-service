@@ -142,6 +142,7 @@ var _ = Describe("Network classes server", func() {
 				Object: privatev1.NetworkClass_builder{
 					Title:                  "Test Network Class",
 					ImplementationStrategy: "ovn-kubernetes",
+					Fqn:                    "osac.templates.ovn_kubernetes",
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())

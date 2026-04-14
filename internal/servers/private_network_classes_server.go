@@ -136,6 +136,9 @@ func (s *PrivateNetworkClassesServer) Create(ctx context.Context,
 	}
 	nc.Status.SetState(privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
 
+	// Clear any caller-provided ID so the DAO always generates a UUID.
+	nc.SetId("")
+
 	err = s.generic.Create(ctx, request, &response)
 	return
 }
@@ -204,6 +207,11 @@ func (s *PrivateNetworkClassesServer) validateNetworkClass(ctx context.Context,
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'title' is required")
 	}
 
+	// NC-VAL-05: fqn is required
+	if newNC.GetFqn() == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'fqn' is required")
+	}
+
 	// NC-VAL-03: Validate capabilities consistency
 	caps := newNC.GetCapabilities()
 	if caps != nil {
@@ -221,6 +229,13 @@ func (s *PrivateNetworkClassesServer) validateNetworkClass(ctx context.Context,
 			return grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"field 'implementation_strategy' is immutable and cannot be changed from '%s' to '%s'",
 				existingNC.GetImplementationStrategy(), newNC.GetImplementationStrategy())
+		}
+
+		// fqn is immutable
+		if newNC.GetFqn() != existingNC.GetFqn() {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'fqn' is immutable and cannot be changed from '%s' to '%s'",
+				existingNC.GetFqn(), newNC.GetFqn())
 		}
 	}
 
@@ -260,6 +275,8 @@ func applyNetworkClassUpdate(base, update *privatev1.NetworkClass, mask *fieldma
 			base.SetImplementationStrategy(update.GetImplementationStrategy())
 		case "capabilities":
 			base.SetCapabilities(update.GetCapabilities())
+		case "fqn":
+			base.SetFqn(update.GetFqn())
 		default:
 			// For unknown paths, fall through - the generic handler will
 			// reject invalid paths if needed.

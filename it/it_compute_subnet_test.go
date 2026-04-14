@@ -65,15 +65,15 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create NetworkClass
-		networkClassId = fmt.Sprintf("test-network-class-%s", uuid.New())
-		_, err = networkClassesClient.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+		ncResp, err := networkClassesClient.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
 			Object: privatev1.NetworkClass_builder{
-				Id:                     networkClassId,
 				Title:                  "Test CUDN Network Class",
 				ImplementationStrategy: "cudn",
+				Fqn:                    "osac.templates.cudn_net",
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
+		networkClassId = ncResp.GetObject().GetId()
 
 		// Create VirtualNetwork
 		virtualNetworkId = fmt.Sprintf("test-vnet-%s", uuid.New())

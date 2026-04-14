@@ -92,6 +92,7 @@ var _ = Describe("Private compute instances server", func() {
 
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
+			Fqn:                    "osac.templates.test_strategy",
 			Metadata: privatev1.Metadata_builder{
 				Tenants: []string{"shared"},
 			}.Build(),

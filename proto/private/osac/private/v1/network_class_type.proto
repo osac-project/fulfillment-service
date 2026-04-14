@@ -59,6 +59,10 @@ message NetworkClass {
   // network implementation strategy.
   NetworkClassCapabilities capabilities = 7;
 
+  // Fully qualified name that uniquely identifies the source template for this network class.
+  // For example: "osac.templates.cudn_net". This is set during template publishing and is immutable.
+  string fqn = 9;
+
   // Current operational status of the network class.
   NetworkClassStatus status = 8;
 }
