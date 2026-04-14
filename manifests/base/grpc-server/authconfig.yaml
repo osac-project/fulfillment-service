@@ -65,8 +65,9 @@ spec:
         authnMethod:
           value: jwt
   authorization:
-    "fulfillment-api":
+    default:
       opa:
+        allValues: true
         rego: |
           import rego.v1
 
@@ -100,7 +101,8 @@ spec:
             input.auth.identity.authnMethod == "jwt"
           }
 
-          # Function to check if an account is an admin account:
+          # Check if an account is an admin account:
+          default is_admin = false
           is_admin if {
             subject_name in admin_service_accounts
           }
@@ -109,7 +111,8 @@ spec:
             group in admin_groups
           }
 
-          # Function to check if an account is a client account:
+          # Check if an account is a client account:
+          default is_client = false
           is_client if {
             not is_admin
           }
@@ -170,6 +173,8 @@ spec:
                     : auth.identity.user.username.split(":")[3]
               tenants:
                 expression: |
-                  auth.identity.authnMethod == "jwt"
-                    ? auth.identity.groups
-                    : [auth.identity.user.username.split(":")[2]]
+                  auth.authorization.default.is_admin
+                    ? ["*"]
+                    : auth.identity.authnMethod == "jwt"
+                      ? auth.identity.groups
+                      : [auth.identity.user.username.split(":")[2]]

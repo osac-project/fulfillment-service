@@ -61,8 +61,8 @@ func (b *DefaultTenancyLogicBuilder) Build() (result *DefaultTenancyLogic, err e
 func (p *DefaultTenancyLogic) DetermineAssignableTenants(ctx context.Context) (result collections.Set[string],
 	err error) {
 	subject := SubjectFromContext(ctx)
-	result = collections.NewSet(subject.Tenants...)
-	if len(subject.Tenants) == 0 {
+	result = subject.Tenants
+	if result.Empty() {
 		p.logger.ErrorContext(
 			ctx,
 			"Subject has no tenants",
@@ -87,6 +87,9 @@ func (p *DefaultTenancyLogic) DetermineDefaultTenants(ctx context.Context) (resu
 func (p *DefaultTenancyLogic) DetermineVisibleTenants(ctx context.Context) (result collections.Set[string],
 	err error) {
 	subject := SubjectFromContext(ctx)
-	result = SharedTenants.Union(collections.NewSet(subject.Tenants...))
+	result = subject.Tenants
+	if result.Finite() {
+		result = SharedTenants.Union(result)
+	}
 	return
 }
