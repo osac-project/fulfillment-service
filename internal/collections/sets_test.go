@@ -42,6 +42,11 @@ var _ = Describe("Sets", func() {
 			Expect(s.Equal(s2)).To(BeTrue())
 		})
 
+		It("Has an empty set as zero value", func() {
+			var s Set[int]
+			Expect(s.Empty()).To(BeTrue())
+		})
+
 		It("Can create and query a universal set", func() {
 			s := NewUniversal[int]()
 			Expect(s.Contains(1)).To(BeTrue())

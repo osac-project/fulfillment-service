@@ -32,12 +32,15 @@ package collections
 // union, and intersection to work correctly with infinite sets.
 //
 // Sets are immutable once created. All operations return new sets rather than modifying existing ones.
+//
+// The zero value of Set is an empty set.
 type Set[T comparable] struct {
-	// finite indicates if the set is finite or infinite.
-	finite bool
+	// infinite indicates if the set is infinite. When false the set is finite and items contains the included
+	// elements. When true the set is infinite and items contains the excluded elements.
+	infinite bool
 
-	// items contains the elements of the set when finite is true, or the elements excluded from the set when
-	// finite is false.
+	// items contains the elements of the set when infinite is false, or the elements excluded from the set when
+	// infinite is true.
 	items map[T]struct{}
 }
 
@@ -48,50 +51,48 @@ func NewSet[T comparable](items ...T) Set[T] {
 		set[item] = struct{}{}
 	}
 	return Set[T]{
-		finite: true,
-		items:  set,
+		items: set,
 	}
 }
 
 // NewUniversalSet creates a set containing all possible elements.
 func NewUniversal[T comparable]() Set[T] {
 	return Set[T]{
-		finite: false,
-		items:  nil,
+		infinite: true,
+		items:    nil,
 	}
 }
 
 // NewEmptySet creates an empty set.
 func NewEmptySet[T comparable]() Set[T] {
 	return Set[T]{
-		finite: true,
-		items:  make(map[T]struct{}),
+		items: make(map[T]struct{}),
 	}
 }
 
 // Empty returns true if the set is empty.
 func (s Set[T]) Empty() bool {
-	return s.finite && len(s.items) == 0
+	return !s.infinite && len(s.items) == 0
 }
 
 // Universal returns true if the set contains all possible elements.
 func (s Set[T]) Universal() bool {
-	return !s.finite && len(s.items) == 0
+	return s.infinite && len(s.items) == 0
 }
 
 // Finite returns true if the set is finite, false if it is infinite.
 //
-// A set is finite if it is defined by inclusion, and infinite if it is efined by exclusion.
+// A set is finite if it is defined by inclusion, and infinite if it is defined by exclusion.
 //
 // The empty set is finite, and the universal set is infinite.
 func (s Set[T]) Finite() bool {
-	return s.finite
+	return !s.infinite
 }
 
 // Contains returns true if the set contains the given item.
 func (s Set[T]) Contains(item T) bool {
 	_, found := s.items[item]
-	if s.finite {
+	if !s.infinite {
 		return found
 	}
 	return !found
@@ -100,7 +101,7 @@ func (s Set[T]) Contains(item T) bool {
 // Inclusions returns the slice of items included in the set. This method panics if called on an infinite set. Use
 // Finite to check before calling.
 func (s Set[T]) Inclusions() []T {
-	if !s.finite {
+	if s.infinite {
 		panic("tried to get inclussions from an infinite set")
 	}
 	if s.items == nil {
@@ -116,7 +117,7 @@ func (s Set[T]) Inclusions() []T {
 // Exclusions returns the slice of items excluded from the set. This method panics if called on a finite set. Use
 // Finite to check before calling.
 func (s Set[T]) Exclusions() []T {
-	if s.finite {
+	if !s.infinite {
 		panic("tried to get exclusions from a finite set")
 	}
 	if s.items == nil {
@@ -132,79 +133,75 @@ func (s Set[T]) Exclusions() []T {
 // Negate returns the complement of the set.
 func (s Set[T]) Negate() Set[T] {
 	return Set[T]{
-		finite: !s.finite,
-		items:  s.items,
+		infinite: !s.infinite,
+		items:    s.items,
 	}
 }
 
 // Union returns the union of this set with another set.
 func (s Set[T]) Union(other Set[T]) Set[T] {
 	// Case 1: Both finite. Result is finite union of items.
-	if s.finite && other.finite {
+	if !s.infinite && !other.infinite {
 		return Set[T]{
-			finite: true,
-			items:  unionMaps(s.items, other.items),
+			items: unionMaps(s.items, other.items),
 		}
 	}
 
 	// Case 2: Both infinite. (U \ A) u (U \ B) = U \ (A n B). Result is infinite with intersection of excluded items.
-	if !s.finite && !other.finite {
+	if s.infinite && other.infinite {
 		return Set[T]{
-			finite: false,
-			items:  intersectMaps(s.items, other.items),
+			infinite: true,
+			items:    intersectMaps(s.items, other.items),
 		}
 	}
 
 	// Case 3: Mixed.
 	// Let A be infinite (U \ Ai), B be finite (Bi).
 	// (U \ Ai) u Bi = U \ (Ai \ Bi). Result is infinite with difference of excluded items (Ai - Bi).
-	if !s.finite && other.finite {
+	if s.infinite && !other.infinite {
 		return Set[T]{
-			finite: false,
-			items:  diffMaps(s.items, other.items),
+			infinite: true,
+			items:    diffMaps(s.items, other.items),
 		}
 	}
 
 	// A is finite (Ai), B is infinite (U \ Bi).
 	// Ai u (U \ Bi) = U \ (Bi \ Ai). Result is infinite with difference of excluded items (Bi - Ai).
 	return Set[T]{
-		finite: false,
-		items:  diffMaps(other.items, s.items),
+		infinite: true,
+		items:    diffMaps(other.items, s.items),
 	}
 }
 
 // Intersection returns the intersection of this set with another set.
 func (s Set[T]) Intersection(other Set[T]) Set[T] {
 	// Case 1: Both finite. Result is finite intersection of items.
-	if s.finite && other.finite {
+	if !s.infinite && !other.infinite {
 		return Set[T]{
-			finite: true,
-			items:  intersectMaps(s.items, other.items),
+			items: intersectMaps(s.items, other.items),
 		}
 	}
 
 	// Case 2: Both infinite. (U \ A) n (U \ B) = U \ (A u B). Result is infinite with union of excluded items.
-	if !s.finite && !other.finite {
+	if s.infinite && other.infinite {
 		return Set[T]{
-			finite: false,
-			items:  unionMaps(s.items, other.items),
+			infinite: true,
+			items:    unionMaps(s.items, other.items),
 		}
 	}
 
 	// Case 3: Mixed.
 	// A infinite (U \ Ai), B finite (Bi).
 	// (U \ Ai) n Bi = Bi \ Ai. Result is finite with difference of items (Bi - Ai).
-	if !s.finite && other.finite {
+	if s.infinite && !other.infinite {
 		return Set[T]{
-			finite: true,
-			items:  diffMaps(other.items, s.items),
+			items: diffMaps(other.items, s.items),
 		}
 	}
 	// A finite (Ai), B infinite (U \ Bi).
 	// Ai n (U \ Bi) = Ai \ Bi. Result is finite with difference of items (Ai - Bi).
 	return Set[T]{
-		finite: true,
-		items:  diffMaps(s.items, other.items),
+		items: diffMaps(s.items, other.items),
 	}
 }
 
@@ -216,7 +213,7 @@ func (s Set[T]) Difference(other Set[T]) Set[T] {
 // Subset returns true if this set is a subset of the other set.
 func (s Set[T]) Subset(other Set[T]) bool {
 	// Case 1: Both finite.
-	if s.finite && other.finite {
+	if !s.infinite && !other.infinite {
 		// Check if all items in s are in other
 		for item := range s.items {
 			_, ok := other.items[item]
@@ -229,13 +226,13 @@ func (s Set[T]) Subset(other Set[T]) bool {
 
 	// Case 2: This set infinite, other finite.
 	// s (infinite) <= other (finite). False, an infinite set cannot be a subset of a finite set.
-	if !s.finite && other.finite {
+	if s.infinite && !other.infinite {
 		return false
 	}
 
 	// Case 3: This set finite, other infinite.
 	// s <= U \ other_excluded <=> s intersect other_excluded is empty.
-	if s.finite && !other.finite {
+	if !s.infinite && other.infinite {
 		for item := range s.items {
 			_, ok := other.items[item]
 			if ok {
@@ -247,7 +244,7 @@ func (s Set[T]) Subset(other Set[T]) bool {
 
 	// Case 4: Both infinite.
 	// U \ s_excluded <= U \ other_excluded <==> other_excluded <= s_excluded.
-	if !s.finite && !other.finite {
+	if s.infinite && other.infinite {
 		for item := range other.items {
 			_, ok := s.items[item]
 			if !ok {
@@ -261,7 +258,7 @@ func (s Set[T]) Subset(other Set[T]) bool {
 
 // Equal returns true if this set is equal to the other set.
 func (s Set[T]) Equal(other Set[T]) bool {
-	if s.finite != other.finite {
+	if s.infinite != other.infinite {
 		return false
 	}
 
