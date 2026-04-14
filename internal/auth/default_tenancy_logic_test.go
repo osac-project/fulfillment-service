@@ -95,6 +95,16 @@ var _ = Describe("Default tenancy logic", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("at least one tenant"))
 		})
+
+		It("Returns an empty set when there is an error", func() {
+			subject := &Subject{
+				User: "my_user",
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineAssignableTenants(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(result.Empty()).To(BeTrue())
+		})
 	})
 
 	Describe("Determine default tenants", func() {

@@ -1,13 +1,21 @@
 # Keycloak Setup and Configuration Guide
 
-This guide explains how to set up Keycloak as an Identity Provider (IDP) for the fulfillment service and configure the necessary mappings and authorization rules.
+This guide explains how to set up Keycloak as an Identity Provider (IDP) for the fulfillment service
+and configure the necessary mappings and authorization rules.
 
-> **Note**: While this guide focuses on Keycloak (including deployment steps using the provided Helm chart), the fulfillment service is designed to work with **any OAuth-compatible Identity Provider**. The service only requires:
+> **Note**: While this guide focuses on Keycloak (including deployment steps using the provided Helm
+> chart), the fulfillment service is designed to work with **any OAuth-compatible Identity
+> Provider**. The service only requires:
+>
 > - A valid OAuth issuer URL
-> - JWT tokens containing `username` and `groups` claims (or configurable alternative claims)
+> - JWT tokens containing `username` and `groups` claims (or configurable alternative claims, mapped
+>   to tenants by Authorino)
 > - The ability to validate tokens using the issuer's public keys
 >
-> If you're using a different OAuth IDP (such as Okta, Auth0, Azure AD, Google Identity, etc.), you can skip the Keycloak installation sections and proceed directly to the [Fulfillment Service Configuration](#fulfillment-service-configuration) section, adapting the configuration steps to your IDP's specific requirements.
+> If you're using a different OAuth IDP (such as Okta, Auth0, Azure AD, Google Identity, etc.), you
+> can skip the Keycloak installation sections and proceed directly to the [Fulfillment Service
+> Configuration](#fulfillment-service-configuration) section, adapting the configuration steps to
+> your IDP's specific requirements.
 
 ## Table of Contents
 
@@ -28,11 +36,15 @@ Before installing Keycloak, ensure you have:
 - A Kubernetes cluster (Kind or OpenShift)
 - [cert-manager](https://cert-manager.io/) operator installed
 - At least one cert-manager issuer configured (ClusterIssuer or Issuer)
-- [Authorino](https://github.com/Kuadrant/authorino) operator installed (for the fulfillment service)
+- [Authorino](https://github.com/Kuadrant/authorino) operator
+  installed (for the fulfillment service)
 
 ## Installing Keycloak
 
-The fulfillment service includes a Helm chart for deploying Keycloak. The chart is published with each release as an OCI image at [ghcr.io/osac/charts/keycloak](https://github.com/osac-project/fulfillment-service/pkgs/container/charts%2Fkeycloak).
+The fulfillment service includes a Helm chart for deploying Keycloak. The chart is published with
+each release as an OCI image at [ghcr.io/osac/charts/keycloak][keycloak-chart].
+
+[keycloak-chart]: https://github.com/osac-project/fulfillment-service/pkgs/container/charts%2Fkeycloak
 
 ### Installation Steps
 
@@ -64,7 +76,8 @@ helm install keycloak oci://ghcr.io/osac/charts/keycloak \
   --wait
 ```
 
-Replace `0.0.27` with the version you want to use. You can find available versions at the [chart registry](https://github.com/osac-project/fulfillment-service/pkgs/container/charts%2Fkeycloak).
+Replace `0.0.27` with the version you want to use. You can find available versions at the [chart
+registry][keycloak-chart].
 
 **Using a values file (optional):**
 
@@ -115,7 +128,10 @@ helm install keycloak oci://ghcr.io/osac/charts/keycloak \
 
 ### Important Notes
 
-- The `hostname` parameter is critical and must match the hostname that Keycloak will use to reference itself, meaning that when Keycloak redirects users, or generates an URL for itself, it will use this host name. This is also used for token issuer URLs.
+- The `hostname` parameter is critical and must match the hostname that Keycloak will use to
+  reference itself, meaning that when Keycloak redirects users, or generates an URL for itself, it
+  will use this host name. This is also used for token issuer URLs.
+
 - The default admin credentials are:
   - Username: `admin`
   - Password: `admin`
@@ -149,8 +165,8 @@ To access the Keycloak Admin Console:
    127.0.0.1 keycloak.keycloak.svc.cluster.local
    ```
 
-   Open your browser and navigate to https://keycloak.keycloak.svc.cluster.local:8000, then
-   accept the self-signed certificate warning.
+   Open your browser and navigate to https://keycloak.keycloak.svc.cluster.local:8000, then accept
+   the self-signed certificate warning.
 
 2. **Login**:
 
@@ -169,7 +185,10 @@ If you need to export the realm configuration for backup or modification:
 1. Find the Keycloak pod:
 
    ```bash
-   pod=$(kubectl get pods -n keycloak -l app=keycloak-service -o json | jq -r '.items[].metadata.name')
+   pod=$(
+      kubectl get pods -n keycloak -l app=keycloak-service -o json |
+      jq -r '.items[].metadata.name'
+   )
    ```
 
 2. Export the realm:
@@ -192,11 +211,13 @@ If you need to export the realm configuration for backup or modification:
 
 ## Fulfillment Service Configuration
 
-After Keycloak is installed, you need to configure the fulfillment service to use Keycloak as its identity provider.
+After Keycloak is installed, you need to configure the fulfillment service to use Keycloak as its
+identity provider.
 
 ### 1. Configure the Issuer URL
 
-The fulfillment service needs to know the Keycloak issuer URL to validate JWT tokens. The issuer URL format is:
+The fulfillment service needs to know the Keycloak issuer URL to validate JWT tokens. The issuer URL
+format is:
 
 ```
 https://<keycloak-hostname>:<port>/realms/<realm-name>
@@ -233,9 +254,11 @@ auth:
 
 ### 3. Update the AuthConfig Resource
 
-The fulfillment service uses Authorino for authentication and authorization. The `AuthConfig` resource must be configured with the Keycloak issuer URL.
+The fulfillment service uses Authorino for authentication and authorization. The `AuthConfig`
+resource must be configured with the Keycloak issuer URL.
 
-The AuthConfig is automatically generated by the Helm chart from the template at `charts/service/templates/service/authconfig.yaml`. The configuration includes:
+The AuthConfig is automatically generated by the Helm chart from the template at
+`charts/service/templates/grpc-server/authconfig.yaml`. The configuration includes:
 
 #### Authentication Methods
 
@@ -261,9 +284,11 @@ authentication:
 
 ### 4. Update the Server Configuration
 
-The fulfillment service server component also needs to be configured with the trusted token issuer. This is done via the `--grpc-authn-trusted-token-issuers` flag in the deployment.
+The fulfillment service server component also needs to be configured with the trusted token issuer.
+This is done via the `--grpc-authn-trusted-token-issuers` flag in the deployment.
 
-The Helm chart automatically sets this from the `auth.issuerUrl` value. In the deployment, you'll see:
+The Helm chart automatically sets this from the `auth.issuerUrl` value. In the deployment, you'll
+see:
 
 ```yaml
 - --grpc-authn-trusted-token-issuers=https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
@@ -277,70 +302,50 @@ The fulfillment service maintains two separate lists of token issuers:
    - Authorino AuthConfig (for HTTP/gRPC gateway authentication)
    - Server command-line flag `--grpc-authn-trusted-token-issuers` (for direct gRPC authentication)
 
-2. **Advertised Token Issuers**: These are the issuers that the service advertises to clients (primarily for CLI usage). This allows clients to discover which issuers they can use without explicitly specifying them. The advertised issuers are returned via the metadata API and may or may not be the same as the trusted issuers.
+2. **Advertised Token Issuers**: These are the issuers that the service advertises to clients
+   (primarily for CLI usage). This allows clients to discover which issuers they can use without
+   explicitly specifying them. The advertised issuers are returned via the metadata API and may or
+   may not be the same as the trusted issuers.
 
-   The advertised issuers are configured via the `--grpc-authn-trusted-token-issuers` flag
+   The advertised issuers are configured via the
+   `--grpc-authn-trusted-token-issuers` flag
 
 ## User and Group Mapping
 
-The fulfillment service maps users and groups from Keycloak (or any OAuth IDP) to its internal user and tenant concepts. This mapping is configured in the Authorino AuthConfig resource.
+The fulfillment service maps users and groups from Keycloak (or any OAuth IDP) to its internal user
+and tenant concepts. This mapping is configured in the Authorino AuthConfig resource.
 
 ### Key Concepts
 
 - **Users**: Represent individual authenticated entities (users or service accounts)
-- **Tenants**: Represent groups of users. In Keycloak, these map to **groups**, but the fulfillment service refers to them as **tenants**
-- **Organizations**: The fulfillment service does **not** have an explicit "organization" concept. Organizations and tenants are defined and managed in the external identity provider (Keycloak)
+- **Tenants**: Represent groups of users. In Keycloak, these map to **groups**, but the fulfillment
+  service refers to them as **tenants**
+- **Organizations**: The fulfillment service does **not** have an explicit "organization" concept.
+  Organizations and tenants are defined and managed in the external identity provider (Keycloak)
 
-### Claim Extraction Configuration
+### Subject Resolution in Authorino
 
-The extraction of user identity and groups from JWT token claims is configured in the `AuthConfig` resource's `response` section. The current configuration extracts:
+The mapping from authentication details to the fulfillment service's internal `user` and `tenants`
+fields is performed entirely by Authorino, using CEL expressions in the `AuthConfig` resource.
+Authorino resolves both JWT users and Kubernetes service accounts into a uniform `x-subject`
+response header, so the fulfillment service itself does not need to distinguish between
+authentication methods.
 
-- **Username**: From the `username` claim in the JWT token
-- **Groups**: From the `groups` claim in the JWT token (these become tenants in the fulfillment service)
+For JWT-authenticated users, the `user` is taken from the `username` claim and the `tenants` from
+the `groups` claim. For Kubernetes service accounts, the namespace is used as the tenant and the
+short service account name as the user.
 
-The configuration is located in `charts/service/templates/service/authconfig.yaml`:
-
-```yaml
-response:
-  success:
-    headers:
-      "x-subject":
-        json:
-          properties:
-            source:
-              expression: |
-                auth.identity.authnMethod
-            user:
-              expression: |
-                auth.identity.authnMethod == "serviceaccount"? auth.identity.user.username: auth.identity.username
-            groups:
-              expression: |
-                auth.identity.authnMethod == "serviceaccount"? auth.identity.user.groups: auth.identity.groups
-```
-
-### Customizing Claim Extraction
-
-You can modify the claim extraction to use different claims or sources. For example:
-
-- To use a different claim for username (e.g., `preferred_username` or `email`):
-  ```yaml
-  user:
-    expression: |
-      auth.identity.authnMethod == "serviceaccount"? auth.identity.user.username: auth.identity.claims.preferred_username
-  ```
-
-- To use a different claim for groups (e.g., `realm_access.roles`):
-  ```yaml
-  groups:
-    expression: |
-      auth.identity.authnMethod == "serviceaccount"? auth.identity.user.groups: auth.identity.claims.realm_access.roles
-  ```
+The CEL expressions that perform this mapping are defined in
+`charts/service/templates/grpc-server/authconfig.yaml`. To customize which claims are used (for
+example, to use `preferred_username` instead of `username`, or `realm_access.roles` instead of
+`groups`), edit the expressions in that file.
 
 ### Configuring Keycloak to Include Groups in Tokens
 
 To ensure that user groups are included in the JWT tokens issued by Keycloak:
 
-1. **Access the Keycloak Admin Console** (see [Accessing Keycloak Admin Console](#accessing-keycloak-admin-console))
+1. **Access the Keycloak Admin Console**
+   (see [Accessing Keycloak Admin Console](#accessing-keycloak-admin-console))
 
 2. **Navigate to the Client**:
    - Go to **Clients** → Select your client (e.g., `osac-cli`)
@@ -357,7 +362,8 @@ To ensure that user groups are included in the JWT tokens issued by Keycloak:
    - Configure:
      - **Name**: `groups`
      - **Token Claim Name**: `groups`
-     - **Full group path**: `false` (or `true` if you want full paths like `/tenant-a/team-1`)
+     - **Full group path**: `false` (or `true` if you want full
+       paths like `/tenant-a/team-1`)
      - **Add to access token**: `true`
      - **Add to ID token**: `true` (if needed)
 
@@ -388,14 +394,14 @@ concepts:
    later query.
 
 The tenancy logic can be configured using the `--tenancy-logic` command-line flag when starting the
-fulfillment service.
+fulfillment service. Valid values are `default` and `guest`.
 
 ### Additional Tenancy Concepts
 
-1. **Shared Tenant**: The `shared` tenant is a special tenant that is always included in the
-   visible tenants for all users. Resources assigned to the `shared` tenant are visible to
-   **everyone**. This is useful for templates, shared configurations, or other resources that
-   should be accessible across all tenants.
+1. **Shared Tenant**: The `shared` tenant is a special tenant that is always included in the visible
+   tenants for all users. Resources assigned to the `shared` tenant are visible to **everyone**.
+   This is useful for templates, shared configurations, or other resources that should be accessible
+   across all tenants.
 
 2. **Multi-Tenant Users**: A user can belong to multiple tenants. This is configured in Keycloak by
    assigning the user to multiple groups. The fulfillment service will reflect this one-to-many
@@ -410,28 +416,33 @@ fulfillment service.
      explicitly assign tenants that are both assignable and visible.
    - If the user doesn't specify tenants, the default tenants are automatically assigned. Note that
      some default tenants may be invisible to the user.
-   - Tenant assignment is recorded in the `metadata.tenants` field and is used by the server to
-     make visibility decisions.
+   - Tenant assignment is recorded in the `metadata.tenants` field and is used by the server to make
+     visibility decisions.
 
-4. **Tenant Visibility**: When a user queries resources, the visible tenants determine what they
-   can see. A user can only see a resource if the intersection between the user's visible tenants
-   and the resource's assigned tenants is not empty. Since both users and resources can have
-   multiple tenants, a non-empty intersection is sufficient for visibility.
+4. **Tenant Visibility**: When a user queries resources, the visible tenants determine what they can
+   see. A user can only see a resource if the intersection between the user's visible tenants and
+   the resource's assigned tenants is not empty. Since both users and resources can have multiple
+   tenants, a non-empty intersection is sufficient for visibility.
 
 ### Tenancy Logic Implementations
 
 The following tenancy logic implementations are available:
 
-#### Default (JWT-Authenticated Users)
+#### Default
 
-Use `--tenancy-logic=default` for JWT-authenticated users (Keycloak):
+Use `--tenancy-logic=default` (this is the default). This implementation reads the tenants directly
+from the `tenants` field of the subject, which Authorino populates from the authentication details
+(see [Subject Resolution in Authorino](#subject-resolution-in-authorino)). It works uniformly for
+both JWT-authenticated users and Kubernetes service accounts because Authorino resolves both into
+the same `tenants` field before the request reaches the service.
 
-- **Assignable Tenants**: All groups from the user's JWT token (`groups` claim)
-- **Default Tenants**: Same as assignable tenants (all user's groups)
-- **Visible Tenants**: All user's groups plus the `shared` tenant
+- **Assignable Tenants**: All tenants from the subject
+- **Default Tenants**: Same as assignable tenants
+- **Visible Tenants**: All subject's tenants plus the `shared` tenant
 
-Example:
+Example with a JWT user:
 - User `alice` belongs to groups: `["team-a", "team-b"]`
+- Authorino maps these groups into tenants: `["team-a", "team-b"]`
 - Assignable tenants: `["team-a", "team-b"]`
 - Default tenants: `["team-a", "team-b"]`
 - When `alice` creates a cluster without specifying tenants:
@@ -439,16 +450,9 @@ Example:
 - When `alice` lists clusters:
   - She can see clusters from: `["team-a", "team-b", "shared"]`
 
-#### Service Account
-
-Use `--tenancy-logic=serviceaccount` for service account authentication:
-
-- **Assignable Tenants**: The service account's namespace
-- **Default Tenants**: Same as assignable (the namespace)
-- **Visible Tenants**: The namespace plus the `shared` tenant
-
-Example:
+Example with a service account:
 - Service account `system:serviceaccount:osac:controller`
+- Authorino extracts the namespace `osac` as the tenant: `["osac"]`
 - Assignable tenants: `["osac"]`
 - Default tenants: `["osac"]`
 - When creating a resource without specifying tenants:
@@ -490,19 +494,23 @@ To configure multi-tenant access in Keycloak:
    - Click **Join group** and select the groups the user should belong to
    - A user can belong to multiple groups
 
-3. **Configure Group Mapper** (as described in [Configuring Keycloak to Include Groups in Tokens](#configuring-keycloak-to-include-groups-in-tokens))
+3. **Configure Group Mapper** (as described in [Configuring
+   Keycloak to Include Groups in
+   Tokens](#configuring-keycloak-to-include-groups-in-tokens))
 
 ### Future Enhancements
 
-The tenancy logic is now configurable via the `--tenancy-logic` flag. Future enhancements may include:
+Future enhancements may include:
 - Support for an additional "organization" layer (requiring development)
 - Custom tenant naming conventions
 - Additional tenancy logic implementations for specific use cases
 
 ## Authorization Configuration
 
-The fulfillment service uses Open Policy Agent (OPA) Rego policies for authorization. The authorization rules are defined in the `AuthConfig` resource.
-The defined rules are a very simple set of intended for development and testing purposes. Further rules and policies can be configured according to the different needs.
+The fulfillment service uses Open Policy Agent (OPA) Rego policies for authorization. The
+authorization rules are defined in the `AuthConfig` resource. The defined rules are a very simple
+set intended for development and testing purposes. Further rules and policies can be configured
+according to the different needs.
 
 ### Authorization Rules Overview
 
@@ -512,7 +520,8 @@ The authorization policy distinguishes between two types of subjects:
    - `system:serviceaccount:<namespace>:admin`
    - `system:serviceaccount:<namespace>:controller`
 
-2. **Client Subjects**: All other authenticated users (JWT tokens from Keycloak or other service accounts)
+2. **Client Subjects**: All other authenticated users (JWT tokens
+   from Keycloak or other service accounts)
 
 ### Authorization Logic
 
@@ -527,7 +536,9 @@ The authorization policy allows:
    - Specific gRPC methods for:
      - Events: `Watch`
      - Cluster Templates: `Get`, `List`
-     - Clusters: `Create`, `Delete`, `Get`, `GetKubeconfig`, `GetKubeconfigViaHttp`, `GetPassword`, `GetPasswordViaHttp`, `List`, `Update`
+     - Clusters: `Create`, `Delete`, `Get`, `GetKubeconfig`,
+       `GetKubeconfigViaHttp`, `GetPassword`,
+       `GetPasswordViaHttp`, `List`, `Update`
      - Host Types: `Get`, `List`
      - Compute Instance Templates: `Get`, `List`
      - Compute Instances: `Create`, `Delete`, `Get`, `List`, `Update`
@@ -537,10 +548,11 @@ The authorization policy allows:
 
 ### Customizing Authorization Rules
 
-To modify authorization rules, edit the `authorization` section in the AuthConfig. The Rego policy is located in:
+To modify authorization rules, edit the `authorization` section in the AuthConfig. The Rego policy
+is located in:
 
-- Template: `charts/service/templates/service/authconfig.yaml`
-- Base manifest: `manifests/base/service/authconfig.yaml`
+- Template: `charts/service/templates/grpc-server/authconfig.yaml`
+- Base manifest: `manifests/base/grpc-server/authconfig.yaml`
 
 Example: To add a new allowed method for client users, add it to the list in the `is_client` rule:
 
@@ -567,7 +579,7 @@ admin_subjects := {
 After modifying the AuthConfig, apply the changes:
 
 ```bash
-kubectl apply -f manifests/base/service/authconfig.yaml
+kubectl apply -f manifests/base/grpc-server/authconfig.yaml
 ```
 
 Or if using Helm:
@@ -580,8 +592,10 @@ helm upgrade fulfillment-service charts/service -n osac
 
 The fulfillment service uses a two-level authorization approach:
 
-1. **Authorino (External Authorization)**: Validates the operation type (not the specific resource)
-2. **Fulfillment Service (Internal Authorization)**: Validates access to specific resources based on tenancy
+1. **Authorino (External Authorization)**: Validates the operation
+   type (not the specific resource)
+2. **Fulfillment Service (Internal Authorization)**: Validates
+   access to specific resources based on tenancy
 
 ### Authorization Flow Diagram
 
@@ -616,7 +630,7 @@ The fulfillment service uses a two-level authorization approach:
 │  Authorino  │
 │             │
 │  - Validates JWT token
-│  - Extracts user and groups
+│  - Extracts user and tenants
 │  - Evaluates Rego policy
 │  - Checks if operation is allowed
 │    (based on operation type, not resource)
@@ -660,19 +674,20 @@ The fulfillment service uses a two-level authorization approach:
    - User logs in through Keycloak (OAuth IDP)
    - Receives a JWT access token containing:
      - Username (`username` claim)
-     - Groups (`groups` claim) - these become tenants
+     - Groups (`groups` claim) — Authorino maps these to tenants
      - Roles (if configured)
 
 2. **Request Initiation**:
    - User makes a request to the fulfillment service API
-   - Includes the JWT token in the `Authorization: Bearer <token>` header
+   - Includes the JWT token in the
+     `Authorization: Bearer <token>` header
    - Request goes through Envoy gateway
 
 3. **Authorino Validation**:
    - Envoy forwards the request to Authorino
    - Authorino:
      - Validates the JWT token signature and expiration
-     - Extracts user identity and groups from token claims
+     - Extracts user identity and tenants from token claims
      - Evaluates the Rego authorization policy
      - Checks if the **operation type** is allowed for this user
      - Does **NOT** check access to specific resources
@@ -684,11 +699,13 @@ The fulfillment service uses a two-level authorization approach:
 5. **Fulfillment Service Validation**:
    - If Authorino approved, the request reaches the fulfillment service
    - The service:
-     - Extracts user and tenant information from the `x-subject` header (set by Authorino)
+     - Reads the pre-computed `user` and `tenants` from the
+       `x-subject` header (set by Authorino)
      - Applies tenancy logic to determine:
        - **Assignable tenants**: Which tenants can be assigned to resources
        - **Default tenants**: Which tenants to assign if not explicitly specified
-       - **Visible tenants**: Which tenants the user can query resources from
+       - **Visible tenants**: Which tenants the user can query
+         resources from
      - Validates access to specific resources
      - Performs the operation or returns an error
 
@@ -700,11 +717,16 @@ The fulfillment service uses a two-level authorization approach:
 2. `alice` sends: `POST /api/fulfillment/v1/clusters` with JWT token
 3. **Authorino checks**:
    - Is `alice` authenticated? ✅ Yes
-   - Is `Create` operation allowed for client users? ✅ Yes (in the allowed methods list)
+   - Is `Create` operation allowed for client users? ✅ Yes
+     (in the allowed methods list)
+   - Sets `x-subject` header with user: `alice`,
+     tenants: `["team-a"]`
    - **Result**: Authorized ✅
 4. **Fulfillment Service**:
-   - Extracts user: `alice`, groups: `["team-a"]`
-   - Determines assignable tenants: `["team-a"]`, default tenants: `["team-a"]`, visible tenants: `["team-a", "shared"]`
+   - Reads user: `alice`, tenants: `["team-a"]` from `x-subject`
+     header
+   - Determines assignable tenants: `["team-a"]`, default tenants:
+     `["team-a"]`, visible tenants: `["team-a", "shared"]`
    - No tenants specified, so assigns the default tenants: `["team-a"]`
    - **Result**: Cluster created ✅
 
@@ -713,10 +735,12 @@ The fulfillment service uses a two-level authorization approach:
 1. User `alice` sends: `POST /api/fulfillment/v1/admin-only-method` with JWT token
 2. **Authorino checks**:
    - Is `alice` authenticated? ✅ Yes
-   - Is `admin-only-method` allowed for client users? ❌ No (not in allowed methods list)
+   - Is `admin-only-method` allowed for client users? ❌ No
+     (not in allowed methods list)
    - Is `alice` an admin? ❌ No
    - **Result**: Denied ❌
-3. **User receives**: `403 Forbidden` (never reaches fulfillment service)
+3. **User receives**: `403 Forbidden` (never reaches fulfillment
+   service)
 
 #### Scenario 3: Admin User Accessing Any Method
 
@@ -731,14 +755,16 @@ The fulfillment service uses a two-level authorization approach:
 
 #### Scenario 4: User Viewing Resources (Tenancy Filtering)
 
-1. User `alice` (belongs to groups: `["team-a"]`) sends: `GET /api/fulfillment/v1/clusters`
+1. User `alice` (tenants: `["team-a"]`) sends: `GET /api/fulfillment/v1/clusters`
 2. **Authorino checks**:
    - Is `List` operation allowed? ✅ Yes
    - **Result**: Authorized ✅
 3. **Fulfillment Service**:
    - Determines visible tenants: `["team-a", "shared"]`
-   - Queries database filtering to only return clusters from these tenants
-   - **Result**: Returns only clusters from `team-a` and `shared` tenants ✅
+   - Queries database filtering to only return clusters from these
+     tenants
+   - **Result**: Returns only clusters from `team-a` and `shared`
+     tenants ✅
 
 ### Roles and Permissions
 
@@ -746,7 +772,8 @@ The fulfillment service does not have an explicit "role" concept, but it disting
 
 1. **Admin Users**:
    - Defined by service account names in the Rego policy
-   - Currently: `system:serviceaccount:<namespace>:admin` and `system:serviceaccount:<namespace>:controller`
+   - Currently: `system:serviceaccount:<namespace>:admin` and
+     `system:serviceaccount:<namespace>:controller`
    - Have full access to all operations
 
 2. **Client Users**:
@@ -758,8 +785,10 @@ The fulfillment service does not have an explicit "role" concept, but it disting
 
 While the fulfillment service doesn't have explicit roles, you can use Keycloak roles for:
 
-1. **Keycloak-Level Authorization**: Use Keycloak roles to control who can authenticate or which clients they can use
-2. **Future Integration**: If role-based authorization is added to the fulfillment service, Keycloak roles can be included in tokens and used in the Rego policy
+1. **Keycloak-Level Authorization**: Use Keycloak roles to control who can authenticate or which
+   clients they can use
+2. **Future Integration**: If role-based authorization is added to the fulfillment service, Keycloak
+   roles can be included in tokens and used in the Rego policy
 
 To add roles in Keycloak:
 
@@ -850,7 +879,8 @@ Test that authorization rules are working:
    - Verify denial of admin-only methods
 
 2. **Test as an admin** (should have full access):
-   - Use a service account token from the `admin` or `controller` service account
+   - Use a service account token from the `admin` or `controller`
+     service account
    - Verify access to all methods
 
 ## Troubleshooting
