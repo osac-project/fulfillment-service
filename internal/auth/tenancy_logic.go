@@ -44,4 +44,4 @@ var SystemTenants = collections.NewSet("system")
 var SharedTenants = collections.NewSet("shared")
 
 // AllTenants is the set of all tenants that are possible.
-var AllTenants = collections.NewUniversal[string]()
+var AllTenants = collections.NewUniversalSet[string]()

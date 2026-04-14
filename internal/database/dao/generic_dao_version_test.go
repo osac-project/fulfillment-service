@@ -77,7 +77,7 @@ var _ = Describe("Version", func() {
 		// Create a tenancy logic without restrictions:
 		tenancy = auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewUniversal[string](), nil).
+			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
 
 		// Create the DAO:

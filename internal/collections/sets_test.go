@@ -48,7 +48,7 @@ var _ = Describe("Sets", func() {
 		})
 
 		It("Can create and query a universal set", func() {
-			s := NewUniversal[int]()
+			s := NewUniversalSet[int]()
 			Expect(s.Contains(1)).To(BeTrue())
 			Expect(s.Contains(100)).To(BeTrue())
 			Expect(s.Empty()).To(BeFalse())
@@ -84,7 +84,7 @@ var _ = Describe("Sets", func() {
 		})
 
 		It("Panics when calling Inclusions on universal set", func() {
-			s := NewUniversal[int]()
+			s := NewUniversalSet[int]()
 			Expect(func() {
 				_ = s.Inclusions()
 			}).To(PanicWith("tried to get inclussions from an infinite set"))
@@ -98,7 +98,7 @@ var _ = Describe("Sets", func() {
 		})
 
 		It("Returns empty slice for universal set", func() {
-			s := NewUniversal[int]()
+			s := NewUniversalSet[int]()
 			exclusions := s.Exclusions()
 			Expect(exclusions).To(BeEmpty())
 		})
@@ -129,7 +129,7 @@ var _ = Describe("Sets", func() {
 
 			It("Union of positive and universal", func() {
 				a := NewSet(1, 2)
-				b := NewUniversal[int]()
+				b := NewUniversalSet[int]()
 				u := a.Union(b)
 				Expect(u.Universal()).To(BeTrue())
 			})
@@ -172,7 +172,7 @@ var _ = Describe("Sets", func() {
 
 			It("Intersection of positive and universal", func() {
 				a := NewSet(1, 2)
-				b := NewUniversal[int]()
+				b := NewUniversalSet[int]()
 				i := a.Intersection(b)
 				Expect(i.Equal(a)).To(BeTrue())
 			})
@@ -230,7 +230,7 @@ var _ = Describe("Sets", func() {
 			})
 
 			It("Negate Universal is Empty", func() {
-				negated := NewUniversal[int]().Negate()
+				negated := NewUniversalSet[int]().Negate()
 				Expect(negated.Empty()).To(BeTrue())
 				Expect(negated.Finite()).To(BeTrue())
 			})
@@ -250,9 +250,9 @@ var _ = Describe("Sets", func() {
 			})
 
 			It("Subset with Universal", func() {
-				Expect(NewSet(1, 2).Subset(NewUniversal[int]())).To(BeTrue())
-				Expect(NewUniversal[int]().Subset(NewSet(1, 2))).To(BeFalse())
-				Expect(NewUniversal[int]().Subset(NewUniversal[int]())).To(BeTrue())
+				Expect(NewSet(1, 2).Subset(NewUniversalSet[int]())).To(BeTrue())
+				Expect(NewUniversalSet[int]().Subset(NewSet(1, 2))).To(BeFalse())
+				Expect(NewUniversalSet[int]().Subset(NewUniversalSet[int]())).To(BeTrue())
 			})
 
 			It("Negative subsets", func() {

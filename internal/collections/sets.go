@@ -56,7 +56,7 @@ func NewSet[T comparable](items ...T) Set[T] {
 }
 
 // NewUniversalSet creates a set containing all possible elements.
-func NewUniversal[T comparable]() Set[T] {
+func NewUniversalSet[T comparable]() Set[T] {
 	return Set[T]{
 		infinite: true,
 		items:    nil,

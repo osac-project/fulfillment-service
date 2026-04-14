@@ -62,7 +62,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	// Create the set of visible tenants:
-	visibility = collections.NewUniversal[string]()
+	visibility = collections.NewUniversalSet[string]()
 
 	// Create the database server:
 	server = MakeDatabaseServer()

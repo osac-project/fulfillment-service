@@ -139,7 +139,7 @@ var _ = Describe("Tenancy logic", func() {
 		// Create a tenancy logic that makes all tenants visible to the user:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewUniversal[string](), nil).
+			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
 
 		// Create the DAO:
