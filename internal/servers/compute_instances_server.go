@@ -280,7 +280,9 @@ func (s *ComputeInstancesServer) Update(ctx context.Context,
 		}
 		privateComputeInstance = getResponse.GetObject()
 	}
-	err = s.inMapper.Copy(ctx, publicComputeInstance, privateComputeInstance)
+	// Merge the public changes into the existing private object. Merge (not Copy) preserves
+	// optional fields that are absent in the public request.
+	err = s.inMapper.Merge(ctx, publicComputeInstance, privateComputeInstance)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,

@@ -444,6 +444,64 @@ var _ = Describe("Compute instances server", func() {
 			Expect(getResponse).To(BeNil())
 		})
 
+		It("Preserves optional spec fields during update without field mask", func() {
+			// Create a template first:
+			createTemplate("general.small")
+
+			// Create an object with optional spec fields set:
+			createResponse, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+				Object: publicv1.ComputeInstance_builder{
+					Spec: publicv1.ComputeInstanceSpec_builder{
+						Template:    "general.small",
+						Cores:       proto.Int32(4),
+						MemoryGib:   proto.Int32(8),
+						RunStrategy: proto.String("Always"),
+						Image: publicv1.ComputeInstanceImage_builder{
+							SourceType: "registry",
+							SourceRef:  "quay.io/test:latest",
+						}.Build(),
+						BootDisk: publicv1.ComputeInstanceDisk_builder{
+							SizeGib: 20,
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			id := createResponse.GetObject().GetId()
+
+			// Update WITHOUT a field mask, omitting optional spec fields. Only
+			// template is included — cores, memory_gib, etc. must survive.
+			updateResponse, err := server.Update(ctx, publicv1.ComputeInstancesUpdateRequest_builder{
+				Object: publicv1.ComputeInstance_builder{
+					Id: id,
+					Spec: publicv1.ComputeInstanceSpec_builder{
+						Template: "general.small",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := updateResponse.GetObject()
+
+			// Verify optional spec fields were preserved:
+			Expect(object.GetSpec().GetCores()).To(BeNumerically("==", 4))
+			Expect(object.GetSpec().GetMemoryGib()).To(BeNumerically("==", 8))
+			Expect(object.GetSpec().GetRunStrategy()).To(Equal("Always"))
+			Expect(object.GetSpec().GetImage().GetSourceRef()).To(Equal("quay.io/test:latest"))
+			Expect(object.GetSpec().GetBootDisk().GetSizeGib()).To(BeNumerically("==", 20))
+
+			// Verify they survive a round-trip through the database:
+			getResponse, err := server.Get(ctx, publicv1.ComputeInstancesGetRequest_builder{
+				Id: id,
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			fetched := getResponse.GetObject()
+			Expect(fetched.GetSpec().GetCores()).To(BeNumerically("==", 4))
+			Expect(fetched.GetSpec().GetMemoryGib()).To(BeNumerically("==", 8))
+			Expect(fetched.GetSpec().GetRunStrategy()).To(Equal("Always"))
+			Expect(fetched.GetSpec().GetImage().GetSourceRef()).To(Equal("quay.io/test:latest"))
+			Expect(fetched.GetSpec().GetBootDisk().GetSizeGib()).To(BeNumerically("==", 20))
+		})
+
 		It("Handles non-existent object", func() {
 			// Try to get a non-existent object:
 			getResponse, err := server.Get(ctx, publicv1.ComputeInstancesGetRequest_builder{
