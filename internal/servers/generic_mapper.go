@@ -225,10 +225,14 @@ func (m *GenericMapper[From, To]) copyMap(from, to protoreflect.Map, field proto
 }
 
 // CopyUpdate copies the data from the `from` object into the `to` object using update
-// semantics: fields present in `from` are written to `to` (replacing lists and maps entirely),
-// while fields absent in `from` are left unchanged in `to`. This is the correct behavior for
-// Update operations where the caller provides a partial object and expects unmentioned fields
-// to be preserved.
+// semantics: fields present in `from` are written to `to`, while fields absent in `from`
+// are left unchanged in `to`. This is the correct behavior for Update operations where
+// the caller provides a partial object and expects unmentioned fields to be preserved.
+//
+// For present fields, behavior varies by type: lists are replaced (truncated then copied),
+// maps are overlaid (keys from `from` are set on `to`, keys only in `to` are preserved),
+// and messages are recursively processed with the same update semantics. To remove a map
+// key or clear a collection entirely, use FieldMask.
 //
 // Compare with Copy (clears absent fields — destructive for partial updates) and Merge
 // (appends to lists instead of replacing — wrong for "set these rules" semantics).
