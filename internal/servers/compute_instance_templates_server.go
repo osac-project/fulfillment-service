@@ -272,8 +272,8 @@ func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
 	}
 	existingPrivateComputeInstanceTemplate := getResponse.GetObject()
 
-	// Map the public changes to the existing private object (preserving private data):
-	err = s.inMapper.Copy(ctx, publicComputeInstanceTemplate, existingPrivateComputeInstanceTemplate)
+	// Map the public changes to the existing private object, preserving absent fields:
+	err = s.inMapper.CopyUpdate(ctx, publicComputeInstanceTemplate, existingPrivateComputeInstanceTemplate)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,

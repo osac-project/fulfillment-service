@@ -273,8 +273,8 @@ func (s *HostTypesServer) Update(ctx context.Context,
 	}
 	existingPrivateHostType := getResponse.GetObject()
 
-	// Map the public changes to the existing private object (preserving private data):
-	err = s.inMapper.Copy(ctx, publicHostType, existingPrivateHostType)
+	// Map the public changes to the existing private object, preserving absent fields:
+	err = s.inMapper.CopyUpdate(ctx, publicHostType, existingPrivateHostType)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,

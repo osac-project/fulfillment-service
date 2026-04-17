@@ -1538,7 +1538,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(labels).To(HaveKeyWithValue("example.com/my-label", "your-value"))
 		})
 
-		It("Updates label by updating without specifying the field mask", func() {
+		It("Clears labels using field mask", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
 				Object: publicv1.Cluster_builder{
@@ -1555,7 +1555,8 @@ var _ = Describe("Clusters server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 
-			// Delete the label:
+			// Delete labels using a field mask (the correct way to clear a
+			// map field, since proto3 cannot distinguish empty from absent):
 			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
 				Object: publicv1.Cluster_builder{
 					Id: object.GetId(),
@@ -1563,6 +1564,9 @@ var _ = Describe("Clusters server", func() {
 						Labels: map[string]string{},
 					}.Build(),
 				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"metadata.labels"},
+				},
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			object = updateResponse.GetObject()

@@ -278,8 +278,8 @@ func (s *VirtualNetworksServer) Update(ctx context.Context,
 	}
 	existingPrivateVirtualNetwork := getResponse.GetObject()
 
-	// Map the public changes to the existing private object (preserving private data):
-	err = s.inMapper.Copy(ctx, publicVirtualNetwork, existingPrivateVirtualNetwork)
+	// Map the public changes to the existing private object, preserving absent fields:
+	err = s.inMapper.CopyUpdate(ctx, publicVirtualNetwork, existingPrivateVirtualNetwork)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,

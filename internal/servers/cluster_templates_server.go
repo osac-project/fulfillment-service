@@ -272,8 +272,8 @@ func (s *ClusterTemplatesServer) Update(ctx context.Context,
 	}
 	existingPrivateClusterTemplate := getResponse.GetObject()
 
-	// Map the public changes to the existing private object (preserving private data):
-	err = s.inMapper.Copy(ctx, publicClusterTemplate, existingPrivateClusterTemplate)
+	// Map the public changes to the existing private object, preserving absent fields:
+	err = s.inMapper.CopyUpdate(ctx, publicClusterTemplate, existingPrivateClusterTemplate)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,

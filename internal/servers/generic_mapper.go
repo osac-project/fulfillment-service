@@ -224,6 +224,80 @@ func (m *GenericMapper[From, To]) copyMap(from, to protoreflect.Map, field proto
 	return
 }
 
+// CopyUpdate copies the data from the `from` object into the `to` object using update
+// semantics: fields present in `from` are written to `to` (replacing lists and maps entirely),
+// while fields absent in `from` are left unchanged in `to`. This is the correct behavior for
+// Update operations where the caller provides a partial object and expects unmentioned fields
+// to be preserved.
+//
+// Compare with Copy (clears absent fields — destructive for partial updates) and Merge
+// (appends to lists instead of replacing — wrong for "set these rules" semantics).
+func (m *GenericMapper[From, To]) CopyUpdate(ctx context.Context, from From, to To) error {
+	fromReflect := from.ProtoReflect()
+	toReflect := to.ProtoReflect()
+	if !fromReflect.IsValid() || !toReflect.IsValid() {
+		return nil
+	}
+	return m.copyUpdateMessage(fromReflect, toReflect)
+}
+
+func (m *GenericMapper[From, To]) copyUpdateMessage(from, to protoreflect.Message) error {
+	fromFields := from.Descriptor().Fields()
+	toFields := to.Descriptor().Fields()
+	for i := range fromFields.Len() {
+		fromField := fromFields.Get(i)
+		if m.shouldIgnore(fromField) {
+			continue
+		}
+		toField := toFields.ByName(fromField.Name())
+		if toField == nil {
+			if m.strict {
+				return fmt.Errorf(
+					"type '%s' doesn't have a '%s' field",
+					to.Descriptor().FullName(),
+					fromField.Name(),
+				)
+			}
+			continue
+		}
+		if m.shouldIgnore(toField) {
+			continue
+		}
+		if !from.Has(fromField) {
+			continue
+		}
+		fromValue := from.Get(fromField)
+		switch {
+		case fromField.IsList():
+			fromList := fromValue.List()
+			toList := to.Mutable(toField).List()
+			err := m.copyList(fromList, toList, fromField)
+			if err != nil {
+				return err
+			}
+		case fromField.IsMap():
+			fromMap := fromValue.Map()
+			toMap := to.Mutable(toField).Map()
+			err := m.copyMap(fromMap, toMap, fromField.MapValue())
+			if err != nil {
+				return err
+			}
+		case fromField.Message() != nil:
+			fromMessage := fromValue.Message()
+			toMessage := to.Mutable(toField).Message()
+			err := m.copyUpdateMessage(fromMessage, toMessage)
+			if err != nil {
+				return err
+			}
+		case fromField.Kind() == protoreflect.BytesKind:
+			to.Set(toField, m.cloneBytes(fromValue))
+		default:
+			to.Set(toField, fromValue)
+		}
+	}
+	return nil
+}
+
 // Merge merges the data from the `from` object into the `to` object.
 func (m *GenericMapper[From, To]) Merge(ctx context.Context, from From, to To) error {
 	fromReflect := from.ProtoReflect()

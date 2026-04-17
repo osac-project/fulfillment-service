@@ -252,6 +252,165 @@ var _ = Describe("Generic mapper", func() {
 	)
 
 	DescribeTable(
+		"CopyUpdate compute instance public to private",
+		func(from *publicv1.ComputeInstance, to *privatev1.ComputeInstance, expected *privatev1.ComputeInstance) {
+			mapper, err := NewGenericMapper[*publicv1.ComputeInstance, *privatev1.ComputeInstance]().
+				SetLogger(logger).
+				SetStrict(false).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			err = mapper.CopyUpdate(ctx, from, to)
+			Expect(err).ToNot(HaveOccurred())
+			marshalOptions := protojson.MarshalOptions{
+				UseProtoNames: true,
+			}
+			actualJson, err := marshalOptions.Marshal(to)
+			Expect(err).ToNot(HaveOccurred())
+			expectedJson, err := marshalOptions.Marshal(expected)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(actualJson).To(MatchJSON(expectedJson))
+		},
+		Entry(
+			"Preserves absent optional scalar fields",
+			// From: only template set, cores/memory_gib absent
+			publicv1.ComputeInstance_builder{
+				Spec: publicv1.ComputeInstanceSpec_builder{
+					Template: "general.large",
+				}.Build(),
+			}.Build(),
+			// To: existing object with optional fields populated
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:    "general.small",
+					Cores:       proto.Int32(4),
+					MemoryGib:   proto.Int32(8),
+					RunStrategy: proto.String("Always"),
+				}.Build(),
+			}.Build(),
+			// Expected: optional fields preserved
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:    "general.large",
+					Cores:       proto.Int32(4),
+					MemoryGib:   proto.Int32(8),
+					RunStrategy: proto.String("Always"),
+				}.Build(),
+			}.Build(),
+		),
+		Entry(
+			"Replaces present repeated fields instead of appending",
+			// From: new security_groups list
+			publicv1.ComputeInstance_builder{
+				Spec: publicv1.ComputeInstanceSpec_builder{
+					Template:       "general.small",
+					SecurityGroups: []string{"sg-new"},
+				}.Build(),
+			}.Build(),
+			// To: existing object with different security_groups
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:       "general.small",
+					SecurityGroups: []string{"sg-old-1", "sg-old-2"},
+				}.Build(),
+			}.Build(),
+			// Expected: security_groups replaced (not appended)
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:       "general.small",
+					SecurityGroups: []string{"sg-new"},
+				}.Build(),
+			}.Build(),
+		),
+		Entry(
+			"Preserves absent repeated fields",
+			// From: no security_groups field
+			publicv1.ComputeInstance_builder{
+				Spec: publicv1.ComputeInstanceSpec_builder{
+					Template: "general.large",
+				}.Build(),
+			}.Build(),
+			// To: existing object with security_groups
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:       "general.small",
+					SecurityGroups: []string{"sg-existing"},
+				}.Build(),
+			}.Build(),
+			// Expected: security_groups preserved
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:       "general.large",
+					SecurityGroups: []string{"sg-existing"},
+				}.Build(),
+			}.Build(),
+		),
+		Entry(
+			"Overwrites present optional fields",
+			// From: cores set to new value
+			publicv1.ComputeInstance_builder{
+				Spec: publicv1.ComputeInstanceSpec_builder{
+					Template: "general.large",
+					Cores:    proto.Int32(16),
+				}.Build(),
+			}.Build(),
+			// To: existing object with different cores
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:    "general.small",
+					Cores:       proto.Int32(4),
+					MemoryGib:   proto.Int32(8),
+					RunStrategy: proto.String("Always"),
+				}.Build(),
+			}.Build(),
+			// Expected: cores updated, other optionals preserved
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:    "general.large",
+					Cores:       proto.Int32(16),
+					MemoryGib:   proto.Int32(8),
+					RunStrategy: proto.String("Always"),
+				}.Build(),
+			}.Build(),
+		),
+		Entry(
+			"Mixed: updates scalar, preserves absent optional, replaces list",
+			// From: new template, new security_groups, cores absent
+			publicv1.ComputeInstance_builder{
+				Spec: publicv1.ComputeInstanceSpec_builder{
+					Template:       "general.large",
+					SecurityGroups: []string{"sg-new-1", "sg-new-2"},
+				}.Build(),
+			}.Build(),
+			// To: existing object with cores and old security_groups
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:       "general.small",
+					Cores:          proto.Int32(4),
+					SecurityGroups: []string{"sg-old"},
+				}.Build(),
+			}.Build(),
+			// Expected: template updated, cores preserved, security_groups replaced
+			privatev1.ComputeInstance_builder{
+				Id: "existing-id",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:       "general.large",
+					Cores:          proto.Int32(4),
+					SecurityGroups: []string{"sg-new-1", "sg-new-2"},
+				}.Build(),
+			}.Build(),
+		),
+	)
+
+	DescribeTable(
 		"Merge cluster private to public",
 		func(from *privatev1.Cluster, to *publicv1.Cluster, expected *publicv1.Cluster) {
 			mapper, err := NewGenericMapper[*privatev1.Cluster, *publicv1.Cluster]().

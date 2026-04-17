@@ -273,8 +273,8 @@ func (s *SubnetsServer) Update(ctx context.Context,
 	}
 	existingPrivateSubnet := getResponse.GetObject()
 
-	// Map the public changes to the existing private object (preserving private data):
-	err = s.inMapper.Copy(ctx, publicSubnet, existingPrivateSubnet)
+	// Map the public changes to the existing private object, preserving absent fields:
+	err = s.inMapper.CopyUpdate(ctx, publicSubnet, existingPrivateSubnet)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,

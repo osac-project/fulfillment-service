@@ -273,8 +273,8 @@ func (s *NetworkClassesServer) Update(ctx context.Context,
 	}
 	existingPrivateNetworkClass := getResponse.GetObject()
 
-	// Map the public changes to the existing private object (preserving private data):
-	err = s.inMapper.Copy(ctx, publicNetworkClass, existingPrivateNetworkClass)
+	// Map the public changes to the existing private object, preserving absent fields:
+	err = s.inMapper.CopyUpdate(ctx, publicNetworkClass, existingPrivateNetworkClass)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,

@@ -273,8 +273,8 @@ func (s *SecurityGroupsServer) Update(ctx context.Context,
 	}
 	existingPrivateSecurityGroup := getResponse.GetObject()
 
-	// Map the public changes to the existing private object (preserving private data):
-	err = s.inMapper.Copy(ctx, publicSecurityGroup, existingPrivateSecurityGroup)
+	// Map the public changes to the existing private object, preserving absent fields:
+	err = s.inMapper.CopyUpdate(ctx, publicSecurityGroup, existingPrivateSecurityGroup)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,

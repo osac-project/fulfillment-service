@@ -334,7 +334,7 @@ func (s *ClustersServer) Update(ctx context.Context,
 		}
 		privateCluster = getResponse.GetObject()
 	}
-	err = s.inMapper.Copy(ctx, publicCluster, privateCluster)
+	err = s.inMapper.CopyUpdate(ctx, publicCluster, privateCluster)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,
