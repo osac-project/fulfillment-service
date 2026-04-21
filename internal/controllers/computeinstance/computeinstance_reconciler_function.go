@@ -196,7 +196,11 @@ func (t *task) update(ctx context.Context) error {
 		object = &unstructured.Unstructured{}
 		object.SetGroupVersionKind(gvks.ComputeInstance)
 		object.SetNamespace(t.hubNamespace)
-		object.SetGenerateName(objectPrefix)
+		if name := t.computeInstance.GetMetadata().GetName(); name != "" {
+			object.SetName(name)
+		} else {
+			object.SetGenerateName(objectPrefix)
+		}
 		object.SetLabels(map[string]string{
 			labels.ComputeInstanceUuid: t.computeInstance.GetId(),
 		})
