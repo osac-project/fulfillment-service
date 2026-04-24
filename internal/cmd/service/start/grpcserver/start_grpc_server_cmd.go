@@ -343,10 +343,10 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		return fmt.Errorf("failed to create public attribution logic: %w", err)
 	}
 
-	// Create the public tenancy logic:
+	// Create the tenancy logic:
 	c.logger.InfoContext(
 		ctx,
-		"Creating public tenancy logic",
+		"Creating tenancy logic",
 		slog.String("type", c.args.tenancyLogic),
 	)
 	var tenancyLogic auth.TenancyLogic
@@ -686,7 +686,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetLogger(c.logger).
 		SetNotifier(notifier).
 		SetAttributionLogic(publicAttributionLogic).
-		SetTenancyLogic(publicTenancyLogic).
+		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
@@ -700,7 +700,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetLogger(c.logger).
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
-		SetTenancyLogic(privateTenancyLogic).
+		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
@@ -714,7 +714,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetLogger(c.logger).
 		SetNotifier(notifier).
 		SetAttributionLogic(privateAttributionLogic).
-		SetTenancyLogic(privateTenancyLogic).
+		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
 	if err != nil {
