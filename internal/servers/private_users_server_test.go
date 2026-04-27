@@ -175,6 +175,91 @@ var _ = Describe("Users Server", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
+	It("Prunes credentials from listed users", func() {
+		// Create a user with credentials:
+		password := "secret123"
+		_, err := privateServer.Create(ctx, &privatev1.UsersCreateRequest{
+			Object: &privatev1.User{
+				Metadata: &privatev1.Metadata{
+					Name: "cred-user",
+				},
+				Spec: &privatev1.UserSpec{
+					Username: "creduser",
+					Email:    "cred@example.com",
+					Credentials: &privatev1.UserCredentials{
+						Password: &password,
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		// List and verify credentials are pruned:
+		listResp, err := privateServer.List(ctx, &privatev1.UsersListRequest{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(listResp.Items).To(HaveLen(1))
+		Expect(listResp.Items[0].Spec.HasCredentials()).To(BeFalse())
+	})
+
+	It("Preserves credentials in fetched user", func() {
+		// Create a user with credentials:
+		password := "secret123"
+		createResp, err := privateServer.Create(ctx, &privatev1.UsersCreateRequest{
+			Object: &privatev1.User{
+				Metadata: &privatev1.Metadata{
+					Name: "cred-user",
+				},
+				Spec: &privatev1.UserSpec{
+					Username: "creduser",
+					Email:    "cred@example.com",
+					Credentials: &privatev1.UserCredentials{
+						Password: &password,
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		// Get and verify credentials are preserved so controllers can access them:
+		getResp, err := privateServer.Get(ctx, &privatev1.UsersGetRequest{
+			Id: createResp.Object.Id,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getResp.Object.Spec.HasCredentials()).To(BeTrue())
+	})
+
+	It("Preserves credentials in updated user", func() {
+		// Create a user with credentials:
+		password := "secret123"
+		createResp, err := privateServer.Create(ctx, &privatev1.UsersCreateRequest{
+			Object: &privatev1.User{
+				Metadata: &privatev1.Metadata{
+					Name: "cred-user",
+				},
+				Spec: &privatev1.UserSpec{
+					Username: "creduser",
+					Email:    "cred@example.com",
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		// Update with credentials and verify they are preserved so controllers can access them:
+		updateResp, err := privateServer.Update(ctx, &privatev1.UsersUpdateRequest{
+			Object: &privatev1.User{
+				Id: createResp.Object.Id,
+				Spec: &privatev1.UserSpec{
+					FirstName: "Updated",
+					Credentials: &privatev1.UserCredentials{
+						Password: &password,
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(updateResp.Object.Spec.HasCredentials()).To(BeTrue())
+	})
+
 	It("Updates a user", func() {
 		// Create a user:
 		createReq := &privatev1.UsersCreateRequest{

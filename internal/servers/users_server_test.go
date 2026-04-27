@@ -106,6 +106,26 @@ var _ = Describe("Public Users Server", func() {
 		Expect(response.Object.Spec.Username).To(Equal("testuser"))
 	})
 
+	It("Prunes credentials from created user", func() {
+		password := "secret123"
+		response, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
+			Object: &publicv1.User{
+				Metadata: &publicv1.Metadata{
+					Name: "cred-user",
+				},
+				Spec: &publicv1.UserSpec{
+					Username: "creduser",
+					Email:    "cred@example.com",
+					Credentials: &publicv1.UserCredentials{
+						Password: &password,
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response.Object.Spec.HasCredentials()).To(BeFalse())
+	})
+
 	It("Lists users", func() {
 		// Create a user first:
 		createReq := &publicv1.UsersCreateRequest{
@@ -207,6 +227,91 @@ var _ = Describe("Public Users Server", func() {
 		updateResp, err := publicServer.Update(ctx, updateReq)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(updateResp.Object.Spec.FirstName).To(Equal("Updated"))
+	})
+
+	It("Prunes credentials from listed users", func() {
+		// Create a user with credentials:
+		password := "secret123"
+		_, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
+			Object: &publicv1.User{
+				Metadata: &publicv1.Metadata{
+					Name: "cred-user",
+				},
+				Spec: &publicv1.UserSpec{
+					Username: "creduser",
+					Email:    "cred@example.com",
+					Credentials: &publicv1.UserCredentials{
+						Password: &password,
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		// List and verify credentials are pruned:
+		listResp, err := publicServer.List(ctx, &publicv1.UsersListRequest{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(listResp.Items).To(HaveLen(1))
+		Expect(listResp.Items[0].Spec.HasCredentials()).To(BeFalse())
+	})
+
+	It("Prunes credentials from fetched user", func() {
+		// Create a user with credentials:
+		password := "secret123"
+		createResp, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
+			Object: &publicv1.User{
+				Metadata: &publicv1.Metadata{
+					Name: "cred-user",
+				},
+				Spec: &publicv1.UserSpec{
+					Username: "creduser",
+					Email:    "cred@example.com",
+					Credentials: &publicv1.UserCredentials{
+						Password: &password,
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		// Get and verify credentials are pruned:
+		getResp, err := publicServer.Get(ctx, &publicv1.UsersGetRequest{
+			Id: createResp.Object.Id,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getResp.Object.Spec.HasCredentials()).To(BeFalse())
+	})
+
+	It("Prunes credentials from updated user", func() {
+		// Create a user with credentials:
+		password := "secret123"
+		createResp, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
+			Object: &publicv1.User{
+				Metadata: &publicv1.Metadata{
+					Name: "cred-user",
+				},
+				Spec: &publicv1.UserSpec{
+					Username: "creduser",
+					Email:    "cred@example.com",
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		// Update with credentials and verify they are pruned from the response:
+		updateResp, err := publicServer.Update(ctx, &publicv1.UsersUpdateRequest{
+			Object: &publicv1.User{
+				Id: createResp.Object.Id,
+				Spec: &publicv1.UserSpec{
+					FirstName: "Updated",
+					Credentials: &publicv1.UserCredentials{
+						Password: &password,
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(updateResp.Object.Spec.HasCredentials()).To(BeFalse())
 	})
 
 	It("Lists users filtered by organization", func() {

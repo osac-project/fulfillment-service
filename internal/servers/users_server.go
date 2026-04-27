@@ -160,7 +160,10 @@ func (s *UsersServer) List(ctx context.Context,
 		publicItems[i] = publicItem
 	}
 
-	// Build and return the response:
+	// Prune credentials and build the response:
+	for _, item := range publicItems {
+		s.pruneCredentials(item)
+	}
 	response = &publicv1.UsersListResponse{}
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
@@ -192,7 +195,8 @@ func (s *UsersServer) Get(ctx context.Context,
 		return nil, err
 	}
 
-	// Build and return the response:
+	// Prune credentials and build the response:
+	s.pruneCredentials(publicObject)
 	response = &publicv1.UsersGetResponse{}
 	response.SetObject(publicObject)
 	return
@@ -234,7 +238,8 @@ func (s *UsersServer) Create(ctx context.Context,
 		return nil, err
 	}
 
-	// Build and return the response:
+	// Prune credentials and build the response:
+	s.pruneCredentials(publicObject)
 	response = &publicv1.UsersCreateResponse{}
 	response.SetObject(publicObject)
 	return
@@ -277,7 +282,8 @@ func (s *UsersServer) Update(ctx context.Context,
 		return nil, err
 	}
 
-	// Build and return the response:
+	// Prune credentials and build the response:
+	s.pruneCredentials(publicObject)
 	response = &publicv1.UsersUpdateResponse{}
 	response.SetObject(publicObject)
 	return
@@ -298,4 +304,12 @@ func (s *UsersServer) Delete(ctx context.Context,
 	// Build and return the response:
 	response = &publicv1.UsersDeleteResponse{}
 	return
+}
+
+// pruneCredentials removes credential data from a user object so that sensitive information like passwords is never
+// returned in public API responses.
+func (s *UsersServer) pruneCredentials(user *publicv1.User) {
+	if user.GetSpec() != nil {
+		user.GetSpec().ClearCredentials()
+	}
 }

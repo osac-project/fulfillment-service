@@ -107,11 +107,19 @@ func (b *PrivateUsersServerBuilder) Build() (result *PrivateUsersServer, err err
 func (s *PrivateUsersServer) List(ctx context.Context,
 	request *privatev1.UsersListRequest) (response *privatev1.UsersListResponse, err error) {
 	err = s.generic.List(ctx, request, &response)
+	if err != nil {
+		return
+	}
+	for _, item := range response.GetItems() {
+		s.pruneCredentials(item)
+	}
 	return
 }
 
 func (s *PrivateUsersServer) Get(ctx context.Context,
 	request *privatev1.UsersGetRequest) (response *privatev1.UsersGetResponse, err error) {
+	// Note that credentials are not pruned here because controllers need them to sync users with the identity
+	// provider. The public server prunes credentials independently before returning them to clients.
 	err = s.generic.Get(ctx, request, &response)
 	return
 }
@@ -124,6 +132,8 @@ func (s *PrivateUsersServer) Create(ctx context.Context,
 
 func (s *PrivateUsersServer) Update(ctx context.Context,
 	request *privatev1.UsersUpdateRequest) (response *privatev1.UsersUpdateResponse, err error) {
+	// Note that credentials are not pruned here because controllers need them to sync users with the identity
+	// provider. The public server prunes credentials independently before returning them to clients.
 	err = s.generic.Update(ctx, request, &response)
 	return
 }
@@ -138,4 +148,12 @@ func (s *PrivateUsersServer) Signal(ctx context.Context,
 	request *privatev1.UsersSignalRequest) (response *privatev1.UsersSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)
 	return
+}
+
+// pruneCredentials removes credential data from a user object so that sensitive information like passwords is never
+// returned in responses.
+func (s *PrivateUsersServer) pruneCredentials(user *privatev1.User) {
+	if user.GetSpec() != nil {
+		user.GetSpec().ClearCredentials()
+	}
 }
