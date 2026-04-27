@@ -66,6 +66,8 @@ var _ = Describe("Private public IP pools server", func() {
 		// Create the tables:
 		err = dao.CreateTables[*privatev1.PublicIPPool](ctx)
 		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.PublicIP](ctx)
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Describe("Creation", func() {
@@ -109,13 +111,24 @@ var _ = Describe("Private public IP pools server", func() {
 	})
 
 	Describe("Behaviour", func() {
-		var poolsServer *PrivatePublicIPPoolsServer
+		var (
+			poolsServer *PrivatePublicIPPoolsServer
+			ipsServer   *PrivatePublicIPsServer
+		)
 
 		BeforeEach(func() {
 			var err error
 
-			// Create the server:
+			// Create the pools server:
 			poolsServer, err = NewPrivatePublicIPPoolsServer().
+				SetLogger(logger).
+				SetAttributionLogic(attribution).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the IPs server (used to seed PublicIP objects for deletion tests):
+			ipsServer, err = NewPrivatePublicIPsServer().
 				SetLogger(logger).
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
@@ -273,6 +286,57 @@ var _ = Describe("Private public IP pools server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(getResponse.GetObject().GetMetadata().GetDeletionTimestamp()).ToNot(BeNil())
+		})
+
+		It("Rejects deletion when allocated PublicIPs reference the pool", func() {
+			// Create a pool:
+			createPoolResponse, err := poolsServer.Create(ctx, privatev1.PublicIPPoolsCreateRequest_builder{
+				Object: privatev1.PublicIPPool_builder{
+					Spec: privatev1.PublicIPPoolSpec_builder{
+						Cidrs:    []string{"10.0.0.0/24"},
+						IpFamily: privatev1.IPFamily_IP_FAMILY_IPV4,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			poolID := createPoolResponse.GetObject().GetId()
+
+			// Allocate a PublicIP from the pool:
+			_, err = ipsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
+				Object: privatev1.PublicIP_builder{
+					Spec: privatev1.PublicIPSpec_builder{
+						Pool: poolID,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			// Attempt to delete the pool — must fail:
+			_, err = poolsServer.Delete(ctx, privatev1.PublicIPPoolsDeleteRequest_builder{
+				Id: poolID,
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("public IP(s) are still allocated"))
+		})
+
+		It("Allows deletion when no PublicIPs reference the pool", func() {
+			// Create a pool:
+			createPoolResponse, err := poolsServer.Create(ctx, privatev1.PublicIPPoolsCreateRequest_builder{
+				Object: privatev1.PublicIPPool_builder{
+					Spec: privatev1.PublicIPPoolSpec_builder{
+						Cidrs:    []string{"10.1.0.0/24"},
+						IpFamily: privatev1.IPFamily_IP_FAMILY_IPV4,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			poolID := createPoolResponse.GetObject().GetId()
+
+			// No PublicIPs reference this pool — deletion must succeed:
+			_, err = poolsServer.Delete(ctx, privatev1.PublicIPPoolsDeleteRequest_builder{
+				Id: poolID,
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 })

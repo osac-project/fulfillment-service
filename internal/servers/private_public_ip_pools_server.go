@@ -16,13 +16,17 @@ package servers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 // PrivatePublicIPPoolsServerBuilder contains the data and logic needed to create a new private public IP pools server.
@@ -40,8 +44,9 @@ var _ privatev1.PublicIPPoolsServer = (*PrivatePublicIPPoolsServer)(nil)
 type PrivatePublicIPPoolsServer struct {
 	privatev1.UnimplementedPublicIPPoolsServer
 
-	logger  *slog.Logger
-	generic *GenericServer[*privatev1.PublicIPPool]
+	logger      *slog.Logger
+	generic     *GenericServer[*privatev1.PublicIPPool]
+	publicIPDAO *dao.GenericDAO[*privatev1.PublicIP]
 }
 
 // NewPrivatePublicIPPoolsServer creates a builder that can then be used to configure and create a new private public
@@ -92,6 +97,17 @@ func (b *PrivatePublicIPPoolsServerBuilder) Build() (result *PrivatePublicIPPool
 		return
 	}
 
+	// Create the PublicIP DAO used to check for allocated IPs on pool deletion:
+	publicIPDAO, err := dao.NewGenericDAO[*privatev1.PublicIP]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		err = fmt.Errorf("failed to create public IP DAO: %w", err)
+		return
+	}
+
 	generic, err := NewGenericServer[*privatev1.PublicIPPool]().
 		SetLogger(b.logger).
 		SetService(privatev1.PublicIPPools_ServiceDesc.ServiceName).
@@ -105,8 +121,9 @@ func (b *PrivatePublicIPPoolsServerBuilder) Build() (result *PrivatePublicIPPool
 	}
 
 	result = &PrivatePublicIPPoolsServer{
-		logger:  b.logger,
-		generic: generic,
+		logger:      b.logger,
+		generic:     generic,
+		publicIPDAO: publicIPDAO,
 	}
 	return
 }
@@ -137,8 +154,40 @@ func (s *PrivatePublicIPPoolsServer) Update(ctx context.Context,
 
 func (s *PrivatePublicIPPoolsServer) Delete(ctx context.Context,
 	request *privatev1.PublicIPPoolsDeleteRequest) (response *privatev1.PublicIPPoolsDeleteResponse, err error) {
+	if s.publicIPDAO != nil {
+		err = s.checkNoAllocatedIPs(ctx, request.GetId())
+		if err != nil {
+			return
+		}
+	}
 	err = s.generic.Delete(ctx, request, &response)
 	return
+}
+
+// checkNoAllocatedIPs returns a FailedPrecondition error when at least one PublicIP still references the pool
+func (s *PrivatePublicIPPoolsServer) checkNoAllocatedIPs(ctx context.Context, poolID string) error {
+	filter := fmt.Sprintf("this.spec.pool == %q", poolID)
+	listResponse, err := s.publicIPDAO.List().
+		SetFilter(filter).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		s.logger.WarnContext(
+			ctx,
+			"Unable to verify allocated public IPs, skipping referential-integrity check",
+			slog.String("pool_id", poolID),
+			slog.Any("error", err),
+		)
+		return nil
+	}
+	if total := listResponse.GetTotal(); total > 0 {
+		return grpcstatus.Errorf(
+			grpccodes.FailedPrecondition,
+			"cannot delete public IP pool '%s': %d public IP(s) are still allocated from it",
+			poolID, total,
+		)
+	}
+	return nil
 }
 
 func (s *PrivatePublicIPPoolsServer) Signal(ctx context.Context,
