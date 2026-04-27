@@ -139,7 +139,11 @@ func (c *Client) CreateOrganization(ctx context.Context, org *idp.Organization) 
 	if err != nil {
 		var apiErr *apiclient.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
-			return nil, fmt.Errorf("organization %q already exists: %w", org.Name, err)
+			return nil, &idp.ConflictError{
+				ResourceType: idp.ResourceTypeOrganization,
+				ResourceName: org.Name,
+				Err:          err,
+			}
 		}
 		return nil, fmt.Errorf("failed to create organization: %w", err)
 	}
@@ -190,7 +194,11 @@ func (c *Client) CreateUser(ctx context.Context, organizationName string, user *
 	if err != nil {
 		var apiErr *apiclient.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
-			return nil, fmt.Errorf("user %q already exists: %w", user.Username, err)
+			return nil, &idp.ConflictError{
+				ResourceType: idp.ResourceTypeUser,
+				ResourceName: user.Username,
+				Err:          err,
+			}
 		}
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}

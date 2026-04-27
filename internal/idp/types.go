@@ -13,6 +13,20 @@ language governing permissions and limitations under the License.
 
 package idp
 
+// ResourceType represents the type of IDP resource.
+type ResourceType string
+
+const (
+	// ResourceTypeOrganization represents an organization/realm/tenant in the IDP.
+	ResourceTypeOrganization ResourceType = "organization"
+
+	// ResourceTypeUser represents a user account in the IDP.
+	ResourceTypeUser ResourceType = "user"
+
+	// ResourceTypeRole represents a role in the IDP.
+	ResourceTypeRole ResourceType = "role"
+)
+
 // Organization represents a logical grouping of users, groups, and applications in an IdP.
 // Different providers call this different things:
 // - Keycloak: Realm
