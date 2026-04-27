@@ -23,7 +23,6 @@ message UsersListRequest {
   optional int32 offset = 1;
   optional int32 limit = 2;
   optional string filter = 3;
-  string organization_id = 4;
 }
 
 message UsersListResponse {
@@ -34,7 +33,6 @@ message UsersListResponse {
 
 message UsersGetRequest {
   string id = 1;
-  string organization_id = 2;
 }
 
 message UsersGetResponse {
@@ -43,12 +41,6 @@ message UsersGetResponse {
 
 message UsersCreateRequest {
   User object = 1;
-
-  // Initial password for the user.
-  optional string password = 2;
-
-  // Whether the password is temporary.
-  bool temporary_password = 3;
 }
 
 message UsersCreateResponse {
@@ -57,7 +49,6 @@ message UsersCreateResponse {
 
 message UsersDeleteRequest {
   string id = 1;
-  string organization_id = 2;
 }
 
 message UsersDeleteResponse {}
@@ -84,31 +75,31 @@ message UsersSignalResponse {}
 
 service Users {
   rpc List(UsersListRequest) returns (UsersListResponse) {
-    option (google.api.http) = {get: "/api/private/v1/organizations/{organization_id}/users"};
+    option (google.api.http) = {get: "/api/private/v1/users"};
   }
 
   rpc Get(UsersGetRequest) returns (UsersGetResponse) {
     option (google.api.http) = {
-      get: "/api/private/v1/organizations/{organization_id}/users/{id}"
+      get: "/api/private/v1/users/{id}"
       response_body: "object"
     };
   }
 
   rpc Create(UsersCreateRequest) returns (UsersCreateResponse) {
     option (google.api.http) = {
-      post: "/api/private/v1/organizations/{object.spec.organization_id}/users"
+      post: "/api/private/v1/users"
       body: "object"
       response_body: "object"
     };
   }
 
   rpc Delete(UsersDeleteRequest) returns (UsersDeleteResponse) {
-    option (google.api.http) = {delete: "/api/private/v1/organizations/{organization_id}/users/{id}"};
+    option (google.api.http) = {delete: "/api/private/v1/users/{id}"};
   }
 
   rpc Update(UsersUpdateRequest) returns (UsersUpdateResponse) {
     option (google.api.http) = {
-      patch: "/api/private/v1/organizations/{object.spec.organization_id}/users/{object.id}"
+      patch: "/api/private/v1/users/{object.id}"
       body: "object"
       response_body: "object"
     };

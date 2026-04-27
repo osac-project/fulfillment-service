@@ -45,9 +45,6 @@ message UsersListRequest {
   //
   // If the parameter isn't provided, or if the value is empty, then the order of the results is undefined.
   optional string order = 4;
-
-  // Organization ID to list users from.
-  string organization_id = 5;
 }
 
 message UsersListResponse {
@@ -63,9 +60,6 @@ message UsersListResponse {
 
 message UsersGetRequest {
   string id = 1;
-
-  // Organization ID that the user belongs to.
-  string organization_id = 2;
 }
 
 message UsersGetResponse {
@@ -74,18 +68,6 @@ message UsersGetResponse {
 
 message UsersCreateRequest {
   User object = 1;
-
-  // Initial password for the user.
-  // SECURITY: This field contains sensitive data:
-  // - Only transmitted over TLS
-  // - Never returned in responses
-  // - Only accepted during creation
-  // - Clear from memory after use
-  optional string password = 2;
-
-  // Whether the password is temporary and must be changed on first login.
-  // Only applicable when password is provided.
-  bool temporary_password = 3;
 }
 
 message UsersCreateResponse {
@@ -108,31 +90,28 @@ message UsersUpdateResponse {
 
 message UsersDeleteRequest {
   string id = 1;
-
-  // Organization ID that the user belongs to.
-  string organization_id = 2;
 }
 
 message UsersDeleteResponse {}
 
 service Users {
-  // Retrieves the list of users in an organization.
+  // Retrieves the list of users.
   rpc List(UsersListRequest) returns (UsersListResponse) {
-    option (google.api.http) = {get: "/api/fulfillment/v1/organizations/{organization_id}/users"};
+    option (google.api.http) = {get: "/api/fulfillment/v1/users"};
   }
 
   // Retrieves the details of one specific user.
   rpc Get(UsersGetRequest) returns (UsersGetResponse) {
     option (google.api.http) = {
-      get: "/api/fulfillment/v1/organizations/{organization_id}/users/{id}"
+      get: "/api/fulfillment/v1/users/{id}"
       response_body: "object"
     };
   }
 
-  // Creates a new user in an organization.
+  // Creates a new user.
   rpc Create(UsersCreateRequest) returns (UsersCreateResponse) {
     option (google.api.http) = {
-      post: "/api/fulfillment/v1/organizations/{object.spec.organization_id}/users"
+      post: "/api/fulfillment/v1/users"
       body: "object"
       response_body: "object"
     };
@@ -141,7 +120,7 @@ service Users {
   // Updates an existing user.
   rpc Update(UsersUpdateRequest) returns (UsersUpdateResponse) {
     option (google.api.http) = {
-      patch: "/api/fulfillment/v1/organizations/{object.spec.organization_id}/users/{object.id}"
+      patch: "/api/fulfillment/v1/users/{object.id}"
       body: "object"
       response_body: "object"
     };
@@ -149,6 +128,6 @@ service Users {
 
   // Deletes a user.
   rpc Delete(UsersDeleteRequest) returns (UsersDeleteResponse) {
-    option (google.api.http) = {delete: "/api/fulfillment/v1/organizations/{organization_id}/users/{id}"};
+    option (google.api.http) = {delete: "/api/fulfillment/v1/users/{id}"};
   }
 }

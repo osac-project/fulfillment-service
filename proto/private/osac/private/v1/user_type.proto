@@ -53,8 +53,20 @@ message UserSpec {
   // Last name of the user.
   string last_name = 6;
 
-  // Organization ID that this user belongs to.
-  string organization_id = 7;
+  // Organization that this user belongs to.
+  string organization = 7;
+
+  // Credentials for the user. This is write-only and will not be returned in responses.
+  optional UserCredentials credentials = 8;
+}
+
+// UserCredentials contains the authentication credentials for a user.
+message UserCredentials {
+  // Password for the user.
+  optional string password = 1;
+
+  // Whether the password is temporary and must be changed on first login.
+  bool temporary_password = 2;
 }
 
 // UserStatus contains the observed state of the user.

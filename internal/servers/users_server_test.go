@@ -15,10 +15,12 @@ package servers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
@@ -83,13 +85,13 @@ var _ = Describe("Public Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &publicv1.UserSpec{
-					Username:       "testuser",
-					Email:          "test@example.com",
-					EmailVerified:  true,
-					Enabled:        true,
-					FirstName:      "Test",
-					LastName:       "User",
-					OrganizationId: "org-123",
+					Username:      "testuser",
+					Email:         "test@example.com",
+					EmailVerified: true,
+					Enabled:       true,
+					FirstName:     "Test",
+					LastName:      "User",
+					Organization:  "org-123",
 				},
 			},
 		}
@@ -205,5 +207,61 @@ var _ = Describe("Public Users Server", func() {
 		updateResp, err := publicServer.Update(ctx, updateReq)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(updateResp.Object.Spec.FirstName).To(Equal("Updated"))
+	})
+
+	It("Lists users filtered by organization", func() {
+		// Create users in two different organizations:
+		for i := range 2 {
+			_, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
+				Object: &publicv1.User{
+					Metadata: &publicv1.Metadata{
+						Name: fmt.Sprintf("org-a-user-%d", i),
+					},
+					Spec: &publicv1.UserSpec{
+						Username:     fmt.Sprintf("org-a-user-%d", i),
+						Email:        fmt.Sprintf("user-%d@org-a.com", i),
+						Organization: "org-a",
+					},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+		}
+		for i := range 3 {
+			_, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
+				Object: &publicv1.User{
+					Metadata: &publicv1.Metadata{
+						Name: fmt.Sprintf("org-b-user-%d", i),
+					},
+					Spec: &publicv1.UserSpec{
+						Username:     fmt.Sprintf("org-b-user-%d", i),
+						Email:        fmt.Sprintf("user-%d@org-b.com", i),
+						Organization: "org-b",
+					},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		// List users filtering by organization "org-a":
+		listResp, err := publicServer.List(ctx, publicv1.UsersListRequest_builder{
+			Filter: proto.String("this.spec.organization == 'org-a'"),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(listResp.GetSize()).To(Equal(int32(2)))
+		Expect(listResp.GetItems()).To(HaveLen(2))
+		for _, item := range listResp.GetItems() {
+			Expect(item.GetSpec().GetOrganization()).To(Equal("org-a"))
+		}
+
+		// List users filtering by organization "org-b":
+		listResp, err = publicServer.List(ctx, publicv1.UsersListRequest_builder{
+			Filter: proto.String("this.spec.organization == 'org-b'"),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(listResp.GetSize()).To(Equal(int32(3)))
+		Expect(listResp.GetItems()).To(HaveLen(3))
+		for _, item := range listResp.GetItems() {
+			Expect(item.GetSpec().GetOrganization()).To(Equal("org-b"))
+		}
 	})
 })
