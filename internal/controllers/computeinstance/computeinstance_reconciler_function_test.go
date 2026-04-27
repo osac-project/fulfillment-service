@@ -37,6 +37,7 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
+	"github.com/osac-project/fulfillment-service/internal/kubernetes/annotations"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
 )
@@ -816,5 +817,99 @@ var _ = Describe("ensureUserDataSecret", func() {
 
 		err := t.ensureUserDataSecret(ctx, owner)
 		Expect(err).ToNot(HaveOccurred())
+	})
+})
+
+var _ = Describe("subnet-namespace annotation", func() {
+	const (
+		hubNamespace = "test-ns"
+		subnetID     = "subnet-abc-123"
+		subnetCRName = "subnet-xyz"
+		tenant       = "my-tenant"
+		ciID         = "ci-subnet-ann-test"
+	)
+
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	It("should set subnetNamespace on task after buildSpec when Subnet CR found", func() {
+		subnetCR := &unstructured.Unstructured{}
+		subnetCR.SetGroupVersionKind(gvks.Subnet)
+		subnetCR.SetNamespace(hubNamespace)
+		subnetCR.SetName(subnetCRName)
+		subnetCR.SetLabels(map[string]string{labels.SubnetUuid: subnetID})
+
+		scheme := runtime.NewScheme()
+		scheme.AddKnownTypeWithName(
+			schema.GroupVersionKind{Group: gvks.Subnet.Group, Version: gvks.Subnet.Version, Kind: gvks.Subnet.Kind + "List"},
+			&unstructured.UnstructuredList{},
+		)
+
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: ciID,
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template: "tmpl",
+					Subnet:   proto.String(subnetID),
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fake.NewClientBuilder().WithScheme(scheme).WithObjects(subnetCR).Build(),
+		}
+
+		_, err := t.buildSpec(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(t.subnetNamespace).To(Equal(subnetCRName))
+	})
+
+	It("should include subnet-namespace in annotation map when subnetNamespace is set", func() {
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: ciID,
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{tenant},
+				}.Build(),
+			}.Build(),
+			subnetNamespace: subnetCRName,
+		}
+
+		ann := map[string]string{
+			annotations.Tenant: t.computeInstance.GetMetadata().GetTenants()[0],
+		}
+		if t.subnetNamespace != "" {
+			ann[annotations.SubnetNamespace] = t.subnetNamespace
+		}
+
+		Expect(ann).To(HaveKey(annotations.SubnetNamespace))
+		Expect(ann[annotations.SubnetNamespace]).To(Equal(subnetCRName))
+		Expect(ann[annotations.Tenant]).To(Equal(tenant))
+	})
+
+	It("should not include subnet-namespace in annotation map when subnetNamespace is empty", func() {
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: ciID,
+				Metadata: privatev1.Metadata_builder{
+					Tenants: []string{tenant},
+				}.Build(),
+			}.Build(),
+			// subnetNamespace intentionally left empty
+		}
+
+		ann := map[string]string{
+			annotations.Tenant: t.computeInstance.GetMetadata().GetTenants()[0],
+		}
+		if t.subnetNamespace != "" {
+			ann[annotations.SubnetNamespace] = t.subnetNamespace
+		}
+
+		Expect(ann).ToNot(HaveKey(annotations.SubnetNamespace))
+		Expect(ann[annotations.Tenant]).To(Equal(tenant))
 	})
 })

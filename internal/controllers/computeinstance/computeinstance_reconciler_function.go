@@ -70,6 +70,7 @@ type task struct {
 	hubNamespace       string
 	hubClient          clnt.Client
 	userDataSecretName string
+	subnetNamespace    string
 }
 
 // NewFunction creates a new builder that can then be used to create a new compute instance reconciler function.
@@ -200,9 +201,13 @@ func (t *task) update(ctx context.Context) error {
 		object.SetLabels(map[string]string{
 			labels.ComputeInstanceUuid: t.computeInstance.GetId(),
 		})
-		object.SetAnnotations(map[string]string{
+		ann := map[string]string{
 			annotations.Tenant: t.computeInstance.GetMetadata().GetTenants()[0],
-		})
+		}
+		if t.subnetNamespace != "" {
+			ann[annotations.SubnetNamespace] = t.subnetNamespace
+		}
+		object.SetAnnotations(ann)
 		err = unstructured.SetNestedField(object.Object, spec, "spec")
 		if err != nil {
 			return err
@@ -518,6 +523,7 @@ func (t *task) buildSpec(ctx context.Context) (map[string]any, error) {
 			// Don't set subnetRef if lookup fails
 		} else if subnetCR != nil {
 			spec["subnetRef"] = subnetCR.GetName()
+			t.subnetNamespace = subnetCR.GetName()
 			t.r.logger.DebugContext(
 				ctx,
 				"Set subnetRef from Subnet CR",

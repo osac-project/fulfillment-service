@@ -13,5 +13,13 @@ language governing permissions and limitations under the License.
 
 package annotations
 
-// Tenant is the annotation key for tenant information on all OSAC resources.
-const Tenant = "osac.openshift.io/tenant"
+const (
+	// Tenant is the annotation key for tenant information on all OSAC resources.
+	Tenant = "osac.openshift.io/tenant"
+
+	// SubnetNamespace is the annotation key that records the Kubernetes namespace
+	// corresponding to the subnet attached to a ComputeInstance. The osac-operator
+	// uses this annotation to locate the KubeVirt VM created by AAP in the subnet
+	// namespace rather than falling back to the tenant namespace.
+	SubnetNamespace = "osac.openshift.io/subnet-namespace"
+)
