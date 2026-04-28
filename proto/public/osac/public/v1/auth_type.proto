@@ -1,0 +1,72 @@
+//
+// Copyright (c) 2026 Red Hat, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+// the License. You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+// an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+//
+
+syntax = "proto3";
+
+package osac.public.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Token represents an OAuth token response.
+message Token {
+  // JWT access token for API authentication
+  string access_token = 1;
+
+  // Absolute time when the access token expires
+  google.protobuf.Timestamp access_token_expires_at = 2;
+
+  // Refresh token for obtaining new access tokens without re-authenticating
+  string refresh_token = 3;
+
+  // Absolute time when the refresh token expires
+  google.protobuf.Timestamp refresh_token_expires_at = 4;
+}
+
+message LoginRequest {
+  // Organization ID
+  string organization_id = 1;
+
+  // Username or email address
+  string username = 2;
+
+  // Password
+  string password = 3;
+}
+
+message LoginResponse {
+  // OAuth tokens for API access
+  Token token = 1;
+}
+
+message RefreshRequest {
+  // Organization ID
+  string organization_id = 1;
+
+  // Refresh token from previous login or refresh
+  string refresh_token = 2;
+}
+
+message RefreshResponse {
+  // New OAuth token
+  Token token = 1;
+}
+
+message LogoutRequest {
+  // Organization ID
+  string organization_id = 1;
+
+  // Refresh token to invalidate
+  string refresh_token = 2;
+}
+
+message LogoutResponse {}
