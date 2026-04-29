@@ -164,7 +164,9 @@ func (s *PrivatePublicIPPoolsServer) Delete(ctx context.Context,
 	return
 }
 
-// checkNoAllocatedIPs returns a FailedPrecondition error when at least one PublicIP still references the pool
+// checkNoAllocatedIPs returns a FailedPrecondition error when at least one PublicIP still
+// references this pool. Any database error is treated as a hard failure so that a transient
+// connectivity issue cannot silently bypass the referential-integrity check and orphan IPs.
 func (s *PrivatePublicIPPoolsServer) checkNoAllocatedIPs(ctx context.Context, poolID string) error {
 	filter := fmt.Sprintf("this.spec.pool == %q", poolID)
 	listResponse, err := s.publicIPDAO.List().
@@ -172,13 +174,17 @@ func (s *PrivatePublicIPPoolsServer) checkNoAllocatedIPs(ctx context.Context, po
 		SetLimit(1).
 		Do(ctx)
 	if err != nil {
-		s.logger.WarnContext(
+		s.logger.ErrorContext(
 			ctx,
-			"Unable to verify allocated public IPs, skipping referential-integrity check",
+			"Failed to verify allocated public IPs for pool",
 			slog.String("pool_id", poolID),
 			slog.Any("error", err),
 		)
-		return nil
+		return grpcstatus.Errorf(
+			grpccodes.Internal,
+			"failed to verify allocated public IPs for pool '%s'",
+			poolID,
+		)
 	}
 	if total := listResponse.GetTotal(); total > 0 {
 		return grpcstatus.Errorf(
