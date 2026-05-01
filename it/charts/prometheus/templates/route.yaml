@@ -11,17 +11,21 @@ Unless required by applicable law or agreed to in writing, software distributed 
 specific language governing permissions and limitations under the License.
 */}}
 
-apiVersion: v1
-kind: Secret
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: TLSRoute
 metadata:
   namespace: {{ .Release.Namespace }}
-  name: keycloak-realm
-data:
-  {{- $realm := .Files.Get "files/realm.json" | fromJson }}
-  {{- $_ := set $realm "groups" (concat $realm.groups .Values.groups) }}
-  {{- $_ := set $realm "users" (concat $realm.users .Values.users) }}
-  {{- $_ := set $realm "clients" (concat $realm.clients .Values.clients) }}
-  {{- range .Values.clients }}
-  {{- $_ := set $realm.roles.client .clientId (list) }}
-  {{- end }}
-  osac-realm.json: {{ $realm | toJson | b64enc }}
+  name: prometheus
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    namespace: envoy-gateway
+    name: default
+    sectionName: tls
+  hostnames:
+  - {{ include "prometheus.hostname" . }}
+  rules:
+  - backendRefs:
+    - name: prometheus
+      port: 9090

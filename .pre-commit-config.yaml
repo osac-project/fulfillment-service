@@ -18,4 +18,4 @@ repos:
       files: \.(yaml|yml)$
       types: [file, yaml]
       entry: yamllint --strict
-      exclude: ^charts/.*/templates/
+      exclude: ^(charts|it/charts)/.*/templates/

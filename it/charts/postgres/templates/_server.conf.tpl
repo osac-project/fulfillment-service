@@ -26,7 +26,6 @@ ssl_key_file = '/secrets/cert/tls.key'
 # Use our custom access file:
 hba_file = '/config/access/access.conf'
 
-{{- if eq .Values.variant "kind" }}
 # Disable fsync to improve performance in development environments. This skips flushing data to
 # disk, which is faster but means data can be lost on crash. Acceptable for development where data
 # doesn't need to survive restarts.
@@ -39,6 +38,5 @@ synchronous_commit = off
 # Skip writing full page images to WAL after checkpoint. This reduces WAL volume and I/O, and is
 # safe when fsync is off since we're already accepting data loss risk.
 full_page_writes = off
-{{- end }}
 
 {{- end -}}

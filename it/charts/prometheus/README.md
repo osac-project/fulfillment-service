@@ -14,7 +14,6 @@ The following table lists the configurable parameters of the Prometheus chart:
 
 | Parameter                 | Description                                                   | Required | Default                                |
 |---------------------------|---------------------------------------------------------------|----------|----------------------------------------|
-| `variant`                 | Deployment variant (`openshift` or `kind`)                    | No       | `kind`                                 |
 | `hostname`                | The hostname that Prometheus uses                             | No       | `prometheus.<namespace>.svc...`        |
 | `certs.issuerRef.kind`    | The kind of cert-manager issuer (`ClusterIssuer` or `Issuer`) | No       | `ClusterIssuer`                        |
 | `certs.issuerRef.name`    | The name of the cert-manager issuer for TLS certificates      | No       | `default-ca`                           |
@@ -25,7 +24,7 @@ The following table lists the configurable parameters of the Prometheus chart:
 For example, in the integration tests environment the chart can be installed like this:
 
 ```bash
-$ helm install prometheus charts/prometheus \
+$ helm install prometheus it/charts/prometheus \
 --namespace prometheus \
 --create-namespace \
 --wait
@@ -34,7 +33,7 @@ $ helm install prometheus charts/prometheus \
 To install the chart with a custom hostname:
 
 ```bash
-$ helm install prometheus charts/prometheus \
+$ helm install prometheus it/charts/prometheus \
 --namespace prometheus \
 --create-namespace \
 --set hostname=prometheus.osac \
@@ -50,15 +49,13 @@ $ helm uninstall prometheus --namespace prometheus
 Here's an example `values.yaml` file for installing the chart:
 
 ```yaml
-variant: kind
-
 hostname: prometheus.osac
 ```
 
 Install using a values file:
 
 ```bash
-$ helm install prometheus charts/prometheus \
+$ helm install prometheus it/charts/prometheus \
 --namespace prometheus \
 --create-namespace \
 --values values.yaml \
@@ -119,8 +116,7 @@ This chart uses cert-manager to generate TLS certificates for the Prometheus ser
 certificate is issued by the configured cert-manager issuer (ClusterIssuer by default) and stored
 in a Kubernetes secret named `prometheus-tls`.
 
-The chart also creates a TLSRoute (for Kind clusters) or an OpenShift Route (for OpenShift clusters)
-to expose the Prometheus UI externally with TLS passthrough.
+The chart also creates a TLSRoute to expose the Prometheus UI externally with TLS passthrough.
 
 When scraping services over HTTPS (using `prometheus.io/scheme: "https"`), Prometheus uses the CA
 certificates from the ConfigMap specified in `certs.caBundle.configMap` to verify the service

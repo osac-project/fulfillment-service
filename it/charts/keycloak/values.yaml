@@ -11,9 +11,6 @@
 # specific language governing permissions and limitations under the License.
 #
 
-# This indicates if the chart is being deployed to an OpenShift or Kind cluster. Valid values are `openshift` and `kind`
-variant: kind
-
 # This defines the host name that Keycloak uses to refer to itself. The default is to use the host name of the
 # Kubernetes service. For example, if the application is deployed in a namespace named 'keycloak' then the default
 # host name will be 'keycloak.keycloak.svc.cluster.local'.

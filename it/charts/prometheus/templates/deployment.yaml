@@ -36,14 +36,14 @@ spec:
       - name: tls
         secret:
           secretName: prometheus-tls
-      {{- if .Values.certs.caBundle.configMap }}
+      {{ if .Values.certs.caBundle.configMap }}
       - name: cas
         configMap:
           name: {{ .Values.certs.caBundle.configMap }}
           items:
           - key: {{ .Values.certs.caBundle.bundleKey }}
             path: bundle.pem
-      {{- end }}
+      {{ end }}
       containers:
       - name: prometheus
         image: "{{ .Values.images.prometheus }}"
@@ -56,11 +56,11 @@ spec:
         - name: tls
           mountPath: /etc/prometheus/tls
           readOnly: true
-        {{- if .Values.certs.caBundle.configMap }}
+        {{ if .Values.certs.caBundle.configMap }}
         - name: cas
           mountPath: /etc/prometheus/cas
           readOnly: true
-        {{- end }}
+        {{ end }}
         args:
         - --config.file=/etc/prometheus/prometheus.yml
         - --storage.tsdb.path=/var/lib/prometheus

@@ -206,7 +206,7 @@ If you need to export the realm configuration for backup or modification:
 4. (Optional) Update the chart's realm file:
 
    ```bash
-   cp realm.json charts/keycloak/files/realm.json
+   cp realm.json it/charts/keycloak/files/realm.json
    ```
 
 ## Fulfillment Service Configuration
@@ -915,5 +915,5 @@ Test that authorization rules are working:
 - [Keycloak Documentation](https://www.keycloak.org/documentation)
 - [Authorino Documentation](https://github.com/Kuadrant/authorino)
 - [Open Policy Agent (OPA) Documentation](https://www.openpolicyagent.org/docs/latest/)
-- [Helm Chart README](charts/keycloak/README.md)
+- [Helm Chart README](it/charts/keycloak/README.md)
 - [Service Chart README](charts/service/README.md)

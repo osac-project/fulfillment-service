@@ -861,7 +861,6 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 
 	// Prepare a map containing the values for the chart:
 	valuesData := map[string]any{
-		"variant":  "kind",
 		"hostname": host,
 		"admin": map[string]any{
 			"username": "admin",
@@ -1079,7 +1078,7 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 			"upgrade",
 			"--install",
 			"keycloak",
-			"charts/keycloak",
+			"it/charts/keycloak",
 			"--kubeconfig", t.kcFile,
 			"--namespace", "keycloak",
 			"--create-namespace",
@@ -1282,7 +1281,6 @@ func (t *Tool) deployPostgres(ctx context.Context) error {
 
 	// Prepare a map containing the values for the chart:
 	valuesData := map[string]any{
-		"variant": "kind",
 		"certs": map[string]any{
 			"issuerRef": map[string]any{
 				"kind": "ClusterIssuer",
@@ -1325,7 +1323,7 @@ func (t *Tool) deployPostgres(ctx context.Context) error {
 			"upgrade",
 			"--install",
 			"postgres",
-			"charts/postgres",
+			"it/charts/postgres",
 			"--kubeconfig", t.kcFile,
 			"--namespace", "postgres",
 			"--create-namespace",

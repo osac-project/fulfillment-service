@@ -11,9 +11,6 @@
 # specific language governing permissions and limitations under the License.
 #
 
-# This indicates if the chart is being deployed to an OpenShift or Kind cluster. Valid values are `openshift` and `kind`.
-variant: kind
-
 # This defines the host name that Prometheus uses. The default is to use the host name of the Kubernetes service. For
 # example, if the application is deployed in a namespace named 'prometheus' then the default host name will be
 # 'prometheus.prometheus.svc.cluster.local'.

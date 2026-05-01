@@ -1,8 +1,11 @@
 # Keycloak Helm chart
 
-This Keycloak Helm chart is intended for use in the integration tests of the fulfillment service
-inside a _kind_ cluster. It provides a pre-configured Keycloak instance with the necessary realm and
-client configurations for testing authentication and authorization workflows.
+This Keycloak Helm chart is intended exclusively for development and testing environments. It
+deploys a single Keycloak pod with a pre-configured realm and client setup for testing
+authentication and authorization workflows.
+
+**Do not use this chart in production.** It uses hardcoded admin credentials, has no high
+availability, and is not designed for production workloads.
 
 ## Installation
 
@@ -13,7 +16,6 @@ The following table lists the configurable parameters of the Keycloak chart:
 
 | Parameter                      | Description                                                    | Required | Default         |
 |--------------------------------|----------------------------------------------------------------|----------|-----------------|
-| `variant`                      | Deployment variant (`openshift` or `kind`)                     | No       | `kind`          |
 | `hostname`                     | The hostname that Keycloak uses to refer to itself             | **Yes**  | None            |
 | `certs.issuerRef.kind`         | The kind of cert-manager issuer (`ClusterIssuer` or `Issuer`)  | No       | `ClusterIssuer` |
 | `certs.issuerRef.name`         | The name of the cert-manager issuer for TLS certificates       | **Yes**  | None            |
@@ -34,7 +36,7 @@ files can also be included and referenced from the JDBC URL.
 For example, to install the chart using a values file:
 
 ```bash
-$ helm install keycloak charts/keycloak \
+$ helm install keycloak it/charts/keycloak \
 --namespace keycloak \
 --create-namespace \
 --values values.yaml \
@@ -50,8 +52,6 @@ $ helm uninstall keycloak --namespace keycloak
 Here's an example `values.yaml` file for installing the chart:
 
 ```yaml
-variant: kind
-
 hostname: keycloak.osac
 
 certs:
@@ -84,7 +84,7 @@ database:
 Install using a values file:
 
 ```bash
-$ helm install keycloak charts/keycloak \
+$ helm install keycloak it/charts/keycloak \
 --namespace keycloak \
 --create-namespace \
 --values values.yaml \
@@ -296,5 +296,5 @@ following steps:
 4. Optionally, if you want to replace the realm used by the chart, overwrite the `realm.json` file:
 
    ```bash
-   $ cp realm.json charts/keycloak/files/realm.json
+   $ cp realm.json it/charts/keycloak/files/realm.json
    ```

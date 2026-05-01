@@ -11,17 +11,17 @@ Unless required by applicable law or agreed to in writing, software distributed 
 specific language governing permissions and limitations under the License.
 */}}
 
-apiVersion: cert-manager.io/v1
-kind: Certificate
+apiVersion: v1
+kind: Secret
 metadata:
   namespace: {{ .Release.Namespace }}
-  name: {{ .Values.issuerName }}
-spec:
-  commonName: {{ .Values.commonName }}
-  isCA: true
-  issuerRef:
-    kind: Issuer
-    name: {{ .Values.issuerName }}
-  secretName: {{ .Values.issuerName }}
-  privateKey:
-    rotationPolicy: Always
+  name: keycloak-realm
+data:
+  {{ $realm := .Files.Get "files/realm.json" | fromJson }}
+  {{ $_ := set $realm "groups" (concat $realm.groups .Values.groups) }}
+  {{ $_ := set $realm "users" (concat $realm.users .Values.users) }}
+  {{ $_ := set $realm "clients" (concat $realm.clients .Values.clients) }}
+  {{ range .Values.clients }}
+  {{ $_ := set $realm.roles.client .clientId (list) }}
+  {{ end }}
+  osac-realm.json: {{ $realm | toJson | b64enc }}
