@@ -134,7 +134,7 @@ var _ = Describe("Watch e2e", func() {
 			args: struct {
 				format         string
 				filter         string
-				includeDeleted bool
+				includeDeleting bool
 				watch          bool
 			}{
 				format: outputFormatTable,

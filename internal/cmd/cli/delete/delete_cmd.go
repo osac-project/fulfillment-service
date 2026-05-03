@@ -172,7 +172,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 				args[0], id, err,
 			)
 		}
-		c.console.Infof(ctx, "Deleted %s '%s'.\n", args[0], id)
+		c.console.Infof(ctx, "Deleting %s '%s'...\n", args[0], id)
 	}
 
 	return nil
