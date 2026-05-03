@@ -132,10 +132,10 @@ var _ = Describe("Watch e2e", func() {
 			objectHelper: helper,
 			console:      console,
 			args: struct {
-				format         string
-				filter         string
+				format          string
+				filter          string
 				includeDeleting bool
-				watch          bool
+				watch           bool
 			}{
 				format: outputFormatTable,
 				watch:  true,

@@ -79,19 +79,19 @@ type columnLayout struct {
 // TableRendererBuilder is used to create table renderers. Don't create instances of this type directly, use the
 // NewTableRenderer function instead.
 type TableRendererBuilder struct {
-	logger         *slog.Logger
-	helper         *reflection.Helper
-	writer         io.Writer
+	logger          *slog.Logger
+	helper          *reflection.Helper
+	writer          io.Writer
 	includeDeleting bool
 }
 
 // TableRenderer is responsible for rendering protocol buffer messages as tables. Don't create instances of this type
 // directly, use the NewTableRenderer function instead.
 type TableRenderer struct {
-	logger         *slog.Logger
-	helper         *reflection.Helper
-	writer         *tabwriter.Writer
-	cache          map[protoreflect.FullName]map[string]string
+	logger          *slog.Logger
+	helper          *reflection.Helper
+	writer          *tabwriter.Writer
+	cache           map[protoreflect.FullName]map[string]string
 	includeDeleting bool
 }
 
@@ -148,10 +148,10 @@ func (b *TableRendererBuilder) Build() (result *TableRenderer, err error) {
 
 	// Create and populate the object:
 	result = &TableRenderer{
-		logger:         b.logger,
-		helper:         b.helper,
-		writer:         writer,
-		cache:          cache,
+		logger:          b.logger,
+		helper:          b.helper,
+		writer:          writer,
+		cache:           cache,
 		includeDeleting: b.includeDeleting,
 	}
 	return

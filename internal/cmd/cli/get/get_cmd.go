@@ -97,10 +97,10 @@ func Cmd() *cobra.Command {
 
 type runnerContext struct {
 	args struct {
-		format         string
-		filter         string
+		format          string
+		filter          string
 		includeDeleting bool
-		watch          bool
+		watch           bool
 	}
 	ctx            context.Context
 	logger         *slog.Logger
