@@ -30,5 +30,8 @@ columns:
   value: this.status.state
   type: osac.public.v1.ComputeInstanceState
 
-- header: EXTERNAL IP
+- header: IP ADDRESS
   value: this.status.ip_address
+
+- header: EXTERNAL IP
+  value: this.status.external_ip

@@ -91,6 +91,9 @@ message ComputeInstanceStatus {
   string hub = 4;
 
   optional google.protobuf.Timestamp last_restarted_at = 5;
+
+  // External (floating) IP address attached to the compute instance.
+  string external_ip = 6;
 }
 
 enum ComputeInstanceState {
