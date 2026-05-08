@@ -33,6 +33,15 @@ columns:
   value: this.status.state
   type: osac.private.v1.PublicIPPoolState
 
+- header: TOTAL
+  value: '"%d".format([this.status.total])'
+
+- header: ALLOCATED
+  value: '"%d".format([this.status.allocated])'
+
+- header: FREE
+  value: '"%d".format([this.status.available])'
+
 - header: HUB
   value: this.status.hub
   type: osac.private.v1.Hub
