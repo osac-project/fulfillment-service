@@ -600,7 +600,15 @@ var _ = Describe("Private public IPs server", func() {
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			publicIPID := createResponse.GetObject().GetId()
+			object := createResponse.GetObject()
+			publicIPID := object.GetId()
+
+			// Transition to ALLOCATED (only ALLOCATED PublicIPs can be deleted):
+			object.GetStatus().SetState(privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED)
+			_, err = publicIPsServer.Update(ctx, privatev1.PublicIPsUpdateRequest_builder{
+				Object: object,
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
 
 			// Verify pool after Create: allocated=1, available=9
 			poolResp, err := publicIPPoolDao.Get().SetId(poolID).Do(ctx)

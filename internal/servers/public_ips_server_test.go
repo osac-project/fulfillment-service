@@ -299,12 +299,14 @@ var _ = Describe("Public IPs server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 
-			// Add a finalizer, as otherwise the object will be immediately deleted and archived and it
-			// won't be possible to verify the deletion timestamp. This can't be done using the server
-			// because this is a public object, and public objects don't have the finalizers field.
+			// Add a finalizer and transition to ALLOCATED. Finalizer prevents immediate
+			// archival so we can verify the deletion timestamp. State must be ALLOCATED
+			// because only ALLOCATED PublicIPs can be deleted. Both are set via raw SQL
+			// because the public API doesn't expose finalizers or status.state.
 			_, err = tx.Exec(
 				ctx,
-				`update public_ips set finalizers = '{"a"}' where id = $1`,
+				`update public_ips set finalizers = '{"a"}',`+
+					` data = jsonb_set(data, '{status,state}', '"PUBLIC_IP_STATE_ALLOCATED"') where id = $1`,
 				object.GetId(),
 			)
 			Expect(err).ToNot(HaveOccurred())
