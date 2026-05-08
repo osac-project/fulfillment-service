@@ -200,23 +200,27 @@ var _ = Describe("Version", func() {
 
 			// Try repeatedly till the update succeeds. It may initially fail because the controller may
 			// update the object before us.
-			Eventually(func(g Gomega) {
-				updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
-					Object: publicv1.Cluster_builder{
-						Id: id,
-						Metadata: publicv1.Metadata_builder{
-							Version: version,
-							Annotations: map[string]string{
-								"date": time.Now().Format(time.RFC3339Nano),
-							},
+			Eventually(
+				func(g Gomega) {
+					updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+						Object: publicv1.Cluster_builder{
+							Id: id,
+							Metadata: publicv1.Metadata_builder{
+								Version: version,
+								Annotations: map[string]string{
+									"date": time.Now().Format(time.RFC3339Nano),
+								},
+							}.Build(),
 						}.Build(),
-					}.Build(),
-					Lock: true,
-				}.Build())
-				g.Expect(err).ToNot(HaveOccurred())
-				object = updateResponse.GetObject()
-				version = object.GetMetadata().GetVersion()
-			}).Should(Succeed())
+						Lock: true,
+					}.Build())
+					g.Expect(err).ToNot(HaveOccurred())
+					object = updateResponse.GetObject()
+					version = object.GetMetadata().GetVersion()
+				},
+				10*time.Second,
+				100*time.Millisecond,
+			).Should(Succeed())
 		})
 
 		It("Fails when version does not match", func() {
