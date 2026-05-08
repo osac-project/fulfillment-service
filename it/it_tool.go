@@ -1991,6 +1991,14 @@ func (t *Tool) Cleanup(ctx context.Context) error {
 		}
 	}
 
+	// Dump the logs:
+	if t.cluster != nil && !t.keepKind {
+		err := t.cluster.Dump(ctx, filepath.Join(t.projectDir, "logs"))
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to dump cluster logs: %w", err))
+		}
+	}
+
 	// Undeploy the service:
 	if t.cluster != nil && t.keepKind && !t.keepService {
 		err := t.undeployService(ctx)

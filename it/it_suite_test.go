@@ -127,10 +127,6 @@ var _ = BeforeSuite(func() {
 		err := tool.Cleanup(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
-	DeferCleanup(func() {
-		err := tool.Dump(ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
 })
 
 var _ = Describe("Integration", func() {
