@@ -35,7 +35,7 @@ import (
 // The key is the current state and the value is the list of valid target states.
 var validPublicIPTransitions = map[privatev1.PublicIPState][]privatev1.PublicIPState{
 	privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING:   {privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED},
-	privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED: {privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHING, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED},
+	privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED: {privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHING, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED, privatev1.PublicIPState_PUBLIC_IP_STATE_DELETING},
 	privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHING: {privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHED, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED},
 	privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHED:  {privatev1.PublicIPState_PUBLIC_IP_STATE_RELEASING, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED},
 	privatev1.PublicIPState_PUBLIC_IP_STATE_RELEASING: {privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED},
@@ -314,10 +314,9 @@ func (s *PrivatePublicIPsServer) Delete(ctx context.Context,
 	existingPublicIP := getResponse.GetObject()
 
 	state := existingPublicIP.GetStatus().GetState()
-	if state == privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHED ||
-		state == privatev1.PublicIPState_PUBLIC_IP_STATE_RELEASING {
+	if state != privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED {
 		err = grpcstatus.Errorf(grpccodes.FailedPrecondition,
-			"cannot delete PublicIP: detach from ComputeInstance first")
+			"cannot delete PublicIP in state %s: must be in ALLOCATED state", state)
 		return
 	}
 

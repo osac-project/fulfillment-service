@@ -140,12 +140,11 @@ enum PublicIPState {
   // back to ALLOCATED.
   PUBLIC_IP_STATE_ATTACHED = 4;
 
-  // The public IP is being released from its current binding.
+  // The public IP is being released from its current ComputeInstance binding.
   //
   // On detach (clearing spec.compute_instance from an ATTACHED IP), the system unbinds
   // the address from the ComputeInstance. The address is preserved and the IP returns to
-  // ALLOCATED once complete. On deallocation (deleting the PublicIP), the system removes
-  // the MetalLB LoadBalancer Service and returns the address to the pool.
+  // ALLOCATED once complete.
   PUBLIC_IP_STATE_RELEASING = 5;
 
   // Provisioning or release failed. Check status.message for error details.
@@ -153,4 +152,10 @@ enum PublicIPState {
   // This is a terminal error state. The PublicIP may require manual intervention
   // (e.g., deleting and recreating) or a Signal RPC to retry the operation.
   PUBLIC_IP_STATE_FAILED = 6;
+
+  // The public IP is being deprovisioned and will be removed.
+  //
+  // On deletion of an ALLOCATED PublicIP, the system removes the MetalLB LoadBalancer
+  // Service and returns the address to the pool. Only ALLOCATED PublicIPs can be deleted.
+  PUBLIC_IP_STATE_DELETING = 7;
 }
