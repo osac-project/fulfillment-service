@@ -172,7 +172,7 @@ func (r *hubCache) create(ctx context.Context, id string) (result *HubEntry, err
 		return
 	}
 	hub := response.GetObject()
-	config, err := clientcmd.RESTConfigFromKubeConfig(hub.GetKubeconfig())
+	config, err := clientcmd.RESTConfigFromKubeConfig(hub.GetSpec().GetKubeconfig())
 	if err != nil {
 		return
 	}
@@ -181,7 +181,7 @@ func (r *hubCache) create(ctx context.Context, id string) (result *HubEntry, err
 		return
 	}
 	result = &HubEntry{
-		Namespace: hub.GetNamespace(),
+		Namespace: hub.GetSpec().GetNamespace(),
 		Client:    client,
 	}
 	return

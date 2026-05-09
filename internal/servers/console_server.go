@@ -410,7 +410,7 @@ func (s *consoleServer) getComputeInstanceFromHub(ctx context.Context, hubID, in
 	hub := hubResp.GetObject()
 
 	// Create a Kubernetes client for the hub cluster.
-	hubClient, err := s.hubClientFactory(hub.GetKubeconfig())
+	hubClient, err := s.hubClientFactory(hub.GetSpec().GetKubeconfig())
 	if err != nil {
 		err = status.Errorf(codes.Internal, "failed to create client for hub %q: %v", hubID, err)
 		return
@@ -420,7 +420,7 @@ func (s *consoleServer) getComputeInstanceFromHub(ctx context.Context, hubID, in
 	list := &osacv1alpha1.ComputeInstanceList{}
 	err = hubClient.List(
 		ctx, list,
-		clnt.InNamespace(hub.GetNamespace()),
+		clnt.InNamespace(hub.GetSpec().GetNamespace()),
 		clnt.MatchingLabels{
 			labels.ComputeInstanceUuid: instanceID,
 		},

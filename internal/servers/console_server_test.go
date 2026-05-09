@@ -201,9 +201,11 @@ var _ = Describe("Console Server", func() {
 	setupHubMock := func(instanceID, hubNamespace string, phase osacv1alpha1.ComputeInstancePhaseType) clnt.Client {
 		hubServer.getResponse = privatev1.HubsGetResponse_builder{
 			Object: privatev1.Hub_builder{
-				Id:         "hub-1",
-				Kubeconfig: []byte("fake-kubeconfig"),
-				Namespace:  hubNamespace,
+				Id: "hub-1",
+				Spec: privatev1.HubSpec_builder{
+					Kubeconfig: []byte("fake-kubeconfig"),
+					Namespace:  hubNamespace,
+				}.Build(),
 			}.Build(),
 		}.Build()
 		cr := newComputeInstanceCR(instanceID, hubNamespace, phase)
@@ -374,9 +376,11 @@ var _ = Describe("Console Server", func() {
 			// Hub returns successfully but no CR exists on the cluster.
 			hubServer.getResponse = privatev1.HubsGetResponse_builder{
 				Object: privatev1.Hub_builder{
-					Id:         "hub-1",
-					Kubeconfig: []byte("fake-kubeconfig"),
-					Namespace:  "test-ns",
+					Id: "hub-1",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("fake-kubeconfig"),
+						Namespace:  "test-ns",
+					}.Build(),
 				}.Build(),
 			}.Build()
 			fakeK8s = newFakeClient()

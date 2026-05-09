@@ -826,7 +826,10 @@ func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Messa
 		// exceeds the default limit of 8000 bytes of the PostgreSQL notification mechanism. A better way to
 		// do this would be to store the payloads in a separate table. We will do that later.
 		object = proto.Clone(object).(*privatev1.Hub)
-		object.SetKubeconfig(nil)
+		spec := object.GetSpec()
+		if spec != nil {
+			spec.SetKubeconfig(nil)
+		}
 		event.SetHub(object)
 	case *privatev1.ComputeInstanceTemplate:
 		event.SetComputeInstanceTemplate(object)

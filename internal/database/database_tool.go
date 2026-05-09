@@ -34,7 +34,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-//go:embed migrations
+//go:embed migrations/*.sql
 var migrationsFS embed.FS
 
 // Tool tries to simplify and centralize database operations that are needed frequently during the startup of a process
@@ -44,8 +44,9 @@ type Tool interface {
 	// Wait waits till the database is available.
 	Wait(ctx context.Context) error
 
-	// Migrate runs the database migrations.
-	Migrate(ctx context.Context) error
+	// Migrate runs the database migrations up to the given version. If the version is zero then all migrations are
+	// run.
+	Migrate(ctx context.Context, version uint) error
 
 	// Pool returns the pool of database connections.
 	Pool(ctx context.Context) (result *pgxpool.Pool, err error)
@@ -342,8 +343,9 @@ func (t *tool) Wait(ctx context.Context) error {
 	}
 }
 
-// Migrate runs the database migrations.
-func (t *tool) Migrate(ctx context.Context) error {
+// Migrate runs the database migrations up to and including the given desired version. If the desired version is zero
+// then all migrations are run.
+func (t *tool) Migrate(ctx context.Context, desiredVersion uint) error {
 	// The database connection URL given by the user will probably start with 'postgres', and that works fine for
 	// regular connections, but for the migration library it needs to be 'pgx5'.
 	parsed, err := neturl.Parse(t.url)
@@ -380,15 +382,15 @@ func (t *tool) Migrate(ctx context.Context) error {
 
 	// Show the schema version before running the migrations:
 	version, dirty, err := migrations.Version()
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		t.logger.InfoContext(
 			ctx,
 			"Version before running migrations",
 			slog.Uint64("version", uint64(version)),
 			slog.Bool("dirty", dirty),
 		)
-	case err == migrate.ErrNilVersion:
+	case migrate.ErrNilVersion:
 		t.logger.InfoContext(
 			ctx,
 			"Schema hasn't been created yet, will create it now",
@@ -398,17 +400,21 @@ func (t *tool) Migrate(ctx context.Context) error {
 	}
 
 	// Run the migrations:
-	err = migrations.Up()
-	switch {
-	case err == nil:
+	if desiredVersion > 0 {
+		err = migrations.Migrate(desiredVersion)
+	} else {
+		err = migrations.Up()
+	}
+	switch err {
+	case nil:
 		t.logger.InfoContext(
 			ctx,
 			"Migrations executed successfully",
 		)
-	case err == migrate.ErrNoChange:
+	case migrate.ErrNoChange:
 		t.logger.InfoContext(
 			ctx,
-			"Migrationd don't need to be executed",
+			"Migrations don't need to be executed",
 		)
 	default:
 		return err

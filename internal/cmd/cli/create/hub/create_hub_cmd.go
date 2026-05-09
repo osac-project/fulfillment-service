@@ -108,11 +108,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read kubeconfig file '%s': %w", c.kubeconfig, err)
 	}
 
-	// Prepare the cluster:
+	// Prepare the hub:
 	hub := privatev1.Hub_builder{
-		Id:         c.id,
-		Kubeconfig: kubeconfig,
-		Namespace:  c.namespace,
+		Id: c.id,
+		Spec: privatev1.HubSpec_builder{
+			Kubeconfig: kubeconfig,
+			Namespace:  c.namespace,
+		}.Build(),
 	}.Build()
 
 	// Create the hub:

@@ -1959,9 +1959,11 @@ func (t *Tool) registerHub(ctx context.Context) error {
 	// Create the hub:
 	_, err = hubsClient.Create(ctx, privatev1.HubsCreateRequest_builder{
 		Object: privatev1.Hub_builder{
-			Id:         hubId,
-			Kubeconfig: hubKcBytes,
-			Namespace:  hubNamespace,
+			Id: hubId,
+			Spec: privatev1.HubSpec_builder{
+				Kubeconfig: hubKcBytes,
+				Namespace:  hubNamespace,
+			}.Build(),
 		}.Build(),
 	}.Build())
 	if err != nil {
