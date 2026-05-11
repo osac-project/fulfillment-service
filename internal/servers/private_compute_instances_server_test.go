@@ -567,6 +567,19 @@ var _ = Describe("Private compute instances server", func() {
 			Expect(response).To(BeNil())
 		})
 
+		It("Handles missing spec on create request", func() {
+			response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+				Object: privatev1.ComputeInstance_builder{}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("spec is mandatory"))
+		})
+
 		It("Handles empty object in update request", func() {
 			// Try to update with nil object:
 			response, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{}.Build())

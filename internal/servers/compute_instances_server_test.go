@@ -568,6 +568,14 @@ var _ = Describe("Compute instances server", func() {
 			Expect(response).To(BeNil())
 		})
 
+		It("Handles missing spec on create request", func() {
+			response, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+				Object: publicv1.ComputeInstance_builder{}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+		})
+
 		It("Handles empty object in update request", func() {
 			// Try to update with nil object:
 			response, err := server.Update(ctx, publicv1.ComputeInstancesUpdateRequest_builder{}.Build())
