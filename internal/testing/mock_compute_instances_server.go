@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/errormessages"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -60,6 +61,9 @@ func (s *MockComputeInstancesServer) Create(ctx context.Context, request *public
 	}
 	if instance.GetSpec() == nil || instance.GetSpec().GetTemplate() == "" {
 		return nil, status.Error(codes.InvalidArgument, "object.spec.template is required")
+	}
+	if strings.TrimSpace(instance.GetSpec().GetSubnet()) == "" {
+		return nil, status.Error(codes.InvalidArgument, errormessages.ComputeInstanceSpecSubnetRequired)
 	}
 	templateFound := false
 	for _, t := range s.scenario.Templates {

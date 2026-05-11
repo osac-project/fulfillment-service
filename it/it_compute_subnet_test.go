@@ -188,7 +188,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
 					}.Build(),
-					Subnet: proto.String(subnetId),
+					Subnet: subnetId,
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -221,7 +221,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
 					}.Build(),
-					Subnet: proto.String("non-existent-subnet"),
+					Subnet: "non-existent-subnet",
 				}.Build(),
 			}.Build(),
 		}.Build())

@@ -145,9 +145,8 @@ message ComputeInstanceSpec {
 
   // Reference to Subnet by fulfillment ID. VM will be attached to this subnet's network.
   //
-  // Must reference a Subnet in READY state within the same region and tenant. This is optional
-  // during creation but recommended for proper network isolation.
-  optional string subnet = 12;
+  // Must reference a Subnet in READY state within the same region and tenant.
+  string subnet = 12;
 
   // References to SecurityGroups by fulfillment ID. VM will have these security policies applied.
   //
