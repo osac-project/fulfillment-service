@@ -61,6 +61,9 @@ func (s *MockComputeInstancesServer) Create(ctx context.Context, request *public
 	if instance.GetSpec() == nil || instance.GetSpec().GetTemplate() == "" {
 		return nil, status.Error(codes.InvalidArgument, "object.spec.template is required")
 	}
+	if strings.TrimSpace(instance.GetSpec().GetSubnet()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "field 'spec.subnet' is required")
+	}
 	templateFound := false
 	for _, t := range s.scenario.Templates {
 		if t.ID == instance.GetSpec().GetTemplate() {

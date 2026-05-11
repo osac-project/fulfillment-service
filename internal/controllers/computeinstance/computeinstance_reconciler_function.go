@@ -500,7 +500,7 @@ func (t *task) buildSpec(ctx context.Context) (osacv1alpha1.ComputeInstanceSpec,
 	t.addExplicitFields(&spec)
 
 	// Add subnet reference if subnet is specified
-	if t.computeInstance.GetSpec().HasSubnet() {
+	if t.computeInstance.GetSpec().GetSubnet() != "" {
 		subnetID := t.computeInstance.GetSpec().GetSubnet()
 		subnetCR, err := t.getSubnetCR(ctx, subnetID)
 		if err != nil {

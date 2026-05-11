@@ -32,6 +32,83 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
+func computeInstancesTestNetworkClass(ctx context.Context) *privatev1.NetworkClass {
+	ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
+		SetLogger(logger).
+		SetTenancyLogic(tenancy).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+
+	nc := privatev1.NetworkClass_builder{
+		ImplementationStrategy: "test-strategy",
+		Metadata: privatev1.Metadata_builder{
+			Tenants: []string{"shared"},
+		}.Build(),
+		Capabilities: privatev1.NetworkClassCapabilities_builder{
+			SupportsIpv4:      true,
+			SupportsIpv6:      true,
+			SupportsDualStack: true,
+		}.Build(),
+		Status: privatev1.NetworkClassStatus_builder{
+			State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
+		}.Build(),
+	}.Build()
+
+	response, err := ncDao.Create().SetObject(nc).Do(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	return response.GetObject()
+}
+
+func computeInstancesTestVirtualNetwork(ctx context.Context, networkClassID string) *privatev1.VirtualNetwork {
+	vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
+		SetLogger(logger).
+		SetTenancyLogic(tenancy).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+
+	vn := privatev1.VirtualNetwork_builder{
+		Metadata: privatev1.Metadata_builder{
+			Tenants: []string{"shared"},
+		}.Build(),
+		Spec: privatev1.VirtualNetworkSpec_builder{
+			Ipv4Cidr:     proto.String("10.0.0.0/16"),
+			NetworkClass: networkClassID,
+		}.Build(),
+		Status: privatev1.VirtualNetworkStatus_builder{
+			State: privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY,
+		}.Build(),
+	}.Build()
+
+	response, err := vnDao.Create().SetObject(vn).Do(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	return response.GetObject()
+}
+
+func computeInstancesTestSubnet(ctx context.Context, vnID string, state privatev1.SubnetState) *privatev1.Subnet {
+	subnetDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
+		SetLogger(logger).
+		SetTenancyLogic(tenancy).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+
+	subnet := privatev1.Subnet_builder{
+		Metadata: privatev1.Metadata_builder{
+			Tenants: []string{"shared"},
+		}.Build(),
+		Spec: privatev1.SubnetSpec_builder{
+			VirtualNetwork: vnID,
+			Ipv4Cidr:       proto.String("10.0.1.0/24"),
+		}.Build(),
+		Status: privatev1.SubnetStatus_builder{
+			State: state,
+		}.Build(),
+	}.Build()
+
+	response, err := subnetDao.Create().SetObject(subnet).Do(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	return response.GetObject()
+}
+
 var _ = Describe("Compute instances server", func() {
 	var (
 		ctx context.Context
@@ -71,6 +148,12 @@ var _ = Describe("Compute instances server", func() {
 		err = dao.CreateTables[*privatev1.ComputeInstanceTemplate](ctx)
 		Expect(err).ToNot(HaveOccurred())
 		err = dao.CreateTables[*privatev1.ComputeInstance](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.VirtualNetwork](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.Subnet](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -117,7 +200,8 @@ var _ = Describe("Compute instances server", func() {
 
 	Describe("Behaviour", func() {
 		var (
-			server *ComputeInstancesServer
+			server        *ComputeInstancesServer
+			readySubnetID string
 		)
 
 		BeforeEach(func() {
@@ -130,6 +214,11 @@ var _ = Describe("Compute instances server", func() {
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
+
+			nc := computeInstancesTestNetworkClass(ctx)
+			vn := computeInstancesTestVirtualNetwork(ctx, nc.GetId())
+			subnet := computeInstancesTestSubnet(ctx, vn.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+			readySubnetID = subnet.GetId()
 		})
 
 		// Helper function to create a template
@@ -208,6 +297,7 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template:           "general.small",
+						Subnet:             readySubnetID,
 						TemplateParameters: templateParams,
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
@@ -235,6 +325,7 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							Subnet:   readySubnetID,
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -263,6 +354,7 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							Subnet:   readySubnetID,
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -293,6 +385,7 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							Subnet:   readySubnetID,
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -321,6 +414,7 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -356,6 +450,7 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template:    "general.small",
+						Subnet:      readySubnetID,
 						Cores:       proto.Int32(4),
 						MemoryGib:   proto.Int32(8),
 						RunStrategy: proto.String("Always"),
@@ -428,6 +523,7 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -501,6 +597,7 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template:    "mapping-template",
+						Subnet:      readySubnetID,
 						Cores:       proto.Int32(8),
 						MemoryGib:   proto.Int32(16),
 						RunStrategy: proto.String("Halted"),

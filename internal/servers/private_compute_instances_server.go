@@ -166,20 +166,35 @@ func (s *PrivateComputeInstancesServer) Get(ctx context.Context,
 
 func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 	request *privatev1.ComputeInstancesCreateRequest) (response *privatev1.ComputeInstancesCreateResponse, err error) {
+	vm := request.GetObject()
+	if vm == nil {
+		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance is mandatory")
+		return
+	}
+	spec := vm.GetSpec()
+	if spec == nil {
+		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance spec is mandatory")
+		return
+	}
+	if strings.TrimSpace(spec.GetSubnet()) == "" {
+		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.subnet' is required")
+		return
+	}
+
 	// Validate network references:
-	err = s.validateNetworkReferences(ctx, request.GetObject())
+	err = s.validateNetworkReferences(ctx, vm)
 	if err != nil {
 		return
 	}
 
 	// Fetch and validate template:
-	template, err := s.fetchAndValidateTemplate(ctx, request.GetObject())
+	template, err := s.fetchAndValidateTemplate(ctx, vm)
 	if err != nil {
 		return
 	}
 
 	// Apply template spec defaults and validate that all required spec fields are present.
-	err = s.applySpecDefaults(request.GetObject().GetSpec(), template)
+	err = s.applySpecDefaults(spec, template)
 	if err != nil {
 		return
 	}

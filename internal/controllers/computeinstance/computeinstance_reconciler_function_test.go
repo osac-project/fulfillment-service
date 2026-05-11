@@ -555,7 +555,7 @@ var _ = Describe("buildSpec with subnetRef", func() {
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
 					Template: template,
-					Subnet:   proto.String(subnetID),
+					Subnet:   subnetID,
 				}.Build(),
 			}.Build(),
 			hubNamespace: hubNamespace,
@@ -609,7 +609,7 @@ var _ = Describe("buildSpec with subnetRef", func() {
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
 					Template: template,
-					Subnet:   proto.String(subnetID),
+					Subnet:   subnetID,
 				}.Build(),
 			}.Build(),
 			hubNamespace: hubNamespace,
@@ -658,7 +658,7 @@ var _ = Describe("buildSpec with subnetRef", func() {
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
 					Template: template,
-					Subnet:   proto.String(subnetID),
+					Subnet:   subnetID,
 				}.Build(),
 			}.Build(),
 			hubNamespace: hubNamespace,
