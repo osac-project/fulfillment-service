@@ -68,7 +68,7 @@ func main() {
 	fmt.Println("To test with the CLI:")
 	fmt.Printf("  fulfillment-cli login http://127.0.0.1:%s\n", serverPort)
 	fmt.Println("  fulfillment-cli get computeinstancetemplates")
-	fmt.Println("  fulfillment-cli create computeinstance -t small-instance -n my-instance")
+	fmt.Println("  fulfillment-cli create computeinstance -t small-instance -n my-instance --subnet subnet-mock-001")
 	fmt.Println("  fulfillment-cli get computeinstances")
 	fmt.Println("========================================")
 
