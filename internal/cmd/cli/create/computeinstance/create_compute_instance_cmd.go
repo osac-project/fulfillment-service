@@ -66,6 +66,12 @@ func Cmd() *cobra.Command {
 		"",
 		"Template identifier or name",
 	)
+	flags.StringVar(
+		&runner.args.catalogItem,
+		"catalog-item",
+		"",
+		"Catalog item identifier. Replaces --template.",
+	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterValues,
 		"template-parameter",
@@ -134,6 +140,8 @@ func Cmd() *cobra.Command {
 		"",
 		"User data for the compute instance (e.g. cloud-init, ignition).",
 	)
+	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
+	result.MarkFlagsOneRequired("catalog-item", "template")
 	return result
 }
 
@@ -141,6 +149,7 @@ type runnerContext struct {
 	args struct {
 		name                    string
 		template                string
+		catalogItem             string
 		templateParameterValues []string
 		templateParameterFiles  []string
 		cores                   int32
@@ -175,6 +184,20 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load templates: %w", err)
 	}
 
+	// Reject template parameters when using catalog item (per D-04):
+	if c.args.catalogItem != "" {
+		if len(c.args.templateParameterValues) > 0 || len(c.args.templateParameterFiles) > 0 {
+			return fmt.Errorf(
+				"--template-parameter and --template-parameter-file are not supported with --catalog-item",
+			)
+		}
+	}
+
+	// Deprecation warning for --template (per D-03):
+	if c.args.template != "" {
+		fmt.Fprintf(os.Stderr, "Warning: --template is deprecated, use --catalog-item instead\n")
+	}
+
 	// Get the configuration:
 	cfg, err := config.Load(ctx)
 	if err != nil {
@@ -182,11 +205,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	if cfg.Address == "" {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
-	}
-
-	// Check that we have a template:
-	if c.args.template == "" {
-		return fmt.Errorf("template identifier or name is required")
 	}
 
 	// Create the gRPC connection from the configuration:
@@ -210,6 +228,34 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Create the gRPC clients:
 	c.templatesClient = publicv1.NewComputeInstanceTemplatesClient(conn)
 	c.computeInstancesClient = publicv1.NewComputeInstancesClient(conn)
+
+	if c.args.catalogItem != "" {
+		// Catalog item path: skip template lookup entirely (per D-04).
+		specResult, specErr := c.buildSpecFromCatalogItem(c.args.catalogItem)
+		if specErr != nil {
+			return specErr
+		}
+
+		computeInstance := publicv1.ComputeInstance_builder{
+			Metadata: publicv1.Metadata_builder{
+				Name: c.args.name,
+			}.Build(),
+			Spec: specResult,
+		}.Build()
+
+		response, err := c.computeInstancesClient.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+			Object: computeInstance,
+		}.Build())
+		if err != nil {
+			return fmt.Errorf("failed to create compute instance: %w", err)
+		}
+
+		computeInstance = response.Object
+		c.console.Infof(ctx, "Created compute instance '%s'.\n", computeInstance.Id)
+		return nil
+	}
+
+	// Legacy template path (existing code continues below):
 
 	// Fetch the compute instance template:
 	template, err := c.findTemplate(ctx)
@@ -659,6 +705,49 @@ func (c *runnerContext) buildSpec(templateID string,
 		disks, err := parseAdditionalDisks(c.args.additionalDisks)
 		if err != nil {
 			return nil, err
+		}
+		spec.AdditionalDisks = disks
+	}
+	if c.args.runStrategy != "" {
+		spec.RunStrategy = proto.String(c.args.runStrategy)
+	}
+	if c.args.userData != "" {
+		spec.UserData = proto.String(c.args.userData)
+	}
+	return spec.Build(), nil
+}
+
+// buildSpecFromCatalogItem builds the spec for catalog-item-based creation.
+// Mirrors buildSpec() but without Template/TemplateParameters fields.
+func (c *runnerContext) buildSpecFromCatalogItem(catalogItemID string) (*publicv1.ComputeInstanceSpec, error) {
+	spec := publicv1.ComputeInstanceSpec_builder{
+		// TODO(OSAC-704): Uncomment when Phase 4 adds CatalogItem to ComputeInstanceSpec.
+		// CatalogItem: catalogItemID,
+	}
+	if c.args.imageSourceRef != "" {
+		spec.Image = publicv1.ComputeInstanceImage_builder{
+			SourceType: c.args.imageSourceType,
+			SourceRef:  c.args.imageSourceRef,
+		}.Build()
+	}
+	if c.args.cores > 0 {
+		spec.Cores = proto.Int32(c.args.cores)
+	}
+	if c.args.memoryGiB > 0 {
+		spec.MemoryGib = proto.Int32(c.args.memoryGiB)
+	}
+	if c.args.sshKey != "" {
+		spec.SshKey = proto.String(c.args.sshKey)
+	}
+	if c.args.bootDiskSizeGiB > 0 {
+		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
+			SizeGib: c.args.bootDiskSizeGiB,
+		}.Build()
+	}
+	if len(c.args.additionalDisks) > 0 {
+		disks, diskErr := parseAdditionalDisks(c.args.additionalDisks)
+		if diskErr != nil {
+			return nil, diskErr
 		}
 		spec.AdditionalDisks = disks
 	}

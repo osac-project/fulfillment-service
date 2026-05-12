@@ -101,9 +101,12 @@ func buildFilter(ref string) string {
 
 func renderComputeInstance(w io.Writer, ci *publicv1.ComputeInstance) {
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	template := "-"
+	catalogItem := "-"
 	if ci.Spec != nil {
-		template = ci.Spec.Template
+		// TODO(OSAC-704): Uncomment when Phase 4 adds CatalogItem to ComputeInstanceSpec.
+		// if catalogItemID := ci.Spec.GetCatalogItem(); catalogItemID != "" {
+		//     catalogItem = catalogItemID
+		// }
 	}
 	state := "-"
 	if ci.Status != nil {
@@ -111,7 +114,7 @@ func renderComputeInstance(w io.Writer, ci *publicv1.ComputeInstance) {
 		state = strings.TrimPrefix(state, "COMPUTE_INSTANCE_STATE_")
 	}
 	fmt.Fprintf(writer, "ID:\t%s\n", ci.Id)
-	fmt.Fprintf(writer, "Template:\t%s\n", template)
+	fmt.Fprintf(writer, "Catalog Item:\t%s\n", catalogItem)
 	fmt.Fprintf(writer, "State:\t%s\n", state)
 	if ci.Status != nil && ci.Status.GetLastRestartedAt() != nil {
 		fmt.Fprintf(writer, "Last Restarted At:\t%s\n", ci.Status.GetLastRestartedAt().AsTime().Format(time.RFC3339))

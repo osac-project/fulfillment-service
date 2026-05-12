@@ -43,7 +43,8 @@ var _ = Describe("Describe Compute Instance", func() {
 		}
 		output := formatComputeInstance(ci)
 		Expect(output).To(ContainSubstring("ci-001"))
-		Expect(output).To(ContainSubstring("tpl-small-001"))
+		Expect(output).To(MatchRegexp(`Catalog Item:\s+-`))
+		Expect(output).NotTo(ContainSubstring("Template:"))
 		Expect(output).To(ContainSubstring("RUNNING"))
 	})
 
@@ -59,12 +60,12 @@ var _ = Describe("Describe Compute Instance", func() {
 		Expect(output).NotTo(ContainSubstring("COMPUTE_INSTANCE_STATE_"))
 	})
 
-	It("should show '-' for template when spec is nil", func() {
+	It("should show '-' for catalog item when spec is nil", func() {
 		ci := &publicv1.ComputeInstance{
 			Id: "ci-003",
 		}
 		output := formatComputeInstance(ci)
-		Expect(output).To(MatchRegexp(`Template:\s+-`))
+		Expect(output).To(MatchRegexp(`Catalog Item:\s+-`))
 	})
 
 	It("should display last_restarted_at when set", func() {
@@ -81,6 +82,8 @@ var _ = Describe("Describe Compute Instance", func() {
 		}
 
 		output := formatComputeInstance(ci)
+		Expect(output).NotTo(ContainSubstring("Template:"))
+		Expect(output).To(ContainSubstring("Catalog Item:"))
 		Expect(output).To(ContainSubstring("Last Restarted At:"))
 		Expect(output).To(ContainSubstring("2026-03-15T10:30:00Z"))
 	})
@@ -97,6 +100,8 @@ var _ = Describe("Describe Compute Instance", func() {
 		}
 
 		output := formatComputeInstance(ci)
+		Expect(output).NotTo(ContainSubstring("Template:"))
+		Expect(output).To(ContainSubstring("Catalog Item:"))
 		Expect(output).NotTo(ContainSubstring("Last Restarted At:"))
 	})
 
@@ -109,9 +114,26 @@ var _ = Describe("Describe Compute Instance", func() {
 		}
 
 		output := formatComputeInstance(ci)
+		Expect(output).NotTo(ContainSubstring("Template:"))
+		Expect(output).To(ContainSubstring("Catalog Item:"))
 		Expect(output).To(MatchRegexp(`State:\s+-`))
 		Expect(output).NotTo(ContainSubstring("Last Restarted At:"))
 	})
+
+	It("should NOT show Template: row even when template is set on spec", func() {
+		ci := &publicv1.ComputeInstance{
+			Id: "ci-010",
+			Spec: &publicv1.ComputeInstanceSpec{
+				Template: "tpl-small-001",
+			},
+		}
+		output := formatComputeInstance(ci)
+		Expect(output).NotTo(ContainSubstring("Template:"))
+		Expect(output).To(ContainSubstring("Catalog Item:"))
+	})
+
+	// TODO(OSAC-704): Add test for "should show catalog item ID when set"
+	// once ComputeInstanceSpec.GetCatalogItem() exists from Phase 4.
 })
 
 var _ = Describe("CEL filter construction", func() {
