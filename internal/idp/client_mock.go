@@ -55,17 +55,17 @@ func (mr *MockClientMockRecorder) AssignClientRolesToUser(ctx, organizationName,
 }
 
 // AssignIdpManagerPermissions mocks base method.
-func (m *MockClient) AssignIdpManagerPermissions(ctx context.Context, organizationName, userID string) error {
+func (m *MockClient) AssignIdpManagerPermissions(ctx context.Context, userID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AssignIdpManagerPermissions", ctx, organizationName, userID)
+	ret := m.ctrl.Call(m, "AssignIdpManagerPermissions", ctx, userID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AssignIdpManagerPermissions indicates an expected call of AssignIdpManagerPermissions.
-func (mr *MockClientMockRecorder) AssignIdpManagerPermissions(ctx, organizationName, userID any) *gomock.Call {
+func (mr *MockClientMockRecorder) AssignIdpManagerPermissions(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignIdpManagerPermissions", reflect.TypeOf((*MockClient)(nil).AssignIdpManagerPermissions), ctx, organizationName, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignIdpManagerPermissions", reflect.TypeOf((*MockClient)(nil).AssignIdpManagerPermissions), ctx, userID)
 }
 
 // AssignOrganizationAdminPermissions mocks base method.

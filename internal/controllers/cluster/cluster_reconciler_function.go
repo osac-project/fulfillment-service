@@ -334,10 +334,16 @@ func (t *task) addExplicitFields(spec *osacv1alpha1.ClusterOrderSpec) {
 }
 
 func (t *task) prepareNodeRequests() []osacv1alpha1.NodeRequest {
-	var nodeRequests []osacv1alpha1.NodeRequest
-	for _, nodeSet := range t.cluster.GetSpec().GetNodeSets() {
-		nodeRequest := t.prepareNodeRequest(nodeSet)
-		nodeRequests = append(nodeRequests, nodeRequest)
+	nodeSets := t.cluster.GetSpec().GetNodeSets()
+	keys := make([]string, 0, len(nodeSets))
+	for key := range nodeSets {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+
+	nodeRequests := make([]osacv1alpha1.NodeRequest, 0, len(keys))
+	for _, key := range keys {
+		nodeRequests = append(nodeRequests, t.prepareNodeRequest(nodeSets[key]))
 	}
 	return nodeRequests
 }

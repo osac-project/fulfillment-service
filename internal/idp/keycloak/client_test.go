@@ -554,7 +554,27 @@ var _ = Describe("Keycloak Client", func() {
 	Describe("DeleteOrganization", func() {
 		It("deletes an organization from Keycloak", func() {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Second request: get organization by name
+				// First request: query user by username (for break-glass deletion)
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/users" && r.URL.Query().Get("username") == "test-org-osac-break-glass" {
+					// Return break-glass user
+					response := []keycloakUser{{
+						ID:       "break-glass-id",
+						Username: "test-org-osac-break-glass",
+						Email:    "break-glass@test-org.osac.local",
+					}}
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					json.NewEncoder(w).Encode(response)
+					return
+				}
+
+				// Second request: delete break-glass user
+				if r.Method == http.MethodDelete && r.URL.Path == "/admin/realms/osac/users/break-glass-id" {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+
+				// Third request: get organization by name
 				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=test-org" {
 					enabled := true
 					response := []keycloakOrganization{{
@@ -569,7 +589,7 @@ var _ = Describe("Keycloak Client", func() {
 					return
 				}
 
-				// Second request: delete organization
+				// Fourth request: delete organization
 				if r.Method == http.MethodDelete && r.URL.Path == "/admin/realms/osac/organizations/org-id" {
 					w.WriteHeader(http.StatusNoContent)
 					return
@@ -875,10 +895,32 @@ var _ = Describe("Keycloak Client", func() {
 	})
 
 	Describe("AssignIdpManagerPermissions", func() {
-		It("is not yet implemented (returns nil)", func() {
+		It("assigns tenant-idp-manager role to user", func() {
+			clientRole := false
+			role := keycloakRole{
+				ID:         "role-idp-manager",
+				Name:       "tenant-idp-manager",
+				ClientRole: &clientRole,
+			}
+
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/tenant-idp-manager" {
+					// Return the tenant-idp-manager role
+					w.WriteHeader(http.StatusOK)
+					json.NewEncoder(w).Encode(role)
+				} else if r.Method == http.MethodPost && r.URL.Path == "/admin/realms/osac/users/user-123/role-mappings/realm" {
+					// Assignment endpoint
+					w.WriteHeader(http.StatusNoContent)
+				} else {
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+
 			client = createTestClient(server.URL)
-			err := client.AssignIdpManagerPermissions(ctx, "test-org", "user-123")
-			Expect(err).ToNot(HaveOccurred()) // TODO returns nil until implemented
+			err := client.AssignIdpManagerPermissions(ctx, "user-123")
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 

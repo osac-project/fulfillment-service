@@ -49,19 +49,19 @@ type Client interface {
 	// Admin permissions
 	// AssignOrganizationAdminPermissions grants full administrative access to an organization for the specified user.
 	// The implementation is provider-specific:
-	// - Keycloak: Assigns realm-management client roles (manage-realm, manage-users, etc.)
+	// - Keycloak: Assigns tenant-admin role
 	// - Auth0: Assigns organization Admin role
 	// - Okta: Assigns Organizational Administrator role
 	// - Azure AD: Assigns Global Administrator or Organizational Administrator role
 	AssignOrganizationAdminPermissions(ctx context.Context, organizationName, userID string) error
 
 	// AssignIdpManagerPermissions grants limited IdP management permissions to the specified user.
-	// This is used for the break-glass account which can manage users and identity providers
+	// This is used for the break-glass account which can manage user roles and identity providers
 	// but cannot modify critical organization settings.
 	// The implementation is provider-specific:
-	// - Keycloak: Assigns limited realm-management client roles (manage-users, view-users, etc.)
+	// - Keycloak: Assigns limited tenant-idp-manager role
 	// - Auth0: Assigns organization Member Manager role
 	// - Okta: Assigns User Administrator role
 	// - Azure AD: Assigns User Administrator role
-	AssignIdpManagerPermissions(ctx context.Context, organizationName, userID string) error
+	AssignIdpManagerPermissions(ctx context.Context, userID string) error
 }

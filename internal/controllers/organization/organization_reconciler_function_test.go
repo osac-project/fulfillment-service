@@ -242,7 +242,7 @@ var _ = Describe("IDP Sync", func() {
 			Times(1)
 
 		mockClient.EXPECT().
-			AssignIdpManagerPermissions(gomock.Any(), "test-org", "user-123").
+			AssignIdpManagerPermissions(gomock.Any(), "user-123").
 			Return(nil).
 			Times(1)
 
@@ -284,7 +284,7 @@ var _ = Describe("IDP Sync", func() {
 			Times(1)
 
 		mockClient.EXPECT().
-			AssignIdpManagerPermissions(gomock.Any(), "test-org", "user-123").
+			AssignIdpManagerPermissions(gomock.Any(), "user-123").
 			Return(nil).
 			Times(1)
 

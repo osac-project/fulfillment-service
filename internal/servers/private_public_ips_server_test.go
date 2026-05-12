@@ -399,6 +399,14 @@ var _ = Describe("Private public IPs server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 
+			// Transition to ALLOCATED (only ALLOCATED PublicIPs can be deleted):
+			object.GetStatus().SetState(privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED)
+			updateResponse, err := publicIPsServer.Update(ctx, privatev1.PublicIPsUpdateRequest_builder{
+				Object: object,
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object = updateResponse.GetObject()
+
 			// Delete:
 			_, err = publicIPsServer.Delete(ctx, privatev1.PublicIPsDeleteRequest_builder{
 				Id: object.GetId(),
@@ -592,7 +600,15 @@ var _ = Describe("Private public IPs server", func() {
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			publicIPID := createResponse.GetObject().GetId()
+			object := createResponse.GetObject()
+			publicIPID := object.GetId()
+
+			// Transition to ALLOCATED (only ALLOCATED PublicIPs can be deleted):
+			object.GetStatus().SetState(privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED)
+			_, err = publicIPsServer.Update(ctx, privatev1.PublicIPsUpdateRequest_builder{
+				Object: object,
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
 
 			// Verify pool after Create: allocated=1, available=9
 			poolResp, err := publicIPPoolDao.Get().SetId(poolID).Do(ctx)
@@ -823,6 +839,38 @@ var _ = Describe("Private public IPs server", func() {
 			Expect(err.Error()).To(ContainSubstring("invalid state transition"))
 		})
 
+		It("accepts ALLOCATED to DELETING transition", func() {
+			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED)
+			updated := transitionTo(object, privatev1.PublicIPState_PUBLIC_IP_STATE_DELETING)
+			Expect(updated.GetStatus().GetState()).To(Equal(privatev1.PublicIPState_PUBLIC_IP_STATE_DELETING))
+		})
+
+		It("rejects PENDING to DELETING transition", func() {
+			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING)
+			setStateOnObject(object, privatev1.PublicIPState_PUBLIC_IP_STATE_DELETING)
+			_, err := publicIPsServer.Update(ctx, privatev1.PublicIPsUpdateRequest_builder{
+				Object: object,
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("invalid state transition"))
+		})
+
+		It("rejects FAILED to DELETING transition", func() {
+			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED)
+			setStateOnObject(object, privatev1.PublicIPState_PUBLIC_IP_STATE_DELETING)
+			_, err := publicIPsServer.Update(ctx, privatev1.PublicIPsUpdateRequest_builder{
+				Object: object,
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("invalid state transition"))
+		})
+
 		It("skips state validation when UpdateMask excludes status.state", func() {
 			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED)
 
@@ -851,6 +899,41 @@ var _ = Describe("Private public IPs server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		It("allows Delete when state is ALLOCATED", func() {
+			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED)
+
+			_, err := publicIPsServer.Delete(ctx, privatev1.PublicIPsDeleteRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("rejects Delete when state is PENDING", func() {
+			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING)
+
+			_, err := publicIPsServer.Delete(ctx, privatev1.PublicIPsDeleteRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("must be in ALLOCATED state"))
+		})
+
+		It("rejects Delete when state is ATTACHING", func() {
+			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHING)
+
+			_, err := publicIPsServer.Delete(ctx, privatev1.PublicIPsDeleteRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("must be in ALLOCATED state"))
+		})
+
 		It("rejects Delete when state is ATTACHED", func() {
 			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHED)
 
@@ -861,7 +944,7 @@ var _ = Describe("Private public IPs server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
-			Expect(err.Error()).To(ContainSubstring("detach from ComputeInstance first"))
+			Expect(err.Error()).To(ContainSubstring("must be in ALLOCATED state"))
 		})
 
 		It("rejects Delete when state is RELEASING", func() {
@@ -874,34 +957,20 @@ var _ = Describe("Private public IPs server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
-			Expect(err.Error()).To(ContainSubstring("detach from ComputeInstance first"))
+			Expect(err.Error()).To(ContainSubstring("must be in ALLOCATED state"))
 		})
 
-		It("allows Delete when state is ALLOCATED", func() {
-			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED)
-
-			_, err := publicIPsServer.Delete(ctx, privatev1.PublicIPsDeleteRequest_builder{
-				Id: object.GetId(),
-			}.Build())
-			Expect(err).ToNot(HaveOccurred())
-		})
-
-		It("allows Delete when state is PENDING", func() {
-			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING)
-
-			_, err := publicIPsServer.Delete(ctx, privatev1.PublicIPsDeleteRequest_builder{
-				Id: object.GetId(),
-			}.Build())
-			Expect(err).ToNot(HaveOccurred())
-		})
-
-		It("allows Delete when state is FAILED", func() {
+		It("rejects Delete when state is FAILED", func() {
 			object := createPublicIPInState(publicIPsServer, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED)
 
 			_, err := publicIPsServer.Delete(ctx, privatev1.PublicIPsDeleteRequest_builder{
 				Id: object.GetId(),
 			}.Build())
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("must be in ALLOCATED state"))
 		})
 	})
 
