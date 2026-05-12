@@ -64,16 +64,17 @@ var _ = Describe("Rendering tests", func() {
 		}.Build()
 		output := formatCluster(cluster)
 		Expect(output).To(ContainSubstring("cluster-001"))
-		Expect(output).To(ContainSubstring("tpl-ha-001"))
+		Expect(output).To(MatchRegexp(`Catalog Item:\s+-`))
+		Expect(output).NotTo(ContainSubstring("Template:"))
 		Expect(output).To(ContainSubstring("READY"))
 	})
 
-	It("should show '-' for template when spec is nil", func() {
+	It("should show '-' for catalog item when spec is nil", func() {
 		cluster := publicv1.Cluster_builder{
 			Id: "cluster-002",
 		}.Build()
 		output := formatCluster(cluster)
-		Expect(output).To(MatchRegexp(`Template:\s+-`))
+		Expect(output).To(MatchRegexp(`Catalog Item:\s+-`))
 	})
 
 	It("should show '-' for state when status is nil", func() {
@@ -107,6 +108,29 @@ var _ = Describe("Rendering tests", func() {
 		Expect(output).To(ContainSubstring("PROGRESSING"))
 		Expect(output).NotTo(ContainSubstring("CLUSTER_STATE_"))
 	})
+
+	It("should NOT show Template: row", func() {
+		cluster := publicv1.Cluster_builder{
+			Id: "cluster-006",
+			Spec: &publicv1.ClusterSpec{
+				Template: "tpl-ha-001",
+			},
+		}.Build()
+		output := formatCluster(cluster)
+		Expect(output).NotTo(ContainSubstring("Template:"))
+		Expect(output).To(ContainSubstring("Catalog Item:"))
+	})
+
+	It("should show '-' for catalog item when spec is nil", func() {
+		cluster := publicv1.Cluster_builder{
+			Id: "cluster-007",
+		}.Build()
+		output := formatCluster(cluster)
+		Expect(output).To(MatchRegexp(`Catalog Item:\s+-`))
+	})
+
+	// TODO(OSAC-704): Add test for "should show catalog item ID when set"
+	// once ClusterSpec.GetCatalogItem() exists from Phase 4.
 })
 
 var _ = Describe("Multi-result guard", func() {
