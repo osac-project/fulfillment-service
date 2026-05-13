@@ -871,6 +871,9 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 				"kind": "ClusterIssuer",
 				"name": "default-ca",
 			},
+			"caBundle": map[string]any{
+				"configMap": "ca-bundle",
+			},
 		},
 		"database": map[string]any{
 			"connection": []any{
