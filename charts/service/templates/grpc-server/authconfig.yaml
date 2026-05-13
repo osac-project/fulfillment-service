@@ -83,6 +83,7 @@ spec:
           admin_service_accounts := {
             "service-account-osac-admin",
             "service-account-osac-controller",
+            "service-account-fulfillment-controller",
           }
 
           # Admin groups are groups that are allowed to act as administrators.
