@@ -156,7 +156,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	key := args[1]
 
 	// Find the object by identifier or name:
-	object, err := c.findObject(ctx, key)
+	object, err := c.helper.FindObject(ctx, key, c.console)
 	if err != nil {
 		return err
 	}
@@ -273,44 +273,6 @@ func (c *runnerContext) findEditor(ctx context.Context) string {
 		slog.String("default", defaultEditor),
 	)
 	return defaultEditor
-}
-
-// findObject tries to find an object by identifier or name. It uses the list method with a filter that matches
-// either the identifier or the name. Returns an error if no match is found or if multiple matches are found.
-func (c *runnerContext) findObject(ctx context.Context, ref string) (result proto.Message, err error) {
-	// Find the objects matching the reference (identifier or name):
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
-	response, err := c.helper.List(ctx, reflection.ListOptions{
-		Filter: filter,
-		Limit:  10,
-	})
-	if err != nil {
-		err = fmt.Errorf("failed to find object of type '%s' with identifier or name '%s': %w", c.helper, ref, err)
-		return
-	}
-	items := response.Items
-	total := response.Total
-
-	// Prepare the response based on the number of objects found:
-	switch len(items) {
-	case 0:
-		c.console.Render(ctx, "no_matches.txt", map[string]any{
-			"Object": c.helper.Singular(),
-			"Ref":    ref,
-		})
-		return
-	case 1:
-		result = items[0]
-		return
-	default:
-		c.console.Render(ctx, "multiple_matches.txt", map[string]any{
-			"Matches": items,
-			"Object":  c.helper.Singular(),
-			"Ref":     ref,
-			"Total":   total,
-		})
-		return
-	}
 }
 
 func (c *runnerContext) update(ctx context.Context, object proto.Message) (result proto.Message, err error) {

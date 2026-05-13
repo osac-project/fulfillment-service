@@ -23,6 +23,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -67,35 +68,23 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewClustersClient(conn)
 
-	filter := buildFilter(ref)
-	listResponse, err := client.List(ctx, publicv1.ClustersListRequest_builder{
-		Filter: &filter,
-		Limit:  proto.Int32(2),
-	}.Build())
+	matched, err := lookup.Find(ref, "cluster", func(filter string, limit int32) ([]*publicv1.Cluster, error) {
+		resp, err := client.List(ctx, publicv1.ClustersListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe cluster: %w", err)
+		}
+		return resp.GetItems(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to describe cluster: %w", err)
-	}
-	if err := guardResult(len(listResponse.GetItems()), ref); err != nil {
 		return err
 	}
 
-	renderCluster(c.console, listResponse.GetItems()[0])
+	renderCluster(c.console, matched)
 
 	return nil
-}
-
-func guardResult(items int, ref string) error {
-	if items == 0 {
-		return fmt.Errorf("cluster not found: %s", ref)
-	}
-	if items > 1 {
-		return fmt.Errorf("multiple clusters match '%s', use the ID instead", ref)
-	}
-	return nil
-}
-
-func buildFilter(ref string) string {
-	return fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
 }
 
 func renderCluster(w io.Writer, cluster *publicv1.Cluster) {

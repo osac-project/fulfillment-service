@@ -25,6 +25,7 @@ import (
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/netutil"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -63,7 +64,7 @@ func Cmd() *cobra.Command {
 		&runner.args.virtualNetwork,
 		"virtual-network",
 		"",
-		"ID of the virtual network to associate with this security group.",
+		"ID or name of the virtual network to associate with this security group.",
 	)
 	flags.StringArrayVar(
 		&runner.args.ingressRules,
@@ -124,12 +125,27 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
+	vnClient := publicv1.NewVirtualNetworksClient(conn)
+	vn, err := lookup.Find(c.args.virtualNetwork, "virtual network", func(filter string, limit int32) ([]*publicv1.VirtualNetwork, error) {
+		resp, err := vnClient.List(ctx, publicv1.VirtualNetworksListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve virtual network %q: %w", c.args.virtualNetwork, err)
+		}
+		return resp.GetItems(), nil
+	})
+	if err != nil {
+		return err
+	}
+
 	client := publicv1.NewSecurityGroupsClient(conn)
 
 	sg := publicv1.SecurityGroup_builder{
 		Metadata: publicv1.Metadata_builder{Name: c.args.name}.Build(),
 		Spec: publicv1.SecurityGroupSpec_builder{
-			VirtualNetwork: c.args.virtualNetwork,
+			VirtualNetwork: vn.GetId(),
 			Ingress:        ingress,
 			Egress:         egress,
 		}.Build(),
