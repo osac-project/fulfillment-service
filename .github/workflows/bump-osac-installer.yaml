@@ -49,16 +49,19 @@ jobs:
           git config user.email "${PR_AUTHOR_ID}+${PR_AUTHOR}@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git commit -m "Bump ${SUBMODULE_NAME}: ${PR_TITLE}"
-          git push origin "$BRANCH"
+          git push --force origin "$BRANCH"
           PR_BODY="Bumps \`${SUBMODULE_NAME}\` submodule.
 
           Original PR: ${PR_URL}
           Author: @${PR_AUTHOR}
           Merge commit: \`${MERGE_SHA}\`"
-          gh pr create \
-            --repo osac-project/osac-installer \
-            --base main \
-            --head "$BRANCH" \
-            --title "Bump ${SUBMODULE_NAME}: ${PR_TITLE}" \
-            --body "$PR_BODY" \
-            --assignee "$PR_AUTHOR"
+          EXISTING=$(gh pr list --repo osac-project/osac-installer --head "$BRANCH" --json number --jq '.[0].number')
+          if [ -z "$EXISTING" ]; then
+            gh pr create \
+              --repo osac-project/osac-installer \
+              --base main \
+              --head "$BRANCH" \
+              --title "Bump ${SUBMODULE_NAME}: ${PR_TITLE}" \
+              --body "$PR_BODY" \
+              --assignee "$PR_AUTHOR"
+          fi
