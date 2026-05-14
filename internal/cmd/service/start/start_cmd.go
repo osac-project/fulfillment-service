@@ -18,6 +18,7 @@ import (
 
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/controller"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/grpcserver"
+	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/policyserver"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/restgateway"
 )
 
@@ -30,6 +31,7 @@ func Cmd() *cobra.Command {
 	}
 	result.AddCommand(controller.Cmd())
 	result.AddCommand(grpcserver.Cmd())
+	result.AddCommand(policyserver.Cmd())
 	result.AddCommand(restgateway.Cmd())
 	return result
 }
