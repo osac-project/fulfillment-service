@@ -165,10 +165,22 @@ func (s *consoleServer) Connect(stream publicv1.Console_ConnectServer) error {
 	resourceType := init.GetResourceType()
 	resourceID := init.GetResourceId()
 	clientID := init.GetClientId()
+	consoleType := init.GetType()
+
+	var targetConsoleType string
+	switch consoleType {
+	case publicv1.ConsoleType_CONSOLE_TYPE_SERIAL:
+		targetConsoleType = console.ConsoleTypeSerial
+	case publicv1.ConsoleType_CONSOLE_TYPE_VNC:
+		targetConsoleType = console.ConsoleTypeVNC
+	default:
+		return status.Errorf(codes.InvalidArgument, "unsupported console type: %s", consoleType.String())
+	}
 
 	s.logger.InfoContext(ctx, "Console connect request",
 		slog.String("resource_type", resourceType.String()),
 		slog.String("resource_id", resourceID),
+		slog.String("console_type", consoleType.String()),
 		slog.String("client_id", clientID),
 	)
 
@@ -177,6 +189,7 @@ func (s *consoleServer) Connect(stream publicv1.Console_ConnectServer) error {
 	if err != nil {
 		return err
 	}
+	target.ConsoleType = targetConsoleType
 
 	// Get user identity for session tracking and audit.
 	subject := auth.SubjectFromContext(ctx)
@@ -486,8 +499,11 @@ func (s *consoleServer) GetAccess(ctx context.Context, req *publicv1.ConsoleGetA
 			return nil, err
 		}
 		return publicv1.ConsoleGetAccessResponse_builder{
-			Available:      true,
-			SupportedTypes: []publicv1.ConsoleType{publicv1.ConsoleType_CONSOLE_TYPE_SERIAL},
+			Available: true,
+			SupportedTypes: []publicv1.ConsoleType{
+				publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
+				publicv1.ConsoleType_CONSOLE_TYPE_VNC,
+			},
 		}.Build(), nil
 	default:
 		return publicv1.ConsoleGetAccessResponse_builder{

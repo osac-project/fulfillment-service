@@ -33,6 +33,12 @@ func (e *ErrSessionExists) Error() string {
 	)
 }
 
+// Console type constants used in Target.ConsoleType.
+const (
+	ConsoleTypeSerial = "serial"
+	ConsoleTypeVNC    = "vnc"
+)
+
 // Backend provides console connections to a specific type of resource.
 type Backend interface {
 	// Connect establishes a console connection to the target resource and
@@ -47,4 +53,5 @@ type Target struct {
 	HubID        string
 	Namespace    string
 	CRName       string
+	ConsoleType  string // ConsoleTypeSerial or ConsoleTypeVNC; must be set
 }

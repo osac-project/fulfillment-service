@@ -30,6 +30,12 @@ import (
 	"k8s.io/client-go/transport"
 )
 
+// Subresource names for the console.osac.openshift.io aggregated API.
+const (
+	subresourceConsole = "console"
+	subresourceVNC     = "vnc"
+)
+
 // HubConfigProvider returns a *rest.Config for the given hub ID.
 type HubConfigProvider func(ctx context.Context, hubID string) (*rest.Config, error)
 
@@ -80,6 +86,7 @@ func (b *kubeVirtBackend) Connect(ctx context.Context, target Target) (io.ReadWr
 		slog.String("hub", target.HubID),
 		slog.String("namespace", target.Namespace),
 		slog.String("compute_instance", target.CRName),
+		slog.String("console_type", target.ConsoleType),
 	)
 
 	config, err := b.hubConfigProvider(ctx, target.HubID)
@@ -102,10 +109,21 @@ func (b *kubeVirtBackend) Connect(ctx context.Context, target Target) (io.ReadWr
 		scheme = "ws"
 	}
 
+	var subresource string
+	switch target.ConsoleType {
+	case ConsoleTypeSerial:
+		subresource = subresourceConsole
+	case ConsoleTypeVNC:
+		subresource = subresourceVNC
+	default:
+		return nil, fmt.Errorf("unsupported console type %q", target.ConsoleType)
+	}
+
 	consolePath := fmt.Sprintf(
-		"/apis/console.osac.openshift.io/v1alpha1/namespaces/%s/computeinstances/%s/console",
+		"/apis/console.osac.openshift.io/v1alpha1/namespaces/%s/computeinstances/%s/%s",
 		url.PathEscape(target.Namespace),
 		url.PathEscape(target.CRName),
+		subresource,
 	)
 
 	wsURL := fmt.Sprintf("%s://%s%s", scheme, parsed.Host, consolePath)
@@ -160,6 +178,7 @@ func (b *kubeVirtBackend) Connect(ctx context.Context, target Target) (io.ReadWr
 		slog.String("hub", target.HubID),
 		slog.String("namespace", target.Namespace),
 		slog.String("compute_instance", target.CRName),
+		slog.String("console_type", target.ConsoleType),
 	)
 
 	return conn, nil

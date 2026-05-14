@@ -55,9 +55,10 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		defer cancel()
 
 		conn, err := backend.Connect(ctx, Target{
-			HubID:     "hub-1",
-			Namespace: "test-ns",
-			CRName:    "test-vm",
+			HubID:       "hub-1",
+			Namespace:   "test-ns",
+			CRName:      "test-vm",
+			ConsoleType: ConsoleTypeSerial,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Close()
@@ -107,6 +108,7 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 			HubID:        "hub-1",
 			Namespace:    "test-ns",
 			CRName:       "test-vm",
+			ConsoleType:  ConsoleTypeSerial,
 		}, "testuser", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mgr.ActiveSessions()).To(Equal(1))
@@ -158,9 +160,10 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 
 		ctx := context.Background()
 		conn, err := backend.Connect(ctx, Target{
-			HubID:     "hub-1",
-			Namespace: "test-ns",
-			CRName:    "test-vm",
+			HubID:       "hub-1",
+			Namespace:   "test-ns",
+			CRName:      "test-vm",
+			ConsoleType: ConsoleTypeSerial,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -204,6 +207,7 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 			HubID:        "hub-1",
 			Namespace:    "test-ns",
 			CRName:       "test-vm",
+			ConsoleType:  ConsoleTypeSerial,
 		}
 
 		conn1, err := mgr.Connect(ctx, target, "user1", "")
@@ -220,6 +224,101 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		conn2, err := mgr.Connect(ctx, target, "user2", "")
 		Expect(err).NotTo(HaveOccurred())
 		conn2.Close()
+	})
+
+	It("should connect to VNC subresource when console type is vnc", func() {
+		pathServer, capture, err := newMockWSServerCapturingPath()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(pathServer.Close)
+
+		backend, err := NewKubeVirtBackend().
+			SetLogger(logger).
+			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
+				return &rest.Config{
+					Host: "ws://" + pathServer.Addr(),
+					TLSClientConfig: rest.TLSClientConfig{
+						Insecure: true,
+					},
+				}, nil
+			}).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		conn, err := backend.Connect(ctx, Target{
+			HubID:       "hub-1",
+			Namespace:   "test-ns",
+			CRName:      "test-vm",
+			ConsoleType: ConsoleTypeVNC,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		defer conn.Close()
+
+		var path string
+		Eventually(capture.ch).Should(Receive(&path))
+		Expect(path).To(HaveSuffix("/vnc"))
+	})
+
+	It("should connect to console subresource when console type is serial", func() {
+		pathServer, capture, err := newMockWSServerCapturingPath()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(pathServer.Close)
+
+		backend, err := NewKubeVirtBackend().
+			SetLogger(logger).
+			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
+				return &rest.Config{
+					Host: "ws://" + pathServer.Addr(),
+					TLSClientConfig: rest.TLSClientConfig{
+						Insecure: true,
+					},
+				}, nil
+			}).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		conn, err := backend.Connect(ctx, Target{
+			HubID:       "hub-1",
+			Namespace:   "test-ns",
+			CRName:      "test-vm",
+			ConsoleType: ConsoleTypeSerial,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		defer conn.Close()
+
+		var path string
+		Eventually(capture.ch).Should(Receive(&path))
+		Expect(path).To(HaveSuffix("/console"))
+	})
+
+	It("should reject empty console type", func() {
+		backend, err := NewKubeVirtBackend().
+			SetLogger(logger).
+			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
+				return &rest.Config{
+					Host: "ws://localhost:1",
+					TLSClientConfig: rest.TLSClientConfig{
+						Insecure: true,
+					},
+				}, nil
+			}).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+
+		ctx := context.Background()
+
+		_, err = backend.Connect(ctx, Target{
+			HubID:     "hub-1",
+			Namespace: "test-ns",
+			CRName:    "test-vm",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unsupported console type"))
 	})
 
 	It("should send BearerToken in Authorization header to the server", func() {
@@ -248,7 +347,7 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		defer cancel()
 
 		conn, err := backend.Connect(ctx, Target{
-			HubID: "hub-1", Namespace: "test-ns", CRName: "test-vm",
+			HubID: "hub-1", Namespace: "test-ns", CRName: "test-vm", ConsoleType: ConsoleTypeSerial,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Close()
@@ -291,7 +390,7 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		defer cancel()
 
 		conn, err := backend.Connect(ctx, Target{
-			HubID: "hub-1", Namespace: "test-ns", CRName: "test-vm",
+			HubID: "hub-1", Namespace: "test-ns", CRName: "test-vm", ConsoleType: ConsoleTypeSerial,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Close()

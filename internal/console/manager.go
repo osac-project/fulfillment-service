@@ -99,7 +99,11 @@ func (m *Manager) Connect(ctx context.Context, target Target, user, clientID str
 		return nil, fmt.Errorf("unsupported resource type %q", target.ResourceType)
 	}
 
-	sessionKey := fmt.Sprintf("%s/%s", target.ResourceType, target.ResourceID)
+	consoleType := target.ConsoleType
+	if consoleType == "" {
+		return nil, fmt.Errorf("console type is required")
+	}
+	sessionKey := fmt.Sprintf("%s/%s/%s", target.ResourceType, target.ResourceID, consoleType)
 
 	var oldCancel context.CancelFunc
 

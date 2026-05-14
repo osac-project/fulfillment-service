@@ -67,12 +67,23 @@ func (m *mockHubServer) Get(ctx context.Context, req *privatev1.HubsGetRequest) 
 
 // mockBackendForServer is a test backend that returns a mockConn.
 type mockBackendForServer struct {
-	conn    io.ReadWriteCloser
-	connErr error
+	conn       io.ReadWriteCloser
+	connErr    error
+	lastTarget console.Target
+	targetMu   sync.Mutex
 }
 
 func (b *mockBackendForServer) Connect(ctx context.Context, target console.Target) (io.ReadWriteCloser, error) {
+	b.targetMu.Lock()
+	b.lastTarget = target
+	b.targetMu.Unlock()
 	return b.conn, b.connErr
+}
+
+func (b *mockBackendForServer) getLastTarget() console.Target {
+	b.targetMu.Lock()
+	defer b.targetMu.Unlock()
+	return b.lastTarget
 }
 
 type mockConn struct {
@@ -335,6 +346,7 @@ var _ = Describe("Console Server", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.GetAvailable()).To(BeTrue())
 			Expect(resp.GetSupportedTypes()).To(ContainElement(publicv1.ConsoleType_CONSOLE_TYPE_SERIAL))
+			Expect(resp.GetSupportedTypes()).To(ContainElement(publicv1.ConsoleType_CONSOLE_TYPE_VNC))
 		})
 
 		It("should return unavailable when compute instance is not running", func() {
@@ -640,6 +652,91 @@ var _ = Describe("Console Server", func() {
 
 			// Connect should return nil (clean termination via EOF).
 			Expect(connectErr).NotTo(HaveOccurred())
+		})
+
+		It("should propagate VNC console type to the backend", func() {
+			mockConnection := newMockConn("vnc data")
+			backend.conn = mockConnection
+
+			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
+				Object: privatev1.ComputeInstance_builder{
+					Id: "ci-123",
+					Status: privatev1.ComputeInstanceStatus_builder{
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
+						Hub:   "hub-1",
+					}.Build(),
+				}.Build(),
+			}.Build()
+
+			fakeK8s = setupHubMock("ci-123", "test-ns", osacv1alpha1.ComputeInstancePhaseRunning)
+			buildServer()
+
+			ctx, cancel := context.WithCancel(
+				authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}),
+			)
+
+			stream := newMockStream(ctx)
+			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
+				Init: publicv1.ConsoleConnectInit_builder{
+					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
+					ResourceId:   "ci-123",
+					Type:         publicv1.ConsoleType_CONSOLE_TYPE_VNC,
+				}.Build(),
+			}.Build())
+			stream.addRecvErr(io.EOF)
+
+			var connectErr error
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				connectErr = server.Connect(stream)
+			}()
+
+			wg.Wait()
+			cancel()
+
+			Expect(connectErr).NotTo(HaveOccurred())
+			Expect(backend.getLastTarget().ConsoleType).To(Equal(console.ConsoleTypeVNC))
+		})
+
+		It("should reject unspecified console type", func() {
+			backend.conn = newMockConn("")
+			fakeK8s = newFakeClient()
+			buildServer()
+
+			stream := newMockStream(authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}))
+			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
+				Init: publicv1.ConsoleConnectInit_builder{
+					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
+					ResourceId:   "ci-123",
+				}.Build(),
+			}.Build())
+
+			err := server.Connect(stream)
+			Expect(err).To(HaveOccurred())
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			Expect(err.Error()).To(ContainSubstring("unsupported console type"))
+		})
+
+		It("should reject unsupported console type", func() {
+			backend.conn = newMockConn("")
+			fakeK8s = newFakeClient()
+			buildServer()
+
+			stream := newMockStream(authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}))
+			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
+				Init: publicv1.ConsoleConnectInit_builder{
+					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
+					ResourceId:   "ci-123",
+					Type:         publicv1.ConsoleType(99),
+				}.Build(),
+			}.Build())
+
+			err := server.Connect(stream)
+			Expect(err).To(HaveOccurred())
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			Expect(err.Error()).To(ContainSubstring("unsupported console type"))
 		})
 
 		It("should return error when backend connection fails", func() {
