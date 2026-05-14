@@ -741,13 +741,12 @@ func (s *PrivateClustersServer) validateAndTransformCatalogItem(ctx context.Cont
 		return err
 	}
 
-	templateRef := lookupCatalogItemTemplate(catalogItem)
+	templateRef := catalogItem.GetTemplate()
 	if templateRef != "" {
 		cluster.GetSpec().SetTemplate(templateRef)
 	}
 
-	fieldDefs := getFieldDefinitions(catalogItem)
-	if err := applyFieldDefinitions(cluster.GetSpec(), fieldDefs); err != nil {
+	if err := applyFieldDefinitions(cluster.GetSpec(), catalogItem.GetFieldDefinitions()); err != nil {
 		return err
 	}
 

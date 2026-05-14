@@ -15,7 +15,6 @@ package servers
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -23,10 +22,19 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 )
+
+// catalogItem is implemented by both ClusterCatalogItem and ComputeInstanceCatalogItem.
+type catalogItem interface {
+	proto.Message
+	GetPublished() bool
+	GetTemplate() string
+	GetFieldDefinitions() []*privatev1.FieldDefinition
+	GetMetadata() *privatev1.Metadata
+}
 
 // applyFieldDefinitions processes field definitions from a catalog item against a resource spec.
 // For non-editable fields: overrides user-provided values with the catalog item default.
@@ -40,7 +48,8 @@ func applyFieldDefinitions(
 		return nil
 	}
 
-	specJSON, err := protojson.Marshal(spec)
+	marshaller := protojson.MarshalOptions{UseProtoNames: true}
+	specJSON, err := marshaller.Marshal(spec)
 	if err != nil {
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to marshal spec: %v", err)
 	}
@@ -49,6 +58,8 @@ func applyFieldDefinitions(
 	if err := json.Unmarshal(specJSON, &specMap); err != nil {
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to parse spec: %v", err)
 	}
+
+	compiler := jsonschema.NewCompiler()
 
 	for _, fd := range fieldDefinitions {
 		path := fd.GetPath()
@@ -60,39 +71,21 @@ func applyFieldDefinitions(
 		userVal, userHasValue := getNestedValue(specMap, path)
 
 		if !fd.GetEditable() {
-			if defaultVal != nil {
-				defaultAny, err := defaultVal.MarshalJSON()
-				if err != nil {
-					return grpcstatus.Errorf(grpccodes.Internal,
-						"failed to marshal default for field '%s': %v", path, err)
-				}
-				var parsed any
-				if err := json.Unmarshal(defaultAny, &parsed); err != nil {
-					return grpcstatus.Errorf(grpccodes.Internal,
-						"failed to parse default for field '%s': %v", path, err)
-				}
-				setNestedValue(specMap, path, parsed)
+			if err := applyDefault(specMap, path, defaultVal); err != nil {
+				return err
 			}
 		} else {
 			if userHasValue && userVal != nil {
 				schema := fd.GetValidationSchema()
 				if schema != "" {
-					if err := validateAgainstSchema(path, userVal, schema); err != nil {
+					if err := validateAgainstSchema(compiler, path, userVal, schema); err != nil {
 						return err
 					}
 				}
-			} else if defaultVal != nil {
-				defaultAny, err := defaultVal.MarshalJSON()
-				if err != nil {
-					return grpcstatus.Errorf(grpccodes.Internal,
-						"failed to marshal default for field '%s': %v", path, err)
+			} else {
+				if err := applyDefault(specMap, path, defaultVal); err != nil {
+					return err
 				}
-				var parsed any
-				if err := json.Unmarshal(defaultAny, &parsed); err != nil {
-					return grpcstatus.Errorf(grpccodes.Internal,
-						"failed to parse default for field '%s': %v", path, err)
-				}
-				setNestedValue(specMap, path, parsed)
 			}
 		}
 	}
@@ -110,66 +103,45 @@ func applyFieldDefinitions(
 	return nil
 }
 
-// validateCatalogItemAccess checks that a catalog item is published and visible to the caller's tenant.
-func validateCatalogItemAccess(
-	catalogItem proto.Message,
-	catalogItemRef string,
-) error {
-	refl := catalogItem.ProtoReflect()
-
-	deletionTimestamp := refl.Descriptor().Fields().ByName("metadata")
-	if deletionTimestamp != nil {
-		metadata := refl.Get(deletionTimestamp).Message()
-		dtField := metadata.Descriptor().Fields().ByName("deletion_timestamp")
-		if dtField != nil && metadata.Has(dtField) {
-			return grpcstatus.Errorf(grpccodes.InvalidArgument,
-				"catalog item '%s' has been deleted", catalogItemRef)
-		}
+// validateCatalogItemAccess checks that a catalog item is published and not deleted.
+// Tenant visibility is enforced by the GenericDAO's tenancy logic at the query level.
+func validateCatalogItemAccess(item catalogItem, ref string) error {
+	if item.GetMetadata().HasDeletionTimestamp() {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"catalog item '%s' has been deleted", ref)
 	}
-
-	publishedField := refl.Descriptor().Fields().ByName("published")
-	if publishedField != nil {
-		if !refl.Get(publishedField).Bool() {
-			return grpcstatus.Errorf(grpccodes.NotFound,
-				"catalog item '%s' is not published", catalogItemRef)
-		}
+	if !item.GetPublished() {
+		return grpcstatus.Errorf(grpccodes.NotFound,
+			"catalog item '%s' is not published", ref)
 	}
-
 	return nil
 }
 
-// lookupCatalogItemTemplate extracts the template reference from a catalog item.
-func lookupCatalogItemTemplate(catalogItem proto.Message) string {
-	refl := catalogItem.ProtoReflect()
-	templateField := refl.Descriptor().Fields().ByName("template")
-	if templateField == nil {
-		return ""
-	}
-	return refl.Get(templateField).String()
-}
-
-// getFieldDefinitions extracts field definitions from a catalog item.
-func getFieldDefinitions(catalogItem proto.Message) []*privatev1.FieldDefinition {
-	refl := catalogItem.ProtoReflect()
-	fdField := refl.Descriptor().Fields().ByName("field_definitions")
-	if fdField == nil {
+func applyDefault(specMap map[string]any, path string, defaultVal *structpb.Value) error {
+	if defaultVal == nil {
 		return nil
 	}
-	list := refl.Get(fdField).List()
-	result := make([]*privatev1.FieldDefinition, list.Len())
-	for i := range list.Len() {
-		result[i] = list.Get(i).Message().Interface().(*privatev1.FieldDefinition)
+	defaultAny, err := defaultVal.MarshalJSON()
+	if err != nil {
+		return grpcstatus.Errorf(grpccodes.Internal,
+			"failed to marshal default for field '%s': %v", path, err)
 	}
-	return result
+	var parsed any
+	if err := json.Unmarshal(defaultAny, &parsed); err != nil {
+		return grpcstatus.Errorf(grpccodes.Internal,
+			"failed to parse default for field '%s': %v", path, err)
+	}
+	setNestedValue(specMap, path, parsed)
+	return nil
 }
 
-func validateAgainstSchema(path string, value any, schemaStr string) error {
-	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource("schema.json", strings.NewReader(schemaStr)); err != nil {
+func validateAgainstSchema(compiler *jsonschema.Compiler, path string, value any, schemaStr string) error {
+	resourceName := "schema_" + strings.ReplaceAll(path, ".", "_") + ".json"
+	if err := compiler.AddResource(resourceName, strings.NewReader(schemaStr)); err != nil {
 		return grpcstatus.Errorf(grpccodes.Internal,
 			"invalid validation schema for field '%s': %v", path, err)
 	}
-	schema, err := compiler.Compile("schema.json")
+	schema, err := compiler.Compile(resourceName)
 	if err != nil {
 		return grpcstatus.Errorf(grpccodes.Internal,
 			"failed to compile validation schema for field '%s': %v", path, err)
@@ -181,7 +153,6 @@ func validateAgainstSchema(path string, value any, schemaStr string) error {
 	return nil
 }
 
-// getNestedValue retrieves a value from a nested map using dot-notation path.
 func getNestedValue(m map[string]any, path string) (any, bool) {
 	parts := strings.Split(path, ".")
 	current := any(m)
@@ -198,7 +169,6 @@ func getNestedValue(m map[string]any, path string) (any, bool) {
 	return current, true
 }
 
-// setNestedValue sets a value in a nested map using dot-notation path, creating intermediate maps as needed.
 func setNestedValue(m map[string]any, path string, value any) {
 	parts := strings.Split(path, ".")
 	current := m
@@ -219,43 +189,4 @@ func setNestedValue(m map[string]any, path string, value any) {
 		}
 		current = currentMap
 	}
-}
-
-// convertProtoPathToJSON converts a proto field path (snake_case) to the JSON equivalent used by protojson.
-// protojson uses camelCase by default unless UseProtoNames is set.
-func convertProtoPathToJSON(path string) string {
-	parts := strings.Split(path, ".")
-	result := make([]string, len(parts))
-	for i, part := range parts {
-		result[i] = toSnakeCase(part)
-	}
-	return strings.Join(result, ".")
-}
-
-func toSnakeCase(s string) string {
-	// Proto field names are already snake_case, so this is a pass-through.
-	// Kept as a utility in case the path format needs conversion later.
-	return s
-}
-
-// resolveFieldByPath walks a protobuf message descriptor to validate that a dot-notation path references
-// a valid field. Returns an error if any segment of the path doesn't exist.
-func resolveFieldByPath(descriptor protoreflect.MessageDescriptor, path string) error {
-	parts := strings.Split(path, ".")
-	current := descriptor
-	for i, part := range parts {
-		field := current.Fields().ByName(protoreflect.Name(part))
-		if field == nil {
-			return fmt.Errorf("field '%s' does not exist at segment '%s' (position %d)",
-				path, part, i)
-		}
-		if i < len(parts)-1 {
-			if field.Kind() != protoreflect.MessageKind {
-				return fmt.Errorf("field '%s' at segment '%s' is not a message type",
-					path, part)
-			}
-			current = field.Message()
-		}
-	}
-	return nil
 }
