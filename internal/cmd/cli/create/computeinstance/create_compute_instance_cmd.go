@@ -34,6 +34,7 @@ import (
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/config"
+	"github.com/osac-project/fulfillment-service/internal/errormessages"
 	"github.com/osac-project/fulfillment-service/internal/exit"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
@@ -197,7 +198,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	c.args.subnet = strings.TrimSpace(c.args.subnet)
 	if c.args.subnet == "" {
-		return fmt.Errorf("subnet is required")
+		return errors.New(errormessages.ComputeInstanceSpecSubnetRequired)
 	}
 
 	// Create the gRPC connection from the configuration:

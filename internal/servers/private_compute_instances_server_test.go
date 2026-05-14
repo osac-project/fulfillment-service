@@ -30,6 +30,7 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/errormessages"
 )
 
 var _ = Describe("Private compute instances server", func() {
@@ -1050,7 +1051,7 @@ var _ = Describe("Private compute instances server", func() {
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("subnet"))
+				Expect(status.Message()).To(Equal(errormessages.ComputeInstanceSpecSubnetRequired))
 			})
 
 			It("Should fail when subnet is whitespace only", func() {
@@ -1071,7 +1072,7 @@ var _ = Describe("Private compute instances server", func() {
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("subnet"))
+				Expect(status.Message()).To(Equal(errormessages.ComputeInstanceSpecSubnetRequired))
 			})
 
 			It("Should succeed with valid READY Subnet", func() {
@@ -1241,27 +1242,6 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Message()).To(ContainSubstring("VirtualNetwork"))
 				Expect(status.Message()).To(ContainSubstring(virtualNetwork.GetId()))
 				Expect(status.Message()).To(ContainSubstring(otherVN.GetId()))
-			})
-		})
-
-		Context("Subnet required on create", func() {
-			It("Should fail when subnet is omitted", func() {
-				vm := privatev1.ComputeInstance_builder{
-					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template: template.GetId(),
-					}.Build(),
-				}.Build()
-
-				request := &privatev1.ComputeInstancesCreateRequest{}
-				request.SetObject(vm)
-
-				response, err := server.Create(ctx, request)
-				Expect(err).To(HaveOccurred())
-				Expect(response).To(BeNil())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("subnet"))
 			})
 		})
 	})

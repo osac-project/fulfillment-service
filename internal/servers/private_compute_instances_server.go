@@ -33,6 +33,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/errormessages"
 	"github.com/osac-project/fulfillment-service/internal/utils"
 )
 
@@ -176,10 +177,6 @@ func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance spec is mandatory")
 		return
 	}
-	if strings.TrimSpace(spec.GetSubnet()) == "" {
-		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.subnet' is required")
-		return
-	}
 
 	// Validate network references:
 	err = s.validateNetworkReferences(ctx, vm)
@@ -209,7 +206,32 @@ func (s *PrivateComputeInstancesServer) Update(ctx context.Context,
 	// is sparse so validating fields absent from it would fail incorrectly.
 	mask := request.GetUpdateMask()
 	if hasMaskPrefix(mask, "spec.subnet", "spec.security_groups") {
-		err = s.validateNetworkReferences(ctx, request.GetObject())
+		patch := request.GetObject()
+		if patch == nil {
+			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance is mandatory")
+			return
+		}
+		id := patch.GetId()
+		if id == "" {
+			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance id is mandatory")
+			return
+		}
+		getResp, errGet := s.generic.dao.Get().SetId(id).Do(ctx)
+		if errGet != nil {
+			err = errGet
+			return
+		}
+		existing := getResp.GetObject()
+		if existing == nil {
+			err = grpcstatus.Errorf(grpccodes.Internal, "compute instance not found")
+			return
+		}
+		merged, mergeErr := s.generic.MergeForUpdate(existing, patch, mask)
+		if mergeErr != nil {
+			err = mergeErr
+			return
+		}
+		err = s.validateNetworkReferences(ctx, merged)
 		if err != nil {
 			return
 		}
@@ -400,50 +422,46 @@ func (s *PrivateComputeInstancesServer) validateNetworkReferences(ctx context.Co
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance spec is mandatory")
 	}
 
-	subnetID := spec.GetSubnet()
-	securityGroupIDs := spec.GetSecurityGroups()
-
-	// If no network references, nothing to validate
-	if subnetID == "" && len(securityGroupIDs) == 0 {
-		return nil
+	subnetID := strings.TrimSpace(spec.GetSubnet())
+	if subnetID == "" {
+		return grpcstatus.Error(grpccodes.InvalidArgument, errormessages.ComputeInstanceSpecSubnetRequired)
 	}
+	securityGroupIDs := spec.GetSecurityGroups()
 
 	var subnet *privatev1.Subnet
 	var virtualNetworkID string
 
 	// VAL-01: Validate Subnet exists and is READY
-	if subnetID != "" {
-		getSubnetResponse, err := s.subnetsDao.Get().
-			SetId(subnetID).
-			Do(ctx)
-		if err != nil {
-			var notFoundErr *dao.ErrNotFound
-			if errors.As(err, &notFoundErr) {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"subnet '%s' does not exist", subnetID)
-			}
-			s.logger.ErrorContext(ctx, "Failed to query Subnet",
-				slog.String("subnet_id", subnetID),
-				slog.Any("error", err))
-			return grpcstatus.Errorf(grpccodes.Internal, "failed to validate subnet")
-		}
-
-		subnet = getSubnetResponse.GetObject()
-		if subnet == nil {
+	getSubnetResponse, err := s.subnetsDao.Get().
+		SetId(subnetID).
+		Do(ctx)
+	if err != nil {
+		var notFoundErr *dao.ErrNotFound
+		if errors.As(err, &notFoundErr) {
 			return grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"subnet '%s' does not exist", subnetID)
 		}
-
-		// VAL-01: Check Subnet is READY
-		if subnet.GetStatus().GetState() != privatev1.SubnetState_SUBNET_STATE_READY {
-			return grpcstatus.Errorf(grpccodes.FailedPrecondition,
-				"subnet '%s' is not in READY state (current state: %s)",
-				subnetID, subnet.GetStatus().GetState().String())
-		}
-
-		// Store VirtualNetwork ID for SecurityGroup validation
-		virtualNetworkID = subnet.GetSpec().GetVirtualNetwork()
+		s.logger.ErrorContext(ctx, "Failed to query Subnet",
+			slog.String("subnet_id", subnetID),
+			slog.Any("error", err))
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to validate subnet")
 	}
+
+	subnet = getSubnetResponse.GetObject()
+	if subnet == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"subnet '%s' does not exist", subnetID)
+	}
+
+	// VAL-01: Check Subnet is READY
+	if subnet.GetStatus().GetState() != privatev1.SubnetState_SUBNET_STATE_READY {
+		return grpcstatus.Errorf(grpccodes.FailedPrecondition,
+			"subnet '%s' is not in READY state (current state: %s)",
+			subnetID, subnet.GetStatus().GetState().String())
+	}
+
+	// Store VirtualNetwork ID for SecurityGroup validation
+	virtualNetworkID = subnet.GetSpec().GetVirtualNetwork()
 
 	// VAL-02, VAL-03: Validate SecurityGroups exist, are READY, and belong to same VirtualNetwork
 	for _, sgID := range securityGroupIDs {
@@ -479,14 +497,12 @@ func (s *PrivateComputeInstancesServer) validateNetworkReferences(ctx context.Co
 				sgID, sg.GetStatus().GetState().String())
 		}
 
-		// VAL-03: If Subnet was provided, verify SecurityGroup belongs to same VirtualNetwork
-		if virtualNetworkID != "" {
-			sgVirtualNetworkID := sg.GetSpec().GetVirtualNetwork()
-			if sgVirtualNetworkID != virtualNetworkID {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"security group '%s' belongs to VirtualNetwork '%s', but subnet '%s' belongs to VirtualNetwork '%s'",
-					sgID, sgVirtualNetworkID, subnetID, virtualNetworkID)
-			}
+		// VAL-03: Verify SecurityGroup belongs to same VirtualNetwork as the Subnet
+		sgVirtualNetworkID := sg.GetSpec().GetVirtualNetwork()
+		if sgVirtualNetworkID != virtualNetworkID {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"security group '%s' belongs to VirtualNetwork '%s', but subnet '%s' belongs to VirtualNetwork '%s'",
+				sgID, sgVirtualNetworkID, subnetID, virtualNetworkID)
 		}
 	}
 

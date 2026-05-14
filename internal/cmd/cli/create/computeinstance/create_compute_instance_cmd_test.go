@@ -23,10 +23,24 @@ import (
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 
 	"github.com/osac-project/fulfillment-service/internal/config"
+	"github.com/osac-project/fulfillment-service/internal/errormessages"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 	"github.com/osac-project/fulfillment-service/internal/testing"
 )
+
+// newTestConsole returns a logger and console that do not write to the process
+// stdout/stderr (avoids Ginkgo progress noise when exercising the CLI).
+func newTestConsole() (*slog.Logger, *terminal.Console) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	console, err := terminal.NewConsole().
+		SetLogger(logger).
+		SetStdout(io.Discard).
+		SetStderr(io.Discard).
+		Build()
+	Expect(err).NotTo(HaveOccurred())
+	return logger, console
+}
 
 var _ = Describe("create_compute_instance_cmd", func() {
 	Context("subnet flag validation", func() {
@@ -39,37 +53,33 @@ var _ = Describe("create_compute_instance_cmd", func() {
 		})
 
 		It("returns error when subnet flag is omitted", func() {
-			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			console, err := terminal.NewConsole().
-				SetLogger(logger).
-				Build()
-			Expect(err).NotTo(HaveOccurred())
+			logger, console := newTestConsole()
 
 			ctx := terminal.ConsoleIntoContext(logging.LoggerIntoContext(context.Background(), logger), console)
 
 			cmd := Cmd()
 			cmd.SetContext(ctx)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
 			cmd.SetArgs([]string{"--template", "some-template"})
-			err = cmd.Execute()
+			err := cmd.Execute()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("subnet is required"))
+			Expect(err.Error()).To(ContainSubstring(errormessages.ComputeInstanceSpecSubnetRequired))
 		})
 
 		It("returns error when subnet flag is whitespace only", func() {
-			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			console, err := terminal.NewConsole().
-				SetLogger(logger).
-				Build()
-			Expect(err).NotTo(HaveOccurred())
+			logger, console := newTestConsole()
 
 			ctx := terminal.ConsoleIntoContext(logging.LoggerIntoContext(context.Background(), logger), console)
 
 			cmd := Cmd()
 			cmd.SetContext(ctx)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
 			cmd.SetArgs([]string{"--template", "some-template", "--subnet", " \t "})
-			err = cmd.Execute()
+			err := cmd.Execute()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("subnet is required"))
+			Expect(err.Error()).To(ContainSubstring(errormessages.ComputeInstanceSpecSubnetRequired))
 		})
 	})
 
@@ -115,22 +125,20 @@ var _ = Describe("create_compute_instance_cmd", func() {
 		})
 
 		It("creates a compute instance when template and subnet are set", func() {
-			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			console, err := terminal.NewConsole().
-				SetLogger(logger).
-				Build()
-			Expect(err).NotTo(HaveOccurred())
+			logger, console := newTestConsole()
 
 			ctx := terminal.ConsoleIntoContext(logging.LoggerIntoContext(context.Background(), logger), console)
 
 			cmd := Cmd()
 			cmd.SetContext(ctx)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
 			cmd.SetArgs([]string{
 				"--template", "tpl-test-001",
 				"--subnet", "subnet-e2e-new",
 				"-n", "cli-create-success",
 			})
-			err = cmd.Execute()
+			err := cmd.Execute()
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
