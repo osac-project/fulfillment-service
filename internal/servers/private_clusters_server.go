@@ -484,13 +484,14 @@ func (s *PrivateClustersServer) validateNodeSetHostTypeImmutability(
 // cannot be changed after cluster creation.
 func (s *PrivateClustersServer) validateTemplateImmutability(ctx context.Context,
 	request *privatev1.ClustersUpdateRequest) error {
-	// Check if template or template_parameters are being updated:
+	// Check if template, template_parameters, or catalog_item are being updated:
 	updateMask := request.GetUpdateMask()
 	updatingTemplate := s.isFieldInMask(updateMask, "spec.template")
 	updatingTemplateParams := s.isFieldInMask(updateMask, "spec.template_parameters")
+	updatingCatalogItem := s.isFieldInMask(updateMask, "spec.catalog_item")
 
-	// If neither field is being updated, no validation needed:
-	if !updatingTemplate && !updatingTemplateParams {
+	// If none of the immutable fields are being updated, no validation needed:
+	if !updatingTemplate && !updatingTemplateParams && !updatingCatalogItem {
 		return nil
 	}
 
@@ -528,6 +529,15 @@ func (s *PrivateClustersServer) validateTemplateImmutability(ctx context.Context
 				"cannot change spec.template_parameters: template parameters are immutable",
 			)
 		}
+	}
+
+	if updatingCatalogItem && existingSpec.GetCatalogItem() != newSpec.GetCatalogItem() {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"cannot change spec.catalog_item from '%s' to '%s': catalog item is immutable",
+			existingSpec.GetCatalogItem(),
+			newSpec.GetCatalogItem(),
+		)
 	}
 
 	return nil

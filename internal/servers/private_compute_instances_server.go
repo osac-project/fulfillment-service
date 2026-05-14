@@ -364,8 +364,9 @@ func (s *PrivateComputeInstancesServer) validateTemplateImmutability(ctx context
 	updateMask := request.GetUpdateMask()
 	updatingTemplate := hasMaskPrefix(updateMask, "spec.template")
 	updatingTemplateParams := hasMaskPrefix(updateMask, "spec.template_parameters")
+	updatingCatalogItem := hasMaskPrefix(updateMask, "spec.catalog_item")
 
-	if !updatingTemplate && !updatingTemplateParams {
+	if !updatingTemplate && !updatingTemplateParams && !updatingCatalogItem {
 		return nil
 	}
 
@@ -406,6 +407,15 @@ func (s *PrivateComputeInstancesServer) validateTemplateImmutability(ctx context
 				"cannot change spec.template_parameters: template parameters are immutable",
 			)
 		}
+	}
+
+	if updatingCatalogItem && existingSpec.GetCatalogItem() != newSpec.GetCatalogItem() {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"cannot change spec.catalog_item from '%s' to '%s': catalog item is immutable",
+			existingSpec.GetCatalogItem(),
+			newSpec.GetCatalogItem(),
+		)
 	}
 
 	return nil
