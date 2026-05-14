@@ -16,7 +16,9 @@ package servers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"maps"
@@ -53,6 +55,7 @@ type PrivateComputeInstancesServer struct {
 	logger            *slog.Logger
 	generic           *GenericServer[*privatev1.ComputeInstance]
 	templatesDao      *dao.GenericDAO[*privatev1.ComputeInstanceTemplate]
+	catalogItemsDao   *dao.GenericDAO[*privatev1.ComputeInstanceCatalogItem]
 	subnetsDao        *dao.GenericDAO[*privatev1.Subnet]
 	securityGroupsDao *dao.GenericDAO[*privatev1.SecurityGroup]
 }
@@ -109,6 +112,16 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		return
 	}
 
+	// Create the catalog items DAO:
+	catalogItemsDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceCatalogItem]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	// Create the Subnets DAO for network validation:
 	subnetsDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
 		SetLogger(b.logger).
@@ -147,6 +160,7 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		logger:            b.logger,
 		generic:           generic,
 		templatesDao:      templatesDao,
+		catalogItemsDao:   catalogItemsDao,
 		subnetsDao:        subnetsDao,
 		securityGroupsDao: securityGroupsDao,
 	}
@@ -179,16 +193,30 @@ func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 		return
 	}
 
-	// Fetch and validate template:
-	template, err := s.fetchAndValidateTemplate(ctx, request.GetObject())
-	if err != nil {
+	// Dispatch between catalog item and template paths:
+	spec := request.GetObject().GetSpec()
+	catalogItemRef := spec.GetCatalogItem()
+	templateRef := spec.GetTemplate()
+	if catalogItemRef != "" && templateRef != "" {
+		err = grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"catalog_item and template are mutually exclusive")
 		return
 	}
-
-	// Apply template spec defaults and validate that all required spec fields are present.
-	err = s.applySpecDefaults(request.GetObject().GetSpec(), template)
-	if err != nil {
-		return
+	if catalogItemRef != "" {
+		err = s.validateAndTransformCatalogItem(ctx, request.GetObject())
+		if err != nil {
+			return
+		}
+	} else {
+		template, templateErr := s.fetchAndValidateTemplate(ctx, request.GetObject())
+		if templateErr != nil {
+			err = templateErr
+			return
+		}
+		err = s.applySpecDefaults(request.GetObject().GetSpec(), template)
+		if err != nil {
+			return
+		}
 	}
 
 	err = s.generic.Create(ctx, request, &response)
@@ -662,4 +690,62 @@ func (s *PrivateComputeInstancesServer) validateNetworkReferencesState(
 	}
 
 	return nil
+}
+
+func (s *PrivateComputeInstancesServer) validateAndTransformCatalogItem(ctx context.Context, ci *privatev1.ComputeInstance) error {
+	if ci == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
+	}
+	catalogItemRef := ci.GetSpec().GetCatalogItem()
+	if catalogItemRef == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "catalog_item is mandatory")
+	}
+
+	catalogItem, err := s.lookupCatalogItem(ctx, catalogItemRef)
+	if err != nil {
+		return err
+	}
+
+	if err := validateCatalogItemAccess(catalogItem, catalogItemRef); err != nil {
+		return err
+	}
+
+	templateRef := catalogItem.GetTemplate()
+	if templateRef != "" {
+		ci.GetSpec().SetTemplate(templateRef)
+	}
+
+	if err := applyFieldDefinitions(ci.GetSpec(), catalogItem.GetFieldDefinitions()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *PrivateComputeInstancesServer) lookupCatalogItem(ctx context.Context,
+	key string) (result *privatev1.ComputeInstanceCatalogItem, err error) {
+	if key == "" {
+		return
+	}
+	response, err := s.catalogItemsDao.List().
+		SetFilter(fmt.Sprintf("this.id == %[1]s || this.metadata.name == %[1]s", strconv.Quote(key))).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		var deniedErr *dao.ErrDenied
+		if errors.As(err, &deniedErr) {
+			err = grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+			return
+		}
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item '%s': %v", key, err)
+		return
+	}
+	items := response.GetItems()
+	if len(items) == 0 {
+		err = grpcstatus.Errorf(grpccodes.NotFound,
+			"there is no catalog item with identifier or name '%s'", key)
+		return
+	}
+	result = items[0]
+	return
 }
