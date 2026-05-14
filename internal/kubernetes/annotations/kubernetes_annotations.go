@@ -15,3 +15,6 @@ package annotations
 
 // Tenant is the annotation key for tenant information on all OSAC resources.
 const Tenant = "osac.openshift.io/tenant"
+
+// ParentProject is the annotation key for the parent project ID on nested projects.
+const ParentProject = "osac.openshift.io/parent-project"

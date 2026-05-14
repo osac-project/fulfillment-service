@@ -156,20 +156,30 @@ var _ = Describe("Finalizer Removal", func() {
 
 var _ = Describe("Validation and Activation", func() {
 	var (
-		ctrl        *gomock.Controller
-		mockClient  *MockProjectsClient
-		ctx         context.Context
-		functionObj *function
+		ctrl           *gomock.Controller
+		mockClient     *MockProjectsClient
+		mockHubsClient *MockHubsClient
+		ctx            context.Context
+		functionObj    *function
 	)
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = NewMockProjectsClient(ctrl)
+		mockHubsClient = NewMockHubsClient(ctrl)
 		ctx = context.Background()
 		functionObj = &function{
 			logger:         slog.Default(),
 			projectsClient: mockClient,
+			hubsClient:     mockHubsClient,
 		}
+
+		// Mock hubsClient.List() to return empty list (no hubs to sync to)
+		// This allows tests to focus on validation logic without hub sync
+		mockHubsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.HubsListResponse{Items: []*privatev1.Hub{}}, nil).
+			AnyTimes()
 	})
 
 	AfterEach(func() {
@@ -515,6 +525,155 @@ var _ = Describe("Validation and Activation", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(task.project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_FAILED))
 			Expect(task.project.GetStatus().GetMessage()).To(ContainSubstring("Circular dependency detected"))
+		})
+	})
+
+	Context("OpenShift Project name length validation", func() {
+		It("should fail when generated namespace name exceeds 63 characters", func() {
+			// Create a project with long tenant and name that will exceed 63 chars
+			// Format: osac-tenant-<tenant>-project-<name>
+			// "osac-tenant-" = 12 chars, "-project-" = 9 chars, total overhead = 21 chars
+			// So tenant + name can be at most 42 chars
+			longTenant := "very-long-organization-name-here" // 32 chars
+			longProject := "very-long-project-name-here-too" // 31 chars
+			// Total: 12 + 32 + 9 + 31 = 84 chars (exceeds 63)
+
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    longProject,
+					Tenants: []string{longTenant},
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_FAILED))
+			Expect(project.GetStatus().GetMessage()).To(ContainSubstring("exceeds 63 character limit"))
+			Expect(project.GetStatus().GetMessage()).To(ContainSubstring("84"))
+		})
+
+		It("should succeed when generated namespace name is within limit", func() {
+			// Short names that will be well under 63 chars
+			// osac-tenant-acme-project-web = 29 chars
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    "web",
+					Tenants: []string{"acme"},
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_ACTIVE))
+			Expect(project.GetStatus().HasMessage()).To(BeFalse())
+		})
+	})
+
+	Context("Hub sync conditions", func() {
+		It("should set HUB_SYNC condition to TRUE when all hubs succeed", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    "web",
+					Tenants: []string{"acme"},
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_ACTIVE))
+
+			// Check HUB_SYNC condition
+			var hubSyncCondition *privatev1.ProjectCondition
+			for _, cond := range project.GetStatus().GetConditions() {
+				if cond.GetType() == privatev1.ProjectConditionType_PROJECT_CONDITION_TYPE_HUB_SYNC {
+					hubSyncCondition = cond
+					break
+				}
+			}
+
+			Expect(hubSyncCondition).ToNot(BeNil())
+			Expect(hubSyncCondition.GetStatus()).To(Equal(privatev1.ConditionStatus_CONDITION_STATUS_FALSE))
+			Expect(hubSyncCondition.GetReason()).To(Equal("NoHubs"))
+			Expect(hubSyncCondition.GetMessage()).To(ContainSubstring("No hubs available"))
+		})
+
+		It("should set HUB_SYNC condition to FALSE when name is too long", func() {
+			// Create a project with long org and name that will exceed 63 chars
+			longOrg := "very-long-organization-name-here"    // 32 chars
+			longProject := "very-long-project-name-here-too" // 31 chars
+
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    longProject,
+					Tenants: []string{longOrg},
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_FAILED))
+
+			// Check HUB_SYNC condition
+			var hubSyncCondition *privatev1.ProjectCondition
+			for _, cond := range project.GetStatus().GetConditions() {
+				if cond.GetType() == privatev1.ProjectConditionType_PROJECT_CONDITION_TYPE_HUB_SYNC {
+					hubSyncCondition = cond
+					break
+				}
+			}
+
+			Expect(hubSyncCondition).ToNot(BeNil())
+			Expect(hubSyncCondition.GetStatus()).To(Equal(privatev1.ConditionStatus_CONDITION_STATUS_FALSE))
+			Expect(hubSyncCondition.GetReason()).To(Equal("NameTooLong"))
+			Expect(hubSyncCondition.GetMessage()).To(ContainSubstring("exceeds 63 character limit"))
 		})
 	})
 

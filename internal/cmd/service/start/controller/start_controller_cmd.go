@@ -734,6 +734,7 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	projectReconcilerFunction, err := project.NewFunction().
 		SetLogger(r.logger).
 		SetConnection(r.client).
+		SetHubCache(hubCache).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create project reconciler function: %w", err)

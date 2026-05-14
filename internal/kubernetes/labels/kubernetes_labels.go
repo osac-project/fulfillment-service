@@ -44,3 +44,9 @@ var SecurityGroupUuid = fmt.Sprintf("%s/%s", group, "securitygroup-uuid")
 
 // PublicIPUuid is the label where the fulfillment API will write the identifier of the public IP.
 var PublicIPUuid = fmt.Sprintf("%s/%s", group, "publicip-uuid")
+
+// ProjectId is the label where the fulfillment API will write the identifier of the project.
+var ProjectId = fmt.Sprintf("%s/%s", group, "project-id")
+
+// ProjectName is the label where the fulfillment API will write the name of the project.
+var ProjectName = fmt.Sprintf("%s/%s", group, "project-name")
