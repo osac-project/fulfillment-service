@@ -1,0 +1,56 @@
+name: PR Checklist
+
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+jobs:
+  check-pr-checklist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify PR checklist
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          CHECKS=(
+            "I have added tests for this change, or verified they are not applicable"
+            "I have opened an E2E PR in osac-test-infra, or verified it is not applicable"
+            "I have opened a PR to osac-installer for any required deployment changes (kustomize overlays, image tags, env vars, service endpoints, API methods, Helm charts), or verified none are needed"
+          )
+
+          missing=()
+          unchecked=()
+
+          for check in "${CHECKS[@]}"; do
+            if echo "$PR_BODY" | grep -qF -- "- [x] $check"; then
+              continue
+            elif echo "$PR_BODY" | grep -qF -- "- [ ] $check"; then
+              unchecked+=("$check")
+            else
+              missing+=("$check")
+            fi
+          done
+
+          failed=false
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required checklist items. Do not remove items from the PR template."
+            for item in "${missing[@]}"; do
+              echo "  - $item"
+            done
+            failed=true
+          fi
+
+          if [ ${#unchecked[@]} -gt 0 ]; then
+            echo "::error::Unchecked checklist items:"
+            for item in "${unchecked[@]}"; do
+              echo "  - [ ] $item"
+            done
+            failed=true
+          fi
+
+          if [ "$failed" = true ]; then
+            exit 1
+          fi
+
+          echo "All checklist items are checked."
