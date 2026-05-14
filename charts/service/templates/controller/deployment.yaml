@@ -34,6 +34,8 @@ spec:
       labels:
         app: fulfillment-controller
     spec:
+      securityContext:
+        runAsNonRoot: true
       volumes:
       - name: cas
         configMap:
@@ -89,6 +91,7 @@ spec:
           {{- end }}
       containers:
       - name: controller
+        securityContext: {{ include "fulfillment.containerSecurityContext" . | fromYaml | toJson }}
         image: {{ .Values.images.service }}
         volumeMounts:
         - name: cas

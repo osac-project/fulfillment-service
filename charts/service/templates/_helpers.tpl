@@ -38,3 +38,26 @@ Return the hostname for the fulfillment internal API. Fails if 'internalHostname
 {{- define "fulfillment-internal-api.hostname" -}}
 {{- required "internalHostname is required" .Values.internalHostname -}}
 {{- end -}}
+
+{{/*
+Container security context for service containers. In debug mode SYS_PTRACE is added and the seccomp profile is set to
+unconfined so that delve can attach.
+*/}}
+{{- define "fulfillment.containerSecurityContext" -}}
+allowPrivilegeEscalation: false
+runAsNonRoot: true
+readOnlyRootFilesystem: true
+capabilities:
+  drop:
+  - ALL
+  {{- if .Values.debug }}
+  add:
+  - SYS_PTRACE
+  {{- end }}
+seccompProfile:
+  {{- if .Values.debug }}
+  type: Unconfined
+  {{- else }}
+  type: RuntimeDefault
+  {{- end }}
+{{- end -}}
