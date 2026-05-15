@@ -56,19 +56,19 @@ func (mr *MockTenancyLogicMockRecorder) DetermineAssignableTenants(ctx any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineAssignableTenants", reflect.TypeOf((*MockTenancyLogic)(nil).DetermineAssignableTenants), ctx)
 }
 
-// DetermineDefaultTenants mocks base method.
-func (m *MockTenancyLogic) DetermineDefaultTenants(ctx context.Context) (collections.Set[string], error) {
+// DetermineDefaultTenant mocks base method.
+func (m *MockTenancyLogic) DetermineDefaultTenant(ctx context.Context) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DetermineDefaultTenants", ctx)
-	ret0, _ := ret[0].(collections.Set[string])
+	ret := m.ctrl.Call(m, "DetermineDefaultTenant", ctx)
+	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// DetermineDefaultTenants indicates an expected call of DetermineDefaultTenants.
-func (mr *MockTenancyLogicMockRecorder) DetermineDefaultTenants(ctx any) *gomock.Call {
+// DetermineDefaultTenant indicates an expected call of DetermineDefaultTenant.
+func (mr *MockTenancyLogicMockRecorder) DetermineDefaultTenant(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineDefaultTenants", reflect.TypeOf((*MockTenancyLogic)(nil).DetermineDefaultTenants), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineDefaultTenant", reflect.TypeOf((*MockTenancyLogic)(nil).DetermineDefaultTenant), ctx)
 }
 
 // DetermineVisibleTenants mocks base method.

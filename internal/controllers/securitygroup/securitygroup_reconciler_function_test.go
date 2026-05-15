@@ -106,10 +106,10 @@ func hasFinalizer(sg *privatev1.SecurityGroup) bool {
 }
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		sg := privatev1.SecurityGroup_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -121,10 +121,10 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		sg := privatev1.SecurityGroup_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{},
+				Tenant: "",
 			}.Build(),
 		}.Build()
 
@@ -134,7 +134,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
 	It("should fail when metadata is missing", func() {
@@ -146,7 +146,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 

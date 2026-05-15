@@ -214,7 +214,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.ClusterOrderUuid: t.cluster.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.cluster.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.cluster.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -280,8 +280,8 @@ func (t *task) setConditionDefaults(value privatev1.ClusterConditionType) {
 }
 
 func (t *task) validateTenant() error {
-	if !t.cluster.HasMetadata() || len(t.cluster.GetMetadata().GetTenants()) != 1 {
-		return errors.New("Cluster must have exactly one tenant assigned")
+	if !t.cluster.HasMetadata() || t.cluster.GetMetadata().GetTenant() == "" {
+		return errors.New("Cluster must have a tenant assigned")
 	}
 	return nil
 }

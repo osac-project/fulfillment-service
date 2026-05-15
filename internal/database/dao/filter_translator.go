@@ -833,10 +833,16 @@ func (t *FilterTranslator[O]) translateSelectThisMdField(fieldName string,
 			result.kind = filterTranslatorTimeKind
 			result.precedence = filterTranslatorMaxPrecedence
 		}
-	case "creators", "tenants":
-		result.sql = fieldName
-		result.kind = filterTranslatorStringKind
-		result.precedence = filterTranslatorMaxPrecedence
+	case "creator", "tenant":
+		if testOnly {
+			result.sql = fmt.Sprintf("%s != ''", fieldName)
+			result.kind = filterTranslatorBooleanKind
+			result.precedence = filterTranslatorMaxPrecedence
+		} else {
+			result.sql = fieldName
+			result.kind = filterTranslatorStringKind
+			result.precedence = filterTranslatorMaxPrecedence
+		}
 	case "labels":
 		if testOnly {
 			result.sql = "true"

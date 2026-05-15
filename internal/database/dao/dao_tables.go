@@ -69,8 +69,8 @@ func createMainTable(ctx context.Context, tx database.Tx, object string) error {
 			creation_timestamp timestamp with time zone not null default now(),
 			deletion_timestamp timestamp with time zone not null default 'epoch',
 			finalizers text[] not null default '{}',
-			creators text[] not null default '{}',
-			tenants text[] not null default '{}',
+			creator text not null default '',
+			tenant text not null default '',
 			labels jsonb not null default '{}'::jsonb,
 			annotations jsonb not null default '{}'::jsonb,
 			version integer not null default 0,
@@ -92,8 +92,8 @@ func createArchivedTable(ctx context.Context, tx database.Tx, object string) err
 			creation_timestamp timestamp with time zone not null,
 			deletion_timestamp timestamp with time zone not null,
 			archival_timestamp timestamp with time zone not null default now(),
-			creators text[] not null default '{}',
-			tenants text[] not null default '{}',
+			creator text not null default '',
+			tenant text not null default '',
 			labels jsonb not null default '{}'::jsonb,
 			annotations jsonb not null default '{}'::jsonb,
 			version integer not null default 0,
@@ -109,8 +109,8 @@ func createArchivedTable(ctx context.Context, tx database.Tx, object string) err
 func createIndexes(ctx context.Context, tx database.Tx, object string) error {
 	indexes := []string{
 		"create index if not exists %[1]s_by_name on %[1]s (name)",
-		"create index if not exists %[1]s_by_owner on %[1]s using gin (creators)",
-		"create index if not exists %[1]s_by_tenant on %[1]s using gin (tenants)",
+		"create index if not exists %[1]s_by_owner on %[1]s (creator)",
+		"create index if not exists %[1]s_by_tenant on %[1]s (tenant)",
 		"create index if not exists %[1]s_by_label on %[1]s using gin (labels)",
 	}
 	for _, format := range indexes {

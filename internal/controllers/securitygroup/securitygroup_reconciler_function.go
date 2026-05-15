@@ -196,7 +196,7 @@ func (t *task) update(ctx context.Context) error {
 	// Create or update the Kubernetes object:
 	if object == nil {
 		sgAnnotations := map[string]string{
-			annotations.Tenant: t.securityGroup.GetMetadata().GetTenants()[0],
+			annotations.Tenant: t.securityGroup.GetMetadata().GetTenant(),
 		}
 		if implStrategy != "" {
 			sgAnnotations[implementationStrategyAnnotation] = implStrategy
@@ -250,8 +250,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	if !t.securityGroup.HasMetadata() || len(t.securityGroup.GetMetadata().GetTenants()) != 1 {
-		return errors.New("security group must have exactly one tenant assigned")
+	if !t.securityGroup.HasMetadata() || t.securityGroup.GetMetadata().GetTenant() == "" {
+		return errors.New("security group must have a tenant assigned")
 	}
 	return nil
 }

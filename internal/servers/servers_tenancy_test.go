@@ -78,24 +78,21 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("Returns tenants in metadata when object is created", func() {
-		// Create a mock tenancy logic that returns specific tenants:
+	It("Returns tenant in metadata when object is created", func() {
+		// Create a mock tenancy logic that returns a specific tenant:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
 			Return(
-				collections.NewSet("my-tenant", "your-tenant"),
+				collections.NewSet("my-tenant"),
 				nil,
 			).
 			AnyTimes()
-		tenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(
-				collections.NewSet("my-tenant", "your-tenant"),
-				nil,
-			).
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(
-				collections.NewSet("my-tenant", "your-tenant"),
+				collections.NewSet("my-tenant"),
 				nil,
 			).
 			AnyTimes()
@@ -113,7 +110,7 @@ var _ = Describe("Tenancy logic", func() {
 					Title:       "My template",
 					Description: "My template",
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"my-tenant", "your-tenant"},
+						Tenant: "my-tenant",
 					}.Build(),
 				}.Build(),
 			).
@@ -143,16 +140,13 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response).ToNot(BeNil())
 
-		// Verify that the cluster metadata contains the expected tenants:
+		// Verify that the cluster metadata contains the expected tenant:
 		cluster := response.GetObject()
 		Expect(cluster).ToNot(BeNil())
 		metadata := cluster.GetMetadata()
 		Expect(metadata).ToNot(BeNil())
-		tenants := metadata.GetTenants()
-		Expect(tenants).To(ConsistOf(
-			"my-tenant",
-			"your-tenant",
-		))
+		tenant := metadata.GetTenant()
+		Expect(tenant).To(Equal("my-tenant"))
 	})
 
 	It("Rejects object creation when assigned tenants are empty", func() {
@@ -168,7 +162,7 @@ var _ = Describe("Tenancy logic", func() {
 				Title:       "My template",
 				Description: "My template",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"my-tenant"},
+					Tenant: "my-tenant",
 				}.Build(),
 			}.Build(),
 			).
@@ -180,8 +174,8 @@ var _ = Describe("Tenancy logic", func() {
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
 			Return(collections.NewSet[string](), nil).
 			AnyTimes()
-		tenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant"), nil).
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("my-tenant"), nil).
@@ -212,18 +206,17 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(status.Message()).To(Equal("there are no assignable tenants"))
 	})
 
-	It("Uses default tenants when tenants are explicitly empty", func() {
-		// Create a tenancy logic that returns valid tenants:
-		tenant := collections.NewSet("my-tenant")
+	It("Uses default tenant when tenant is explicitly empty", func() {
+		// Create a tenancy logic that returns a valid tenant:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(tenant, nil).
+			Return(collections.NewSet("my-tenant"), nil).
 			AnyTimes()
-		tenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(tenant, nil).
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(tenant, nil).
+			Return(collections.NewSet("my-tenant"), nil).
 			AnyTimes()
 
 		// Create the template using the DAO:
@@ -239,7 +232,7 @@ var _ = Describe("Tenancy logic", func() {
 					Title:       "My template",
 					Description: "My template",
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"my-tenant"},
+						Tenant: "my-tenant",
 					}.Build(),
 				}.Build(),
 			).
@@ -255,11 +248,11 @@ var _ = Describe("Tenancy logic", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Attempt to create a cluster with explicitly empty tenants and verify it fails:
+		// Attempt to create a cluster with explicitly empty tenant and verify it uses the default:
 		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Metadata: publicv1.Metadata_builder{
-					Tenants: []string{},
+					Tenant: "",
 				}.Build(),
 				Spec: publicv1.ClusterSpec_builder{
 					Template: "my-template",
@@ -268,22 +261,22 @@ var _ = Describe("Tenancy logic", func() {
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 
-		// Verify that the cluster metadata contains the expected tenants:
+		// Verify that the cluster metadata contains the expected tenant:
 		cluster := response.GetObject()
 		Expect(cluster).ToNot(BeNil())
-		tenants := cluster.GetMetadata().GetTenants()
-		Expect(tenants).To(ConsistOf("my-tenant"))
+		tenant := cluster.GetMetadata().GetTenant()
+		Expect(tenant).To(Equal("my-tenant"))
 	})
 
-	It("Rejects object creation when assigned tenants are invisible to the user", func() {
+	It("Rejects object creation when assigned tenant is invisible to the user", func() {
 		// Create a tenancy logic that returns visible tenants:
 		visible := collections.NewSet("my-tenant")
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
 			Return(visible, nil).
 			AnyTimes()
-		tenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(visible, nil).
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(visible, nil).
@@ -299,10 +292,7 @@ var _ = Describe("Tenancy logic", func() {
 			SetObject(privatev1.ClusterTemplate_builder{
 				Id: "our-template",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{
-						"my-tenant",
-						"your-tenant",
-					},
+					Tenant: "my-tenant",
 				}.Build(),
 			}.Build(),
 			).Do(ctx)
@@ -317,13 +307,11 @@ var _ = Describe("Tenancy logic", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Attempt to create a an object with a tenant that is invisible to the user and verify that it fails:
+		// Attempt to create an object with a tenant that is invisible to the user and verify that it fails:
 		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Metadata: publicv1.Metadata_builder{
-					Tenants: []string{
-						"your-tenant",
-					},
+					Tenant: "your-tenant",
 				}.Build(),
 				Spec: publicv1.ClusterSpec_builder{
 					Template: "our-template",

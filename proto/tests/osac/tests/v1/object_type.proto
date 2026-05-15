@@ -56,8 +56,8 @@ message Metadata {
   google.protobuf.Timestamp creation_timestamp = 1;
   google.protobuf.Timestamp deletion_timestamp = 2;
   repeated string finalizers = 3;
-  repeated string creators = 4;
-  repeated string tenants = 5;
+  string creator = 4;
+  string tenant = 5;
   string name = 6;
   map<string, string> labels = 7;
   map<string, string> annotations = 8;

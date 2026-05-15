@@ -27,9 +27,9 @@ type TenancyLogic interface {
 	// that is being created or updated. This should be a superset of the default tenants.
 	DetermineAssignableTenants(ctx context.Context) (collections.Set[string], error)
 
-	// DetermineDefaultTenants calculates and returns the list of tenant names that are assigned by default when an
-	// object is created without an explicit tenant request. This should be a subset of the assignable tenants.
-	DetermineDefaultTenants(ctx context.Context) (collections.Set[string], error)
+	// DetermineDefaultTenant returns the tenant name that is assigned by default when an object is created
+	// without an explicit tenant in the request.
+	DetermineDefaultTenant(ctx context.Context) (string, error)
 
 	// DetermineVisibleTenants calculates and returns the list of tenant names that the current user has permission
 	// to see. Database queries will be filtered to only return objects where the tenants column has a non-empty

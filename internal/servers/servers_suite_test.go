@@ -57,8 +57,8 @@ var _ = BeforeSuite(func() {
 
 	// Create the attribution logic:
 	attribution = auth.NewMockAttributionLogic(ctrl)
-	attribution.EXPECT().DetermineAssignedCreators(gomock.Any()).
-		Return(collections.NewSet("system"), nil).
+	attribution.EXPECT().DetermineAssignedCreator(gomock.Any()).
+		Return("system", nil).
 		AnyTimes()
 
 	// Create the tenancy logic:
@@ -66,8 +66,8 @@ var _ = BeforeSuite(func() {
 	tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
 		Return(collections.NewUniversalSet[string](), nil).
 		AnyTimes()
-	tenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-		Return(collections.NewSet("system"), nil).
+	tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+		Return("system", nil).
 		AnyTimes()
 	tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 		Return(collections.NewUniversalSet[string](), nil).

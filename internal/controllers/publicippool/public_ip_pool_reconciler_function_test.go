@@ -368,10 +368,10 @@ var _ = Describe("delete", func() {
 })
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		pool := privatev1.PublicIPPool_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -383,26 +383,10 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		pool := privatev1.PublicIPPool_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{},
-			}.Build(),
-		}.Build()
-
-		t := &task{
-			publicIPPool: pool,
-		}
-
-		err := t.validateTenant()
-		Expect(err).To(HaveOccurred())
-		Expect(errors.Is(err, errInvalidTenantCount)).To(BeTrue())
-	})
-
-	It("should fail when multiple tenants are assigned", func() {
-		pool := privatev1.PublicIPPool_builder{
-			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1", "tenant-2"},
+				Tenant: "",
 			}.Build(),
 		}.Build()
 
@@ -543,7 +527,7 @@ func newTaskForUpdate(poolID, hubID string, hubCache controllers.HubCache) *task
 		Id: poolID,
 		Metadata: privatev1.Metadata_builder{
 			Finalizers: []string{finalizers.Controller},
-			Tenants:    []string{"tenant-1"},
+			Tenant:     "tenant-1",
 		}.Build(),
 		Spec: privatev1.PublicIPPoolSpec_builder{
 			Cidrs:    []string{"203.0.113.0/24"},

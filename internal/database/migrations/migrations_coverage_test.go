@@ -68,6 +68,7 @@ var _ = Describe("Migrations test coverage", func() {
 			"35_add_public_ips_compute_instance_unique_index": true,
 			"36_drop_archived_public_ips_indexes":             true,
 			"37_create_catalog_items_tables":                  true,
+			"38_create_public_ip_attachments_tables":          true,
 		}
 
 		// Find all migration files:

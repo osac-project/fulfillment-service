@@ -137,8 +137,10 @@ var _ = Describe("HubCache", func() {
 					Get(gomock.Any(), gomock.Any()).
 					Return(&privatev1.HubsGetResponse{
 						Object: privatev1.Hub_builder{
-							Namespace:  "test-namespace",
-							Kubeconfig: []byte("invalid-kubeconfig"),
+							Spec: privatev1.HubSpec_builder{
+								Namespace:  "test-namespace",
+								Kubeconfig: []byte("invalid-kubeconfig"),
+							}.Build(),
 						}.Build(),
 					}, nil).
 					Times(2) // Called twice - errors aren't cached

@@ -58,9 +58,9 @@ func (p *GuestTenancyLogic) DetermineAssignableTenants(_ context.Context) (resul
 	return
 }
 
-// DetermineDefaultTenants returns a set containing only the guest tenant, regardless of the user's identity.
-func (p *GuestTenancyLogic) DetermineDefaultTenants(_ context.Context) (result collections.Set[string], err error) {
-	result = GuestTenants
+// DetermineDefaultTenant returns the guest tenant, regardless of the user's identity.
+func (p *GuestTenancyLogic) DetermineDefaultTenant(_ context.Context) (result string, err error) {
+	result = "guest"
 	return
 }
 

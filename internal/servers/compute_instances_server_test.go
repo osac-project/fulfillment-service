@@ -152,7 +152,7 @@ var _ = Describe("Compute instances server", func() {
 				Title:       "Test Template",
 				Description: "Test template for validation",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: "shared",
 				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{

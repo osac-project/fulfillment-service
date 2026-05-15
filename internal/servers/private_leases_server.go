@@ -61,7 +61,7 @@ func (b *PrivateLeasesServerBuilder) SetNotifier(value *database.Notifier) *Priv
 	return b
 }
 
-// SetAttributionLogic sets the logic that will be used to determine the creators for objects.
+// SetAttributionLogic sets the logic that will be used to determine the creator for objects.
 func (b *PrivateLeasesServerBuilder) SetAttributionLogic(value auth.AttributionLogic) *PrivateLeasesServerBuilder {
 	b.attributionLogic = value
 	return b

@@ -385,11 +385,11 @@ var _ = Describe("delete", func() {
 })
 
 var _ = Describe("validateTenant", func() {
-	It("succeeds when exactly one tenant is assigned", func() {
+	It("succeeds when a tenant is assigned", func() {
 		task := &task{
 			virtualNetwork: privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"tenant-abc"},
+					Tenant: "tenant-abc",
 				}.Build(),
 			}.Build(),
 		}
@@ -407,14 +407,14 @@ var _ = Describe("validateTenant", func() {
 		err := task.validateTenant()
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
-	It("fails when no tenants are assigned", func() {
+	It("fails when tenant is empty", func() {
 		task := &task{
 			virtualNetwork: privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{},
+					Tenant: "",
 				}.Build(),
 			}.Build(),
 		}
@@ -422,22 +422,7 @@ var _ = Describe("validateTenant", func() {
 		err := task.validateTenant()
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
-	})
-
-	It("fails when multiple tenants are assigned", func() {
-		task := &task{
-			virtualNetwork: privatev1.VirtualNetwork_builder{
-				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"tenant-1", "tenant-2"},
-				}.Build(),
-			}.Build(),
-		}
-
-		err := task.validateTenant()
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 

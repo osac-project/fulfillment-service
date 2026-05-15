@@ -30,7 +30,7 @@ var _ = DescribeMigration("Add 'spec' and 'status' fields to hubs", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Run the migration:
-			err = tool.Migrate(ctx, 38)
+			err = tool.Migrate(ctx, 39)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Fetch the migraded data:

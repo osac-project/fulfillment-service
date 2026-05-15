@@ -225,8 +225,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 							Id: cluster,
 						}.Build())
 						Expect(err).ToNot(HaveOccurred())
-						Expect(len(clusterResponse.GetObject().Metadata.Tenants)).To(Equal(1))
-						Expect(clusterResponse.GetObject().Metadata.Tenants[0]).To(Equal(tenant))
+						Expect(clusterResponse.GetObject().GetMetadata().GetTenant()).To(Equal(tenant))
 					}
 				}
 			})
@@ -357,7 +356,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				})
 
 				// Create a cluster object for each user
-				for user, tenants := range OIDCTenants {
+				for user := range OIDCTenants {
 					tokenSource, err := tool.makeKeycloakTokenSource(ctx, user, usersPassword)
 					Expect(err).ToNot(HaveOccurred())
 					conn, err := tool.makeGrpcConn(externalServiceAddr, tokenSource)
@@ -376,13 +375,14 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 					DeferCleanup(func() { deleteCluster(ctx, clusterObject.GetId()) })
 
-					// Populate map to track which clusters belong to which tenants
-					for _, tenant := range tenants {
-						tenantClusterMapping[tenant] = append(tenantClusterMapping[tenant], clusterObject.GetId())
-						clusterTenantMapping[clusterObject.GetId()] = append(clusterTenantMapping[clusterObject.GetId()], tenant)
-					}
+					// Each object now has a single tenant; record the actual assigned tenant:
+					tenant := clusterObject.GetMetadata().GetTenant()
+					Expect(tenant).ToNot(BeEmpty())
+					tenantClusterMapping[tenant] = append(tenantClusterMapping[tenant], clusterObject.GetId())
+					clusterTenantMapping[clusterObject.GetId()] = []string{tenant}
 				}
 			})
+
 			It("shared within the same tenant", func() {
 				// List clusters for each user
 				for user, tenants := range OIDCTenants {
@@ -394,7 +394,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					response := listClusters(ctx, conn)
 					Expect(response).ToNot(BeNil())
 
-					Expect(len(response.Items)).To(Equal(calculateResponseSize(tenantUserMapping, tenants)))
+					Expect(len(response.Items)).To(Equal(calculateResponseSize(tenantClusterMapping, tenants)))
 
 					// Check that each cluster appears under expected tenant
 					for _, cluster := range response.GetItems() {
@@ -413,7 +413,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 					response := listClusters(ctx, conn)
 					Expect(response).ToNot(BeNil())
-					Expect(len(response.Items)).To(Equal(calculateResponseSize(tenantUserMapping, tenants)))
+					Expect(len(response.Items)).To(Equal(calculateResponseSize(tenantClusterMapping, tenants)))
 
 					// Check that each cluster is isolated between tenants
 					for _, cluster := range response.GetItems() {

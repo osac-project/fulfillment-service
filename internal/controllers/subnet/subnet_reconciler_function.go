@@ -183,7 +183,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.SubnetUuid: t.subnet.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.subnet.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.subnet.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -226,8 +226,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	if !t.subnet.HasMetadata() || len(t.subnet.GetMetadata().GetTenants()) != 1 {
-		return errors.New("subnet must have exactly one tenant assigned")
+	if !t.subnet.HasMetadata() || t.subnet.GetMetadata().GetTenant() == "" {
+		return errors.New("subnet must have a tenant assigned")
 	}
 	return nil
 }

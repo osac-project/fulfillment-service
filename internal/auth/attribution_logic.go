@@ -15,17 +15,15 @@ package auth
 
 import (
 	"context"
-
-	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
-// AttributionLogic defines the logic for determining what users and group should be assisged as the creators of
-// objects.
+// AttributionLogic defines the logic for determining which user or group should be assigned as the creator
+// of an object.
 //
 //go:generate mockgen -destination=attribution_logic_mock.go -package=auth . AttributionLogic
 type AttributionLogic interface {
-	// DetermineAssignedCreators calculates and returns the list of creators that should be assigned to an object
-	// being created. The context will contain authentication and authorization information that can be used to
-	// determine the appropriate creators.
-	DetermineAssignedCreators(ctx context.Context) (collections.Set[string], error)
+	// DetermineAssignedCreator returns the creator that should be assigned to an object being created. The
+	// context will contain authentication and authorization information that can be used to determine the
+	// appropriate creator.
+	DetermineAssignedCreator(ctx context.Context) (string, error)
 }

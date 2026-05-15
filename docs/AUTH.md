@@ -383,15 +383,13 @@ concepts:
    user, meaning the user cannot explicitly select them, but they could still be assigned by
    default.
 
-2. **Default Tenants**: The tenants that will be automatically assigned to a resource when the user
-   creates it without explicitly specifying tenants. The default tenants are always a subset of the
+2. **Default Tenant**: The tenant that will be automatically assigned to a resource when the user
+   creates it without explicitly specifying a tenant. The default tenant is always one of the
    assignable tenants.
 
 3. **Visible Tenants**: The tenants from which a user can see resources. When listing or querying
    resources, only those belonging to visible tenants will be returned. Users can only explicitly
-   assign tenants that are both assignable and visible to them. Some default tenants may be
-   invisible, meaning a user could have resources automatically assigned to tenants they cannot
-   later query.
+   assign a tenant that is both assignable and visible to them.
 
 The tenancy logic can be configured using the `--tenancy-logic` command-line flag when starting the
 fulfillment service. Valid values are `default` and `guest`.
@@ -404,25 +402,22 @@ fulfillment service. Valid values are `default` and `guest`.
    across all tenants.
 
 2. **Multi-Tenant Users**: A user can belong to multiple tenants. This is configured in Keycloak by
-   assigning the user to multiple groups. The fulfillment service will reflect this one-to-many
-   mapping in both the assignable and visible tenant sets.
+   assigning the user to multiple groups. The fulfillment service will reflect this in the
+   assignable and visible tenant sets. However, each resource is assigned to exactly one tenant.
 
 3. **Tenant Assignment**: When a user creates a resource:
 
-   - A user assignment is recorded in the `metadata.creators` field of the object, and is purely
-     informative. The system doesn't currently use it to make any authorization or visibility
-     decisions.
-   - If the user explicitly specifies tenants, those tenants are assigned. The user can only
-     explicitly assign tenants that are both assignable and visible.
-   - If the user doesn't specify tenants, the default tenants are automatically assigned. Note that
-     some default tenants may be invisible to the user.
-   - Tenant assignment is recorded in the `metadata.tenants` field and is used by the server to make
+   - The user is recorded in the `metadata.creator` field of the object, and is purely informative.
+     The system doesn't currently use it to make any authorization or visibility decisions.
+   - If the user explicitly specifies a tenant, that tenant is assigned. The user can only
+     explicitly assign a tenant that is both assignable and visible.
+   - If the user doesn't specify a tenant, the default tenant is automatically assigned.
+   - Tenant assignment is recorded in the `metadata.tenant` field and is used by the server to make
      visibility decisions.
 
 4. **Tenant Visibility**: When a user queries resources, the visible tenants determine what they can
-   see. A user can only see a resource if the intersection between the user's visible tenants and
-   the resource's assigned tenants is not empty. Since both users and resources can have multiple
-   tenants, a non-empty intersection is sufficient for visibility.
+   see. A user can only see a resource if the resource's assigned tenant is one of the user's
+   visible tenants.
 
 ### Tenancy Logic Implementations
 
@@ -437,16 +432,16 @@ both JWT-authenticated users and Kubernetes service accounts because Authorino r
 the same `tenants` field before the request reaches the service.
 
 - **Assignable Tenants**: All tenants from the subject
-- **Default Tenants**: Same as assignable tenants
+- **Default Tenant**: First tenant from the subject
 - **Visible Tenants**: All subject's tenants plus the `shared` tenant
 
 Example with a JWT user:
 - User `alice` belongs to groups: `["team-a", "team-b"]`
 - Authorino maps these groups into tenants: `["team-a", "team-b"]`
 - Assignable tenants: `["team-a", "team-b"]`
-- Default tenants: `["team-a", "team-b"]`
-- When `alice` creates a cluster without specifying tenants:
-  - The cluster is assigned to tenants: `["team-a", "team-b"]`
+- Default tenant: `"team-a"`
+- When `alice` creates a cluster without specifying a tenant:
+  - The cluster is assigned to tenant: `"team-a"`
 - When `alice` lists clusters:
   - She can see clusters from: `["team-a", "team-b", "shared"]`
 
@@ -454,9 +449,9 @@ Example with a service account:
 - Service account `system:serviceaccount:osac:controller`
 - Authorino extracts the namespace `osac` as the tenant: `["osac"]`
 - Assignable tenants: `["osac"]`
-- Default tenants: `["osac"]`
-- When creating a resource without specifying tenants:
-  - Assigned to tenant: `["osac"]`
+- Default tenant: `"osac"`
+- When creating a resource without specifying a tenant:
+  - Assigned to tenant: `"osac"`
 - When listing resources:
   - Can see resources from: `["osac", "shared"]`
 
@@ -465,7 +460,7 @@ Example with a service account:
 Use `--tenancy-logic=guest` for guest user access:
 
 - **Assignable Tenants**: The `guest` tenant only
-- **Default Tenants**: The `guest` tenant
+- **Default Tenant**: The `guest` tenant
 - **Visible Tenants**: The `guest` tenant plus the `shared` tenant
 
 This is intended only for development and testing environments, in combination with the `guest`
@@ -474,9 +469,9 @@ authentication function.
 Example:
 - Any user (authenticated or guest)
 - Assignable tenants: `["guest"]`
-- Default tenants: `["guest"]`
-- When creating a resource without specifying tenants:
-  - Assigned to tenant: `["guest"]`
+- Default tenant: `"guest"`
+- When creating a resource without specifying a tenant:
+  - Assigned to tenant: `"guest"`
 - When listing resources:
   - Can see resources from: `["guest", "shared"]`
 
@@ -703,7 +698,7 @@ The fulfillment service uses a two-level authorization approach:
        `x-subject` header (set by Authorino)
      - Applies tenancy logic to determine:
        - **Assignable tenants**: Which tenants can be assigned to resources
-       - **Default tenants**: Which tenants to assign if not explicitly specified
+       - **Default tenant**: Which tenant to assign if not explicitly specified
        - **Visible tenants**: Which tenants the user can query
          resources from
      - Validates access to specific resources
@@ -725,9 +720,9 @@ The fulfillment service uses a two-level authorization approach:
 4. **Fulfillment Service**:
    - Reads user: `alice`, tenants: `["team-a"]` from `x-subject`
      header
-   - Determines assignable tenants: `["team-a"]`, default tenants:
-     `["team-a"]`, visible tenants: `["team-a", "shared"]`
-   - No tenants specified, so assigns the default tenants: `["team-a"]`
+   - Determines assignable tenants: `["team-a"]`, default tenant:
+     `"team-a"`, visible tenants: `["team-a", "shared"]`
+   - No tenant specified, so assigns the default tenant: `"team-a"`
    - **Result**: Cluster created ✅
 
 #### Scenario 2: Client User Accessing Admin-Only Method

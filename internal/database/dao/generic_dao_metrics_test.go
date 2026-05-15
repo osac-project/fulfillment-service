@@ -99,7 +99,7 @@ var _ = Describe("Metrics", func() {
 				SetObject(
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
-							Tenants: []string{"my-tenant"},
+							Tenant: "my-tenant",
 						}.Build(),
 					}.Build(),
 				).
@@ -117,7 +117,7 @@ var _ = Describe("Metrics", func() {
 				SetObject(
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
-							Tenants: []string{"my-tenant"},
+							Tenant: "my-tenant",
 						}.Build(),
 					}.Build(),
 				).
@@ -135,7 +135,7 @@ var _ = Describe("Metrics", func() {
 				SetObject(
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
-							Tenants: []string{"my-tenant"},
+							Tenant: "my-tenant",
 						}.Build(),
 					}.Build(),
 				).
@@ -151,7 +151,7 @@ var _ = Describe("Metrics", func() {
 		It("Includes error code label for failed operations", func() {
 			object := testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenants: []string{"my-tenant"},
+					Tenant: "my-tenant",
 				}.Build(),
 			}.Build()
 			object.SetId("duplicate")
@@ -188,7 +188,7 @@ var _ = Describe("Metrics", func() {
 						SetObject(
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
-									Tenants: []string{"my-tenant"},
+									Tenant: "my-tenant",
 								}.Build(),
 							}.Build(),
 						).
@@ -204,7 +204,7 @@ var _ = Describe("Metrics", func() {
 						SetObject(
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
-									Tenants: []string{"my-tenant"},
+									Tenant: "my-tenant",
 								}.Build(),
 							}.Build(),
 						).
@@ -242,7 +242,7 @@ var _ = Describe("Metrics", func() {
 						SetObject(
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
-									Tenants: []string{"my-tenant"},
+									Tenant: "my-tenant",
 								}.Build(),
 							}.Build(),
 						).
@@ -264,7 +264,7 @@ var _ = Describe("Metrics", func() {
 						SetObject(
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
-									Tenants: []string{"my-tenant"},
+									Tenant: "my-tenant",
 								}.Build(),
 							}.Build(),
 						).
@@ -284,7 +284,7 @@ var _ = Describe("Metrics", func() {
 						SetObject(
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
-									Tenants: []string{"my-tenant"},
+									Tenant: "my-tenant",
 								}.Build(),
 							}.Build(),
 						).
@@ -304,7 +304,7 @@ var _ = Describe("Metrics", func() {
 						SetObject(
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
-									Tenants: []string{"my-tenant"},
+									Tenant: "my-tenant",
 								}.Build(),
 							}.Build(),
 						).
@@ -324,7 +324,7 @@ var _ = Describe("Metrics", func() {
 						SetObject(
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
-									Tenants: []string{"my-tenant"},
+									Tenant: "my-tenant",
 								}.Build(),
 							}.Build(),
 						).
@@ -344,7 +344,7 @@ var _ = Describe("Metrics", func() {
 					SetObject(
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
-								Tenants: []string{"my-tenant"},
+								Tenant: "my-tenant",
 							}.Build(),
 						}.Build(),
 					).
@@ -369,7 +369,7 @@ var _ = Describe("Metrics", func() {
 				SetObject(
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
-							Tenants: []string{"my-tenant"},
+							Tenant: "my-tenant",
 						}.Build(),
 					}.Build(),
 				).

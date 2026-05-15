@@ -146,7 +146,7 @@ func (x ProjectState) Number() protoreflect.EnumNumber {
 // resource grouping.
 //
 // For nested projects, the spec.parent field references the parent Project ID. Tenant isolation is
-// enforced via the standard metadata.tenants field.
+// enforced via the standard metadata.tenant field.
 //
 // Projects support the following use cases:
 // - Organizing resources by team, department, or application
@@ -269,7 +269,7 @@ type Project_builder struct {
 
 	// Unique identifier of the project.
 	Id string
-	// Metadata of the project, including name, labels, tenants, and timestamps.
+	// Metadata of the project, including name, labels, tenant, and timestamps.
 	Metadata *Metadata
 	// Desired configuration of the project (user-modifiable).
 	Spec *ProjectSpec

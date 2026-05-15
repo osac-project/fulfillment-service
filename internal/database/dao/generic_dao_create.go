@@ -73,27 +73,21 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		name        string
 		labels      map[string]string
 		annotations map[string]string
-		tenants     []string
-		creators    []string
+		tenant      string
+		creator     string
 	)
 	if metadata != nil {
 		name = metadata.GetName()
 		labels = metadata.GetLabels()
 		annotations = metadata.GetAnnotations()
-		tenants = metadata.GetTenants()
-		creators = metadata.GetCreators()
+		tenant = metadata.GetTenant()
+		creator = metadata.GetCreator()
 	}
 
-	// Validate that tenants are not empty:
-	if len(tenants) == 0 {
-		err = errors.New("cannot create object with empty tenants")
+	// Validate that tenant is not empty:
+	if tenant == "" {
+		err = errors.New("cannot create object with empty tenant")
 		return
-	}
-
-	// The list of creators may be empty, but not nil, as otherwise that results in a null database column, and
-	// that violates the database constraints.
-	if creators == nil {
-		creators = []string{}
 	}
 
 	// Save the object:
@@ -115,8 +109,8 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			id,
 			name,
 			finalizers,
-			creators,
-			tenants,
+			creator,
+			tenant,
 			labels,
 			annotations,
 			data
@@ -151,8 +145,8 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			id,
 			name,
 			finalizers,
-			creators,
-			tenants,
+			creator,
+			tenant,
 			labelsData,
 			annotationsData,
 			data,
@@ -180,8 +174,8 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		creationTs:  creationTs,
 		deletionTs:  deletionTs,
 		finalizers:  finalizers,
-		creators:    creators,
-		tenants:     tenants,
+		creator:     creator,
+		tenant:      tenant,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,

@@ -202,7 +202,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.ComputeInstanceUuid: t.computeInstance.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.computeInstance.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.computeInstance.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -270,8 +270,8 @@ func (t *task) setConditionDefaults(value privatev1.ComputeInstanceConditionType
 }
 
 func (t *task) validateTenant() error {
-	if !t.computeInstance.HasMetadata() || len(t.computeInstance.GetMetadata().GetTenants()) != 1 {
-		return errors.New("Compute instance must have exactly one tenant assigned")
+	if !t.computeInstance.HasMetadata() || t.computeInstance.GetMetadata().GetTenant() == "" {
+		return errors.New("Compute instance must have a tenant assigned")
 	}
 	return nil
 }

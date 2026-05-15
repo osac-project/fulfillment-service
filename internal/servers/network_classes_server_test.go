@@ -514,7 +514,7 @@ var _ = Describe("Network classes server", func() {
 					ImplementationStrategy: "ovn-kubernetes",
 					IsDefault:              proto.Bool(true),
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: "shared",
 					}.Build(),
 					Status: privatev1.NetworkClassStatus_builder{
 						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
@@ -529,7 +529,7 @@ var _ = Describe("Network classes server", func() {
 					ImplementationStrategy: "ovn-kubernetes",
 					IsDefault:              proto.Bool(true),
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: "shared",
 					}.Build(),
 					Status: privatev1.NetworkClassStatus_builder{
 						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
@@ -661,7 +661,7 @@ var _ = Describe("Network classes server", func() {
 					ImplementationStrategy: "ovn-kubernetes",
 					IsDefault:              proto.Bool(true),
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: "shared",
 					}.Build(),
 					Status: privatev1.NetworkClassStatus_builder{
 						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
@@ -715,7 +715,7 @@ var _ = Describe("Network classes server", func() {
 					ImplementationStrategy: "ovn-kubernetes",
 					IsDefault:              proto.Bool(true),
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: "shared",
 					}.Build(),
 					Status: privatev1.NetworkClassStatus_builder{
 						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
@@ -730,7 +730,7 @@ var _ = Describe("Network classes server", func() {
 					ImplementationStrategy: "ovn-kubernetes",
 					IsDefault:              proto.Bool(true),
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: "shared",
 					}.Build(),
 					Status: privatev1.NetworkClassStatus_builder{
 						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
@@ -755,7 +755,7 @@ var _ = Describe("Network classes server", func() {
 					ImplementationStrategy: "ovn-kubernetes",
 					IsDefault:              proto.Bool(true),
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: "shared",
 					}.Build(),
 					Status: privatev1.NetworkClassStatus_builder{
 						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
@@ -770,7 +770,7 @@ var _ = Describe("Network classes server", func() {
 					ImplementationStrategy: "ovn-kubernetes",
 					IsDefault:              proto.Bool(true),
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: "shared",
 					}.Build(),
 					Status: privatev1.NetworkClassStatus_builder{
 						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,

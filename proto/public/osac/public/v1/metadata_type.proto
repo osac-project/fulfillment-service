@@ -25,8 +25,8 @@ message Metadata {
   // Time of deletion of the object.
   google.protobuf.Timestamp deletion_timestamp = 2;
 
-  // Names of the creators of the object.
-  repeated string creators = 3;
+  // Name of the creator of the object.
+  string creator = 3;
 
   // Human friendly name of the object.
   //
@@ -39,8 +39,8 @@ message Metadata {
   // It is optional and not unique, so multiple objecs, even created by the same user or tenant, can have the same name.
   string name = 4;
 
-  // Identifiers of the tenants that the object is assigned to.
-  repeated string tenants = 5;
+  // Identifier of the tenant that the object is assigned to.
+  string tenant = 5;
 
   // Labels contains key-value pairs for organizing and selecting objects.
   //

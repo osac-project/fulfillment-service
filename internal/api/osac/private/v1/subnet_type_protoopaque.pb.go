@@ -272,7 +272,7 @@ type Subnet_builder struct {
 
 	// Unique identifier of the subnet.
 	Id string
-	// Metadata of the subnet, including name, labels, tenants, and timestamps.
+	// Metadata of the subnet, including name, labels, tenant, and timestamps.
 	//
 	// The parent VirtualNetwork relationship should be specified via metadata.annotations using the
 	// 'osac.io/owner-reference' key with the VirtualNetwork ID as the value. This establishes resource

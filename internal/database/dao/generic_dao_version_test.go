@@ -101,7 +101,7 @@ var _ = Describe("Version", func() {
 		response, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -116,7 +116,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -136,7 +136,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -157,7 +157,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -191,7 +191,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
 					MyInt32:  0,
 				}.Build(),
 			).
@@ -215,7 +215,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -253,7 +253,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
 					MyString: "v0",
 				}.Build(),
 			).

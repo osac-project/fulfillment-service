@@ -751,6 +751,6 @@ var _ = Describe("Public clusters", func() {
 		Expect(object).ToNot(BeNil())
 		metadata := object.GetMetadata()
 		Expect(metadata).ToNot(BeNil())
-		Expect(metadata.GetCreators()).To(ConsistOf(userUsername))
+		Expect(metadata.GetCreator()).To(Equal(userUsername))
 	})
 })

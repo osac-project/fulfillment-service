@@ -182,7 +182,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.PublicIPUuid: t.publicIP.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.publicIP.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.publicIP.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -225,8 +225,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	if !t.publicIP.HasMetadata() || len(t.publicIP.GetMetadata().GetTenants()) != 1 {
-		return errors.New("public IP must have exactly one tenant assigned")
+	if !t.publicIP.HasMetadata() || t.publicIP.GetMetadata().GetTenant() == "" {
+		return errors.New("public IP must have a tenant assigned")
 	}
 	return nil
 }

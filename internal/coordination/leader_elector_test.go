@@ -78,15 +78,15 @@ var _ = Describe("Leader elector", func() {
 
 		// Create the attribution and tenancy logic:
 		attribution := auth.NewMockAttributionLogic(ctrl)
-		attribution.EXPECT().DetermineAssignedCreators(gomock.Any()).
-			Return(collections.NewSet("system"), nil).
+		attribution.EXPECT().DetermineAssignedCreator(gomock.Any()).
+			Return("system", nil).
 			AnyTimes()
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
 			Return(collections.NewSet("system"), nil).
 			AnyTimes()
-		tenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-			Return(collections.NewSet("system"), nil).
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return("system", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("system"), nil).

@@ -29,11 +29,11 @@ message Metadata {
   // has been deleted and this list is empty the system will automatically archive the object.
   repeated string finalizers = 3;
 
-  // Creators contains the identifiers of the users and groups that created the object.
-  repeated string creators = 4;
+  // Creator contains the identifier of the user or group that created the object.
+  string creator = 4;
 
-  // Tenants contains the identifiers of the tenants that the object belongs to.
-  repeated string tenants = 5;
+  // Tenant contains the identifier of the tenant that the object belongs to.
+  string tenant = 5;
 
   // Human friendly name of the object.
   //

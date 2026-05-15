@@ -25,7 +25,7 @@ import "osac/public/v1/metadata_type.proto";
 // resource grouping.
 //
 // For nested projects, the spec.parent field references the parent Project ID. Tenant isolation is
-// enforced via the standard metadata.tenants field.
+// enforced via the standard metadata.tenant field.
 //
 // Projects support the following use cases:
 // - Organizing resources by team, department, or application
@@ -35,7 +35,7 @@ message Project {
   // Unique identifier of the project.
   string id = 1;
 
-  // Metadata of the project, including name, labels, tenants, and timestamps.
+  // Metadata of the project, including name, labels, tenant, and timestamps.
   Metadata metadata = 2;
 
   // Desired configuration of the project (user-modifiable).

@@ -150,8 +150,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.HostType_builder{
 						Id: "acme-1ti-id",
 						Metadata: privatev1.Metadata_builder{
-							Name:    "acme-1ti-name",
-							Tenants: []string{"shared"},
+							Name:   "acme-1ti-name",
+							Tenant: "shared",
 						}.Build(),
 						Title:       "ACME 1TiB",
 						Description: "ACME 1TiB.",
@@ -164,8 +164,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.HostType_builder{
 						Id: "acme-gpu-id",
 						Metadata: privatev1.Metadata_builder{
-							Name:    "acme-gpu-name",
-							Tenants: []string{"shared"},
+							Name:   "acme-gpu-name",
+							Tenant: "shared",
 						}.Build(),
 						Title:       "ACME GPU",
 						Description: "ACME GPU.",
@@ -180,8 +180,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.ClusterTemplate_builder{
 						Id: "my-template-id",
 						Metadata: privatev1.Metadata_builder{
-							Name:    "my-template-name",
-							Tenants: []string{"shared"},
+							Name:   "my-template-name",
+							Tenant: "shared",
 						}.Build(),
 						Title:       "My template",
 						Description: "My template",
@@ -209,7 +209,7 @@ var _ = Describe("Private clusters server", func() {
 							Title:       fmt.Sprintf("My template %d", i),
 							Description: fmt.Sprintf("My template %d", i),
 							Metadata: privatev1.Metadata_builder{
-								Tenants: []string{"shared"},
+								Tenant: "shared",
 							}.Build(),
 							NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 								"compute": privatev1.ClusterTemplateNodeSet_builder{

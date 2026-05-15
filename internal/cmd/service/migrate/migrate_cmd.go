@@ -65,7 +65,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 
 	// Run the migrations:
 	logger.InfoContext(ctx, "Running database migrations")
-	err = dbTool.Migrate(ctx)
+	err = dbTool.Migrate(ctx, 0)
 	if err != nil {
 		return fmt.Errorf("failed to run database migrations: %w", err)
 	}

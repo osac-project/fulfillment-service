@@ -17,8 +17,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-
-	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 // DefaultAttributionLogicBuilder contains the data and logic needed to create default attribution logic.
@@ -59,9 +57,9 @@ func (b *DefaultAttributionLogicBuilder) Build() (result *DefaultAttributionLogi
 	return
 }
 
-// DetermineAssignedCreators extracts the subject from the auth context and returns the subject name as the creator.
-func (l *DefaultAttributionLogic) DetermineAssignedCreators(ctx context.Context) (result collections.Set[string], err error) {
+// DetermineAssignedCreator extracts the subject from the auth context and returns the subject name as the creator.
+func (l *DefaultAttributionLogic) DetermineAssignedCreator(ctx context.Context) (result string, err error) {
 	subject := SubjectFromContext(ctx)
-	result = collections.NewSet(subject.User)
+	result = subject.User
 	return
 }

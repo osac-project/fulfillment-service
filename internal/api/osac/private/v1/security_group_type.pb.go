@@ -226,7 +226,7 @@ type SecurityGroup struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
 	// Unique identifier of the security group.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Metadata of the security group, including name, labels, tenants, and timestamps.
+	// Metadata of the security group, including name, labels, tenant, and timestamps.
 	//
 	// The parent VirtualNetwork relationship should be specified via metadata.annotations using the
 	// 'osac.io/owner-reference' key with the VirtualNetwork ID as the value. This establishes resource
@@ -347,7 +347,7 @@ type SecurityGroup_builder struct {
 
 	// Unique identifier of the security group.
 	Id string
-	// Metadata of the security group, including name, labels, tenants, and timestamps.
+	// Metadata of the security group, including name, labels, tenant, and timestamps.
 	//
 	// The parent VirtualNetwork relationship should be specified via metadata.annotations using the
 	// 'osac.io/owner-reference' key with the VirtualNetwork ID as the value. This establishes resource
