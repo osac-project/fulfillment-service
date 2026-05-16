@@ -87,15 +87,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
 	// Create the gRPC connection from the configuration:
+	var err error
 	c.conn, err = cfg.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)

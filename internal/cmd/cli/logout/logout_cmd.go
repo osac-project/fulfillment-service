@@ -15,12 +15,10 @@ package logout
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/osac-project/fulfillment-service/internal/config"
-	"github.com/osac-project/fulfillment-service/internal/oauth"
 )
 
 func Cmd() *cobra.Command {
@@ -40,30 +38,14 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Get the context:
 	ctx := cmd.Context()
 
-	// Load the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
-	if cfg == nil {
-		cfg = &config.Config{}
-	}
+	// Get the configuration from the context:
+	cfg := config.SettingsFromContext(ctx)
 
 	// Clear all the details:
-	cfg.AccessToken = ""
-	cfg.Plaintext = false
-	cfg.Insecure = false
-	cfg.Address = ""
-	cfg.RefreshToken = ""
-	cfg.TokenExpiry = time.Time{}
-	cfg.OAuthFlow = oauth.Flow("")
-	cfg.OauthIssuer = ""
-	cfg.OAuthClientId = ""
-	cfg.OAuthClientSecret = ""
-	cfg.OAuthScopes = nil
+	cfg.Reset()
 
 	// Save the configuration:
-	err = config.Save(cfg)
+	err := cfg.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}

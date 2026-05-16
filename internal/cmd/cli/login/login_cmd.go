@@ -291,8 +291,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to select token issuer: %w", err)
 	}
 
-	// Create an empty configuration and a token store that will load/save tokens from/to that configuration:
-	cfg := &config.Config{}
+	// Get the settings from the context, reset them to discard any previous configuration, and create a token store:
+	cfg := config.SettingsFromContext(ctx)
+	cfg.Reset()
 	c.tokenStore = cfg.TokenStore()
 
 	// Create the token source only if a token issuer has been selected.
@@ -311,17 +312,17 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save the basic details of the configuration:
-	cfg.Plaintext = c.plaintext
-	cfg.Insecure = c.args.insecure
-	cfg.Address = c.address
-	cfg.Private = c.args.private
+	cfg.SetPlaintext(c.plaintext)
+	cfg.SetInsecure(c.args.insecure)
+	cfg.SetAddress(c.address)
+	cfg.SetPrivate(c.args.private)
 
 	// For CA files that are absolute we need to store only the path, but for those that are relative we need to
 	// save the content because otherwise we will not be able to use them when the command is executed from a
 	// different directory.
 	for _, caFile := range c.args.caFiles {
 		if filepath.IsAbs(caFile) {
-			cfg.CaFiles = append(cfg.CaFiles, config.CaFile{
+			cfg.AddCaFile(config.CaFile{
 				Name: caFile,
 			})
 		} else {
@@ -329,7 +330,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("failed to read CA file '%s': %w", caFile, err)
 			}
-			cfg.CaFiles = append(cfg.CaFiles, config.CaFile{
+			cfg.AddCaFile(config.CaFile{
 				Name:    caFile,
 				Content: string(caContent),
 			})
@@ -339,18 +340,18 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Save the authenticatoin configuration. Note that the OAuth settings are only saved when they are actually
 	// used, and they won't be actually used if the user selected to use a static token or a token script.
 	if c.args.token != "" {
-		cfg.AccessToken = c.args.token
+		cfg.SetAccessToken(c.args.token)
 	} else if c.args.tokenScript != "" {
-		cfg.TokenScript = c.args.tokenScript
+		cfg.SetTokenScript(c.args.tokenScript)
 	} else if tokenIssuer != "" {
-		cfg.OauthIssuer = tokenIssuer
-		cfg.OAuthFlow = oauth.Flow(c.args.oauthFlow)
-		cfg.OAuthClientId = c.args.oauthClientId
-		cfg.OAuthClientSecret = c.args.oauthClientSecret
-		cfg.OAuthScopes = c.args.oauthScopes
-		cfg.OAuthRedirectUri = c.args.oauthRedirectUri
-		cfg.OAuthUser = c.args.oauthUser
-		cfg.OAuthPassword = c.args.oauthPassword
+		cfg.SetOauthIssuer(tokenIssuer)
+		cfg.SetOAuthFlow(oauth.Flow(c.args.oauthFlow))
+		cfg.SetOAuthClientId(c.args.oauthClientId)
+		cfg.SetOAuthClientSecret(c.args.oauthClientSecret)
+		cfg.SetOAuthScopes(c.args.oauthScopes)
+		cfg.SetOAuthRedirectUri(c.args.oauthRedirectUri)
+		cfg.SetOAuthUser(c.args.oauthUser)
+		cfg.SetOAuthPassword(c.args.oauthPassword)
 	}
 
 	// Replace the gRPC anonymous connection with the authenticated one:
@@ -381,7 +382,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Everything is working, so we can save the configuration:
-	err = config.Save(cfg)
+	err = cfg.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}

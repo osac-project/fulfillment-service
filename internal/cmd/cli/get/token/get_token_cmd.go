@@ -97,11 +97,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		c.console.Errorf(ctx, "There is no configuration, run the 'login' command.\n")
 		return exit.Error(1)
 	}

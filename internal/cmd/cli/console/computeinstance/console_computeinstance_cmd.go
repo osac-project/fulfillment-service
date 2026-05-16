@@ -103,16 +103,14 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Load configuration.
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		c.console.Errorf(ctx, "Not logged in. Run 'osac login' first.\n")
 		return exit.Error(1)
 	}
 
 	// Create gRPC connection.
+	var err error
 	c.conn, err = cfg.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create connection: %w", err)
