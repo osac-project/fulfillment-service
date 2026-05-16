@@ -16,6 +16,7 @@ syntax = "proto3";
 package osac.private.v1;
 
 import "google/api/field_behavior.proto";
+import "osac/private/v1/condition_status_type.proto";
 import "osac/private/v1/metadata_type.proto";
 
 // A project is a logical grouping of resources.
@@ -106,6 +107,15 @@ message ProjectStatus {
   // - "Failed to delete child projects"
   // - "Resources still attached to project"
   optional string message = 2;
+
+  // Detailed conditions describing the current state of various aspects of the project.
+  //
+  // Conditions provide fine-grained status information about specific aspects of project initialization,
+  // such as whether OpenShift Projects have been created across all hubs, or whether access controls
+  // have been configured in Keycloak.
+  //
+  // Each condition has a type, status (True/False/Unknown), and optional reason and message.
+  repeated ProjectCondition conditions = 3;
 }
 
 // Lifecycle states for Project resources.
@@ -170,4 +180,58 @@ enum ProjectState {
   // Manual intervention may be required to resolve the underlying issue
   // before retrying deletion.
   PROJECT_STATE_DELETE_FAILED = 5;
+}
+
+// Represents a specific aspect of the project's current state.
+//
+// Conditions follow the Kubernetes condition pattern, providing detailed status information
+// about various subsystems or aspects of the project.
+message ProjectCondition {
+  // Type of condition.
+  ProjectConditionType type = 1;
+
+  // Status of the condition (True, False, or Unknown).
+  ConditionStatus status = 2;
+
+  // Machine-readable reason for the condition's last transition.
+  //
+  // This should be a brief CamelCase string that describes why the condition changed.
+  // Examples: "HubsSynced", "PartialSync", "SyncFailed"
+  optional string reason = 3;
+
+  // Human-readable message providing details about the condition.
+  //
+  // This should explain the current status in more detail, including specifics like
+  // which hubs succeeded or failed.
+  // Examples:
+  // - "OpenShift Projects created on all 5 hubs"
+  // - "OpenShift Projects created on 3/5 hubs (failed: hub-east-1, hub-west-2)"
+  // - "Failed to sync to any hubs: no hubs available"
+  optional string message = 4;
+}
+
+// Types of conditions that can be reported for a Project.
+enum ProjectConditionType {
+  // Unspecified condition type.
+  PROJECT_CONDITION_TYPE_UNSPECIFIED = 0;
+
+  // Indicates whether OpenShift Projects (namespaces) have been successfully created across all managed hubs.
+  //
+  // Status meanings:
+  // - True: OpenShift Projects exist on all hubs
+  // - False: OpenShift Projects failed to sync to one or more hubs, or no hubs available
+  // - Unknown: Hub sync has not been attempted yet
+  //
+  // This condition is set during project activation and updated if hubs are added/removed.
+  PROJECT_CONDITION_TYPE_HUB_SYNC = 1;
+
+  // Indicates whether Keycloak Authorization Resources have been configured for project-level permissions.
+  //
+  // Status meanings:
+  // - True: Keycloak Authorization Resource created successfully
+  // - False: Failed to create Keycloak Authorization Resource
+  // - Unknown: Keycloak sync has not been attempted yet
+  //
+  // This condition is set during project activation.
+  PROJECT_CONDITION_TYPE_KEYCLOAK_SYNC = 2;
 }

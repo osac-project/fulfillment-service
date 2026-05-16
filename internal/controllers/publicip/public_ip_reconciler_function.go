@@ -395,8 +395,5 @@ func (t *task) buildSpec() osacv1alpha1.PublicIPSpec {
 	spec := osacv1alpha1.PublicIPSpec{
 		Pool: t.publicIP.GetSpec().GetPool(),
 	}
-	if t.publicIP.GetSpec().HasComputeInstance() {
-		spec.ComputeInstance = t.publicIP.GetSpec().GetComputeInstance()
-	}
 	return spec
 }

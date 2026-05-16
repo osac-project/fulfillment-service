@@ -32,20 +32,19 @@ var _ = Describe("Describe PublicIP", func() {
 	Describe("Rendering tests", func() {
 		It("should display all fields when set", func() {
 			msg := "IP allocated"
-			ci := "ci-xyz789"
 			pip := publicv1.PublicIP_builder{
 				Id: "pip-001",
 				Metadata: publicv1.Metadata_builder{
 					Name: "my-ip",
 				}.Build(),
 				Spec: publicv1.PublicIPSpec_builder{
-					Pool:            "pool-abc123",
-					ComputeInstance: &ci,
+					Pool: "pool-abc123",
 				}.Build(),
 				Status: publicv1.PublicIPStatus_builder{
-					State:   publicv1.PublicIPState_PUBLIC_IP_STATE_ATTACHED,
-					Address: "203.0.113.42",
-					Message: &msg,
+					State:    publicv1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED,
+					Address:  "203.0.113.42",
+					Message:  &msg,
+					Attached: true,
 				}.Build(),
 			}.Build()
 
@@ -53,10 +52,10 @@ var _ = Describe("Describe PublicIP", func() {
 			Expect(output).To(ContainSubstring("pip-001"))
 			Expect(output).To(ContainSubstring("my-ip"))
 			Expect(output).To(ContainSubstring("pool-abc123"))
-			Expect(output).To(ContainSubstring("ci-xyz789"))
 			Expect(output).To(ContainSubstring("203.0.113.42"))
-			Expect(output).To(ContainSubstring("ATTACHED"))
+			Expect(output).To(ContainSubstring("ALLOCATED"))
 			Expect(output).To(ContainSubstring("IP allocated"))
+			Expect(output).To(MatchRegexp(`Attached:\s+true`))
 		})
 
 		It("should show '-' for optional fields when status is nil", func() {
@@ -69,7 +68,7 @@ var _ = Describe("Describe PublicIP", func() {
 
 			output := formatPublicIP(pip)
 			Expect(output).To(MatchRegexp(`Name:\s+-`))
-			Expect(output).To(MatchRegexp(`Compute Instance:\s+-`))
+			Expect(output).To(MatchRegexp(`Attached:\s+false`))
 			Expect(output).To(MatchRegexp(`Address:\s+-`))
 			Expect(output).To(MatchRegexp(`State:\s+-`))
 			Expect(output).To(MatchRegexp(`Message:\s+-`))
@@ -88,7 +87,7 @@ var _ = Describe("Describe PublicIP", func() {
 			}.Build()
 
 			output := formatPublicIP(pip)
-			Expect(output).To(MatchRegexp(`Compute Instance:\s+-`))
+			Expect(output).To(MatchRegexp(`Attached:\s+false`))
 			Expect(output).To(ContainSubstring("203.0.113.10"))
 		})
 

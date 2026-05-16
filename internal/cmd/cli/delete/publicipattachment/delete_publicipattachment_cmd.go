@@ -18,7 +18,6 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/config"
@@ -29,15 +28,15 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "publicipattachment PUBLIC_IP",
-		Short: "Detach a public IP from its compute instance",
-		Long: "Detach an existing public IP from the compute instance it is currently attached to. " +
-			"The public IP is identified by its ID or name.",
-		Example: `  # Detach a public IP by name
-  osac delete publicipattachment my-ip
+		Use:   "publicipattachment ATTACHMENT",
+		Short: "Delete a public IP attachment",
+		Long: "Delete a PublicIPAttachment to detach a public IP from its target. " +
+			"The attachment is identified by its ID or name.",
+		Example: `  # Delete an attachment by name
+  osac delete publicipattachment my-attachment
 
-  # Detach a public IP by ID
-  osac delete publicipattachment pip-abc123`,
+  # Delete an attachment by ID
+  osac delete publicipattachment pia-abc123`,
 		Args: cobra.ExactArgs(1),
 		RunE: runner.run,
 	}
@@ -69,39 +68,32 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
-	client := publicv1.NewPublicIPsClient(conn)
+	client := publicv1.NewPublicIPAttachmentsClient(conn)
 
+	// Resolve the attachment by name or ID:
 	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, args[0])
-	listResponse, err := client.List(ctx, publicv1.PublicIPsListRequest_builder{
+	listResponse, err := client.List(ctx, publicv1.PublicIPAttachmentsListRequest_builder{
 		Filter: &filter,
 	}.Build())
 	if err != nil {
-		return fmt.Errorf("failed to resolve public IP '%s': %w", args[0], err)
+		return fmt.Errorf("failed to resolve public IP attachment '%s': %w", args[0], err)
 	}
 	if len(listResponse.GetItems()) == 0 {
-		return fmt.Errorf("public IP not found: %s", args[0])
+		return fmt.Errorf("public IP attachment not found: %s", args[0])
 	}
 	if len(listResponse.GetItems()) > 1 {
-		return fmt.Errorf("multiple public IPs match '%s', use the ID instead", args[0])
+		return fmt.Errorf("multiple public IP attachments match '%s', use the ID instead", args[0])
 	}
 
-	pip := listResponse.GetItems()[0]
-	if spec := pip.GetSpec(); spec != nil {
-		spec.ClearComputeInstance()
-	}
-
-	response, err := client.Update(ctx, publicv1.PublicIPsUpdateRequest_builder{
-		Object: pip,
-		UpdateMask: &fieldmaskpb.FieldMask{
-			Paths: []string{"spec.compute_instance"},
-		},
+	attachment := listResponse.GetItems()[0]
+	_, err = client.Delete(ctx, publicv1.PublicIPAttachmentsDeleteRequest_builder{
+		Id: attachment.GetId(),
 	}.Build())
 	if err != nil {
-		return fmt.Errorf("failed to detach public IP: %w", err)
+		return fmt.Errorf("failed to delete public IP attachment: %w", err)
 	}
 
-	c.console.Infof(ctx, "Detached public IP '%s' from its compute instance.\n",
-		response.GetObject().GetId())
+	c.console.Infof(ctx, "Deleted public IP attachment '%s'.\n", attachment.GetId())
 
 	return nil
 }

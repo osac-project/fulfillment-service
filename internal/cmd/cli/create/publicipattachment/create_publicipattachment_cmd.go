@@ -18,7 +18,6 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/config"
@@ -31,7 +30,7 @@ func Cmd() *cobra.Command {
 	result := &cobra.Command{
 		Use:   "publicipattachment [flags]",
 		Short: "Attach a public IP to a compute instance",
-		Long: "Attach an existing public IP to a compute instance by setting spec.compute_instance. " +
+		Long: "Create a PublicIPAttachment to bind a public IP to a compute instance. " +
 			"Both --publicip and --compute-instance flags are required.",
 		Example: `  # Attach a public IP to a compute instance
   osac create publicipattachment --publicip my-ip --compute-instance my-vm
@@ -88,10 +87,10 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
-	client := publicv1.NewPublicIPsClient(conn)
-
+	// Resolve the PublicIP by name or ID:
+	publicIPsClient := publicv1.NewPublicIPsClient(conn)
 	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, c.args.publicIP)
-	listResponse, err := client.List(ctx, publicv1.PublicIPsListRequest_builder{
+	listResponse, err := publicIPsClient.List(ctx, publicv1.PublicIPsListRequest_builder{
 		Filter: &filter,
 	}.Build())
 	if err != nil {
@@ -103,27 +102,26 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if len(listResponse.GetItems()) > 1 {
 		return fmt.Errorf("multiple public IPs match '%s', use the ID instead", c.args.publicIP)
 	}
+	pipID := listResponse.GetItems()[0].GetId()
 
-	pip := listResponse.GetItems()[0]
-	spec := pip.GetSpec()
-	if spec == nil {
-		spec = new(publicv1.PublicIPSpec)
-		pip.SetSpec(spec)
-	}
-	spec.SetComputeInstance(c.args.computeInstance)
+	// Create the PublicIPAttachment:
+	attachClient := publicv1.NewPublicIPAttachmentsClient(conn)
+	attachment := publicv1.PublicIPAttachment_builder{
+		Spec: publicv1.PublicIPAttachmentSpec_builder{
+			PublicIp:        pipID,
+			ComputeInstance: &c.args.computeInstance,
+		}.Build(),
+	}.Build()
 
-	response, err := client.Update(ctx, publicv1.PublicIPsUpdateRequest_builder{
-		Object: pip,
-		UpdateMask: &fieldmaskpb.FieldMask{
-			Paths: []string{"spec.compute_instance"},
-		},
+	response, err := attachClient.Create(ctx, publicv1.PublicIPAttachmentsCreateRequest_builder{
+		Object: attachment,
 	}.Build())
 	if err != nil {
-		return fmt.Errorf("failed to attach public IP: %w", err)
+		return fmt.Errorf("failed to create public IP attachment: %w", err)
 	}
 
-	c.console.Infof(ctx, "Attached public IP '%s' to compute instance '%s'.\n",
-		response.GetObject().GetId(), c.args.computeInstance)
+	c.console.Infof(ctx, "Created public IP attachment '%s' (public IP '%s' -> compute instance '%s').\n",
+		response.GetObject().GetId(), pipID, c.args.computeInstance)
 
 	return nil
 }

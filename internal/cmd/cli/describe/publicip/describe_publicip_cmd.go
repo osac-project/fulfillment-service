@@ -114,11 +114,9 @@ func RenderPublicIP(w io.Writer, pip *publicv1.PublicIP) {
 		pool = v
 	}
 
-	computeInstance := "-"
-	if pip.GetSpec().HasComputeInstance() {
-		if v := pip.GetSpec().GetComputeInstance(); v != "" {
-			computeInstance = v
-		}
+	attached := "false"
+	if pip.GetStatus() != nil && pip.GetStatus().GetAttached() {
+		attached = "true"
 	}
 
 	address := "-"
@@ -137,7 +135,7 @@ func RenderPublicIP(w io.Writer, pip *publicv1.PublicIP) {
 	fmt.Fprintf(writer, "ID:\t%s\n", pip.GetId())
 	fmt.Fprintf(writer, "Name:\t%s\n", name)
 	fmt.Fprintf(writer, "Pool:\t%s\n", pool)
-	fmt.Fprintf(writer, "Compute Instance:\t%s\n", computeInstance)
+	fmt.Fprintf(writer, "Attached:\t%s\n", attached)
 	fmt.Fprintf(writer, "Address:\t%s\n", address)
 	fmt.Fprintf(writer, "State:\t%s\n", state)
 	fmt.Fprintf(writer, "Message:\t%s\n", message)

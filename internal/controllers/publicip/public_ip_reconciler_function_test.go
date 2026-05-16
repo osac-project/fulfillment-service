@@ -51,14 +51,12 @@ func (f *fakePublicIPPoolsClient) Get(
 }
 
 var _ = Describe("buildSpec", func() {
-	It("Includes pool and computeInstance when both present", func() {
-		ci := "ci-xyz789"
+	It("Includes pool in spec", func() {
 		t := &task{
 			publicIP: privatev1.PublicIP_builder{
 				Id: "pip-test-1",
 				Spec: privatev1.PublicIPSpec_builder{
-					Pool:            "pool-abc123",
-					ComputeInstance: &ci,
+					Pool: "pool-abc123",
 				}.Build(),
 			}.Build(),
 		}
@@ -66,33 +64,14 @@ var _ = Describe("buildSpec", func() {
 		spec := t.buildSpec()
 
 		Expect(spec.Pool).To(Equal("pool-abc123"))
-		Expect(spec.ComputeInstance).To(Equal("ci-xyz789"))
-	})
-
-	It("Includes only pool when computeInstance is absent", func() {
-		t := &task{
-			publicIP: privatev1.PublicIP_builder{
-				Id: "pip-test-2",
-				Spec: privatev1.PublicIPSpec_builder{
-					Pool: "pool-abc456",
-				}.Build(),
-			}.Build(),
-		}
-
-		spec := t.buildSpec()
-
-		Expect(spec.Pool).To(Equal("pool-abc456"))
-		Expect(spec.ComputeInstance).To(BeEmpty())
 	})
 
 	It("Does not include status fields", func() {
-		ci := "ci-xyz789"
 		t := &task{
 			publicIP: privatev1.PublicIP_builder{
 				Id: "pip-test-3",
 				Spec: privatev1.PublicIPSpec_builder{
-					Pool:            "pool-abc789",
-					ComputeInstance: &ci,
+					Pool: "pool-abc789",
 				}.Build(),
 				Status: privatev1.PublicIPStatus_builder{
 					State:   privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED,
@@ -104,10 +83,7 @@ var _ = Describe("buildSpec", func() {
 
 		spec := t.buildSpec()
 
-		// Verify the spec struct only contains spec fields, not status fields.
-		// The PublicIPSpec struct has Pool and ComputeInstance fields only.
 		Expect(spec.Pool).To(Equal("pool-abc789"))
-		Expect(spec.ComputeInstance).To(Equal("ci-xyz789"))
 	})
 })
 

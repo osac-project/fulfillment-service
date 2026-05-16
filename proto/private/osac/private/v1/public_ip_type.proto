@@ -20,15 +20,15 @@ import "osac/private/v1/metadata_type.proto";
 
 // Represents a public IP address allocated from a PublicIPPool.
 //
-// A PublicIP is a floating public IP address that can be optionally attached to a ComputeInstance.
-// IPs are allocated from a parent PublicIPPool's CIDR ranges. The pool assignment is immutable
-// after creation, while the compute_instance attachment can be changed to move the IP between
-// instances.
+// A PublicIP is a floating public IP address allocated from a parent PublicIPPool's CIDR ranges.
+// The pool assignment is immutable after creation.
 //
-// The lifecycle follows: PENDING (awaiting allocation) -> ALLOCATED (IP assigned, not attached) ->
-// ATTACHING (binding to instance) -> ATTACHED (bound to a ComputeInstance).
-// Detaching transitions through RELEASING back to ALLOCATED (address preserved).
-// Deallocation also uses RELEASING, after which the address is returned to the pool.
+// Attachment to a target resource (e.g., ComputeInstance) is managed by a separate
+// PublicIPAttachment resource. The status.attached boolean indicates whether a
+// PublicIPAttachment currently exists for this PublicIP.
+//
+// The lifecycle follows: PENDING (awaiting allocation) -> ALLOCATED (IP assigned).
+// FAILED is a terminal error state. DELETING is set during deprovisioning.
 message PublicIP {
   // Unique identifier of the public IP.
   string id = 1;
@@ -46,8 +46,7 @@ message PublicIP {
 // Defines the desired configuration for a PublicIP.
 //
 // The pool field is required and immutable: once a PublicIP is allocated from a pool, it cannot
-// be moved to a different pool. The compute_instance field is optional and mutable, allowing the
-// IP to be attached to or detached from ComputeInstances over its lifetime.
+// be moved to a different pool.
 message PublicIPSpec {
   // Parent PublicIPPool ID. Required and immutable after creation.
   //
@@ -59,15 +58,6 @@ message PublicIPSpec {
     (google.api.field_behavior) = REQUIRED,
     (google.api.field_behavior) = IMMUTABLE
   ];
-
-  // ComputeInstance ID to attach this public IP to. Optional.
-  //
-  // When set, the system binds this public IP to the specified ComputeInstance, making the
-  // instance reachable at the allocated address. When cleared, the IP transitions through
-  // RELEASING back to ALLOCATED (the address is retained but no longer routes to an instance).
-  //
-  // Example: "ci-xyz789"
-  optional string compute_instance = 2;
 }
 
 // Represents the current operational state of a PublicIP.
@@ -81,8 +71,7 @@ message PublicIPStatus {
   // Human-readable message providing additional details about the current state.
   //
   // For PENDING state, may contain progress information like "Waiting for IP allocation".
-  // For RELEASING state, may contain cleanup progress. Typically empty for ALLOCATED and
-  // ATTACHED states.
+  // Typically empty for ALLOCATED state.
   optional string message = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Identifier of the hub cluster that this public IP is deployed to.
@@ -93,21 +82,27 @@ message PublicIPStatus {
 
   // Allocated IP address from the parent pool's CIDR range.
   //
-  // Populated once the IP transitions to ALLOCATED state. Remains stable through ATTACHING,
-  // ATTACHED, and RELEASING (detach). Cleared only when the IP is deallocated.
+  // Populated once the IP transitions to ALLOCATED state. Remains stable for the lifetime of
+  // the PublicIP. Cleared only when the IP is deallocated.
   string address = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Parent PublicIPPool ID that this IP was allocated from.
   //
   // Mirrors spec.pool for convenience in status queries. Populated when the IP is allocated.
   string pool = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether this PublicIP is currently attached to a target resource via a PublicIPAttachment.
+  //
+  // Set to true when a PublicIPAttachment referencing this PublicIP reaches READY state.
+  // Set to false when the PublicIPAttachment is deleted. A PublicIP with attached = true
+  // cannot be deleted; the PublicIPAttachment must be deleted first.
+  bool attached = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // Lifecycle states for PublicIP resources.
 //
-// State transitions follow the attachment lifecycle: UNSPECIFIED -> PENDING -> ALLOCATED -> ATTACHING -> ATTACHED -> RELEASING.
-// A PublicIP in ATTACHED state can return to ALLOCATED when detached from its ComputeInstance.
-// FAILED is a terminal state for provisioning or release failures.
+// State transitions: UNSPECIFIED -> PENDING -> ALLOCATED. On deletion: ALLOCATED -> DELETING.
+// FAILED is a terminal error state for provisioning failures.
 enum PublicIPState {
   // State is unknown or has not been determined yet. Default state before initialization.
   PUBLIC_IP_STATE_UNSPECIFIED = 0;
@@ -118,44 +113,23 @@ enum PublicIPState {
   // cluster and waiting for an IP address to be allocated from the parent pool's CIDR range.
   PUBLIC_IP_STATE_PENDING = 1;
 
-  // The public IP has been assigned an address but is not attached to any ComputeInstance.
+  // The public IP has been assigned an address.
   //
-  // The address is allocated and reserved. The IP can be attached to a ComputeInstance by
-  // setting spec.compute_instance, which transitions it to ATTACHING. Detaching from an
-  // instance returns the IP to this state.
+  // The address is allocated and reserved. The IP can be attached to a target resource by
+  // creating a PublicIPAttachment. The status.attached boolean indicates whether an
+  // attachment currently exists.
   PUBLIC_IP_STATE_ALLOCATED = 2;
 
-  // The public IP is being attached to a ComputeInstance.
-  //
-  // During this state, the system is moving the MetalLB LoadBalancer Service to bind the
-  // allocated address to the target ComputeInstance. Once complete, the state transitions
-  // to ATTACHED. Set immediately on successful Update validation when spec.compute_instance
-  // is populated on an ALLOCATED PublicIP.
-  PUBLIC_IP_STATE_ATTACHING = 3;
-
-  // The public IP is attached to a ComputeInstance and actively routing traffic.
-  //
-  // The allocated address is bound to the ComputeInstance specified in spec.compute_instance.
-  // Clearing the compute_instance field detaches the IP, transitioning through RELEASING
-  // back to ALLOCATED.
-  PUBLIC_IP_STATE_ATTACHED = 4;
-
-  // The public IP is being released from its current ComputeInstance binding.
-  //
-  // On detach (clearing spec.compute_instance from an ATTACHED IP), the system unbinds
-  // the address from the ComputeInstance. The address is preserved and the IP returns to
-  // ALLOCATED once complete.
-  PUBLIC_IP_STATE_RELEASING = 5;
-
-  // Provisioning or release failed. Check status.message for error details.
+  // Provisioning failed. Check status.message for error details.
   //
   // This is a terminal error state. The PublicIP may require manual intervention
   // (e.g., deleting and recreating) or a Signal RPC to retry the operation.
-  PUBLIC_IP_STATE_FAILED = 6;
+  PUBLIC_IP_STATE_FAILED = 3;
 
   // The public IP is being deprovisioned and will be removed.
   //
-  // On deletion of an ALLOCATED PublicIP, the system removes the MetalLB LoadBalancer
-  // Service and returns the address to the pool. Only ALLOCATED PublicIPs can be deleted.
-  PUBLIC_IP_STATE_DELETING = 7;
+  // On deletion of a PublicIP, the system removes the MetalLB LoadBalancer Service and
+  // returns the address to the pool. A PublicIP cannot be deleted while attached
+  // (status.attached = true).
+  PUBLIC_IP_STATE_DELETING = 4;
 }
