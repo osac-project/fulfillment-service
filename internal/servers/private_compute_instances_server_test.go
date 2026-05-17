@@ -1017,12 +1017,10 @@ var _ = Describe("Private compute instances server", func() {
 			})
 
 			It("Fails when both catalog_item and template are set", func() {
-				createCICatalogItem("ci-cat-mutual", true, nil)
-
 				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
-							CatalogItem: "ci-cat-mutual",
+							CatalogItem: "any-catalog-item",
 							Template:    "some-template",
 						}.Build(),
 					}.Build(),
@@ -1067,6 +1065,22 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 				Expect(status.Message()).To(ContainSubstring("validation failed for field 'ssh_key'"))
+			})
+
+			It("Accepts editable field that satisfies JSON Schema", func() {
+				spec := privatev1.ComputeInstanceSpec_builder{
+					SshKey: proto.String("long-enough-key"),
+				}.Build()
+
+				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:             "ssh_key",
+						Editable:         true,
+						ValidationSchema: `{"type":"string","minLength":10}`,
+					}.Build(),
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(spec.GetSshKey()).To(Equal("long-enough-key"))
 			})
 
 			It("Applies default for editable field when not provided", func() {

@@ -1158,12 +1158,10 @@ var _ = Describe("Private clusters server", func() {
 			})
 
 			It("Fails when both catalog_item and template are set", func() {
-				createCatalogItem("cat-mutual", true, nil)
-
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-mutual",
+							CatalogItem: "any-catalog-item",
 							Template:    "my-template-id",
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
@@ -1211,6 +1209,22 @@ var _ = Describe("Private clusters server", func() {
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 				Expect(status.Message()).To(ContainSubstring("validation failed for field 'pull_secret'"))
+			})
+
+			It("Accepts editable field that satisfies JSON Schema", func() {
+				spec := privatev1.ClusterSpec_builder{
+					PullSecret: proto.String("long-enough-value"),
+				}.Build()
+
+				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:             "pull_secret",
+						Editable:         true,
+						ValidationSchema: `{"type":"string","minLength":10}`,
+					}.Build(),
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(spec.GetPullSecret()).To(Equal("long-enough-value"))
 			})
 
 			It("Applies default for editable field when not provided", func() {
