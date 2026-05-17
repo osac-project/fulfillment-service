@@ -137,7 +137,12 @@ func applyDefault(specMap map[string]any, path string, defaultVal *structpb.Valu
 
 func validateAgainstSchema(compiler *jsonschema.Compiler, path string, value any, schemaStr string) error {
 	resourceName := "schema_" + strings.ReplaceAll(path, ".", "_") + ".json"
-	if err := compiler.AddResource(resourceName, strings.NewReader(schemaStr)); err != nil {
+	var schemaDoc any
+	if err := json.Unmarshal([]byte(schemaStr), &schemaDoc); err != nil {
+		return grpcstatus.Errorf(grpccodes.Internal,
+			"invalid validation schema for field '%s': %v", path, err)
+	}
+	if err := compiler.AddResource(resourceName, schemaDoc); err != nil {
 		return grpcstatus.Errorf(grpccodes.Internal,
 			"invalid validation schema for field '%s': %v", path, err)
 	}

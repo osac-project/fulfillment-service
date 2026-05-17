@@ -26,6 +26,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
@@ -74,6 +75,8 @@ var _ = Describe("Private clusters server", func() {
 		err = dao.CreateTables[*privatev1.Cluster](ctx)
 		Expect(err).ToNot(HaveOccurred())
 		err = dao.CreateTables[*privatev1.HostType](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.ClusterCatalogItem](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -1043,6 +1046,222 @@ var _ = Describe("Private clusters server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(Equal("cannot change spec.template_parameters: template parameters are immutable"))
+		})
+
+		Describe("Catalog item", func() {
+			var catalogItemsDao *dao.GenericDAO[*privatev1.ClusterCatalogItem]
+
+			BeforeEach(func() {
+				var err error
+				catalogItemsDao, err = dao.NewGenericDAO[*privatev1.ClusterCatalogItem]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			createCatalogItem := func(id string, published bool, fieldDefs []*privatev1.FieldDefinition) {
+				_, err := catalogItemsDao.Create().SetObject(
+					privatev1.ClusterCatalogItem_builder{
+						Id: id,
+						Metadata: privatev1.Metadata_builder{
+							Name:    id + "-name",
+							Tenants: []string{"shared"},
+						}.Build(),
+						Title:            "Test Catalog Item",
+						Published:        published,
+						Template:         "my-template-id",
+						FieldDefinitions: fieldDefs,
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			It("Creates cluster with catalog item", func() {
+				createCatalogItem("cat-happy", true, nil)
+
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-happy",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetId()).ToNot(BeEmpty())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+				Expect(object.GetSpec().GetCatalogItem()).To(Equal("cat-happy"))
+			})
+
+			It("Creates cluster with catalog item specified by name", func() {
+				createCatalogItem("cat-by-name", true, nil)
+
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-by-name-name",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+			})
+
+			It("Fails when catalog item not found", func() {
+				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "nonexistent",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(ContainSubstring("nonexistent"))
+			})
+
+			It("Fails when catalog item is not published", func() {
+				createCatalogItem("cat-unpublished", false, nil)
+
+				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-unpublished",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(ContainSubstring("not published"))
+			})
+
+			It("Fails when both catalog_item and template are set", func() {
+				createCatalogItem("cat-mutual", true, nil)
+
+				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-mutual",
+							Template:    "my-template-id",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal("catalog_item and template are mutually exclusive"))
+			})
+
+			It("Overrides user value for non-editable field", func() {
+				spec := privatev1.ClusterSpec_builder{
+					PullSecret: proto.String("user-secret"),
+				}.Build()
+
+				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:     "pull_secret",
+						Editable: false,
+						Default:  structpb.NewStringValue("forced-secret"),
+					}.Build(),
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(spec.GetPullSecret()).To(Equal("forced-secret"))
+			})
+
+			It("Validates editable field against JSON Schema", func() {
+				spec := privatev1.ClusterSpec_builder{
+					PullSecret: proto.String("short"),
+				}.Build()
+
+				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:             "pull_secret",
+						Editable:         true,
+						ValidationSchema: `{"type":"string","minLength":10}`,
+					}.Build(),
+				})
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("validation failed for field 'pull_secret'"))
+			})
+
+			It("Applies default for editable field when not provided", func() {
+				spec := privatev1.ClusterSpec_builder{}.Build()
+
+				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:     "pull_secret",
+						Editable: true,
+						Default:  structpb.NewStringValue("default-secret"),
+					}.Build(),
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(spec.GetPullSecret()).To(Equal("default-secret"))
+			})
+
+			It("Rejects changing catalog_item on update", func() {
+				createCatalogItem("cat-immut", true, nil)
+
+				createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-immut",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := createResponse.GetObject()
+
+				_, err = server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "different-catalog-item",
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.catalog_item"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"cannot change spec.catalog_item from 'cat-immut' to 'different-catalog-item': catalog item is immutable",
+				))
+			})
 		})
 
 		Describe("Version", func() {
