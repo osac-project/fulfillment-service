@@ -52,11 +52,11 @@ var _ privatev1.ClustersServer = (*PrivateClustersServer)(nil)
 
 type PrivateClustersServer struct {
 	privatev1.UnimplementedClustersServer
-	logger           *slog.Logger
-	templatesDao     *dao.GenericDAO[*privatev1.ClusterTemplate]
-	catalogItemsDao  *dao.GenericDAO[*privatev1.ClusterCatalogItem]
-	hostTypesDao     *dao.GenericDAO[*privatev1.HostType]
-	generic          *GenericServer[*privatev1.Cluster]
+	logger          *slog.Logger
+	templatesDao    *dao.GenericDAO[*privatev1.ClusterTemplate]
+	catalogItemsDao *dao.GenericDAO[*privatev1.ClusterCatalogItem]
+	hostTypesDao    *dao.GenericDAO[*privatev1.HostType]
+	generic         *GenericServer[*privatev1.Cluster]
 }
 
 func NewPrivateClustersServer() *PrivateClustersServerBuilder {
