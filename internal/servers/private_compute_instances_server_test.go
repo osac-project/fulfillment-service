@@ -30,6 +30,7 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/errormessages"
 )
 
 var _ = Describe("Private compute instances server", func() {
@@ -227,7 +228,10 @@ var _ = Describe("Private compute instances server", func() {
 	})
 
 	Describe("Behaviour", func() {
-		var server *PrivateComputeInstancesServer
+		var (
+			server        *PrivateComputeInstancesServer
+			readySubnetID string
+		)
 
 		BeforeEach(func() {
 			var err error
@@ -239,6 +243,11 @@ var _ = Describe("Private compute instances server", func() {
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
+
+			nc := createTestNetworkClass(ctx)
+			vn := createTestVirtualNetwork(ctx, nc.GetId())
+			subnet := createTestSubnet(ctx, vn.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+			readySubnetID = subnet.GetId()
 		})
 
 		// Helper function to create a template
@@ -317,6 +326,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:           "general.small",
+						Subnet:             readySubnetID,
 						TemplateParameters: templateParams,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
@@ -344,6 +354,7 @@ var _ = Describe("Private compute instances server", func() {
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							Subnet:   readySubnetID,
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
 							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -372,6 +383,7 @@ var _ = Describe("Private compute instances server", func() {
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							Subnet:   readySubnetID,
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
 							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -402,6 +414,7 @@ var _ = Describe("Private compute instances server", func() {
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							Subnet:   readySubnetID,
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
 							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -430,6 +443,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -465,6 +479,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -508,6 +523,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -552,6 +568,19 @@ var _ = Describe("Private compute instances server", func() {
 			Expect(response).To(BeNil())
 		})
 
+		It("Handles missing spec on create request", func() {
+			response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+				Object: privatev1.ComputeInstance_builder{}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("spec is mandatory"))
+		})
+
 		It("Handles empty object in update request", func() {
 			// Try to update with nil object:
 			response, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{}.Build())
@@ -579,6 +608,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "non-existent-template",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -596,6 +626,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "existing-template",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -638,6 +669,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:           "params-template",
+						Subnet:             readySubnetID,
 						TemplateParameters: map[string]*anypb.Any{"cpu_count": cpuParam},
 					}.Build(),
 				}.Build(),
@@ -678,6 +710,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "same-template",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -716,6 +749,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "",
+						Subnet:   readySubnetID,
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -735,6 +769,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "defaults-template",
+						Subnet:   readySubnetID,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -761,6 +796,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:    "override-template",
+						Subnet:      readySubnetID,
 						Cores:       proto.Int32(8),
 						MemoryGib:   proto.Int32(16),
 						RunStrategy: proto.String("Halted"),
@@ -805,6 +841,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "no-defaults-template",
+						Subnet:   readySubnetID,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -845,6 +882,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:  "bare-template",
+						Subnet:    readySubnetID,
 						Cores:     proto.Int32(4),
 						MemoryGib: proto.Int32(8),
 						Image: privatev1.ComputeInstanceImage_builder{
@@ -892,6 +930,7 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "partial-defaults-template",
+						Subnet:   readySubnetID,
 						Image: privatev1.ComputeInstanceImage_builder{
 							SourceType: "registry",
 							SourceRef:  "quay.io/containerdisks/fedora:latest",
@@ -995,13 +1034,54 @@ var _ = Describe("Private compute instances server", func() {
 		})
 
 		Context("Subnet validation", func() {
+			It("Should fail when subnet is omitted", func() {
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(errormessages.ComputeInstanceSpecSubnetRequired))
+			})
+
+			It("Should fail when subnet is whitespace only", func() {
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						Subnet:   " \t ",
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(errormessages.ComputeInstanceSpecSubnetRequired))
+			})
+
 			It("Should succeed with valid READY Subnet", func() {
 				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
 
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String(subnet.GetId()),
+						Subnet:   subnet.GetId(),
 					}.Build(),
 				}.Build()
 
@@ -1018,7 +1098,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String("non-existent-subnet-id"),
+						Subnet:   "non-existent-subnet-id",
 					}.Build(),
 				}.Build()
 
@@ -1042,7 +1122,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String(subnet.GetId()),
+						Subnet:   subnet.GetId(),
 					}.Build(),
 				}.Build()
 
@@ -1074,7 +1154,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
+						Subnet:         subnet.GetId(),
 						SecurityGroups: []string{sg1.GetId(), sg2.GetId()},
 					}.Build(),
 				}.Build()
@@ -1092,7 +1172,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
+						Subnet:         subnet.GetId(),
 						SecurityGroups: []string{"non-existent-sg-id"},
 					}.Build(),
 				}.Build()
@@ -1117,7 +1197,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
+						Subnet:         subnet.GetId(),
 						SecurityGroups: []string{sg.GetId()},
 					}.Build(),
 				}.Build()
@@ -1144,7 +1224,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
+						Subnet:         subnet.GetId(),
 						SecurityGroups: []string{sgFromOtherVN.GetId()},
 					}.Build(),
 				}.Build()
@@ -1162,25 +1242,6 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Message()).To(ContainSubstring("VirtualNetwork"))
 				Expect(status.Message()).To(ContainSubstring(virtualNetwork.GetId()))
 				Expect(status.Message()).To(ContainSubstring(otherVN.GetId()))
-			})
-		})
-
-		Context("Optional network fields", func() {
-			It("Should succeed with no network references", func() {
-				vm := privatev1.ComputeInstance_builder{
-					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template: template.GetId(),
-					}.Build(),
-				}.Build()
-
-				request := &privatev1.ComputeInstancesCreateRequest{}
-				request.SetObject(vm)
-
-				response, err := server.Create(ctx, request)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response).ToNot(BeNil())
-				Expect(response.GetObject().GetSpec().GetSubnet()).To(BeEmpty())
-				Expect(response.GetObject().GetSpec().GetSecurityGroups()).To(BeEmpty())
 			})
 		})
 	})

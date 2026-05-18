@@ -75,7 +75,7 @@ message ComputeInstanceSpec {
   optional string user_data = 11;
 
   // Subnet ID for network attachment. References Subnet by fulfillment ID.
-  optional string subnet = 12;
+  string subnet = 12;
 
   // SecurityGroup IDs for security policies. References SecurityGroups by fulfillment ID.
   repeated string security_groups = 13;

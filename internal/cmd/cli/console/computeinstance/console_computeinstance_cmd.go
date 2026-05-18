@@ -64,7 +64,7 @@ Login credentials:
       expire: false
 
   Pass it as a template parameter when creating the instance:
-    osac create computeinstance --template <template> \
+    osac create computeinstance --template <template> --subnet <subnet-id> \
       -p cloud_init_config=<base64-encoded-config>`,
 		Args: cobra.ExactArgs(1),
 		RunE: runner.run,

@@ -42,6 +42,7 @@ type InstanceData struct {
 	ID                string
 	Name              string
 	Template          string
+	Subnet            string
 	State             publicv1.ComputeInstanceState
 	InternalIPAddress string
 	PublicIPAddress   string
@@ -66,6 +67,7 @@ type instanceFile struct {
 	ID                string `yaml:"id"`
 	Name              string `yaml:"name"`
 	Template          string `yaml:"template"`
+	Subnet            string `yaml:"subnet"`
 	State             string `yaml:"state"`
 	InternalIPAddress string `yaml:"internalIpAddress"`
 	PublicIPAddress   string `yaml:"publicIpAddress"`
@@ -113,6 +115,7 @@ func (f *computeInstanceScenarioFile) toScenario() (*ComputeInstanceScenario, er
 			ID:                inst.ID,
 			Name:              inst.Name,
 			Template:          inst.Template,
+			Subnet:            inst.Subnet,
 			State:             publicv1.ComputeInstanceState(rawState),
 			InternalIPAddress: inst.InternalIPAddress,
 			PublicIPAddress:   inst.PublicIPAddress,
@@ -143,6 +146,7 @@ func (i *InstanceData) ToProtoInstance() *publicv1.ComputeInstance {
 		},
 		Spec: &publicv1.ComputeInstanceSpec{
 			Template: i.Template,
+			Subnet:   i.Subnet,
 		},
 		Status: &publicv1.ComputeInstanceStatus{
 			State:             i.State,

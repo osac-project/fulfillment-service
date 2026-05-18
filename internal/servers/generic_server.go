@@ -556,27 +556,9 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		}
 	}
 
-	// Clone the current object so that in-place modifications (mask application, tenant calculation) don't
-	// affect the original that we use for the equivalence comparison later.
-	tmpObject := proto.Clone(currentObject).(O)
-
-	// Update the fields indicated in the update mask, or all the fields if there is no update mask:
-	requestMask := requestMsg.GetUpdateMask()
-	if requestMask != nil {
-		fieldPaths, err := s.compilePaths(requestMask.GetPaths())
-		if err != nil {
-			return err
-		}
-		for _, fieldPath := range fieldPaths {
-			value, ok := fieldPath.Get(requestObject)
-			if ok {
-				fieldPath.Set(tmpObject, value)
-			} else {
-				fieldPath.Clear(tmpObject)
-			}
-		}
-	} else {
-		tmpObject = requestObject
+	tmpObject, err := s.MergeForUpdate(currentObject, requestObject, requestMsg.GetUpdateMask())
+	if err != nil {
+		return err
 	}
 
 	// Validate the resulting metadata:
@@ -643,6 +625,40 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 	s.setPointer(response, responseMsg)
 
 	return nil
+}
+
+// MergeForUpdate returns the object that results from applying patch with requestMask onto currentObject,
+// using the same field-mask semantics as [GenericServer.Update]: a nil mask means patch replaces the
+// entire object (returned as a clone); a non-nil mask clones currentObject and applies each path from
+// patch (Clear when the path is absent from patch).
+func (s *GenericServer[O]) MergeForUpdate(currentObject O, patch O, requestMask *fieldmaskpb.FieldMask) (O, error) {
+	var zero O
+	if s.isNil(patch) {
+		return zero, grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
+	}
+	if s.isNil(currentObject) {
+		return zero, grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"object with identifier doesn't exist",
+		)
+	}
+	if requestMask == nil {
+		return proto.Clone(patch).(O), nil
+	}
+	tmpObject := proto.Clone(currentObject).(O)
+	fieldPaths, err := s.compilePaths(requestMask.GetPaths())
+	if err != nil {
+		return zero, err
+	}
+	for _, fieldPath := range fieldPaths {
+		value, ok := fieldPath.Get(patch)
+		if ok {
+			fieldPath.Set(tmpObject, value)
+		} else {
+			fieldPath.Clear(tmpObject)
+		}
+	}
+	return tmpObject, nil
 }
 
 func (s *GenericServer[O]) compilePaths(paths []string) (result []*masks.Path[O], err error) {

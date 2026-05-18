@@ -34,6 +34,7 @@ import (
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/config"
+	"github.com/osac-project/fulfillment-service/internal/errormessages"
 	"github.com/osac-project/fulfillment-service/internal/exit"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
@@ -134,6 +135,12 @@ func Cmd() *cobra.Command {
 		"",
 		"User data for the compute instance (e.g. cloud-init, ignition).",
 	)
+	flags.StringVar(
+		&runner.args.subnet,
+		"subnet",
+		"",
+		"ID of the subnet the compute instance will attach to.",
+	)
 	return result
 }
 
@@ -152,6 +159,7 @@ type runnerContext struct {
 		additionalDisks         []string
 		runStrategy             string
 		userData                string
+		subnet                  string
 	}
 	logger                 *slog.Logger
 	console                *terminal.Console
@@ -187,6 +195,10 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Check that we have a template:
 	if c.args.template == "" {
 		return fmt.Errorf("template identifier or name is required")
+	}
+	c.args.subnet = strings.TrimSpace(c.args.subnet)
+	if c.args.subnet == "" {
+		return errors.New(errormessages.ComputeInstanceSpecSubnetRequired)
 	}
 
 	// Create the gRPC connection from the configuration:
@@ -634,6 +646,7 @@ func (c *runnerContext) buildSpec(templateID string,
 	spec := publicv1.ComputeInstanceSpec_builder{
 		Template:           templateID,
 		TemplateParameters: templateParams,
+		Subnet:             c.args.subnet,
 	}
 	if c.args.imageSourceRef != "" {
 		spec.Image = publicv1.ComputeInstanceImage_builder{
