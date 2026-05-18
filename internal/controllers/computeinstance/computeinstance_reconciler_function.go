@@ -21,6 +21,7 @@ import (
 	"math/rand/v2"
 	"slices"
 
+	"github.com/osac-project/fulfillment-service/internal/computeinstancespec"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	corev1 "k8s.io/api/core/v1"
@@ -422,6 +423,33 @@ func (t *task) getSubnetCR(ctx context.Context, subnetID string) (*osacv1alpha1.
 	return &items[0], nil
 }
 
+// getSecurityGroupCR looks up a SecurityGroup CR in the hub cluster by its fulfillment UUID label.
+func (t *task) getSecurityGroupCR(ctx context.Context, securityGroupID string) (*osacv1alpha1.SecurityGroup, error) {
+	list := &osacv1alpha1.SecurityGroupList{}
+	err := t.hubClient.List(
+		ctx, list,
+		clnt.InNamespace(t.hubNamespace),
+		clnt.MatchingLabels{
+			labels.SecurityGroupUuid: securityGroupID,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	items := list.Items
+	count := len(items)
+	if count > 1 {
+		return nil, fmt.Errorf(
+			"expected at most one security group with identifier '%s' but found %d",
+			securityGroupID, count,
+		)
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	return &items[0], nil
+}
+
 // addFinalizer adds the controller finalizer if it is not already present. Returns true if the finalizer was added,
 // false if it was already present.
 func (t *task) addFinalizer() bool {
@@ -499,36 +527,165 @@ func (t *task) buildSpec(ctx context.Context) (osacv1alpha1.ComputeInstanceSpec,
 	// Add explicit spec fields if present:
 	t.addExplicitFields(&spec)
 
-	// Add subnet reference if subnet is specified
-	if t.computeInstance.GetSpec().HasSubnet() {
-		subnetID := t.computeInstance.GetSpec().GetSubnet()
-		subnetCR, err := t.getSubnetCR(ctx, subnetID)
+	ciSpec := t.computeInstance.GetSpec()
+
+	// Validate that legacy subnet and new network_attachments are not both set
+	if ciSpec.HasSubnet() && len(ciSpec.GetNetworkAttachments()) > 0 {
+		return osacv1alpha1.ComputeInstanceSpec{}, fmt.Errorf(
+			"cannot use both deprecated subnet field and network_attachments field")
+	}
+
+	// Determine which networking path to use
+	if len(ciSpec.GetNetworkAttachments()) > 0 {
+		// New network_attachments path
+		err = t.buildSpecNetworkAttachments(ctx, &spec)
 		if err != nil {
-			t.r.logger.WarnContext(
-				ctx,
-				"Failed to look up Subnet CR",
-				slog.String("subnet_id", subnetID),
-				slog.String("error", err.Error()),
-			)
-			// Don't set subnetRef if lookup fails
-		} else if subnetCR != nil {
-			spec.SubnetRef = subnetCR.GetName()
-			t.r.logger.DebugContext(
-				ctx,
-				"Set subnetRef from Subnet CR",
-				slog.String("subnet_id", subnetID),
-				slog.String("subnet_ref", subnetCR.GetName()),
-			)
-		} else {
-			t.r.logger.WarnContext(
-				ctx,
-				"Subnet CR not found",
-				slog.String("subnet_id", subnetID),
-			)
+			return osacv1alpha1.ComputeInstanceSpec{}, err
+		}
+	} else if ciSpec.HasSubnet() {
+		// Legacy subnet + security_groups path
+		err = t.buildSpecLegacyNetworking(ctx, &spec)
+		if err != nil {
+			return osacv1alpha1.ComputeInstanceSpec{}, err
 		}
 	}
 
+	// Any post-processing for all instances can be added here
+
 	return spec, nil
+}
+
+// buildSpecLegacyNetworking handles the deprecated subnet and security_groups fields.
+// It transforms them into a single NetworkAttachment to maintain consistency with the new path.
+func (t *task) buildSpecLegacyNetworking(ctx context.Context, spec *osacv1alpha1.ComputeInstanceSpec) error {
+	ciSpec := t.computeInstance.GetSpec()
+	subnetID := ciSpec.GetSubnet()
+
+	subnetCR, err := t.getSubnetCR(ctx, subnetID)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to look up Subnet CR for subnet %s: %w", subnetID, err)
+	}
+	if subnetCR == nil {
+		return fmt.Errorf(
+			"Subnet CR not found for subnet %s", subnetID)
+	}
+	subnetRef := subnetCR.GetName()
+	t.r.logger.DebugContext(
+		ctx,
+		"Resolved subnetRef from Subnet CR (legacy path)",
+		slog.String("subnet_id", subnetID),
+		slog.String("subnet_ref", subnetRef),
+	)
+
+	// Resolve legacy security_groups
+	sgRefs := make([]string, 0, len(ciSpec.GetSecurityGroups()))
+	for _, sgID := range ciSpec.GetSecurityGroups() {
+		if sgID == "" {
+			continue
+		}
+		sgCR, sgErr := t.getSecurityGroupCR(ctx, sgID)
+		if sgErr != nil {
+			return fmt.Errorf(
+				"failed to look up SecurityGroup CR for security group %s: %w",
+				sgID, sgErr)
+		}
+		if sgCR == nil {
+			return fmt.Errorf(
+				"SecurityGroup CR not found for security group %s",
+				sgID)
+		}
+		sgRefs = append(sgRefs, sgCR.GetName())
+		t.r.logger.DebugContext(
+			ctx,
+			"Resolved securityGroupRef from SecurityGroup CR (legacy path)",
+			slog.String("security_group_id", sgID),
+			slog.String("security_group_ref", sgCR.GetName()),
+		)
+	}
+
+	// Transform legacy fields into a single NetworkAttachment
+	spec.NetworkAttachments = []osacv1alpha1.NetworkAttachment{
+		{
+			SubnetRef:         subnetRef,
+			SecurityGroupRefs: sgRefs,
+		},
+	}
+
+	return nil
+}
+
+// buildSpecNetworkAttachments handles the network_attachments field.
+func (t *task) buildSpecNetworkAttachments(ctx context.Context, spec *osacv1alpha1.ComputeInstanceSpec) error {
+	ciSpec := t.computeInstance.GetSpec()
+
+	// Validate network_attachments structure before processing
+	err := computeinstancespec.ValidateNetworkAttachments(ciSpec.GetNetworkAttachments())
+	if err != nil {
+		return fmt.Errorf(
+			"invalid network_attachments in database: %w", err)
+	}
+
+	networkAttachments := make([]osacv1alpha1.NetworkAttachment, 0, len(ciSpec.GetNetworkAttachments()))
+	for i, att := range ciSpec.GetNetworkAttachments() {
+		subnetID := att.GetSubnet()
+		// subnetID is guaranteed to be non-empty by ValidateNetworkAttachments
+
+		subnetCR, err := t.getSubnetCR(ctx, subnetID)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to look up Subnet CR for network_attachments[%d] subnet %s: %w",
+				i, subnetID, err)
+		}
+		if subnetCR == nil {
+			return fmt.Errorf(
+				"Subnet CR not found for network_attachments[%d] subnet %s",
+				i, subnetID)
+		}
+		subnetRef := subnetCR.GetName()
+		t.r.logger.DebugContext(
+			ctx,
+			"Resolved subnetRef from Subnet CR",
+			slog.String("subnet_id", subnetID),
+			slog.String("subnet_ref", subnetRef),
+		)
+
+		sgRefs := make([]string, 0, len(att.GetSecurityGroups()))
+		for _, sgID := range att.GetSecurityGroups() {
+			if sgID == "" {
+				continue
+			}
+			sgCR, sgErr := t.getSecurityGroupCR(ctx, sgID)
+			if sgErr != nil {
+				return fmt.Errorf(
+					"failed to look up SecurityGroup CR for network_attachments[%d] security group %s: %w",
+					i, sgID, sgErr)
+			}
+			if sgCR == nil {
+				return fmt.Errorf(
+					"SecurityGroup CR not found for network_attachments[%d] security group %s",
+					i, sgID)
+			}
+			sgRefs = append(sgRefs, sgCR.GetName())
+			t.r.logger.DebugContext(
+				ctx,
+				"Resolved securityGroupRef from SecurityGroup CR",
+				slog.String("security_group_id", sgID),
+				slog.String("security_group_ref", sgCR.GetName()),
+			)
+		}
+
+		networkAttachments = append(networkAttachments, osacv1alpha1.NetworkAttachment{
+			SubnetRef:         subnetRef,
+			SecurityGroupRefs: sgRefs,
+		})
+	}
+
+	if len(networkAttachments) > 0 {
+		spec.NetworkAttachments = networkAttachments
+	}
+
+	return nil
 }
 
 func (t *task) addExplicitFields(spec *osacv1alpha1.ComputeInstanceSpec) {

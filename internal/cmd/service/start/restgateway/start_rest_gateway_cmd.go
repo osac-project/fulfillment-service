@@ -275,6 +275,10 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	if err != nil {
 		return err
 	}
+	err = privatev1.RegisterPublicIPAttachmentsHandler(ctx, gatewayMux, c.grpcClient)
+	if err != nil {
+		return err
+	}
 	err = privatev1.RegisterRolesHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err

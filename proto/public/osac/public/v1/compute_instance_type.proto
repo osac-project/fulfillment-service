@@ -48,6 +48,15 @@ message ComputeInstanceDisk {
   int32 size_gib = 1;
 }
 
+// Groups one subnet with security groups for that network attachment (multi-NIC VMs).
+message NetworkAttachment {
+  // Fulfillment Subnet ID; must reference a Subnet in READY state (same tenant and region rules as ComputeInstance).
+  string subnet = 1;
+
+  // Fulfillment SecurityGroup IDs applied on this NIC; each must be READY and belong to the same VirtualNetwork as subnet.
+  repeated string security_groups = 2;
+}
+
 // The spec contains the details of a compute instance as desired by the user.
 message ComputeInstanceSpec {
   // Reference to the compute instance template.
@@ -143,18 +152,15 @@ message ComputeInstanceSpec {
   // User data for the compute instance (e.g. cloud-init, ignition).
   optional string user_data = 11;
 
-  // Reference to Subnet by fulfillment ID. VM will be attached to this subnet's network.
-  //
-  // Must reference a Subnet in READY state within the same region and tenant. This is optional
-  // during creation but recommended for proper network isolation.
-  optional string subnet = 12;
+  // Deprecated: use network_attachments. Single subnet for the VM's primary NIC.
+  optional string subnet = 12 [deprecated = true];
 
-  // References to SecurityGroups by fulfillment ID. VM will have these security policies applied.
-  //
-  // All referenced SecurityGroups must belong to the same VirtualNetwork as the subnet, be in
-  // READY state, and belong to the requesting tenant. This is optional; if omitted, default
-  // security policies apply.
-  repeated string security_groups = 13;
+  // Deprecated: use network_attachments. Security groups applied together with subnet (flat list).
+  repeated string security_groups = 13 [deprecated = true];
+
+  // Preferred: one entry per NIC. Each entry binds security groups to that subnet's VirtualNetwork.
+  // Do not combine with deprecated subnet / security_groups on the same request.
+  repeated NetworkAttachment network_attachments = 14;
 }
 
 // The status contains the details of the compute instance provided by the system.
@@ -297,7 +303,7 @@ enum ComputeInstanceConditionType {
   // provisioning or after a spec update).
   COMPUTE_INSTANCE_CONDITION_TYPE_CONFIGURATION_APPLIED = 1;
 
-  // Indicates that the compute instance is ready and accessible.
+  // Indicates that the compute instance is ready (reachable per readiness checks).
   //
   // When `status` is `TRUE`, the compute instance is running and the readiness check
   // has passed. The instance is reachable via the internal IP address in `status.internal_ip_address`.
@@ -335,14 +341,6 @@ enum ComputeInstanceConditionType {
   // infrastructure resources are allocated.
   //
   // When `status` is `FALSE`, infrastructure provisioning is in progress.
-  //
-  // Possible `reason` values when `status` is `TRUE`:
-  // - `InfrastructureReady`: All infrastructure resources provisioned successfully.
-  //
-  // Possible `reason` values when `status` is `FALSE`:
-  // - `TenantNotReady`: The hosting environment is not yet in a ready state.
-  // - `WaitingForVM`: The compute instance has not been created yet.
-  // - `ProvisioningStorage`: Storage volumes are being created for boot and additional disks.
   COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED = 5;
 
   // Indicates that the compute instance requires a restart for configuration changes

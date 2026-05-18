@@ -134,6 +134,29 @@ func Cmd() *cobra.Command {
 		"",
 		"User data for the compute instance (e.g. cloud-init, ignition).",
 	)
+	flags.StringVar(
+		&runner.args.subnet,
+		"subnet",
+		"",
+		"Fulfillment subnet ID for the primary NIC (deprecated; prefer --network-attachment).",
+	)
+	flags.StringSliceVar(
+		&runner.args.securityGroups,
+		"security-group",
+		nil,
+		"Fulfillment security group ID applied with --subnet (deprecated). Repeatable.",
+	)
+	flags.StringArrayVar(
+		&runner.args.networkAttachments,
+		"network-attachment",
+		nil,
+		"Per-NIC attachment: subnet ID, or subnet=<id>[,security-groups=<id>,<id>...]. Repeatable. Incompatible with --subnet and --security-group.",
+	)
+
+	// Mark deprecated flags
+	flags.MarkDeprecated("subnet", "use --network-attachment instead")
+	flags.MarkDeprecated("security-group", "use --network-attachment instead")
+
 	return result
 }
 
@@ -152,6 +175,9 @@ type runnerContext struct {
 		additionalDisks         []string
 		runStrategy             string
 		userData                string
+		subnet                  string
+		securityGroups          []string
+		networkAttachments      []string
 	}
 	logger                 *slog.Logger
 	console                *terminal.Console
@@ -668,7 +694,122 @@ func (c *runnerContext) buildSpec(templateID string,
 	if c.args.userData != "" {
 		spec.UserData = proto.String(c.args.userData)
 	}
+	if err := c.applyNetworkingFlags(&spec); err != nil {
+		return nil, err
+	}
 	return spec.Build(), nil
+}
+
+// applyNetworkingFlags sets spec.network_attachments or deprecated subnet / security_groups from CLI flags.
+func (c *runnerContext) applyNetworkingFlags(spec *publicv1.ComputeInstanceSpec_builder) error {
+	hasAttachments := len(c.args.networkAttachments) > 0
+	hasLegacy := c.args.subnet != "" || len(c.args.securityGroups) > 0
+	if hasAttachments && hasLegacy {
+		return fmt.Errorf("do not combine --network-attachment with --subnet or --security-group")
+	}
+	if hasAttachments {
+		attachments := make([]*publicv1.NetworkAttachment, 0, len(c.args.networkAttachments))
+		for _, raw := range c.args.networkAttachments {
+			na, err := parseNetworkAttachmentFlag(raw)
+			if err != nil {
+				return err
+			}
+			attachments = append(attachments, na)
+		}
+		spec.NetworkAttachments = attachments
+		return nil
+	}
+	if c.args.subnet != "" {
+		spec.Subnet = proto.String(c.args.subnet)
+	}
+	if len(c.args.securityGroups) > 0 {
+		spec.SecurityGroups = append([]string(nil), c.args.securityGroups...)
+	}
+	return nil
+}
+
+// extractSecurityGroupListSuffix returns the substring before a trailing "security-groups=" or "security_groups="
+// clause (case-insensitive) and the list parsed from the remainder of the string after that clause.
+// Works entirely on the lowercase copy to avoid Unicode byte-offset issues.
+func extractSecurityGroupListSuffix(s string) (prefix string, groups []string, ok bool) {
+	lower := strings.ToLower(s)
+
+	// Try both "security-groups=" and "security_groups="
+	for _, marker := range []string{"security-groups=", "security_groups="} {
+		if i := strings.Index(lower, marker); i >= 0 {
+			// Work entirely on lowercase copy to avoid Unicode byte/rune offset mismatches
+			prefix = strings.TrimSpace(strings.TrimSuffix(lower[:i], ","))
+			rest := strings.TrimSpace(lower[i+len(marker):])
+			for _, id := range strings.Split(rest, ",") {
+				id = strings.TrimSpace(id)
+				if id != "" {
+					groups = append(groups, id)
+				}
+			}
+			return prefix, groups, true
+		}
+	}
+	return s, nil, false
+}
+
+// parseMainSubnetOnly parses the subnet portion of --network-attachment (no security-groups clause): either a bare id
+// or exactly subnet=<id>, optionally with a single comma between other parts only if we add more keys later.
+func parseMainSubnetOnly(main string) (string, error) {
+	main = strings.TrimSpace(strings.TrimSuffix(main, ","))
+	if main == "" {
+		return "", fmt.Errorf("--network-attachment must include a subnet or subnet=...")
+	}
+	if !strings.Contains(main, "=") {
+		return main, nil
+	}
+	var subnet string
+	for _, fragment := range strings.Split(main, ",") {
+		fragment = strings.TrimSpace(fragment)
+		if fragment == "" {
+			continue
+		}
+		key, val, ok := strings.Cut(fragment, "=")
+		if !ok {
+			return "", fmt.Errorf("invalid --network-attachment fragment %q (expected key=value)", fragment)
+		}
+		key = strings.TrimSpace(strings.ToLower(key))
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return "", fmt.Errorf("invalid --network-attachment fragment %q (value is empty)", fragment)
+		}
+		if key != "subnet" {
+			return "", fmt.Errorf("unknown key %q before security-groups (use subnet)", key)
+		}
+		if subnet != "" {
+			return "", fmt.Errorf("subnet appears more than once in --network-attachment %q", main)
+		}
+		subnet = val
+	}
+	if subnet == "" {
+		return "", fmt.Errorf("--network-attachment %q must include subnet=... or be a bare subnet id", main)
+	}
+	return subnet, nil
+}
+
+// parseNetworkAttachmentFlag parses one --network-attachment value: a bare subnet id, or subnet=<id> with optional
+// security-groups=/security_groups= suffix (commas allowed in the group list).
+func parseNetworkAttachmentFlag(s string) (*publicv1.NetworkAttachment, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf("empty --network-attachment value")
+	}
+	prefix, securityGroups, hadGroups := extractSecurityGroupListSuffix(s)
+	subnet, err := parseMainSubnetOnly(prefix)
+	if err != nil {
+		return nil, err
+	}
+	if !hadGroups && !strings.Contains(s, "=") {
+		return publicv1.NetworkAttachment_builder{Subnet: s}.Build(), nil
+	}
+	return publicv1.NetworkAttachment_builder{
+		Subnet:         subnet,
+		SecurityGroups: securityGroups,
+	}.Build(), nil
 }
 
 // parseAdditionalDisks parses disk sizes in GiB.

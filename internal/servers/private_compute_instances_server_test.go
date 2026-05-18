@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -1165,6 +1166,57 @@ var _ = Describe("Private compute instances server", func() {
 			})
 		})
 
+		Context("network_attachments", func() {
+			It("Should reject mixing legacy subnet with network_attachments", func() {
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						Subnet:   proto.String(subnet.GetId()),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: subnet.GetId()}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("do not combine"))
+			})
+
+			It("Should succeed with two READY subnets as separate attachments", func() {
+				s1 := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				s2 := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: s1.GetId()}.Build(),
+							privatev1.NetworkAttachment_builder{Subnet: s2.GetId()}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()).To(HaveLen(2))
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()[0].GetSubnet()).To(Equal(s1.GetId()))
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()[1].GetSubnet()).To(Equal(s2.GetId()))
+			})
+		})
+
 		Context("Optional network fields", func() {
 			It("Should succeed with no network references", func() {
 				vm := privatev1.ComputeInstance_builder{
@@ -1181,6 +1233,395 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(response).ToNot(BeNil())
 				Expect(response.GetObject().GetSpec().GetSubnet()).To(BeEmpty())
 				Expect(response.GetObject().GetSpec().GetSecurityGroups()).To(BeEmpty())
+			})
+		})
+
+		Context("NetworkAttachments validation", func() {
+			It("Should reject when subnet not found in network_attachments", func() {
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: "nonexistent-subnet"}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("subnet"))
+				Expect(status.Message()).To(ContainSubstring("does not exist"))
+			})
+
+			It("Should reject when subnet not READY in network_attachments", func() {
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_PENDING)
+
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: subnet.GetId()}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+				Expect(status.Message()).To(ContainSubstring("subnet"))
+				Expect(status.Message()).To(ContainSubstring("is not in READY state"))
+			})
+
+			It("Should reject when security group not found in network_attachments", func() {
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet:         subnet.GetId(),
+								SecurityGroups: []string{"nonexistent-sg"},
+							}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("security group"))
+				Expect(status.Message()).To(ContainSubstring("does not exist"))
+			})
+
+			It("Should reject when security group belongs to wrong VirtualNetwork in network_attachments", func() {
+				// Create another virtual network with the same network class
+				otherVNet := createTestVirtualNetwork(ctx, networkClass.GetId())
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				wrongSG := createTestSecurityGroup(ctx, otherVNet.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
+
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet:         subnet.GetId(),
+								SecurityGroups: []string{wrongSG.GetId()},
+							}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("security group"))
+				Expect(status.Message()).To(ContainSubstring("belongs to VirtualNetwork"))
+			})
+
+			It("Should allow empty security_groups in network_attachments", func() {
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet:         subnet.GetId(),
+								SecurityGroups: []string{},
+							}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()).To(HaveLen(1))
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()[0].GetSecurityGroups()).To(BeEmpty())
+			})
+		})
+
+		Context("Update validation with deletion", func() {
+			It("Should skip state validation when isBeingDeleted=true", func() {
+				// Create with a READY subnet
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				sg := createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
+
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet.GetId(),
+									SecurityGroups: []string{sg.GetId()},
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				created := createResponse.GetObject()
+
+				// Update subnet to non-READY state (simulate resource being deleted/modified)
+				subnet.GetStatus().SetState(privatev1.SubnetState_SUBNET_STATE_PENDING)
+				subnetDAO, err := dao.NewGenericDAO[*privatev1.Subnet]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = subnetDAO.Update().SetObject(subnet).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Mark the ComputeInstance as being deleted
+				deletionTime := timestamppb.Now()
+				created.GetMetadata().SetDeletionTimestamp(deletionTime)
+
+				// Try to update security groups while subnet is PENDING
+				// Should succeed because isBeingDeleted=true skips state validation
+				created.GetSpec().SetNetworkAttachments([]*privatev1.NetworkAttachment{
+					privatev1.NetworkAttachment_builder{
+						Subnet:         subnet.GetId(),
+						SecurityGroups: []string{}, // Change security groups (allowed)
+					}.Build(),
+				})
+				updateRequest := &privatev1.ComputeInstancesUpdateRequest{}
+				updateRequest.SetObject(created)
+				updateRequest.SetUpdateMask(&fieldmaskpb.FieldMask{Paths: []string{"spec.network_attachments"}})
+
+				response, err := server.Update(ctx, updateRequest)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+			})
+		})
+
+		Context("NetworkAttachments immutability", func() {
+			var (
+				subnet1 *privatev1.Subnet
+				subnet2 *privatev1.Subnet
+				sg1     *privatev1.SecurityGroup
+				sg2     *privatev1.SecurityGroup
+			)
+
+			BeforeEach(func() {
+				subnet1 = createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				subnet2 = createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				sg1 = createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
+				sg2 = createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
+			})
+
+			It("Rejects changing subnet in network_attachments", func() {
+				// Create a ComputeInstance with networkAttachments
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet1.GetId(),
+									SecurityGroups: []string{sg1.GetId()},
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Try to change subnet reference
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet2.GetId(),
+									SecurityGroups: []string{sg1.GetId()},
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachments"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(updateResponse).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("subnet is immutable"))
+			})
+
+			It("Allows changing security groups in network_attachments", func() {
+				// Create a ComputeInstance with networkAttachments
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet1.GetId(),
+									SecurityGroups: []string{sg1.GetId()},
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Change security groups (should succeed)
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet1.GetId(),                    // Same subnet
+									SecurityGroups: []string{sg1.GetId(), sg2.GetId()}, // Different SGs
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachments"},
+					},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse).ToNot(BeNil())
+				Expect(updateResponse.GetObject().GetSpec().GetNetworkAttachments()[0].GetSecurityGroups()).To(
+					Equal([]string{sg1.GetId(), sg2.GetId()}),
+				)
+			})
+
+			It("Rejects adding network attachments", func() {
+				// Create with 1 attachment
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet1.GetId(),
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Try to add second attachment
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet1.GetId(),
+								}.Build(),
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet2.GetId(),
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachments"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(updateResponse).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("cannot change number"))
+			})
+
+			It("Rejects removing network attachments", func() {
+				// Create with 2 attachments
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet1.GetId(),
+								}.Build(),
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet2.GetId(),
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Try to remove one attachment
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet1.GetId(),
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachments"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(updateResponse).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("cannot change number"))
 			})
 		})
 	})

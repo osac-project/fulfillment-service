@@ -16,6 +16,7 @@ package computeinstance
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
@@ -513,6 +514,73 @@ var _ = Describe("getSubnetCR", func() {
 	})
 })
 
+var _ = Describe("getSecurityGroupCR", func() {
+	const (
+		hubNamespace = "test-ns"
+		sgID         = "sg-abc-123"
+	)
+
+	var (
+		ctx context.Context
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	It("should return SecurityGroup CR when one exists with matching label", func() {
+		sgCR := &osacv1alpha1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sg-cr-name",
+				Labels: map[string]string{
+					labels.SecurityGroupUuid: sgID,
+				},
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(sgCR).
+			Build()
+
+		t := &task{
+			r:            &function{logger: logger},
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		result, err := t.getSecurityGroupCR(ctx, sgID)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).ToNot(BeNil())
+		Expect(result.GetName()).To(Equal("sg-cr-name"))
+	})
+
+	It("should return nil when no SecurityGroup CR exists", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		t := &task{
+			r:            &function{logger: logger},
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		result, err := t.getSecurityGroupCR(ctx, sgID)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(BeNil())
+	})
+})
+
 var _ = Describe("buildSpec with subnetRef", func() {
 	const (
 		hubNamespace = "test-ns"
@@ -528,7 +596,7 @@ var _ = Describe("buildSpec with subnetRef", func() {
 		ctx = context.Background()
 	})
 
-	It("should set subnetRef when subnet field present and Subnet CR exists", func() {
+	It("should set networkAttachments when legacy subnet field present and Subnet CR exists", func() {
 		subnetCR := &osacv1alpha1.Subnet{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: hubNamespace,
@@ -564,7 +632,71 @@ var _ = Describe("buildSpec with subnetRef", func() {
 
 		spec, err := t.buildSpec(ctx)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(spec.SubnetRef).To(Equal(subnetCRName))
+		Expect(spec.NetworkAttachments).To(HaveLen(1))
+		Expect(spec.NetworkAttachments[0].SubnetRef).To(Equal(subnetCRName))
+		Expect(spec.NetworkAttachments[0].SecurityGroupRefs).To(BeEmpty())
+	})
+
+	It("should set networkAttachments with security groups when legacy subnet and security_groups fields present", func() {
+		subnetCR := &osacv1alpha1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      subnetCRName,
+				Labels: map[string]string{
+					labels.SubnetUuid: subnetID,
+				},
+			},
+		}
+
+		sgCR1 := &osacv1alpha1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sg-cr-1",
+				Labels: map[string]string{
+					labels.SecurityGroupUuid: "sg-123",
+				},
+			},
+		}
+
+		sgCR2 := &osacv1alpha1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sg-cr-2",
+				Labels: map[string]string{
+					labels.SecurityGroupUuid: "sg-456",
+				},
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(subnetCR, sgCR1, sgCR2).
+			Build()
+
+		template := "osac.templates.ocp_virt_vm"
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: "test-instance",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:       template,
+					Subnet:         proto.String(subnetID),
+					SecurityGroups: []string{"sg-123", "sg-456"},
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		spec, err := t.buildSpec(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(spec.NetworkAttachments).To(HaveLen(1))
+		Expect(spec.NetworkAttachments[0].SubnetRef).To(Equal(subnetCRName))
+		Expect(spec.NetworkAttachments[0].SecurityGroupRefs).To(Equal([]string{"sg-cr-1", "sg-cr-2"}))
 	})
 
 	It("should not set subnetRef when no subnet field", func() {
@@ -593,7 +725,7 @@ var _ = Describe("buildSpec with subnetRef", func() {
 		Expect(spec.SubnetRef).To(BeEmpty())
 	})
 
-	It("should not set subnetRef when Subnet CR not found", func() {
+	It("should return error when Subnet CR not found", func() {
 		scheme := runtime.NewScheme()
 		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
 		Expect(corev1.AddToScheme(scheme)).To(Succeed())
@@ -616,12 +748,12 @@ var _ = Describe("buildSpec with subnetRef", func() {
 			hubClient:    fakeClient,
 		}
 
-		spec, err := t.buildSpec(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(spec.SubnetRef).To(BeEmpty())
+		_, err := t.buildSpec(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Subnet CR not found"))
 	})
 
-	It("should not set subnetRef when multiple Subnet CRs exist", func() {
+	It("should return error when multiple Subnet CRs exist", func() {
 		subnetCR1 := &osacv1alpha1.Subnet{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: hubNamespace,
@@ -665,9 +797,250 @@ var _ = Describe("buildSpec with subnetRef", func() {
 			hubClient:    fakeClient,
 		}
 
+		_, err := t.buildSpec(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to look up Subnet CR"))
+	})
+
+	It("should return error when legacy SecurityGroup CR not found", func() {
+		subnetCR := &osacv1alpha1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      subnetCRName,
+				Labels: map[string]string{
+					labels.SubnetUuid: subnetID,
+				},
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(subnetCR).
+			Build()
+
+		template := "osac.templates.ocp_virt_vm"
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: "test-instance",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template:       template,
+					Subnet:         proto.String(subnetID),
+					SecurityGroups: []string{"sg-missing"},
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		_, err := t.buildSpec(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("SecurityGroup CR not found"))
+	})
+
+	It("should populate two networkAttachments and omit top-level subnetRef for multi-NIC", func() {
+		sid1, sid2 := "subnet-id-1", "subnet-id-2"
+		subnetCR1 := &osacv1alpha1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sn-1",
+				Labels:    map[string]string{labels.SubnetUuid: sid1},
+			},
+		}
+
+		subnetCR2 := &osacv1alpha1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sn-2",
+				Labels:    map[string]string{labels.SubnetUuid: sid2},
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(subnetCR1, subnetCR2).
+			Build()
+
+		template := "osac.templates.ocp_virt_vm"
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: "test-instance",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template: template,
+					NetworkAttachments: []*privatev1.NetworkAttachment{
+						privatev1.NetworkAttachment_builder{Subnet: sid1}.Build(),
+						privatev1.NetworkAttachment_builder{Subnet: sid2}.Build(),
+					},
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
 		spec, err := t.buildSpec(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(spec.SubnetRef).To(BeEmpty())
+		Expect(spec.NetworkAttachments).To(HaveLen(2))
+		Expect(spec.NetworkAttachments[0].SubnetRef).To(Equal("sn-1"))
+		Expect(spec.NetworkAttachments[1].SubnetRef).To(Equal("sn-2"))
+	})
+
+	It("should resolve securityGroupRefs inside networkAttachments", func() {
+		sid, sgid := "subnet-id-1", "sg-id-1"
+		subnetCR := &osacv1alpha1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sn-1",
+				Labels:    map[string]string{labels.SubnetUuid: sid},
+			},
+		}
+
+		sgCR := &osacv1alpha1.SecurityGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sg-cr-1",
+				Labels:    map[string]string{labels.SecurityGroupUuid: sgid},
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(subnetCR, sgCR).
+			Build()
+
+		template := "osac.templates.ocp_virt_vm"
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: "test-instance",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template: template,
+					NetworkAttachments: []*privatev1.NetworkAttachment{
+						privatev1.NetworkAttachment_builder{
+							Subnet:         sid,
+							SecurityGroups: []string{sgid},
+						}.Build(),
+					},
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		spec, err := t.buildSpec(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(spec.NetworkAttachments).To(HaveLen(1))
+		Expect(spec.NetworkAttachments[0].SubnetRef).To(Equal("sn-1"))
+		Expect(spec.NetworkAttachments[0].SecurityGroupRefs).To(Equal([]string{"sg-cr-1"}))
+	})
+
+	It("should return error when hubClient.List fails for SecurityGroup lookup", func() {
+		subnetCR := &osacv1alpha1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sn-1",
+				Labels:    map[string]string{labels.SubnetUuid: "subnet-id"},
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		// Create a fake client that will fail on List for SecurityGroup
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(subnetCR).
+			WithInterceptorFuncs(interceptor.Funcs{
+				List: func(ctx context.Context, client clnt.WithWatch, list clnt.ObjectList, opts ...clnt.ListOption) error {
+					// Fail only for SecurityGroup lists
+					if _, ok := list.(*osacv1alpha1.SecurityGroupList); ok {
+						return fmt.Errorf("simulated List error")
+					}
+					return client.List(ctx, list, opts...)
+				},
+			}).
+			Build()
+
+		template := "osac.templates.ocp_virt_vm"
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: "test-instance",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template: template,
+					NetworkAttachments: []*privatev1.NetworkAttachment{
+						privatev1.NetworkAttachment_builder{
+							Subnet:         "subnet-id",
+							SecurityGroups: []string{"sg-id"},
+						}.Build(),
+					},
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		_, err := t.buildSpec(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to look up SecurityGroup CR"))
+		Expect(err.Error()).To(ContainSubstring("simulated List error"))
+	})
+
+	It("should return error when subnet CR exists but SecurityGroup CR not found in network_attachments", func() {
+		subnetCR := &osacv1alpha1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "sn-1",
+				Labels:    map[string]string{labels.SubnetUuid: "subnet-id"},
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(subnetCR).
+			Build()
+
+		template := "osac.templates.ocp_virt_vm"
+		t := &task{
+			r: &function{logger: logger},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: "test-instance",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template: template,
+					NetworkAttachments: []*privatev1.NetworkAttachment{
+						privatev1.NetworkAttachment_builder{
+							Subnet:         "subnet-id",
+							SecurityGroups: []string{"missing-sg"},
+						}.Build(),
+					},
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		_, err := t.buildSpec(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("SecurityGroup CR not found"))
+		Expect(err.Error()).To(ContainSubstring("missing-sg"))
 	})
 })
 
