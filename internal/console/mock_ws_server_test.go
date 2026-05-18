@@ -97,7 +97,10 @@ func newMockWSServerCapturingPath() (*mockWSServer, *pathCapture, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("/apis/console.osac.openshift.io/v1alpha1/namespaces/", websocket.Handler(func(ws *websocket.Conn) {
-		capture.ch <- ws.Request().URL.Path
+		select {
+		case capture.ch <- ws.Request().URL.Path:
+		default:
+		}
 		m.handleConsole(ws)
 	}))
 

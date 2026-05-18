@@ -11,22 +11,16 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package console
+package serial
 
 import (
-	"github.com/spf13/cobra"
+	"testing"
 
-	"github.com/osac-project/fulfillment-service/internal/cmd/cli/console/serial"
-	"github.com/osac-project/fulfillment-service/internal/cmd/cli/console/vnc"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-// Cmd returns the `console` command.
-func Cmd() *cobra.Command {
-	result := &cobra.Command{
-		Use:   "console",
-		Short: "Access resource consoles",
-	}
-	result.AddCommand(serial.Cmd())
-	result.AddCommand(vnc.Cmd())
-	return result
+func TestSerial(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Serial console")
 }
