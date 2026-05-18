@@ -482,9 +482,9 @@ func (x *ClusterSpec) ClearNetwork() {
 type ClusterSpec_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Reference to the cluster template.
+	// Reference to the cluster template. Either `template` or `catalog_item` is required on create.
 	//
-	// This is mandatory, and must be the value of the `id` field of one of the cluster templates.
+	// Must be the value of the `id` field of one of the cluster templates. Mutually exclusive with `catalog_item`.
 	//
 	// This can't be modified after the cluster is created.
 	Template string

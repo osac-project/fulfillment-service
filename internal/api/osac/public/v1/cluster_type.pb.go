@@ -294,9 +294,9 @@ func (b0 Cluster_builder) Build() *Cluster {
 // The spec contains the details of a cluster as desired by the user.
 type ClusterSpec struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
-	// Reference to the cluster template.
+	// Reference to the cluster template. Either `template` or `catalog_item` is required on create.
 	//
-	// This is mandatory, and must be the value of the `id` field of one of the cluster templates.
+	// Must be the value of the `id` field of one of the cluster templates. Mutually exclusive with `catalog_item`.
 	//
 	// This can't be modified after the cluster is created.
 	Template string `protobuf:"bytes,1,opt,name=template,proto3" json:"template,omitempty"`
@@ -578,9 +578,9 @@ func (x *ClusterSpec) ClearNetwork() {
 type ClusterSpec_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Reference to the cluster template.
+	// Reference to the cluster template. Either `template` or `catalog_item` is required on create.
 	//
-	// This is mandatory, and must be the value of the `id` field of one of the cluster templates.
+	// Must be the value of the `id` field of one of the cluster templates. Mutually exclusive with `catalog_item`.
 	//
 	// This can't be modified after the cluster is created.
 	Template string

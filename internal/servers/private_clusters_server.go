@@ -782,7 +782,10 @@ func (s *PrivateClustersServer) lookupCatalogItem(ctx context.Context,
 			err = grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
 			return
 		}
-		err = grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item '%s': %v", key, err)
+		s.logger.ErrorContext(ctx, "Failed to lookup catalog item",
+			slog.String("key", key),
+			slog.Any("error", err))
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item")
 		return
 	}
 	items := response.GetItems()

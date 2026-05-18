@@ -71,6 +71,10 @@ func applyFieldDefinitions(
 		userVal, userHasValue := getNestedValue(specMap, path)
 
 		if !fd.GetEditable() {
+			if defaultVal == nil {
+				return grpcstatus.Errorf(grpccodes.Internal,
+					"catalog item misconfigured: non-editable field '%s' has no default value", path)
+			}
 			if err := applyDefault(specMap, path, defaultVal); err != nil {
 				return err
 			}

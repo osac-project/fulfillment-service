@@ -35,9 +35,9 @@ message Cluster {
 
 // The spec contains the details of a cluster as desired by the user.
 message ClusterSpec {
-  // Reference to the cluster template.
+  // Reference to the cluster template. Either `template` or `catalog_item` is required on create.
   //
-  // This is mandatory, and must be the value of the `id` field of one of the cluster templates.
+  // Must be the value of the `id` field of one of the cluster templates. Mutually exclusive with `catalog_item`.
   //
   // This can't be modified after the cluster is created.
   string template = 1;

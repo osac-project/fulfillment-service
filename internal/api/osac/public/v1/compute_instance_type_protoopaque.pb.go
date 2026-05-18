@@ -906,9 +906,9 @@ func (x *ComputeInstanceSpec) ClearSubnet() {
 type ComputeInstanceSpec_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Reference to the compute instance template.
+	// Reference to the compute instance template. Either `template` or `catalog_item` is required on create.
 	//
-	// This is mandatory, and must be the value of the `id` field of one of the compute instance templates.
+	// Must be the value of the `id` field of one of the compute instance templates. Mutually exclusive with `catalog_item`.
 	//
 	// This can't be modified after the compute instance is created.
 	Template string
