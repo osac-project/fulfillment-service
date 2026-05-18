@@ -132,7 +132,7 @@ func (b *EngineBuilder) Build() (result *Engine, err error) {
 	// Discover template names from all filesystems without parsing them yet. Templates will be
 	// loaded and parsed on demand when they are first used.
 	for _, filesystem := range b.fsys {
-		var fsys fs.FS = filesystem
+		var fsys = filesystem
 		if b.dir != "" {
 			fsys, err = fs.Sub(filesystem, b.dir)
 			if err != nil {
@@ -234,7 +234,7 @@ func (e *Engine) Names() []string {
 // will be loaded and parsed on demand when they are first used.
 func (e *Engine) AddFS(values ...fs.FS) error {
 	for _, filesystem := range values {
-		var fsys fs.FS = filesystem
+		var fsys = filesystem
 		var err error
 		if e.dir != "" {
 			fsys, err = fs.Sub(filesystem, e.dir)

@@ -380,15 +380,15 @@ func (t *tool) Migrate(ctx context.Context) error {
 
 	// Show the schema version before running the migrations:
 	version, dirty, err := migrations.Version()
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		t.logger.InfoContext(
 			ctx,
 			"Version before running migrations",
 			slog.Uint64("version", uint64(version)),
 			slog.Bool("dirty", dirty),
 		)
-	case err == migrate.ErrNilVersion:
+	case migrate.ErrNilVersion:
 		t.logger.InfoContext(
 			ctx,
 			"Schema hasn't been created yet, will create it now",
@@ -399,13 +399,13 @@ func (t *tool) Migrate(ctx context.Context) error {
 
 	// Run the migrations:
 	err = migrations.Up()
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		t.logger.InfoContext(
 			ctx,
 			"Migrations executed successfully",
 		)
-	case err == migrate.ErrNoChange:
+	case migrate.ErrNoChange:
 		t.logger.InfoContext(
 			ctx,
 			"Migrationd don't need to be executed",

@@ -126,13 +126,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	total := listResponse.GetTotal()
 	clusters := listResponse.GetItems()
 	var cluster *publicv1.Cluster
-	switch {
-	case total == 0:
+	switch total {
+	case 0:
 		c.console.Render(ctx, "no_match.txt", map[string]any{
 			"Key": key,
 		})
 		return exit.Error(1)
-	case total == 1:
+	case 1:
 		cluster = clusters[0]
 	default:
 		ids := make([]string, len(clusters))
