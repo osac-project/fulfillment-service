@@ -996,7 +996,9 @@ var _ = Describe("Private compute instances server", func() {
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.NotFound))
-				Expect(status.Message()).To(ContainSubstring("nonexistent"))
+				Expect(status.Message()).To(Equal(
+					"there is no catalog item with identifier or name 'nonexistent'",
+				))
 			})
 
 			It("Fails when catalog item is not published", func() {
@@ -1013,7 +1015,9 @@ var _ = Describe("Private compute instances server", func() {
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.NotFound))
-				Expect(status.Message()).To(ContainSubstring("not published"))
+				Expect(status.Message()).To(Equal(
+					"catalog item 'ci-cat-unpub' is not published",
+				))
 			})
 
 			It("Fails when both catalog_item and template are set", func() {
@@ -1048,40 +1052,33 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(spec.GetSshKey()).To(Equal("forced-key"))
 			})
 
-			It("Validates editable field against JSON Schema", func() {
-				spec := privatev1.ComputeInstanceSpec_builder{
-					SshKey: proto.String("short"),
-				}.Build()
+			DescribeTable("validates editable field against JSON Schema",
+				func(value string, expectError bool) {
+					spec := privatev1.ComputeInstanceSpec_builder{
+						SshKey: proto.String(value),
+					}.Build()
 
-				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
-					privatev1.FieldDefinition_builder{
-						Path:             "ssh_key",
-						Editable:         true,
-						ValidationSchema: `{"type":"string","minLength":10}`,
-					}.Build(),
-				})
-				Expect(err).To(HaveOccurred())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("validation failed for field 'ssh_key'"))
-			})
-
-			It("Accepts editable field that satisfies JSON Schema", func() {
-				spec := privatev1.ComputeInstanceSpec_builder{
-					SshKey: proto.String("long-enough-key"),
-				}.Build()
-
-				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
-					privatev1.FieldDefinition_builder{
-						Path:             "ssh_key",
-						Editable:         true,
-						ValidationSchema: `{"type":"string","minLength":10}`,
-					}.Build(),
-				})
-				Expect(err).ToNot(HaveOccurred())
-				Expect(spec.GetSshKey()).To(Equal("long-enough-key"))
-			})
+					err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:             "ssh_key",
+							Editable:         true,
+							ValidationSchema: `{"type":"string","minLength":10}`,
+						}.Build(),
+					})
+					if expectError {
+						Expect(err).To(HaveOccurred())
+						status, ok := grpcstatus.FromError(err)
+						Expect(ok).To(BeTrue())
+						Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+						Expect(status.Message()).To(ContainSubstring("validation failed for field 'ssh_key'"))
+					} else {
+						Expect(err).ToNot(HaveOccurred())
+						Expect(spec.GetSshKey()).To(Equal(value))
+					}
+				},
+				Entry("rejects value below minLength", "short", true),
+				Entry("accepts value meeting minLength", "long-enough-key", false),
+			)
 
 			It("Applies default for editable field when not provided", func() {
 				spec := privatev1.ComputeInstanceSpec_builder{}.Build()

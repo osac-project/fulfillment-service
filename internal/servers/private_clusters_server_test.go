@@ -1134,7 +1134,9 @@ var _ = Describe("Private clusters server", func() {
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.NotFound))
-				Expect(status.Message()).To(ContainSubstring("nonexistent"))
+				Expect(status.Message()).To(Equal(
+					"there is no catalog item with identifier or name 'nonexistent'",
+				))
 			})
 
 			It("Fails when catalog item is not published", func() {
@@ -1154,7 +1156,9 @@ var _ = Describe("Private clusters server", func() {
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.NotFound))
-				Expect(status.Message()).To(ContainSubstring("not published"))
+				Expect(status.Message()).To(Equal(
+					"catalog item 'cat-unpublished' is not published",
+				))
 			})
 
 			It("Fails when both catalog_item and template are set", func() {
@@ -1192,40 +1196,33 @@ var _ = Describe("Private clusters server", func() {
 				Expect(spec.GetPullSecret()).To(Equal("forced-secret"))
 			})
 
-			It("Validates editable field against JSON Schema", func() {
-				spec := privatev1.ClusterSpec_builder{
-					PullSecret: proto.String("short"),
-				}.Build()
+			DescribeTable("validates editable field against JSON Schema",
+				func(value string, expectError bool) {
+					spec := privatev1.ClusterSpec_builder{
+						PullSecret: proto.String(value),
+					}.Build()
 
-				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
-					privatev1.FieldDefinition_builder{
-						Path:             "pull_secret",
-						Editable:         true,
-						ValidationSchema: `{"type":"string","minLength":10}`,
-					}.Build(),
-				})
-				Expect(err).To(HaveOccurred())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("validation failed for field 'pull_secret'"))
-			})
-
-			It("Accepts editable field that satisfies JSON Schema", func() {
-				spec := privatev1.ClusterSpec_builder{
-					PullSecret: proto.String("long-enough-value"),
-				}.Build()
-
-				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
-					privatev1.FieldDefinition_builder{
-						Path:             "pull_secret",
-						Editable:         true,
-						ValidationSchema: `{"type":"string","minLength":10}`,
-					}.Build(),
-				})
-				Expect(err).ToNot(HaveOccurred())
-				Expect(spec.GetPullSecret()).To(Equal("long-enough-value"))
-			})
+					err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:             "pull_secret",
+							Editable:         true,
+							ValidationSchema: `{"type":"string","minLength":10}`,
+						}.Build(),
+					})
+					if expectError {
+						Expect(err).To(HaveOccurred())
+						status, ok := grpcstatus.FromError(err)
+						Expect(ok).To(BeTrue())
+						Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+						Expect(status.Message()).To(ContainSubstring("validation failed for field 'pull_secret'"))
+					} else {
+						Expect(err).ToNot(HaveOccurred())
+						Expect(spec.GetPullSecret()).To(Equal(value))
+					}
+				},
+				Entry("rejects value below minLength", "short", true),
+				Entry("accepts value meeting minLength", "long-enough-value", false),
+			)
 
 			It("Applies default for editable field when not provided", func() {
 				spec := privatev1.ClusterSpec_builder{}.Build()
