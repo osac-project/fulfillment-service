@@ -936,8 +936,8 @@ var _ = Describe("Private compute instances server", func() {
 					privatev1.ComputeInstanceCatalogItem_builder{
 						Id: id,
 						Metadata: privatev1.Metadata_builder{
-							Name:    id + "-name",
-							Tenants: []string{"shared"},
+							Name:   id + "-name",
+							Tenant: "shared",
 						}.Build(),
 						Title:            "Test CI Catalog Item",
 						Published:        published,

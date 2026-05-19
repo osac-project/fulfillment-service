@@ -1065,8 +1065,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.ClusterCatalogItem_builder{
 						Id: id,
 						Metadata: privatev1.Metadata_builder{
-							Name:    id + "-name",
-							Tenants: []string{"shared"},
+							Name:   id + "-name",
+							Tenant: "shared",
 						}.Build(),
 						Title:            "Test Catalog Item",
 						Published:        published,
