@@ -102,10 +102,9 @@ func renderCluster(w io.Writer, cluster *publicv1.Cluster) {
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	catalogItem := "-"
 	if cluster.Spec != nil {
-		// TODO(OSAC-704): Uncomment when Phase 4 adds CatalogItem to ClusterSpec.
-		// if catalogItemID := cluster.Spec.GetCatalogItem(); catalogItemID != "" {
-		//     catalogItem = catalogItemID
-		// }
+		if catalogItemID := cluster.Spec.GetCatalogItem(); catalogItemID != "" {
+			catalogItem = catalogItemID
+		}
 	}
 	state := "-"
 	if cluster.Status != nil {

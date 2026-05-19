@@ -132,8 +132,15 @@ var _ = Describe("Describe Compute Instance", func() {
 		Expect(output).To(ContainSubstring("Catalog Item:"))
 	})
 
-	// TODO(OSAC-704): Add test for "should show catalog item ID when set"
-	// once ComputeInstanceSpec.GetCatalogItem() exists from Phase 4.
+	It("should show catalog item ID when set", func() {
+		ci := &publicv1.ComputeInstance{
+			Spec: publicv1.ComputeInstanceSpec_builder{
+				CatalogItem: "my-ci-catalog-item",
+			}.Build(),
+		}
+		output := formatComputeInstance(ci)
+		Expect(output).To(MatchRegexp(`Catalog Item:\s+my-ci-catalog-item`))
+	})
 })
 
 var _ = Describe("CEL filter construction", func() {

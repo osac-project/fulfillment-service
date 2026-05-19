@@ -236,8 +236,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if c.args.catalogItem != "" {
 		// Catalog item path: skip template lookup entirely (per D-04).
 		specBuilder := publicv1.ClusterSpec_builder{
-			// TODO(OSAC-704): Uncomment when Phase 4 adds CatalogItem to ClusterSpec.
-			// CatalogItem: c.args.catalogItem,
+			CatalogItem: c.args.catalogItem,
 		}
 		if pullSecret != "" {
 			specBuilder.PullSecret = &pullSecret

@@ -129,8 +129,16 @@ var _ = Describe("Rendering tests", func() {
 		Expect(output).To(MatchRegexp(`Catalog Item:\s+-`))
 	})
 
-	// TODO(OSAC-704): Add test for "should show catalog item ID when set"
-	// once ClusterSpec.GetCatalogItem() exists from Phase 4.
+	It("should show catalog item ID when set", func() {
+		cluster := publicv1.Cluster_builder{
+			Id: "cluster-008",
+			Spec: publicv1.ClusterSpec_builder{
+				CatalogItem: "my-catalog-item-id",
+			}.Build(),
+		}.Build()
+		output := formatCluster(cluster)
+		Expect(output).To(MatchRegexp(`Catalog Item:\s+my-catalog-item-id`))
+	})
 })
 
 var _ = Describe("Multi-result guard", func() {

@@ -103,10 +103,9 @@ func renderComputeInstance(w io.Writer, ci *publicv1.ComputeInstance) {
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	catalogItem := "-"
 	if ci.Spec != nil {
-		// TODO(OSAC-704): Uncomment when Phase 4 adds CatalogItem to ComputeInstanceSpec.
-		// if catalogItemID := ci.Spec.GetCatalogItem(); catalogItemID != "" {
-		//     catalogItem = catalogItemID
-		// }
+		if catalogItemID := ci.Spec.GetCatalogItem(); catalogItemID != "" {
+			catalogItem = catalogItemID
+		}
 	}
 	state := "-"
 	if ci.Status != nil {
