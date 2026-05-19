@@ -26,7 +26,7 @@ import (
 
 func formatComputeInstance(ci *publicv1.ComputeInstance) string {
 	var buf bytes.Buffer
-	renderComputeInstance(&buf, ci)
+	RenderComputeInstance(&buf, ci)
 	return buf.String()
 }
 

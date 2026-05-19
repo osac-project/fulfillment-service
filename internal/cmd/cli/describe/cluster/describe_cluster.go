@@ -16,14 +16,15 @@ package cluster
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/config"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
 
@@ -34,13 +35,20 @@ func Cmd() *cobra.Command {
 		Use:     "cluster [flags] ID_OR_NAME",
 		Aliases: []string{"clusters"},
 		Short:   "Describe a cluster",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runner.run,
+		Long:    "Display detailed information about a cluster, identified by ID or name.",
+		Example: `  # Describe a cluster by ID
+  osac describe cluster cluster-abc123
+
+  # Describe a cluster by name
+  osac describe cluster my-cluster`,
+		Args: cobra.ExactArgs(1),
+		RunE: runner.run,
 	}
 	return result
 }
 
 type runnerContext struct {
+	logger  *slog.Logger
 	console *terminal.Console
 }
 
@@ -49,6 +57,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	ctx := cmd.Context()
 
+	c.logger = logging.LoggerFromContext(ctx)
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	cfg, err := config.Load(ctx)
@@ -63,14 +72,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := publicv1.NewClustersClient(conn)
 
 	filter := buildFilter(ref)
 	listResponse, err := client.List(ctx, publicv1.ClustersListRequest_builder{
 		Filter: &filter,
-		Limit:  proto.Int32(2),
 	}.Build())
 	if err != nil {
 		return fmt.Errorf("failed to describe cluster: %w", err)
@@ -79,7 +87,14 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	renderCluster(c.console, listResponse.GetItems()[0])
+	response, err := client.Get(ctx, publicv1.ClustersGetRequest_builder{
+		Id: listResponse.GetItems()[0].GetId(),
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to describe cluster: %w", err)
+	}
+
+	RenderCluster(c.console, response.Object)
 
 	return nil
 }
@@ -98,19 +113,19 @@ func buildFilter(ref string) string {
 	return fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
 }
 
-func renderCluster(w io.Writer, cluster *publicv1.Cluster) {
+// RenderCluster writes a formatted description of cluster to w.
+func RenderCluster(w io.Writer, cluster *publicv1.Cluster) {
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	template := "-"
-	if cluster.Spec != nil {
-		template = cluster.Spec.Template
+	if cluster.GetSpec() != nil {
+		template = cluster.GetSpec().GetTemplate()
 	}
 	state := "-"
-	if cluster.Status != nil {
-		state = cluster.Status.State.String()
-		state = strings.TrimPrefix(state, "CLUSTER_STATE_")
+	if cluster.GetStatus() != nil {
+		state = strings.TrimPrefix(cluster.GetStatus().GetState().String(), "CLUSTER_STATE_")
 	}
-	fmt.Fprintf(writer, "ID:\t%s\n", cluster.Id)
-	fmt.Fprintf(writer, "Template:\t%s\n", template)
-	fmt.Fprintf(writer, "State:\t%s\n", state)
-	writer.Flush()
+	_, _ = fmt.Fprintf(writer, "ID:\t%s\n", cluster.GetId())
+	_, _ = fmt.Fprintf(writer, "Template:\t%s\n", template)
+	_, _ = fmt.Fprintf(writer, "State:\t%s\n", state)
+	_ = writer.Flush()
 }

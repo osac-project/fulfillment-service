@@ -49,7 +49,7 @@ func Cmd() *cobra.Command {
 		"",
 		"Name or identifier of the cluster.",
 	)
-	flags.MarkDeprecated("cluster", "use positional argument instead.\n")
+	_ = flags.MarkDeprecated("cluster", "use positional argument instead.\n")
 	return result
 }
 
@@ -96,7 +96,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
-	defer c.conn.Close()
+	defer func() { _ = c.conn.Close() }()
 
 	// Get the cluster name or identifier: from the flag if provided, otherwise from the first positional argument.
 	key := c.args.key
@@ -126,13 +126,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	total := listResponse.GetTotal()
 	clusters := listResponse.GetItems()
 	var cluster *publicv1.Cluster
-	switch {
-	case total == 0:
+	switch total {
+	case 0:
 		c.console.Render(ctx, "no_match.txt", map[string]any{
 			"Key": key,
 		})
 		return exit.Error(1)
-	case total == 1:
+	case 1:
 		cluster = clusters[0]
 	default:
 		ids := make([]string, len(clusters))

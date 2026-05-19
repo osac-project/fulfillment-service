@@ -181,8 +181,8 @@ var _ = Describe("Logger", func() {
 			Expect(err).ToNot(HaveOccurred())
 		}()
 		oldCache := os.Getenv("XDG_CACHE_HOME")
-		defer os.Setenv("XDG_CACHE_HOME", oldCache)
-		os.Setenv("XDG_CACHE_HOME", tmpCache)
+		defer func() { _ = os.Setenv("XDG_CACHE_HOME", oldCache) }()
+		_ = os.Setenv("XDG_CACHE_HOME", tmpCache)
 
 		// Create the logger with a writer:
 		logger, err := NewLogger().

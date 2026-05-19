@@ -117,7 +117,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create connection: %w", err)
 	}
-	defer c.conn.Close()
+	defer func() { _ = c.conn.Close() }()
 
 	// Resolve name or ID to instance ID.
 	instanceID, err := c.resolveInstance(ctx, key)
@@ -206,7 +206,7 @@ func (c *runnerContext) connectWithRetry(ctx context.Context, instanceID string)
 		// retry counter — the server was reachable, this is a new failure
 		// sequence.
 		if errors.Is(err, errConnectionLost) {
-			fmt.Fprintln(c.spinner.Writer())
+			_, _ = fmt.Fprintln(c.spinner.Writer())
 			wasConnected = true
 			consecutiveFailures = 0
 			backoff = time.Second
@@ -288,7 +288,7 @@ func (c *runnerContext) connectOnce(ctx context.Context, instanceID string) erro
 		if err != nil {
 			return fmt.Errorf("failed to set raw mode: %w", err)
 		}
-		defer term.Restore(fd, oldState)
+		defer func() { _ = term.Restore(fd, oldState) }()
 	}
 
 	err = c.proxyIO(streamCtx, stream)
@@ -433,11 +433,12 @@ func (e *escapeDetector) feed(data []byte) bool {
 				e.state = 1
 			}
 		case 1:
-			if b == '~' {
+			switch b {
+			case '~':
 				e.state = 2
-			} else if b == '\r' || b == '\n' {
+			case '\r', '\n':
 				e.state = 1
-			} else {
+			default:
 				e.state = 0
 			}
 		case 2:

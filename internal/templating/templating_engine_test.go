@@ -32,7 +32,7 @@ var _ = Describe("Engine", func() {
 	It("Can't be created without a logger", func() {
 		// Create the filesystem:
 		tmp, fsys := TmpFS()
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -59,7 +59,7 @@ var _ = Describe("Engine", func() {
 		tmp, fsys := TmpFS(
 			"a.txt", "a",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine without a filesystem:
 		engine, err := NewEngine().
@@ -82,12 +82,12 @@ var _ = Describe("Engine", func() {
 		tmp1, fsys1 := TmpFS(
 			"a.txt", "a",
 		)
-		defer os.RemoveAll(tmp1)
+		defer func() { _ = os.RemoveAll(tmp1) }()
 
 		tmp2, fsys2 := TmpFS(
 			"b.txt", "b",
 		)
-		defer os.RemoveAll(tmp2)
+		defer func() { _ = os.RemoveAll(tmp2) }()
 
 		// Create the engine and add multiple filesystems:
 		engine, err := NewEngine().
@@ -106,17 +106,17 @@ var _ = Describe("Engine", func() {
 		tmp1, fsys1 := TmpFS(
 			"a.txt", "a",
 		)
-		defer os.RemoveAll(tmp1)
+		defer func() { _ = os.RemoveAll(tmp1) }()
 
 		tmp2, fsys2 := TmpFS(
 			"b.txt", "b",
 		)
-		defer os.RemoveAll(tmp2)
+		defer func() { _ = os.RemoveAll(tmp2) }()
 
 		tmp3, fsys3 := TmpFS(
 			"c.txt", "c",
 		)
-		defer os.RemoveAll(tmp3)
+		defer func() { _ = os.RemoveAll(tmp3) }()
 
 		// Create the engine with one filesystem:
 		engine, err := NewEngine().
@@ -139,7 +139,7 @@ var _ = Describe("Engine", func() {
 		tmp, fsys := TmpFS(
 			"a.txt", "a",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -160,7 +160,7 @@ var _ = Describe("Engine", func() {
 			"b.txt", "b",
 			"c.txt", "c",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -179,7 +179,7 @@ var _ = Describe("Engine", func() {
 		tmp, fsys := TmpFS(
 			"a.txt", "a",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -203,7 +203,7 @@ var _ = Describe("Engine", func() {
 			"b.txt", "b",
 			"c.txt", "c",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -236,7 +236,7 @@ var _ = Describe("Engine", func() {
 		tmp, fsys := TmpFS(
 			"first/second/myfile.txt", "mytext",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -257,7 +257,7 @@ var _ = Describe("Engine", func() {
 		tmp, fsys := TmpFS(
 			"good.txt", "mycontent",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -280,7 +280,7 @@ var _ = Describe("Engine", func() {
 		tmp, fsys := TmpFS(
 			"f.txt", "x={{ .X }} y={{ .Y }}",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -304,7 +304,7 @@ var _ = Describe("Engine", func() {
 		tmp, fsys := TmpFS(
 			"mydir/myfile.txt", "mytext",
 		)
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 
 		// Create the engine:
 		engine, err := NewEngine().
@@ -328,7 +328,7 @@ var _ = Describe("Engine", func() {
 				"caller.txt", `{{ execute "called.txt" . }}`,
 				"called.txt", `mytext`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -351,7 +351,7 @@ var _ = Describe("Engine", func() {
 				"second.txt", `{{ execute "third.txt" . }}`,
 				"third.txt", `mytext`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -373,7 +373,7 @@ var _ = Describe("Engine", func() {
 				"caller.txt", `{{ execute "called.txt" 42 }}`,
 				"called.txt", `{{ . }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -395,7 +395,7 @@ var _ = Describe("Engine", func() {
 				"caller.txt", `{{ execute "caled.txt" 42 }}`,
 				"called.txt", `{{ . }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -420,7 +420,7 @@ var _ = Describe("Engine", func() {
 			tmp, fsys := TmpFS(
 				"myfile.txt", `{{ "mytext" | base64 }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -444,7 +444,7 @@ var _ = Describe("Engine", func() {
 			tmp, fsys := TmpFS(
 				"myfile.txt", `{{ . | json }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -519,7 +519,7 @@ var _ = Describe("Engine", func() {
 			tmp, fsys := TmpFS(
 				"myuuid.txt", `{{ uuid }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -548,7 +548,7 @@ var _ = Describe("Engine", func() {
 					{{ end -}}
 				`),
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -573,7 +573,7 @@ var _ = Describe("Engine", func() {
 				"myfile.txt",
 				`{{ data "X" 123 "Y" }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -597,7 +597,7 @@ var _ = Describe("Engine", func() {
 				"myfile.txt",
 				`{{ data 42 123 "Y" 456 }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine:
 			engine, err := NewEngine().
@@ -622,7 +622,7 @@ var _ = Describe("Engine", func() {
 			tmp, fsys := TmpFS(
 				"myfile.txt", `{{ "hello world" | upper }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine with a custom function:
 			engine, err := NewEngine().
@@ -644,7 +644,7 @@ var _ = Describe("Engine", func() {
 			tmp, fsys := TmpFS(
 				"myfile.txt", `{{ upper "hello" }} {{ lower "WORLD" }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine with custom functions:
 			engine, err := NewEngine().
@@ -669,7 +669,7 @@ var _ = Describe("Engine", func() {
 			tmp, fsys := TmpFS(
 				"myfile.txt", `{{ "hello world" | upper | lower }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine with custom functions:
 			engine, err := NewEngine().
@@ -692,7 +692,7 @@ var _ = Describe("Engine", func() {
 			tmp, fsys := TmpFS(
 				"myfile.txt", `{{ repeat "abc" 3 }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine with a custom function:
 			engine, err := NewEngine().
@@ -714,7 +714,7 @@ var _ = Describe("Engine", func() {
 			tmp, fsys := TmpFS(
 				"myfile.txt", `{{ "hello" | upper }} {{ uuid | len }}`,
 			)
-			defer os.RemoveAll(tmp)
+			defer func() { _ = os.RemoveAll(tmp) }()
 
 			// Create the engine with a custom function:
 			engine, err := NewEngine().

@@ -1423,6 +1423,7 @@ var _ = Describe("Generic DAO", func() {
 			updateResponse, err := generic.Update().
 				SetObject(object).
 				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			object = updateResponse.GetObject()
 			Expect(object.GetMetadata().GetFinalizers()).To(Equal([]string{"your-finalizer"}))
 
@@ -1451,7 +1452,7 @@ var _ = Describe("Generic DAO", func() {
 			updateResponse, err := generic.Update().
 				SetObject(object).
 				Do(ctx)
-
+			Expect(err).ToNot(HaveOccurred())
 			object = updateResponse.GetObject()
 			Expect(object.GetMetadata().GetTenant()).To(Equal("your-tenant"))
 

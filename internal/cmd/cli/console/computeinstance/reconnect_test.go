@@ -90,7 +90,7 @@ func startTestGRPCServer(srv publicv1.ConsoleServer) (addr string, cleanup func(
 	grpcServer := grpc.NewServer()
 	publicv1.RegisterConsoleServer(grpcServer, srv)
 
-	go grpcServer.Serve(listener)
+	go func() { _ = grpcServer.Serve(listener) }()
 
 	return listener.Addr().String(), func() {
 		grpcServer.GracefulStop()
@@ -108,7 +108,7 @@ var _ = Describe("Auto-reconnect", func() {
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		Expect(err).NotTo(HaveOccurred())
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		runner := &runnerContext{
 			logger:  logger,
@@ -132,9 +132,7 @@ var _ = Describe("Auto-reconnect", func() {
 		Expect(testSrv.connectCount.Load()).To(Equal(int32(2)))
 
 		// Third call: server succeeds (sends CONNECTED then DISCONNECTED, exits cleanly).
-		err = runner.connectOnce(ctx, "test-vm")
-		// This should complete without error — server sends disconnect, client sees EOF.
-		// Either nil or a recv error from stream closing is acceptable.
+		_ = runner.connectOnce(ctx, "test-vm")
 		Expect(testSrv.connectCount.Load()).To(Equal(int32(3)))
 	})
 
@@ -148,7 +146,7 @@ var _ = Describe("Auto-reconnect", func() {
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		Expect(err).NotTo(HaveOccurred())
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		runner := &runnerContext{
 			logger:  logger,
@@ -173,7 +171,7 @@ var _ = Describe("Auto-reconnect", func() {
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		Expect(err).NotTo(HaveOccurred())
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		runner := &runnerContext{
 			logger:  logger,
@@ -185,8 +183,7 @@ var _ = Describe("Auto-reconnect", func() {
 		ctx := context.Background()
 
 		// connectWithRetry should retry the transient failures and eventually succeed.
-		err = runner.connectWithRetry(ctx, "test-vm")
-		// Should complete — either nil or a clean exit from the DISCONNECTED status.
+		_ = runner.connectWithRetry(ctx, "test-vm")
 		Expect(testSrv.connectCount.Load()).To(Equal(int32(3)))
 	})
 })
@@ -204,7 +201,7 @@ var _ = Describe("connectOnce edge cases", func() {
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		Expect(err).NotTo(HaveOccurred())
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		runner := &runnerContext{
 			logger:  logger,
@@ -214,8 +211,7 @@ var _ = Describe("connectOnce edge cases", func() {
 		}
 
 		// Should handle EOF gracefully (return nil or io.EOF wrapped error).
-		err = runner.connectOnce(context.Background(), "test-vm")
-		// EOF from server = clean disconnect, should not panic.
+		_ = runner.connectOnce(context.Background(), "test-vm")
 	})
 })
 

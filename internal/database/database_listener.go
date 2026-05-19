@@ -340,7 +340,7 @@ func (l *Listener) processNotification(ctx context.Context, notification *pgconn
 			)
 		}
 		var object any
-		json.Unmarshal(data, &object)
+		_ = json.Unmarshal(data, &object)
 
 	}
 	if l.logger.Enabled(ctx, slog.LevelDebug) {

@@ -24,7 +24,7 @@ import (
 
 func formatCluster(cluster *publicv1.Cluster) string {
 	var buf bytes.Buffer
-	renderCluster(&buf, cluster)
+	RenderCluster(&buf, cluster)
 	return buf.String()
 }
 

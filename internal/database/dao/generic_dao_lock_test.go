@@ -264,7 +264,7 @@ var _ = Describe("Lock", func() {
 		// Start a transaction and lock 'a' using direct SQL:
 		tx1, err := pool.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
-		defer tx1.Rollback(ctx)
+		defer func() { _ = tx1.Rollback(ctx) }()
 		_, err = tx1.Exec(ctx, "select id from objects where id = 'a' for update")
 		Expect(err).ToNot(HaveOccurred())
 
