@@ -182,7 +182,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "ACME 1TiB",
 						Description: "ACME 1TiB.",
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "shared",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 					}.Build()).
 				Do(ctx)
@@ -194,7 +194,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "ACME GPU",
 						Description: "ACME GPU.",
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "shared",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 					}.Build(),
 				).
@@ -207,7 +207,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "HAL 9000",
 						Description: "Heuristically programmed ALgorithmic computer.",
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "shared",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 					}.Build(),
 				).
@@ -222,7 +222,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "My template",
 						Description: "My template",
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "shared",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 							"compute": privatev1.ClusterTemplateNodeSet_builder{
@@ -250,7 +250,7 @@ var _ = Describe("Clusters server", func() {
 						Description: "My deleted template",
 						Metadata: privatev1.Metadata_builder{
 							Finalizers: []string{"a"},
-							Tenant:     "shared",
+							Tenant:     auth.SharedTenant,
 						}.Build(),
 					}.Build(),
 				).
@@ -269,7 +269,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "My with parameters",
 						Description: "My with parameters.",
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "shared",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Parameters: []*privatev1.ClusterTemplateParameterDefinition{
 							privatev1.ClusterTemplateParameterDefinition_builder{
@@ -934,7 +934,7 @@ var _ = Describe("Clusters server", func() {
 				SetObject(
 					privatev1.Cluster_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "shared",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Spec: privatev1.ClusterSpec_builder{
 							Template: "my_template",
@@ -1017,7 +1017,7 @@ var _ = Describe("Clusters server", func() {
 				SetObject(
 					privatev1.Cluster_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "shared",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Spec: privatev1.ClusterSpec_builder{
 							Template: "my_template",
@@ -1629,7 +1629,7 @@ var _ = Describe("Clusters server", func() {
 					Id:    "acme_1tib",
 					Title: "ACME 1TiB",
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "shared",
+						Tenant: auth.SharedTenant,
 					}.Build(),
 				}.Build()).
 				Do(ctx)
@@ -1646,7 +1646,7 @@ var _ = Describe("Clusters server", func() {
 					Id:    "my_template",
 					Title: "My template",
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "shared",
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 						"compute": privatev1.ClusterTemplateNodeSet_builder{

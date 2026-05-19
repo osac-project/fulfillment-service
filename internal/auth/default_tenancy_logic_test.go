@@ -127,7 +127,7 @@ var _ = Describe("Default tenancy logic", func() {
 			ctx = ContextWithSubject(ctx, subject)
 			result, err := logic.DetermineDefaultTenant(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(result).To(Equal("shared"))
+			Expect(result).To(Equal(SharedTenant))
 		})
 
 		It("Fails if the subject has an empty tenants set", func() {

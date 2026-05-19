@@ -95,7 +95,7 @@ var _ = Describe("Subnets server", func() {
 			Id:                     "default",
 			ImplementationStrategy: "ovn-kubernetes",
 			Metadata: privatev1.Metadata_builder{
-				Tenant: "shared",
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -122,7 +122,7 @@ var _ = Describe("Subnets server", func() {
 
 		vn := privatev1.VirtualNetwork_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenant: "shared",
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Region:       "us-east-1",

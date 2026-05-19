@@ -83,7 +83,7 @@ func (p *DefaultTenancyLogic) DetermineDefaultTenant(ctx context.Context) (resul
 		return
 	}
 	if !assignable.Finite() {
-		result = "shared"
+		result = SharedTenant
 		return
 	}
 	inclusions := assignable.Inclusions()

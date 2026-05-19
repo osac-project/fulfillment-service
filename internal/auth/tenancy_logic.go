@@ -37,11 +37,17 @@ type TenancyLogic interface {
 	DetermineVisibleTenants(ctx context.Context) (collections.Set[string], error)
 }
 
+// SystemTenant is the tenant that is assigned to objects that are only visible to the system.
+const SystemTenant = "system"
+
 // SystemTenants is the set of tenants that are assigned to objects that are only visible to the system.
-var SystemTenants = collections.NewSet("system")
+var SystemTenants = collections.NewSet(SystemTenant)
+
+// SharedTenant is the tenant that is always visible to all users.
+const SharedTenant = "shared"
 
 // SharedTenants is the set of tenants that are always visible to all users.
-var SharedTenants = collections.NewSet("shared")
+var SharedTenants = collections.NewSet(SharedTenant)
 
 // AllTenants is the set of all tenants that are possible.
 var AllTenants = collections.NewUniversalSet[string]()
