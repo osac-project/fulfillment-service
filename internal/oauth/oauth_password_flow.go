@@ -36,22 +36,8 @@ func (f *passwordFlow) run(ctx context.Context) (result *auth.Token, err error) 
 	}
 	tokenResponse, err := f.source.sendTokenForm(ctx, tokenRequest)
 	if err != nil {
-		f.logger.ErrorContext(
-			ctx,
-			"Failed to request token",
-			slog.String("url", f.source.tokenEndpoint),
-			slog.String("username", f.source.username),
-			slog.Any("request", tokenRequest),
-			slog.Any("error", err),
-		)
 		return
 	}
-	f.logger.DebugContext(
-		ctx,
-		"Received token response",
-		slog.String("username", f.source.username),
-		slog.Any("response", tokenResponse),
-	)
 	result = &auth.Token{
 		Access:  tokenResponse.AccessToken,
 		Refresh: tokenResponse.RefreshToken,

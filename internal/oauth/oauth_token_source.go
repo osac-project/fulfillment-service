@@ -722,10 +722,6 @@ func (s *TokenSource) runFlow(ctx context.Context) (result *auth.Token, err erro
 // is not 200 then an error is returned. The error will be of type `endpointError` if the server returned a valid JSON
 // error response with at least the `error` field. Otherwise will be a generic error.
 func (s *TokenSource) sendForm(ctx context.Context, endpoint string, form any, result any) error {
-	logger := s.logger.With(
-		slog.String("endpoint", endpoint),
-		slog.Any("form", form),
-	)
 	values, err := query.Values(form)
 	if err != nil {
 		return err
@@ -737,9 +733,10 @@ func (s *TokenSource) sendForm(ctx context.Context, endpoint string, form any, r
 	defer func() {
 		err := response.Body.Close()
 		if err != nil {
-			logger.ErrorContext(
+			s.logger.ErrorContext(
 				ctx,
 				"Failed to close response body",
+				slog.String("endpoint", endpoint),
 				slog.Any("error", err),
 			)
 		}
@@ -788,9 +785,10 @@ func (s *TokenSource) sendForm(ctx context.Context, endpoint string, form any, r
 		}
 		return &endpointErr
 	default:
-		logger.ErrorContext(
+		s.logger.ErrorContext(
 			ctx,
 			"Unexpected response code",
+			slog.String("endpoint", endpoint),
 			slog.Int("code", response.StatusCode),
 		)
 		return fmt.Errorf(
@@ -803,6 +801,16 @@ func (s *TokenSource) sendForm(ctx context.Context, endpoint string, form any, r
 func (s *TokenSource) sendTokenForm(ctx context.Context,
 	request tokenEndpointRequest) (response tokenEndpointResponse, err error) {
 	err = s.sendForm(ctx, s.tokenEndpoint, &request, &response)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to send token form",
+			slog.String("endpoint", s.tokenEndpoint),
+			slog.Any("!request", request),
+			slog.Any("error", err),
+		)
+		return
+	}
 	return
 }
 

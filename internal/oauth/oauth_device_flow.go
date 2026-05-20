@@ -72,8 +72,8 @@ func (f *deviceFlow) run(ctx context.Context) (result *auth.Token, err error) {
 		slog.Int("interval", authResponse.Interval),
 		slog.String("!device_code", authResponse.DeviceCode),
 		slog.String("!user_code", authResponse.UserCode),
-		slog.String("verification_uri", authResponse.VerificationUri),
-		slog.String("verification_uri_complete", authResponse.VerificationUriComplete),
+		slog.String("!verification_uri", authResponse.VerificationUri),
+		slog.String("!verification_uri_complete", authResponse.VerificationUriComplete),
 	)
 
 	// If the server has provided an expiration time for the code, then we will use that. Otherwise we will use
@@ -208,11 +208,6 @@ func (f *deviceFlow) run(ctx context.Context) (result *auth.Token, err error) {
 			return
 		}
 	}
-	f.logger.DebugContext(
-		ctx,
-		"Received token response",
-		slog.Any("response", tokenResponse),
-	)
 
 	// Notify user of authentication success:
 	err = f.listener.End(ctx, FlowEndEvent{

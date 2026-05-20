@@ -297,7 +297,7 @@ func (f *codeFlow) serve(w http.ResponseWriter, r *http.Request) {
 		"Received redirect request",
 		slog.String("method", r.Method),
 		slog.String("path", r.URL.Path),
-		slog.Any("query", query),
+		slog.Any("!query", query),
 	)
 
 	// Check for error parameter:
