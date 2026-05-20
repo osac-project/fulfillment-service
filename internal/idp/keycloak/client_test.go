@@ -1313,6 +1313,321 @@ var _ = Describe("Keycloak Client", func() {
 			Expect(err.Error()).To(ContainSubstring("failed to delete authorization resource"))
 		})
 	})
+
+	Describe("Identity Provider Operations", func() {
+		Describe("GetIdentityProvider", func() {
+			It("retrieves an identity provider by alias", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/identity-provider/instances/corporate-ldap" {
+						response := keycloakIdentityProvider{
+							Alias:       "corporate-ldap",
+							DisplayName: "Corporate LDAP",
+							InternalID:  "idp-123",
+							ProviderID:  "ldap",
+							Enabled:     true,
+							Config: map[string]string{
+								"connectionUrl": "ldap://ldap.example.com:389",
+								"bindDn":        "cn=admin,dc=example,dc=com",
+							},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				idpProvider, err := client.GetIdentityProvider(ctx, "corporate-ldap")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(idpProvider).ToNot(BeNil())
+				Expect(idpProvider.Alias).To(Equal("corporate-ldap"))
+				Expect(idpProvider.DisplayName).To(Equal("Corporate LDAP"))
+				Expect(idpProvider.Type).To(Equal("ldap"))
+				Expect(idpProvider.Enabled).To(BeTrue())
+				Expect(idpProvider.Config).To(HaveKeyWithValue("connectionUrl", "ldap://ldap.example.com:389"))
+			})
+
+			It("returns an error when IdP not found", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				_, err := client.GetIdentityProvider(ctx, "nonexistent")
+				Expect(err).To(HaveOccurred())
+			})
+		})
+
+		Describe("ListAllIdentityProviders", func() {
+			It("lists all identity providers in the realm", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/identity-provider/instances" {
+						response := []keycloakIdentityProvider{
+							{
+								Alias:       "corporate-ldap",
+								DisplayName: "Corporate LDAP",
+								ProviderID:  "ldap",
+								Enabled:     true,
+							},
+							{
+								Alias:       "okta-sso",
+								DisplayName: "Okta SSO",
+								ProviderID:  "oidc",
+								Enabled:     true,
+							},
+							{
+								Alias:       "disabled-saml",
+								DisplayName: "Disabled SAML",
+								ProviderID:  "saml",
+								Enabled:     false,
+							},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				idps, err := client.ListAllIdentityProviders(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(idps).To(HaveLen(3))
+				Expect(idps[0].Alias).To(Equal("corporate-ldap"))
+				Expect(idps[0].Type).To(Equal("ldap"))
+				Expect(idps[1].Alias).To(Equal("okta-sso"))
+				Expect(idps[1].Type).To(Equal("oidc"))
+				Expect(idps[2].Alias).To(Equal("disabled-saml"))
+				Expect(idps[2].Enabled).To(BeFalse())
+			})
+
+			It("returns empty list when no IdPs configured", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/identity-provider/instances" {
+						response := []keycloakIdentityProvider{}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				idps, err := client.ListAllIdentityProviders(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(idps).To(BeEmpty())
+			})
+		})
+
+		Describe("GetOrganizationIdentityProvider", func() {
+			It("retrieves an IdP assigned to an organization", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Handle GetOrganization request
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=test-org" {
+						response := []keycloakOrganization{{
+							ID:   "org-123",
+							Name: "test-org",
+						}}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+
+					// Handle GetOrganizationIdentityProvider request
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/identity-providers/corporate-ldap" {
+						response := keycloakIdentityProvider{
+							Alias:       "corporate-ldap",
+							DisplayName: "Corporate LDAP",
+							ProviderID:  "ldap",
+							Enabled:     true,
+							Config: map[string]string{
+								"connectionUrl": "ldap://ldap.example.com:389",
+							},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				idpProvider, err := client.GetOrganizationIdentityProvider(ctx, "test-org", "corporate-ldap")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(idpProvider).ToNot(BeNil())
+				Expect(idpProvider.Alias).To(Equal("corporate-ldap"))
+				Expect(idpProvider.DisplayName).To(Equal("Corporate LDAP"))
+				Expect(idpProvider.Type).To(Equal("ldap"))
+			})
+
+			It("returns error when IdP not assigned to organization", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Handle GetOrganization request
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=test-org" {
+						response := []keycloakOrganization{{
+							ID:   "org-123",
+							Name: "test-org",
+						}}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+
+					// IdP not assigned to organization
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/identity-providers/nonexistent" {
+						w.WriteHeader(http.StatusNotFound)
+						return
+					}
+
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				_, err := client.GetOrganizationIdentityProvider(ctx, "test-org", "nonexistent")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to get organization identity provider"))
+			})
+
+			It("returns error when organization not found", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Organization doesn't exist
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" {
+						response := []keycloakOrganization{}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				_, err := client.GetOrganizationIdentityProvider(ctx, "nonexistent-org", "corporate-ldap")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("organization"))
+			})
+		})
+
+		Describe("ListIdentityProviders", func() {
+			It("lists IdPs assigned to an organization", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Handle GetOrganization request
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=test-org" {
+						response := []keycloakOrganization{{
+							ID:   "org-123",
+							Name: "test-org",
+						}}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+
+					// Handle ListIdentityProviders request
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/identity-providers" {
+						response := []keycloakIdentityProvider{
+							{
+								Alias:       "corporate-ldap",
+								DisplayName: "Corporate LDAP",
+								ProviderID:  "ldap",
+								Enabled:     true,
+							},
+							{
+								Alias:       "okta-sso",
+								DisplayName: "Okta SSO",
+								ProviderID:  "oidc",
+								Enabled:     true,
+							},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				idps, err := client.ListIdentityProviders(ctx, "test-org")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(idps).To(HaveLen(2))
+				Expect(idps[0].Alias).To(Equal("corporate-ldap"))
+				Expect(idps[0].Type).To(Equal("ldap"))
+				Expect(idps[1].Alias).To(Equal("okta-sso"))
+				Expect(idps[1].Type).To(Equal("oidc"))
+			})
+
+			It("returns empty list when no IdPs assigned to organization", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Handle GetOrganization request
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=test-org" {
+						response := []keycloakOrganization{{
+							ID:   "org-123",
+							Name: "test-org",
+						}}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+
+					// No IdPs assigned
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/identity-providers" {
+						response := []keycloakIdentityProvider{}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				idps, err := client.ListIdentityProviders(ctx, "test-org")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(idps).To(BeEmpty())
+			})
+
+			It("returns error when organization not found", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Organization doesn't exist
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" {
+						response := []keycloakOrganization{}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				_, err := client.ListIdentityProviders(ctx, "nonexistent-org")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("organization"))
+			})
+		})
+	})
 })
 
 func createTestClient(serverURL string) *Client {
