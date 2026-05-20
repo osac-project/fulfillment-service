@@ -21,8 +21,14 @@ import (
 
 // Client is the generic interface for identity provider admin operations.
 // Different IdP providers (Keycloak, Auth0, Okta, etc.) implement this interface.
+//
+// For Keycloak:
+// - One realm contains all OSAC (e.g., "osac" realm)
+// - Organizations map to Keycloak Organizations within that realm
+// - Identity providers are realm-level resources assigned to organizations
 type Client interface {
 	// Organization operations
+	// These manage Keycloak Organizations within the configured realm.
 	CreateOrganization(ctx context.Context, org *Organization) (*Organization, error)
 	GetOrganization(ctx context.Context, name string) (*Organization, error)
 	DeleteOrganization(ctx context.Context, name string) error
@@ -71,4 +77,22 @@ type Client interface {
 	CreateAuthorizationResource(ctx context.Context, resource *AuthorizationResource) (*AuthorizationResource, error)
 	GetAuthorizationResource(ctx context.Context, resourceID string) (*AuthorizationResource, error)
 	DeleteAuthorizationResource(ctx context.Context, resourceID string) error
+
+	// Identity Provider operations
+	// GetIdentityProvider retrieves an external identity provider configuration by alias at the realm level.
+	// This returns the IdP without verifying organization assignment.
+	GetIdentityProvider(ctx context.Context, alias string) (*IdentityProvider, error)
+
+	// ListAllIdentityProviders lists all external identity providers configured at the realm level.
+	// These are the IdPs available for assignment to organizations.
+	// Returns an empty slice if no IdPs are configured in the realm.
+	ListAllIdentityProviders(ctx context.Context) ([]*IdentityProvider, error)
+
+	// GetOrganizationIdentityProvider retrieves an IdP by alias and verifies it's assigned to the organization.
+	// Returns an error if the IdP is not assigned to the organization.
+	GetOrganizationIdentityProvider(ctx context.Context, organizationName, alias string) (*IdentityProvider, error)
+
+	// ListIdentityProviders lists all external identity providers assigned to a specific organization.
+	// Returns an empty slice if no IdPs are assigned to the organization.
+	ListIdentityProviders(ctx context.Context, organizationName string) ([]*IdentityProvider, error)
 }

@@ -237,6 +237,23 @@ func (m *mockClient) DeleteAuthorizationResource(ctx context.Context, resourceID
 	return nil
 }
 
+// Identity Provider stub methods
+func (m *mockClient) GetIdentityProvider(ctx context.Context, alias string) (*IdentityProvider, error) {
+	return nil, nil
+}
+
+func (m *mockClient) ListAllIdentityProviders(ctx context.Context) ([]*IdentityProvider, error) {
+	return nil, nil
+}
+
+func (m *mockClient) GetOrganizationIdentityProvider(ctx context.Context, organizationName, alias string) (*IdentityProvider, error) {
+	return nil, nil
+}
+
+func (m *mockClient) ListIdentityProviders(ctx context.Context, organizationName string) ([]*IdentityProvider, error) {
+	return nil, nil
+}
+
 var _ = Describe("OrganizationManager", func() {
 	var (
 		ctx     context.Context
