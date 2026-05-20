@@ -170,8 +170,8 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		}
 	})
 
-	It("creates ComputeInstance with subnet reference", func() {
-		// Create ComputeInstance with subnet reference
+	It("creates ComputeInstance with network attachments", func() {
+		// Create ComputeInstance with network attachment
 		computeInstanceId = fmt.Sprintf("test-ci-%s", uuid.New())
 		createResp, err := computeInstancesClient.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
 			Object: publicv1.ComputeInstance_builder{
@@ -188,23 +188,28 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
 					}.Build(),
-					Subnet: new(subnetId),
+					NetworkAttachments: []*publicv1.NetworkAttachment{
+						publicv1.NetworkAttachment_builder{
+							Subnet: subnetId,
+						}.Build(),
+					},
 				}.Build(),
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(createResp.GetObject()).ToNot(BeNil())
 
-		// Verify the subnet reference is persisted via Get
+		// Verify the network attachment is persisted via Get
 		getResp, err := computeInstancesClient.Get(ctx, publicv1.ComputeInstancesGetRequest_builder{
 			Id: computeInstanceId,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
-		Expect(getResp.GetObject().GetSpec().GetSubnet()).To(Equal(subnetId),
-			"ComputeInstance should persist subnet reference")
+		Expect(getResp.GetObject().GetSpec().GetNetworkAttachments()).To(HaveLen(1))
+		Expect(getResp.GetObject().GetSpec().GetNetworkAttachments()[0].GetSubnet()).To(Equal(subnetId),
+			"ComputeInstance should persist network attachment with subnet reference")
 	})
 
-	It("rejects ComputeInstance with non-existent subnet", func() {
+	It("rejects ComputeInstance with non-existent subnet in network attachments", func() {
 		computeInstanceId = fmt.Sprintf("test-ci-%s", uuid.New())
 		_, err := computeInstancesClient.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
 			Object: publicv1.ComputeInstance_builder{
@@ -221,7 +226,11 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
 					}.Build(),
-					Subnet: new("non-existent-subnet"),
+					NetworkAttachments: []*publicv1.NetworkAttachment{
+						publicv1.NetworkAttachment_builder{
+							Subnet: "non-existent-subnet",
+						}.Build(),
+					},
 				}.Build(),
 			}.Build(),
 		}.Build())

@@ -143,28 +143,12 @@ func Cmd() *cobra.Command {
 		"",
 		userDataFlagHelp,
 	)
-	flags.StringVar(
-		&runner.args.subnet,
-		"subnet",
-		"",
-		subnetFlagHelp,
-	)
-	flags.StringSliceVar(
-		&runner.args.securityGroups,
-		"security-group",
-		nil,
-		securityGroupFlagHelp,
-	)
 	flags.StringArrayVar(
 		&runner.args.networkAttachments,
 		"network-attachment",
 		nil,
 		networkAttachmentFlagHelp,
 	)
-
-	// Mark deprecated flags
-	flags.MarkDeprecated("subnet", "use --network-attachment instead")
-	flags.MarkDeprecated("security-group", "use --network-attachment instead")
 
 	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
 	result.MarkFlagsOneRequired("catalog-item", "template")
@@ -187,8 +171,6 @@ type runnerContext struct {
 		additionalDisks         []string
 		runStrategy             string
 		userData                string
-		subnet                  string
-		securityGroups          []string
 		networkAttachments      []string
 	}
 	logger                 *slog.Logger
@@ -746,31 +728,21 @@ func (c *runnerContext) buildSpec(templateID string,
 	return spec.Build(), nil
 }
 
-// applyNetworkingFlags sets spec.network_attachments or deprecated subnet / security_groups from CLI flags.
+// applyNetworkingFlags sets spec.network_attachments from CLI flags.
 func (c *runnerContext) applyNetworkingFlags(spec *publicv1.ComputeInstanceSpec_builder) error {
-	hasAttachments := len(c.args.networkAttachments) > 0
-	hasLegacy := c.args.subnet != "" || len(c.args.securityGroups) > 0
-	if hasAttachments && hasLegacy {
-		return fmt.Errorf("do not combine --network-attachment with --subnet or --security-group")
-	}
-	if hasAttachments {
-		attachments := make([]*publicv1.NetworkAttachment, 0, len(c.args.networkAttachments))
-		for _, raw := range c.args.networkAttachments {
-			na, err := parseNetworkAttachmentFlag(raw)
-			if err != nil {
-				return err
-			}
-			attachments = append(attachments, na)
-		}
-		spec.NetworkAttachments = attachments
+	if len(c.args.networkAttachments) == 0 {
 		return nil
 	}
-	if c.args.subnet != "" {
-		spec.Subnet = new(c.args.subnet)
+
+	attachments := make([]*publicv1.NetworkAttachment, 0, len(c.args.networkAttachments))
+	for _, raw := range c.args.networkAttachments {
+		na, err := parseNetworkAttachmentFlag(raw)
+		if err != nil {
+			return err
+		}
+		attachments = append(attachments, na)
 	}
-	if len(c.args.securityGroups) > 0 {
-		spec.SecurityGroups = append([]string(nil), c.args.securityGroups...)
-	}
+	spec.NetworkAttachments = attachments
 	return nil
 }
 
@@ -1040,28 +1012,9 @@ _DATA_ - User data for the compute instance, for example cloud-init or
 ignition configuration.
 `
 
-const subnetFlagHelp = `
-_ID_ - Subnet ID for the primary NIC.
-
-This flag is deprecated. Use {{ bt }}--network-attachment{{ bt }}
-instead.
-`
-
-const securityGroupFlagHelp = `
-_ID_ - Security group ID applied together with
-{{ bt }}--subnet{{ bt }}. Can be specified multiple times.
-
-This flag is deprecated. Use {{ bt }}--network-attachment{{ bt }}
-instead.
-`
-
 const networkAttachmentFlagHelp = `
 _SPEC_ - Per-NIC network attachment. The value can be a plain subnet ID, or a
 comma-separated specification in the format
 {{ bt }}subnet=ID[,security-groups=ID,ID...]{{ bt }}. Can be
 specified multiple times to attach multiple NICs.
-
-This flag is incompatible with the deprecated
-{{ bt }}--subnet{{ bt }} and
-{{ bt }}--security-group{{ bt }} flags.
 `

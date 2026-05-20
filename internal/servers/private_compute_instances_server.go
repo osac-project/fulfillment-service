@@ -193,6 +193,13 @@ func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 		return
 	}
 
+	// Require network_attachments for new VMs (no pod network for new VMs):
+	if len(request.GetObject().GetSpec().GetNetworkAttachments()) == 0 {
+		err = grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"spec.network_attachments: at least one network attachment is required for new compute instances")
+		return
+	}
+
 	// Dispatch between catalog item and template paths:
 	spec := request.GetObject().GetSpec()
 	catalogItemRef := spec.GetCatalogItem()
@@ -232,7 +239,7 @@ func (s *PrivateComputeInstancesServer) Update(ctx context.Context,
 
 	// ALWAYS validate tenant isolation for network references, even during deletion.
 	// This prevents cross-tenant updates on ComputeInstances being deleted.
-	if hasMaskPrefix(mask, "spec.subnet", "spec.security_groups", "spec.network_attachments") {
+	if hasMaskPrefix(mask, "spec.network_attachments") {
 		err = s.validateNetworkReferencesTenancy(ctx, request.GetObject())
 		if err != nil {
 			return
@@ -241,7 +248,7 @@ func (s *PrivateComputeInstancesServer) Update(ctx context.Context,
 
 	// Only validate resource state (exists, READY) if NOT being deleted.
 	// Referenced resources (subnets, security groups) may already be deleted during cleanup.
-	if !isBeingDeleted && hasMaskPrefix(mask, "spec.subnet", "spec.security_groups", "spec.network_attachments") {
+	if !isBeingDeleted && hasMaskPrefix(mask, "spec.network_attachments") {
 		err = s.validateNetworkReferencesState(ctx, request.GetObject())
 		if err != nil {
 			return
@@ -449,12 +456,12 @@ func (s *PrivateComputeInstancesServer) validateNetworkAttachmentsImmutability(
 	}
 	existingCI := getResponse.GetObject()
 
-	existingAttachments, err := computeinstancespec.EffectiveNetworkAttachments(existingCI.GetSpec())
-	if err != nil {
+	existingAttachments := existingCI.GetSpec().GetNetworkAttachments()
+	if err := computeinstancespec.ValidateNetworkAttachments(existingAttachments); err != nil {
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to parse existing network attachments configuration: %s", err.Error())
 	}
-	newAttachments, err := computeinstancespec.EffectiveNetworkAttachments(request.GetObject().GetSpec())
-	if err != nil {
+	newAttachments := request.GetObject().GetSpec().GetNetworkAttachments()
+	if err := computeinstancespec.ValidateNetworkAttachments(newAttachments); err != nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid network attachments configuration: %s", err.Error())
 	}
 
@@ -523,8 +530,8 @@ func (s *PrivateComputeInstancesServer) validateNetworkReferencesTenancy(
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance spec is mandatory")
 	}
 
-	attachments, err := computeinstancespec.EffectiveNetworkAttachments(spec)
-	if err != nil {
+	attachments := spec.GetNetworkAttachments()
+	if err := computeinstancespec.ValidateNetworkAttachments(attachments); err != nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid network attachments configuration: %s", err.Error())
 	}
 	if len(attachments) == 0 {
@@ -536,7 +543,7 @@ func (s *PrivateComputeInstancesServer) validateNetworkReferencesTenancy(
 		securityGroupIDs := att.GetSecurityGroups()
 
 		// At this point, subnetID is guaranteed to be non-empty because
-		// EffectiveNetworkAttachments only returns attachments with non-empty subnet.
+		// ValidateNetworkAttachments ensures all attachments have non-empty subnet.
 
 		// Validate tenant isolation for subnet.
 		// TenancyLogic in DAO filters out cross-tenant resources, making them appear as NotFound.
@@ -604,8 +611,8 @@ func (s *PrivateComputeInstancesServer) validateNetworkReferencesState(
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance spec is mandatory")
 	}
 
-	attachments, err := computeinstancespec.EffectiveNetworkAttachments(spec)
-	if err != nil {
+	attachments := spec.GetNetworkAttachments()
+	if err := computeinstancespec.ValidateNetworkAttachments(attachments); err != nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid network attachments configuration: %s", err.Error())
 	}
 	if len(attachments) == 0 {
@@ -617,7 +624,7 @@ func (s *PrivateComputeInstancesServer) validateNetworkReferencesState(
 		securityGroupIDs := att.GetSecurityGroups()
 
 		// At this point, subnetID is guaranteed to be non-empty because
-		// EffectiveNetworkAttachments only returns attachments with non-empty subnet
+		// ValidateNetworkAttachments ensures all attachments have non-empty subnet
 		var subnet *privatev1.Subnet
 		var virtualNetworkID string
 
