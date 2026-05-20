@@ -310,22 +310,34 @@ func (i *Interceptor) UnaryClient(ctx context.Context, method string, request, r
 	// Write the details of the response:
 	timeElapsed := time.Since(timeBefore)
 	timeField := slog.Duration("duration", timeElapsed)
-	codeField := slog.String("code", grpcstatus.Code(err).String())
 	responseFields := []any{
 		methodField,
 		targetField,
 		timeField,
-		codeField,
+	}
+	status, ok := grpcstatus.FromError(err)
+	if ok {
+		codeField := slog.String("code", status.Code().String())
+		responseFields = append(responseFields, codeField)
+		message := status.Message()
+		if message != "" {
+			messageField := slog.String("message", message)
+			responseFields = append(responseFields, messageField)
+		}
+		details := status.Details()
+		if len(details) > 0 {
+			detailsField := slog.Any("details", details)
+			responseFields = append(responseFields, detailsField)
+		}
+	} else {
+		errField := slog.Any("error", err)
+		responseFields = append(responseFields, errField)
 	}
 	if i.bodies && response != nil {
 		bodyField, ok := i.dumpMessage(ctx, "response", response)
 		if ok {
 			responseFields = append(responseFields, bodyField)
 		}
-	}
-	if err != nil {
-		errField := slog.Any("error", err)
-		responseFields = append(responseFields, errField)
 	}
 	i.logger.DebugContext(ctx, "Received unary response", responseFields...)
 
