@@ -26,5 +26,5 @@ columns:
 - header: TITLE
   value: this.spec.title
 
-- header: TENANTS
-  value: "size(this.metadata.tenants) > 0? this.metadata.tenants.join(', '): '-'"
+- header: TENANT
+  value: "this.metadata.tenant != ''? this.metadata.tenant: '-'"

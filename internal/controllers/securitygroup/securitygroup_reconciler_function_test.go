@@ -14,12 +14,15 @@ language governing permissions and limitations under the License.
 package securitygroup
 
 import (
+	"context"
 	"slices"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/controllers"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
 )
 
@@ -103,10 +106,10 @@ func hasFinalizer(sg *privatev1.SecurityGroup) bool {
 }
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		sg := privatev1.SecurityGroup_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -118,10 +121,10 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		sg := privatev1.SecurityGroup_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{},
+				Tenant: "",
 			}.Build(),
 		}.Build()
 
@@ -131,7 +134,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
 	It("should fail when metadata is missing", func() {
@@ -143,7 +146,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 
@@ -252,6 +255,79 @@ var _ = Describe("addFinalizer", func() {
 		Expect(added).To(BeTrue())
 		Expect(t.securityGroup.HasMetadata()).To(BeTrue())
 		Expect(hasFinalizer(t.securityGroup)).To(BeTrue())
+	})
+})
+
+var _ = Describe("delete", func() {
+	const (
+		sgID         = "sg-delete-id"
+		hubID        = "test-hub"
+		hubNamespace = "test-ns"
+		vnetID       = "vnet-123"
+	)
+
+	var (
+		ctx  context.Context
+		ctrl *gomock.Controller
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
+	})
+
+	It("should remove finalizer when hub cache returns ErrHubNotFound", func() {
+		// This test verifies the core behavior: when a hub is decommissioned/deleted,
+		// the reconciler removes its finalizer to allow the security group to be archived.
+
+		// Mock VirtualNetworksClient to return a parent VN with hub assignment
+		mockVNClient := NewMockVirtualNetworksClient(ctrl)
+		mockVNClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.VirtualNetworksGetResponse{
+				Object: privatev1.VirtualNetwork_builder{
+					Id: vnetID,
+					Status: privatev1.VirtualNetworkStatus_builder{
+						Hub: hubID,
+					}.Build(),
+				}.Build(),
+			}, nil)
+
+		// Mock HubCache to return ErrHubNotFound (hub decommissioned)
+		mockHubCache := controllers.NewMockHubCache(ctrl)
+		mockHubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(nil, controllers.ErrHubNotFound)
+
+		sg := privatev1.SecurityGroup_builder{
+			Id: sgID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+			}.Build(),
+			Spec: privatev1.SecurityGroupSpec_builder{
+				VirtualNetwork: vnetID,
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:                logger,
+			virtualNetworksClient: mockVNClient,
+			hubCache:              mockHubCache,
+		}
+
+		t := &task{
+			r:             f,
+			securityGroup: sg,
+		}
+
+		Expect(hasFinalizer(t.securityGroup)).To(BeTrue())
+
+		err := t.delete(ctx)
+		// Should return nil (not propagate the error)
+		Expect(err).ToNot(HaveOccurred())
+		// Finalizer should be removed to allow archiving
+		Expect(hasFinalizer(t.securityGroup)).To(BeFalse())
 	})
 })
 

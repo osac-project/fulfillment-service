@@ -261,6 +261,24 @@ var _ = Describe("delete", func() {
 		Expect(hasFinalizer(t.publicIP)).To(BeTrue())
 	})
 
+	It("should remove finalizer when hub cache returns ErrHubNotFound", func() {
+		// This test verifies the core behavior: when a hub is decommissioned/deleted,
+		// the reconciler removes its finalizer to allow the public IP to be archived.
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(nil, controllers.ErrHubNotFound)
+
+		t := newTaskForDelete(publicIPID, hubID, hubCache)
+		Expect(hasFinalizer(t.publicIP)).To(BeTrue())
+
+		err := t.delete(ctx)
+		// Should return nil (not propagate the error)
+		Expect(err).ToNot(HaveOccurred())
+		// Finalizer should be removed to allow archiving
+		Expect(hasFinalizer(t.publicIP)).To(BeFalse())
+	})
+
 	It("should remove finalizer when no hub is assigned", func() {
 		publicIP := privatev1.PublicIP_builder{
 			Id: publicIPID,
@@ -290,10 +308,10 @@ var _ = Describe("delete", func() {
 })
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		publicIP := privatev1.PublicIP_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -305,10 +323,10 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		publicIP := privatev1.PublicIP_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{},
+				Tenant: "",
 			}.Build(),
 		}.Build()
 
@@ -318,23 +336,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
-	})
-
-	It("should fail when multiple tenants are assigned", func() {
-		publicIP := privatev1.PublicIP_builder{
-			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1", "tenant-2"},
-			}.Build(),
-		}.Build()
-
-		t := &task{
-			publicIP: publicIP,
-		}
-
-		err := t.validateTenant()
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
 	It("should fail when metadata is missing", func() {
@@ -346,7 +348,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 

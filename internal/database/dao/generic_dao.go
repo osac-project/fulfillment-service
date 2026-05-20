@@ -54,8 +54,8 @@ type GenericDAOBuilder[O Object] struct {
 //   - `creation_timestamp` - The time the object was created.
 //   - `deletion_timestamp` - The time the object was deleted.
 //   - `finalizers` - The list of finalizers for the object.
-//   - `creators` - The list of creators for the object.
-//   - `tenants` - The list of tenants for the object.
+//   - `creator` - The creator of the object.
+//   - `tenant` - The tenant that the object belongs to.
 //   - `labels` - The labels assigned to the object.
 //   - `annotations` - The annotations assigned to the object.
 //   - `version` - The version number, automatically incremented on every update.
@@ -93,10 +93,10 @@ type metadataIface interface {
 	SetDeletionTimestamp(*timestamppb.Timestamp)
 	GetFinalizers() []string
 	SetFinalizers([]string)
-	GetCreators() []string
-	SetCreators([]string)
-	GetTenants() []string
-	SetTenants([]string)
+	GetCreator() string
+	SetCreator(string)
+	GetTenant() string
+	SetTenant(string)
 	GetLabels() map[string]string
 	SetLabels(map[string]string)
 	GetAnnotations() map[string]string

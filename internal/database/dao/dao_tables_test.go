@@ -160,8 +160,8 @@ var _ = Describe("Create tables", func() {
 			Expect(columnExists("objects", "creation_timestamp")).To(BeTrue())
 			Expect(columnExists("objects", "deletion_timestamp")).To(BeTrue())
 			Expect(columnExists("objects", "finalizers")).To(BeTrue())
-			Expect(columnExists("objects", "creators")).To(BeTrue())
-			Expect(columnExists("objects", "tenants")).To(BeTrue())
+			Expect(columnExists("objects", "creator")).To(BeTrue())
+			Expect(columnExists("objects", "tenant")).To(BeTrue())
 			Expect(columnExists("objects", "labels")).To(BeTrue())
 			Expect(columnExists("objects", "annotations")).To(BeTrue())
 			Expect(columnExists("objects", "data")).To(BeTrue())
@@ -178,8 +178,8 @@ var _ = Describe("Create tables", func() {
 			Expect(columnExists("archived_objects", "creation_timestamp")).To(BeTrue())
 			Expect(columnExists("archived_objects", "deletion_timestamp")).To(BeTrue())
 			Expect(columnExists("archived_objects", "archival_timestamp")).To(BeTrue())
-			Expect(columnExists("archived_objects", "creators")).To(BeTrue())
-			Expect(columnExists("archived_objects", "tenants")).To(BeTrue())
+			Expect(columnExists("archived_objects", "creator")).To(BeTrue())
+			Expect(columnExists("archived_objects", "tenant")).To(BeTrue())
 			Expect(columnExists("archived_objects", "labels")).To(BeTrue())
 			Expect(columnExists("archived_objects", "annotations")).To(BeTrue())
 			Expect(columnExists("archived_objects", "data")).To(BeTrue())
@@ -247,7 +247,7 @@ var _ = Describe("Create tables", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(indexDef).To(ContainSubstring("(name)"))
 
-			// Check by_owner index (should be gin):
+			// Check by_owner index (should be btree):
 			err = tx.QueryRow(
 				ctx,
 				`
@@ -258,10 +258,9 @@ var _ = Describe("Create tables", func() {
 				`,
 			).Scan(&indexDef)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(indexDef).To(ContainSubstring("gin"))
-			Expect(indexDef).To(ContainSubstring("creators"))
+			Expect(indexDef).To(ContainSubstring("creator"))
 
-			// Check by_tenant index (should be gin):
+			// Check by_tenant index (should be btree):
 			err = tx.QueryRow(
 				ctx,
 				`
@@ -272,8 +271,7 @@ var _ = Describe("Create tables", func() {
 				`,
 			).Scan(&indexDef)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(indexDef).To(ContainSubstring("gin"))
-			Expect(indexDef).To(ContainSubstring("tenants"))
+			Expect(indexDef).To(ContainSubstring("(tenant)"))
 
 			// Check by_label index (should be gin):
 			err = tx.QueryRow(

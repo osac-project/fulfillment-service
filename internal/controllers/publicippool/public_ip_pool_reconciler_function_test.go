@@ -321,6 +321,24 @@ var _ = Describe("delete", func() {
 		Expect(hasFinalizer(t.publicIPPool)).To(BeTrue())
 	})
 
+	It("should remove finalizer when hub cache returns ErrHubNotFound", func() {
+		// This test verifies the core behavior: when a hub is decommissioned/deleted,
+		// the reconciler removes its finalizer to allow the public IP pool to be archived.
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(nil, controllers.ErrHubNotFound)
+
+		t := newTaskForDelete(poolID, hubID, hubCache)
+		Expect(hasFinalizer(t.publicIPPool)).To(BeTrue())
+
+		err := t.delete(ctx)
+		// Should return nil (not propagate the error)
+		Expect(err).ToNot(HaveOccurred())
+		// Finalizer should be removed to allow archiving
+		Expect(hasFinalizer(t.publicIPPool)).To(BeFalse())
+	})
+
 	It("should remove finalizer when no hub is assigned", func() {
 		pool := privatev1.PublicIPPool_builder{
 			Id: poolID,
@@ -350,10 +368,10 @@ var _ = Describe("delete", func() {
 })
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		pool := privatev1.PublicIPPool_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -365,26 +383,10 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		pool := privatev1.PublicIPPool_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{},
-			}.Build(),
-		}.Build()
-
-		t := &task{
-			publicIPPool: pool,
-		}
-
-		err := t.validateTenant()
-		Expect(err).To(HaveOccurred())
-		Expect(errors.Is(err, errInvalidTenantCount)).To(BeTrue())
-	})
-
-	It("should fail when multiple tenants are assigned", func() {
-		pool := privatev1.PublicIPPool_builder{
-			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1", "tenant-2"},
+				Tenant: "",
 			}.Build(),
 		}.Build()
 
@@ -525,7 +527,7 @@ func newTaskForUpdate(poolID, hubID string, hubCache controllers.HubCache) *task
 		Id: poolID,
 		Metadata: privatev1.Metadata_builder{
 			Finalizers: []string{finalizers.Controller},
-			Tenants:    []string{"tenant-1"},
+			Tenant:     "tenant-1",
 		}.Build(),
 		Spec: privatev1.PublicIPPoolSpec_builder{
 			Cidrs:    []string{"203.0.113.0/24"},

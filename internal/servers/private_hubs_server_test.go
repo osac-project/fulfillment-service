@@ -134,8 +134,10 @@ var _ = Describe("Private hubs server", func() {
 		It("Creates object", func() {
 			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
-					Kubeconfig: []byte("my_config"),
-					Namespace:  "my_ns",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -151,8 +153,10 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
-						Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
-						Namespace:  fmt.Sprintf("my_ns_%d", i),
+						Spec: privatev1.HubSpec_builder{
+							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
+							Namespace:  fmt.Sprintf("my_ns_%d", i),
+						}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -172,8 +176,10 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
-						Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
-						Namespace:  fmt.Sprintf("my_ns_%d", i),
+						Spec: privatev1.HubSpec_builder{
+							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
+							Namespace:  fmt.Sprintf("my_ns_%d", i),
+						}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -193,8 +199,10 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
-						Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
-						Namespace:  fmt.Sprintf("my_ns_%d", i),
+						Spec: privatev1.HubSpec_builder{
+							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
+							Namespace:  fmt.Sprintf("my_ns_%d", i),
+						}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -215,8 +223,10 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
-						Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
-						Namespace:  fmt.Sprintf("my_ns_%d", i),
+						Spec: privatev1.HubSpec_builder{
+							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
+							Namespace:  fmt.Sprintf("my_ns_%d", i),
+						}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -238,8 +248,10 @@ var _ = Describe("Private hubs server", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
-					Kubeconfig: []byte("my_config"),
-					Namespace:  "my_ns",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -256,8 +268,10 @@ var _ = Describe("Private hubs server", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
-					Kubeconfig: []byte("my_config"),
-					Namespace:  "my_ns",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -266,22 +280,24 @@ var _ = Describe("Private hubs server", func() {
 			// Update the object:
 			updateResponse, err := server.Update(ctx, privatev1.HubsUpdateRequest_builder{
 				Object: privatev1.Hub_builder{
-					Id:         object.GetId(),
-					Kubeconfig: []byte("your_config"),
-					Namespace:  "your_ns",
+					Id: object.GetId(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("your_config"),
+						Namespace:  "your_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(updateResponse.GetObject().GetKubeconfig()).To(Equal([]byte("your_config")))
-			Expect(updateResponse.GetObject().GetNamespace()).To(Equal("your_ns"))
+			Expect(updateResponse.GetObject().GetSpec().GetKubeconfig()).To(Equal([]byte("your_config")))
+			Expect(updateResponse.GetObject().GetSpec().GetNamespace()).To(Equal("your_ns"))
 
 			// Get and verify:
 			getResponse, err := server.Get(ctx, privatev1.HubsGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(getResponse.GetObject().GetKubeconfig()).To(Equal([]byte("your_config")))
-			Expect(getResponse.GetObject().GetNamespace()).To(Equal("your_ns"))
+			Expect(getResponse.GetObject().GetSpec().GetKubeconfig()).To(Equal([]byte("your_config")))
+			Expect(getResponse.GetObject().GetSpec().GetNamespace()).To(Equal("your_ns"))
 		})
 
 		It("Delete object", func() {
@@ -291,8 +307,10 @@ var _ = Describe("Private hubs server", func() {
 					Metadata: privatev1.Metadata_builder{
 						Finalizers: []string{"a"},
 					}.Build(),
-					Kubeconfig: []byte("your_config"),
-					Namespace:  "your_ns",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("your_config"),
+						Namespace:  "your_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())

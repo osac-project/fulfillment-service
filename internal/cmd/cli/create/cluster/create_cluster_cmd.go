@@ -66,6 +66,12 @@ func Cmd() *cobra.Command {
 		"",
 		"Template identifier or name",
 	)
+	flags.StringVar(
+		&runner.args.catalogItem,
+		"catalog-item",
+		"",
+		"Catalog item identifier. Replaces --template.",
+	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterValues,
 		"template-parameter",
@@ -122,6 +128,8 @@ func Cmd() *cobra.Command {
 		"",
 		"CIDR for the cluster's service network. If omitted, the server default is used.",
 	)
+	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
+	result.MarkFlagsOneRequired("catalog-item", "template")
 	return result
 }
 
@@ -129,6 +137,7 @@ type runnerContext struct {
 	args struct {
 		name                    string
 		template                string
+		catalogItem             string
 		templateParameterValues []string
 		templateParameterFiles  []string
 		pullSecret              string
@@ -161,18 +170,24 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load templates: %w", err)
 	}
 
-	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg.Address == "" {
-		return fmt.Errorf("there is no configuration, run the 'login' command")
+	// Reject template parameters when using catalog item (per D-04):
+	if c.args.catalogItem != "" {
+		if len(c.args.templateParameterValues) > 0 || len(c.args.templateParameterFiles) > 0 {
+			return fmt.Errorf(
+				"--template-parameter and --template-parameter-file are not supported with --catalog-item",
+			)
+		}
 	}
 
-	// Check that we have a template:
-	if c.args.template == "" {
-		return fmt.Errorf("template identifier or name is required")
+	// Deprecation warning for --template (per D-03):
+	if c.args.template != "" {
+		fmt.Fprintf(os.Stderr, "Warning: --template is deprecated, use --catalog-item instead\n")
+	}
+
+	// Get the configuration:
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
+		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
 	// Create the gRPC connection from the configuration:
@@ -197,6 +212,70 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.templatesClient = publicv1.NewClusterTemplatesClient(conn)
 	c.clustersClient = publicv1.NewClustersClient(conn)
 
+	// Resolve credentials before branching (used in both catalog-item and template paths):
+	pullSecret := c.args.pullSecret
+	if c.args.pullSecretFile != "" {
+		data, readErr := os.ReadFile(c.args.pullSecretFile)
+		if readErr != nil {
+			return fmt.Errorf("failed to read pull secret file '%s': %w", c.args.pullSecretFile, readErr)
+		}
+		pullSecret = strings.TrimSpace(string(data))
+	}
+	sshPublicKey := c.args.sshPublicKey
+	if c.args.sshPublicKeyFile != "" {
+		data, readErr := os.ReadFile(c.args.sshPublicKeyFile)
+		if readErr != nil {
+			return fmt.Errorf("failed to read SSH public key file '%s': %w", c.args.sshPublicKeyFile, readErr)
+		}
+		sshPublicKey = strings.TrimSpace(string(data))
+	}
+
+	if c.args.catalogItem != "" {
+		// Catalog item path: skip template lookup entirely (per D-04).
+		specBuilder := publicv1.ClusterSpec_builder{
+			CatalogItem: c.args.catalogItem,
+		}
+		if pullSecret != "" {
+			specBuilder.PullSecret = &pullSecret
+		}
+		if sshPublicKey != "" {
+			specBuilder.SshPublicKey = &sshPublicKey
+		}
+		if c.args.releaseImage != "" {
+			specBuilder.ReleaseImage = &c.args.releaseImage
+		}
+		if c.args.podCIDR != "" || c.args.serviceCIDR != "" {
+			networkBuilder := publicv1.ClusterNetwork_builder{}
+			if c.args.podCIDR != "" {
+				networkBuilder.PodCidr = &c.args.podCIDR
+			}
+			if c.args.serviceCIDR != "" {
+				networkBuilder.ServiceCidr = &c.args.serviceCIDR
+			}
+			specBuilder.Network = networkBuilder.Build()
+		}
+
+		cluster := publicv1.Cluster_builder{
+			Metadata: publicv1.Metadata_builder{
+				Name: c.args.name,
+			}.Build(),
+			Spec: specBuilder.Build(),
+		}.Build()
+
+		response, err := c.clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: cluster,
+		}.Build())
+		if err != nil {
+			return fmt.Errorf("failed to create cluster: %w", err)
+		}
+
+		cluster = response.Object
+		c.console.Infof(ctx, "Created cluster '%s'.\n", cluster.Id)
+		return nil
+	}
+
+	// Legacy template path (existing code continues below):
+
 	// Fetch the cluster template:
 	template, err := c.findTemplate(ctx)
 	if err != nil {
@@ -216,26 +295,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 			"Issues":     templateParameterIssues,
 		})
 		return exit.Error(1)
-	}
-
-	// Resolve pull secret (--pull-secret-file takes precedence over --pull-secret):
-	pullSecret := c.args.pullSecret
-	if c.args.pullSecretFile != "" {
-		data, readErr := os.ReadFile(c.args.pullSecretFile)
-		if readErr != nil {
-			return fmt.Errorf("failed to read pull secret file '%s': %w", c.args.pullSecretFile, readErr)
-		}
-		pullSecret = strings.TrimSpace(string(data))
-	}
-
-	// Resolve SSH public key (--ssh-public-key-file takes precedence over --ssh-public-key):
-	sshPublicKey := c.args.sshPublicKey
-	if c.args.sshPublicKeyFile != "" {
-		data, readErr := os.ReadFile(c.args.sshPublicKeyFile)
-		if readErr != nil {
-			return fmt.Errorf("failed to read SSH public key file '%s': %w", c.args.sshPublicKeyFile, readErr)
-		}
-		sshPublicKey = strings.TrimSpace(string(data))
 	}
 
 	// Build the cluster spec:

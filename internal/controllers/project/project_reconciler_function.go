@@ -262,6 +262,31 @@ func (t *task) setDefaults() {
 	if t.project.GetStatus().GetState() == privatev1.ProjectState_PROJECT_STATE_UNSPECIFIED {
 		t.project.GetStatus().SetState(privatev1.ProjectState_PROJECT_STATE_PENDING)
 	}
+	// Initialize default conditions
+	for value := range privatev1.ProjectConditionType_name {
+		if value != 0 {
+			t.setConditionDefaults(privatev1.ProjectConditionType(value))
+		}
+	}
+}
+
+// setConditionDefaults ensures a condition exists with a default state if not already present.
+func (t *task) setConditionDefaults(conditionType privatev1.ProjectConditionType) {
+	exists := false
+	for _, current := range t.project.GetStatus().GetConditions() {
+		if current.GetType() == conditionType {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		conditions := t.project.GetStatus().GetConditions()
+		conditions = append(conditions, privatev1.ProjectCondition_builder{
+			Type:   conditionType,
+			Status: privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+		}.Build())
+		t.project.GetStatus().SetConditions(conditions)
+	}
 }
 
 // addFinalizer adds the controller finalizer to the project if not already present.
@@ -291,4 +316,32 @@ func (t *task) removeFinalizer() {
 		})
 		t.project.GetMetadata().SetFinalizers(list)
 	}
+}
+
+// updateCondition updates or creates a condition with the specified type, status, reason, and message.
+func (t *task) updateCondition(conditionType privatev1.ProjectConditionType, status privatev1.ConditionStatus,
+	reason string, message string) {
+	conditions := t.project.GetStatus().GetConditions()
+	updated := false
+	for i, condition := range conditions {
+		if condition.GetType() == conditionType {
+			conditions[i] = privatev1.ProjectCondition_builder{
+				Type:    conditionType,
+				Status:  status,
+				Reason:  &reason,
+				Message: &message,
+			}.Build()
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		conditions = append(conditions, privatev1.ProjectCondition_builder{
+			Type:    conditionType,
+			Status:  status,
+			Reason:  &reason,
+			Message: &message,
+		}.Build())
+	}
+	t.project.GetStatus().SetConditions(conditions)
 }

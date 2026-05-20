@@ -70,11 +70,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg.Address == "" {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -108,11 +105,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read kubeconfig file '%s': %w", c.kubeconfig, err)
 	}
 
-	// Prepare the cluster:
+	// Prepare the hub:
 	hub := privatev1.Hub_builder{
-		Id:         c.id,
-		Kubeconfig: kubeconfig,
-		Namespace:  c.namespace,
+		Id: c.id,
+		Spec: privatev1.HubSpec_builder{
+			Kubeconfig: kubeconfig,
+			Namespace:  c.namespace,
+		}.Build(),
 	}.Build()
 
 	// Create the hub:

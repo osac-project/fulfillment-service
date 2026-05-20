@@ -118,8 +118,8 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 			creation_timestamp,
 			deletion_timestamp,
 			finalizers,
-			creators,
-			tenants,
+			creator,
+			tenant,
 			labels,
 			annotations,
 			version,
@@ -175,8 +175,8 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				creationTs      time.Time
 				deletionTs      time.Time
 				finalizers      []string
-				creators        []string
-				tenants         []string
+				creator         string
+				tenant          string
 				labelsData      []byte
 				annotationsData []byte
 				version         int32
@@ -188,8 +188,8 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				&creationTs,
 				&deletionTs,
 				&finalizers,
-				&creators,
-				&tenants,
+				&creator,
+				&tenant,
 				&labelsData,
 				&annotationsData,
 				&version,
@@ -217,8 +217,8 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				creationTs:  creationTs,
 				deletionTs:  deletionTs,
 				finalizers:  finalizers,
-				creators:    creators,
-				tenants:     tenants,
+				creator:     creator,
+				tenant:      tenant,
 				name:        name,
 				labels:      labels,
 				annotations: annotations,

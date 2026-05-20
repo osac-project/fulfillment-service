@@ -34,7 +34,6 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
@@ -357,20 +356,15 @@ func (s *EventsServer) checkTenancy(ctx context.Context, event *privatev1.Event)
 		return
 	}
 
-	// Get the tenants of the object:
-	objectTenants := s.extractTenants(ctx, event)
-
-	// Calculate the intersection of the visible tenants and the object tenants:
-	commonTenants := visibleTenants.Intersection(objectTenants)
-
-	// If the intersection is empty, thn the user can see the event, otherwise they can't.
-	if commonTenants.Empty() {
+	// If the visible tenants contain the object tenant, then the user can see the event, otherwise they can't:
+	objectTenant := s.extractTenant(ctx, event)
+	if !visibleTenants.Contains(objectTenant) {
 		s.logger.DebugContext(
 			ctx,
 			"Event is not visible to the current user",
 			slog.Any("event", event),
-			slog.Any("visibible_tenants", visibleTenants),
-			slog.Any("object_tenants", objectTenants),
+			slog.Any("visible_tenants", visibleTenants),
+			slog.String("object_tenant", objectTenant),
 		)
 		result = false
 		return
@@ -379,16 +373,16 @@ func (s *EventsServer) checkTenancy(ctx context.Context, event *privatev1.Event)
 		ctx,
 		"Event is visible to the current user",
 		slog.Any("event", event),
-		slog.Any("visibible_tenants", visibleTenants),
-		slog.Any("object_tenants", objectTenants),
+		slog.Any("visible_tenants", visibleTenants),
+		slog.String("object_tenant", objectTenant),
 	)
 	result = true
 	return
 }
 
-func (s *EventsServer) extractTenants(ctx context.Context, event *privatev1.Event) collections.Set[string] {
+func (s *EventsServer) extractTenant(ctx context.Context, event *privatev1.Event) string {
 	metadata := s.extractMetadata(ctx, event)
-	return collections.NewSet(metadata.GetTenants()...)
+	return metadata.GetTenant()
 }
 
 func (s *EventsServer) extractMetadata(ctx context.Context, event *privatev1.Event) *privatev1.Metadata {

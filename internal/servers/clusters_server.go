@@ -637,7 +637,7 @@ func (s *ClustersServer) getHostedClusterSecret(ctx context.Context, clusterId s
 	}
 
 	// Get the cluster order from the hub:
-	order, err := s.getKubeClusterOrder(ctx, hubClient, hub.Namespace, cluster.GetId())
+	order, err := s.getKubeClusterOrder(ctx, hubClient, hub.GetSpec().GetNamespace(), cluster.GetId())
 	if err != nil {
 		return
 	}
@@ -689,7 +689,7 @@ func (s *ClustersServer) getKubeClient(ctx context.Context, hub *privatev1.Hub) 
 }
 
 func (s *ClustersServer) createKubeClient(ctx context.Context, hub *privatev1.Hub) (result clnt.Client, err error) {
-	config, err := clientcmd.RESTConfigFromKubeConfig(hub.Kubeconfig)
+	config, err := clientcmd.RESTConfigFromKubeConfig(hub.GetSpec().GetKubeconfig())
 	if err != nil {
 		return
 	}

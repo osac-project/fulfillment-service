@@ -59,9 +59,9 @@ message NetworkAttachment {
 
 // The spec contains the details of a compute instance as desired by the user.
 message ComputeInstanceSpec {
-  // Reference to the compute instance template.
+  // Reference to the compute instance template. Either `template` or `catalog_item` is required on create.
   //
-  // This is mandatory, and must be the value of the `id` field of one of the compute instance templates.
+  // Must be the value of the `id` field of one of the compute instance templates. Mutually exclusive with `catalog_item`.
   //
   // This can't be modified after the compute instance is created.
   string template = 1;
@@ -161,6 +161,10 @@ message ComputeInstanceSpec {
   // Preferred: one entry per NIC. Each entry binds security groups to that subnet's VirtualNetwork.
   // Do not combine with deprecated subnet / security_groups on the same request.
   repeated NetworkAttachment network_attachments = 14;
+
+  // Reference to a compute instance catalog item. Mutually exclusive with template during the migration period.
+  // When set, the server fetches the catalog item and applies its field definitions.
+  string catalog_item = 15;
 }
 
 // The status contains the details of the compute instance provided by the system.

@@ -13,7 +13,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	collections "github.com/osac-project/fulfillment-service/internal/collections"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,17 +40,17 @@ func (m *MockAttributionLogic) EXPECT() *MockAttributionLogicMockRecorder {
 	return m.recorder
 }
 
-// DetermineAssignedCreators mocks base method.
-func (m *MockAttributionLogic) DetermineAssignedCreators(ctx context.Context) (collections.Set[string], error) {
+// DetermineAssignedCreator mocks base method.
+func (m *MockAttributionLogic) DetermineAssignedCreator(ctx context.Context) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DetermineAssignedCreators", ctx)
-	ret0, _ := ret[0].(collections.Set[string])
+	ret := m.ctrl.Call(m, "DetermineAssignedCreator", ctx)
+	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// DetermineAssignedCreators indicates an expected call of DetermineAssignedCreators.
-func (mr *MockAttributionLogicMockRecorder) DetermineAssignedCreators(ctx any) *gomock.Call {
+// DetermineAssignedCreator indicates an expected call of DetermineAssignedCreator.
+func (mr *MockAttributionLogicMockRecorder) DetermineAssignedCreator(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineAssignedCreators", reflect.TypeOf((*MockAttributionLogic)(nil).DetermineAssignedCreators), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineAssignedCreator", reflect.TypeOf((*MockAttributionLogic)(nil).DetermineAssignedCreator), ctx)
 }

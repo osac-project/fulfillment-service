@@ -19,6 +19,7 @@ The following table lists the configurable parameters of the Keycloak chart:
 | `hostname`                     | The hostname that Keycloak uses to refer to itself             | **Yes**  | None            |
 | `certs.issuerRef.kind`         | The kind of cert-manager issuer (`ClusterIssuer` or `Issuer`)  | No       | `ClusterIssuer` |
 | `certs.issuerRef.name`         | The name of the cert-manager issuer for TLS certificates       | **Yes**  | None            |
+| `certs.caBundle.configMap`     | ConfigMap with trusted CA certificates in PEM format           | No       | None            |
 | `admin.username`               | Bootstrap admin username for the initial Keycloak account      | No       | `admin`         |
 | `admin.password`               | Bootstrap admin password for the initial Keycloak account      | No       | `admin`         |
 | `images.keycloak`              | The Keycloak container image                                   | No       | `26.3`          |
@@ -58,6 +59,8 @@ certs:
   issuerRef:
     kind: ClusterIssuer
     name: default-ca
+  caBundle:
+    configMap: ca-bundle
 
 database:
   connection:

@@ -105,3 +105,54 @@ var _ = Describe("buildSpec", func() {
 		Expect(proto.Equal(spec, want)).To(BeTrue(), "spec should equal expected spec")
 	})
 })
+
+var _ = Describe("Create computeinstance flag registration", func() {
+	It("should register --catalog-item flag", func() {
+		cmd := Cmd()
+		flag := cmd.Flags().Lookup("catalog-item")
+		Expect(flag).NotTo(BeNil())
+		Expect(flag.Usage).To(ContainSubstring("Catalog item"))
+	})
+
+	It("should still register --template flag", func() {
+		cmd := Cmd()
+		flag := cmd.Flags().Lookup("template")
+		Expect(flag).NotTo(BeNil())
+	})
+
+	It("should register --catalog-item without a short flag", func() {
+		cmd := Cmd()
+		flag := cmd.Flags().Lookup("catalog-item")
+		Expect(flag).NotTo(BeNil())
+		Expect(flag.Shorthand).To(BeEmpty())
+	})
+
+	It("should keep -t as shorthand for --template", func() {
+		cmd := Cmd()
+		flag := cmd.Flags().Lookup("template")
+		Expect(flag).NotTo(BeNil())
+		Expect(flag.Shorthand).To(Equal("t"))
+	})
+})
+
+var _ = Describe("Create computeinstance flag validation", func() {
+	It("should return error when both --catalog-item and --template are set", func() {
+		cmd := Cmd()
+		cmd.SetArgs([]string{"--catalog-item", "cat-001", "--template", "tpl-001", "--name", "test"})
+		err := cmd.Execute()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("if any flags in the group"))
+		Expect(err.Error()).To(ContainSubstring("catalog-item"))
+		Expect(err.Error()).To(ContainSubstring("template"))
+	})
+
+	It("should return error when neither --catalog-item nor --template is set", func() {
+		cmd := Cmd()
+		cmd.SetArgs([]string{"--name", "test"})
+		err := cmd.Execute()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("at least one of the flags"))
+		Expect(err.Error()).To(ContainSubstring("catalog-item"))
+		Expect(err.Error()).To(ContainSubstring("template"))
+	})
+})

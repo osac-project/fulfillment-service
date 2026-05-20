@@ -100,6 +100,9 @@ https-enabled=true
 https-port=8000
 https-certificate-file=/opt/keycloak/tls/tls.crt
 https-certificate-key-file=/opt/keycloak/tls/tls.key
+{{ if .Values.certs.caBundle.configMap }}
+truststore-paths=/opt/keycloak/cas
+{{ end }}
 .
 chmod 600 "${conf_file}"
 

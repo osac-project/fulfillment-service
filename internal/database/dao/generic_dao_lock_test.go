@@ -92,7 +92,7 @@ var _ = Describe("Lock", func() {
 	createObject := func(id string, tenant string) {
 		_, err := pool.Exec(
 			ctx,
-			"insert into objects (id, tenants, data) values ($1, array[$2], '{}')",
+			"insert into objects (id, tenant, data) values ($1, $2, '{}')",
 			id, tenant,
 		)
 		Expect(err).ToNot(HaveOccurred())

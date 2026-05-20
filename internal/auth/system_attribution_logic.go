@@ -16,8 +16,6 @@ package auth
 import (
 	"context"
 	"log/slog"
-
-	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 // SystemAttributionLogicBuilder contains the data and logic needed to create system attribution logic.
@@ -51,10 +49,8 @@ func (b *SystemAttributionLogicBuilder) Build() (result *SystemAttributionLogic,
 	return
 }
 
-// DetermineAssignedCreators returns "system" as the creator for objects created through the private API.
-func (l *SystemAttributionLogic) DetermineAssignedCreators(_ context.Context) (result collections.Set[string], err error) {
-	result = systemCreators
+// DetermineAssignedCreator returns "system" as the creator for objects created through the private API.
+func (l *SystemAttributionLogic) DetermineAssignedCreator(_ context.Context) (result string, err error) {
+	result = "system"
 	return
 }
-
-var systemCreators = collections.NewSet("system")

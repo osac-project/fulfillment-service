@@ -214,7 +214,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.ClusterOrderUuid: t.cluster.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.cluster.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.cluster.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -280,8 +280,8 @@ func (t *task) setConditionDefaults(value privatev1.ClusterConditionType) {
 }
 
 func (t *task) validateTenant() error {
-	if !t.cluster.HasMetadata() || len(t.cluster.GetMetadata().GetTenants()) != 1 {
-		return errors.New("Cluster must have exactly one tenant assigned")
+	if !t.cluster.HasMetadata() || t.cluster.GetMetadata().GetTenant() == "" {
+		return errors.New("Cluster must have a tenant assigned")
 	}
 	return nil
 }
@@ -356,13 +356,6 @@ func (t *task) prepareNodeRequest(nodeSet *privatev1.ClusterNodeSet) osacv1alpha
 }
 
 func (t *task) delete(ctx context.Context) (err error) {
-	// Remember to remove the finalizer if there was no error:
-	defer func() {
-		if err == nil {
-			t.removeFinalizer()
-		}
-	}()
-
 	// Do nothing if we don't know the hub yet:
 	t.hubId = t.cluster.GetStatus().GetHub()
 	if t.hubId == "" {
@@ -370,6 +363,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	err = t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "cluster_id", t.cluster.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 
@@ -384,6 +383,7 @@ func (t *task) delete(ctx context.Context) (err error) {
 			"Cluster order doesn't exist",
 			slog.String("id", t.cluster.GetId()),
 		)
+		t.removeFinalizer()
 		return
 	}
 	err = t.hubClient.Delete(ctx, object)
@@ -397,6 +397,7 @@ func (t *task) delete(ctx context.Context) (err error) {
 		slog.String("name", object.GetName()),
 	)
 
+	t.removeFinalizer()
 	return
 }
 

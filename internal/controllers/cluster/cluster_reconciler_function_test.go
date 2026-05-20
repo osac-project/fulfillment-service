@@ -15,6 +15,7 @@ package cluster
 
 import (
 	"context"
+	"slices"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -32,12 +33,12 @@ import (
 )
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		t := &task{
 			cluster: privatev1.Cluster_builder{
 				Id: "test-cluster",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"tenant-1"},
+					Tenant: "tenant-1",
 				}.Build(),
 			}.Build(),
 		}
@@ -46,34 +47,19 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		t := &task{
 			cluster: privatev1.Cluster_builder{
 				Id: "test-cluster",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{},
+					Tenant: "",
 				}.Build(),
 			}.Build(),
 		}
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
-	})
-
-	It("should fail when multiple tenants are assigned", func() {
-		t := &task{
-			cluster: privatev1.Cluster_builder{
-				Id: "test-cluster",
-				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"tenant-1", "tenant-2"},
-				}.Build(),
-			}.Build(),
-		}
-
-		err := t.validateTenant()
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
 	It("should fail when metadata is missing", func() {
@@ -85,7 +71,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 
@@ -128,7 +114,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template: "test-template",
@@ -207,7 +193,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template: "test-template",
@@ -293,7 +279,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template: "test-template",
@@ -373,7 +359,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template: "test-template",
@@ -439,7 +425,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template:     "test-template",
@@ -482,5 +468,69 @@ var _ = Describe("update tenant annotation", func() {
 		Expect(createdCR.Spec.Network).ToNot(BeNil())
 		Expect(createdCR.Spec.Network.PodCIDR).To(Equal(podCIDR))
 		Expect(createdCR.Spec.Network.ServiceCIDR).To(Equal(serviceCIDR))
+	})
+})
+
+// newTaskForDelete creates a task configured for testing delete() with hub-dependent paths.
+func newTaskForDelete(clusterID, hubID string, hubCache controllers.HubCache) *task {
+	cluster := privatev1.Cluster_builder{
+		Id: clusterID,
+		Metadata: privatev1.Metadata_builder{
+			Finalizers: []string{finalizers.Controller},
+		}.Build(),
+		Status: privatev1.ClusterStatus_builder{
+			Hub: hubID,
+		}.Build(),
+	}.Build()
+
+	f := &function{
+		logger:   logger,
+		hubCache: hubCache,
+	}
+
+	return &task{
+		r:       f,
+		cluster: cluster,
+	}
+}
+
+// hasFinalizer checks if the fulfillment-controller finalizer is present on the cluster.
+func hasFinalizer(cluster *privatev1.Cluster) bool {
+	return slices.Contains(cluster.GetMetadata().GetFinalizers(), finalizers.Controller)
+}
+
+var _ = Describe("delete", func() {
+	const (
+		clusterID = "cluster-delete-id"
+		hubID     = "test-hub"
+	)
+
+	var (
+		ctx  context.Context
+		ctrl *gomock.Controller
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
+	})
+
+	It("should remove finalizer when hub cache returns ErrHubNotFound", func() {
+		// This test verifies the core behavior: when a hub is decommissioned/deleted,
+		// the reconciler removes its finalizer to allow the cluster to be archived.
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(nil, controllers.ErrHubNotFound)
+
+		t := newTaskForDelete(clusterID, hubID, hubCache)
+		Expect(hasFinalizer(t.cluster)).To(BeTrue())
+
+		err := t.delete(ctx)
+		// Should return nil (not propagate the error)
+		Expect(err).ToNot(HaveOccurred())
+		// Finalizer should be removed to allow archiving
+		Expect(hasFinalizer(t.cluster)).To(BeFalse())
 	})
 })

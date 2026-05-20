@@ -18,6 +18,10 @@ package keycloak
 // realm and is the only client we interact with for role assignments.
 const realmManagementClientID = "realm-management"
 
+// authorizationClientID is the clientId of the Keycloak client that has Authorization Services enabled.
+// This client manages authorization resources for Projects and other protected resources.
+const authorizationClientID = "osac-authorization"
+
 // keycloakRealmManagementRoles are the standard Keycloak administrative roles.
 //
 // NOTE: These are CLIENT roles (Keycloak client roles), not organization roles.
@@ -50,3 +54,9 @@ var keycloakIdpManagerRoles = []string{
 	"view-identity-providers",
 	"view-realm",
 }
+
+// Authorization resource type constants define the types of protected resources.
+const (
+	// ResourceTypeProject is the type identifier for Project authorization resources
+	ResourceTypeProject = "urn:osac:resources:project"
+)

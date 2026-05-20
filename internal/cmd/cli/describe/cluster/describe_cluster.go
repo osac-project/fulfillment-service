@@ -51,11 +51,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	c.console = terminal.ConsoleFromContext(ctx)
 
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg.Address == "" {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -100,9 +97,11 @@ func buildFilter(ref string) string {
 
 func renderCluster(w io.Writer, cluster *publicv1.Cluster) {
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	template := "-"
+	catalogItem := "-"
 	if cluster.Spec != nil {
-		template = cluster.Spec.Template
+		if catalogItemID := cluster.Spec.GetCatalogItem(); catalogItemID != "" {
+			catalogItem = catalogItemID
+		}
 	}
 	state := "-"
 	if cluster.Status != nil {
@@ -110,7 +109,7 @@ func renderCluster(w io.Writer, cluster *publicv1.Cluster) {
 		state = strings.TrimPrefix(state, "CLUSTER_STATE_")
 	}
 	fmt.Fprintf(writer, "ID:\t%s\n", cluster.Id)
-	fmt.Fprintf(writer, "Template:\t%s\n", template)
+	fmt.Fprintf(writer, "Catalog Item:\t%s\n", catalogItem)
 	fmt.Fprintf(writer, "State:\t%s\n", state)
 	writer.Flush()
 }

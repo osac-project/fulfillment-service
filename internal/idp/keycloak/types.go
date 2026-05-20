@@ -206,3 +206,40 @@ func fromKeycloakOrganization(kcOrg *keycloakOrganization) *idp.Organization {
 		Attributes:  kcOrg.Attributes,
 	}
 }
+
+// Authorization Services types
+// These map to Keycloak Authorization Services (UMA 2.0) REST API.
+// See: https://www.keycloak.org/docs/latest/authorization_services/
+
+// keycloakAuthorizationResource represents a protected resource in Keycloak Authorization Services.
+type keycloakAuthorizationResource struct {
+	ID         string              `json:"_id,omitempty"`
+	Name       string              `json:"name,omitempty"`
+	Type       string              `json:"type,omitempty"`
+	Scopes     []string            `json:"scopes,omitempty"`
+	URIs       []string            `json:"uris,omitempty"`
+	Attributes map[string][]string `json:"attributes,omitempty"`
+}
+
+// Conversion functions for authorization resources
+func toKeycloakAuthorizationResource(resource *idp.AuthorizationResource) *keycloakAuthorizationResource {
+	return &keycloakAuthorizationResource{
+		ID:         resource.ID,
+		Name:       resource.Name,
+		Type:       resource.Type,
+		Scopes:     resource.Scopes,
+		URIs:       resource.URIs,
+		Attributes: resource.Attributes,
+	}
+}
+
+func fromKeycloakAuthorizationResource(kcResource *keycloakAuthorizationResource) *idp.AuthorizationResource {
+	return &idp.AuthorizationResource{
+		ID:         kcResource.ID,
+		Name:       kcResource.Name,
+		Type:       kcResource.Type,
+		Scopes:     kcResource.Scopes,
+		URIs:       kcResource.URIs,
+		Attributes: kcResource.Attributes,
+	}
+}

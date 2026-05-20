@@ -202,7 +202,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.ComputeInstanceUuid: t.computeInstance.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.computeInstance.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.computeInstance.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -270,8 +270,8 @@ func (t *task) setConditionDefaults(value privatev1.ComputeInstanceConditionType
 }
 
 func (t *task) validateTenant() error {
-	if !t.computeInstance.HasMetadata() || len(t.computeInstance.GetMetadata().GetTenants()) != 1 {
-		return errors.New("Compute instance must have exactly one tenant assigned")
+	if !t.computeInstance.HasMetadata() || t.computeInstance.GetMetadata().GetTenant() == "" {
+		return errors.New("Compute instance must have a tenant assigned")
 	}
 	return nil
 }
@@ -286,6 +286,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	err = t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "compute_instance_id", t.computeInstance.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 

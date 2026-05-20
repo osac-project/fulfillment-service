@@ -55,6 +55,21 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set up Python
+        if: steps.pr.outputs.found == 'true' && steps.update.outputs.changed == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Sync image tags and rego policies
+        if: steps.pr.outputs.found == 'true' && steps.update.outputs.changed == 'true'
+        run: |
+          git submodule update --init
+          bash scripts/sync-image-tags.sh --fix
+          pip install pyyaml
+          python3 scripts/sync-authconfig-rego.py --fix
+          git add base/kustomization.yaml overlays/
+
       - name: Create bump PR
         if: steps.pr.outputs.found == 'true' && steps.update.outputs.changed == 'true'
         env:

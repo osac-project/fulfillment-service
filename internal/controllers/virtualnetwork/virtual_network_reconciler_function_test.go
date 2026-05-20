@@ -257,6 +257,26 @@ var _ = Describe("delete", func() {
 		})
 	})
 
+	When("hub cache returns ErrHubNotFound", func() {
+		It("removes finalizer to allow archiving", func() {
+			// This test verifies the core behavior: when a hub is decommissioned/deleted,
+			// the reconciler removes its finalizer to allow the virtual network to be archived.
+			mockHubCache.EXPECT().
+				Get(gomock.Any(), hubID).
+				Return(nil, controllers.ErrHubNotFound)
+
+			task := newTaskForDelete(virtualNetworkID, hubID, mockHubCache)
+			Expect(hasFinalizer(task.virtualNetwork)).To(BeTrue())
+
+			err := task.delete(ctx)
+
+			// Should return nil (not propagate the error)
+			Expect(err).ToNot(HaveOccurred())
+			// Finalizer should be removed to allow archiving
+			Expect(hasFinalizer(task.virtualNetwork)).To(BeFalse())
+		})
+	})
+
 	When("K8s object does not exist", func() {
 		It("removes the finalizer", func() {
 			fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -365,11 +385,11 @@ var _ = Describe("delete", func() {
 })
 
 var _ = Describe("validateTenant", func() {
-	It("succeeds when exactly one tenant is assigned", func() {
+	It("succeeds when a tenant is assigned", func() {
 		task := &task{
 			virtualNetwork: privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"tenant-abc"},
+					Tenant: "tenant-abc",
 				}.Build(),
 			}.Build(),
 		}
@@ -387,14 +407,14 @@ var _ = Describe("validateTenant", func() {
 		err := task.validateTenant()
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
-	It("fails when no tenants are assigned", func() {
+	It("fails when tenant is empty", func() {
 		task := &task{
 			virtualNetwork: privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{},
+					Tenant: "",
 				}.Build(),
 			}.Build(),
 		}
@@ -402,22 +422,7 @@ var _ = Describe("validateTenant", func() {
 		err := task.validateTenant()
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
-	})
-
-	It("fails when multiple tenants are assigned", func() {
-		task := &task{
-			virtualNetwork: privatev1.VirtualNetwork_builder{
-				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"tenant-1", "tenant-2"},
-				}.Build(),
-			}.Build(),
-		}
-
-		err := task.validateTenant()
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 

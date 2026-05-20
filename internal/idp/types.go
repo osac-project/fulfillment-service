@@ -60,3 +60,24 @@ type Role struct {
 	ContainerID string // The ID of the organization or client that contains this role
 	Attributes  map[string][]string
 }
+
+// AuthorizationResource represents a protected resource in an authorization system.
+type AuthorizationResource struct {
+	// ID is the unique identifier assigned by the authorization system
+	ID string
+
+	// Name is the resource name (e.g., "PROJECT-acme-web-app")
+	Name string
+
+	// Type is the resource type (e.g., "urn:osac:resources:project")
+	Type string
+
+	// Scopes are the actions that can be performed on this resource
+	Scopes []string
+
+	// URIs are optional resource URIs
+	URIs []string
+
+	// Attributes for additional metadata
+	Attributes map[string][]string
+}

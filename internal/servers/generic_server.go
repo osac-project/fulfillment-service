@@ -19,11 +19,9 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"sort"
 	"strings"
 	"sync"
 
-	"github.com/dustin/go-humanize/english"
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -34,7 +32,6 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/masks"
@@ -86,10 +83,10 @@ type metadataIface interface {
 	GetName() string
 	GetLabels() map[string]string
 	GetAnnotations() map[string]string
-	GetCreators() []string
-	SetCreators([]string)
-	GetTenants() []string
-	SetTenants([]string)
+	GetCreator() string
+	SetCreator(string)
+	GetTenant() string
+	SetTenant(string)
 	GetVersion() int32
 }
 
@@ -132,7 +129,7 @@ func (b *GenericServerBuilder[O]) SetNotifier(value *database.Notifier) *Generic
 	return b
 }
 
-// SetAttributionLogic sets the logic that will be used to determine the creators for objects.
+// SetAttributionLogic sets the logic that will be used to determine the creator for objects.
 func (b *GenericServerBuilder[O]) SetAttributionLogic(value auth.AttributionLogic) *GenericServerBuilder[O] {
 	b.attributionLogic = value
 	return b
@@ -426,22 +423,22 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 		}
 	}
 
-	// Calculate the assigned creators:
-	assignedCreators, err := s.determineAssignedCreators(ctx)
+	// Calculate the assigned creator:
+	assignedCreator, err := s.determineAssignedCreator(ctx)
 	if err != nil {
 		return err
 	}
-	err = s.setCreators(ctx, requestObject, assignedCreators)
+	err = s.setCreator(ctx, requestObject, assignedCreator)
 	if err != nil {
 		return err
 	}
 
-	// Calculate the assigned tenants:
-	assignedTenants, err := s.determineAssignedTenants(ctx, requestObject, requestObject)
+	// Calculate the assigned tenant:
+	assignedTenant, err := s.determineAssignedTenant(ctx, requestObject, requestObject)
 	if err != nil {
 		return err
 	}
-	err = s.setTenants(ctx, requestObject, assignedTenants)
+	err = s.setTenant(ctx, requestObject, assignedTenant)
 	if err != nil {
 		return err
 	}
@@ -588,12 +585,12 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		}
 	}
 
-	// Calculate the tenants for the updated object:
-	assignedTenants, err := s.determineAssignedTenants(ctx, tmpObject, currentObject)
+	// Calculate the tenant for the updated object:
+	assignedTenant, err := s.determineAssignedTenant(ctx, tmpObject, currentObject)
 	if err != nil {
 		return err
 	}
-	err = s.setTenants(ctx, tmpObject, assignedTenants)
+	err = s.setTenant(ctx, tmpObject, assignedTenant)
 	if err != nil {
 		return err
 	}
@@ -826,7 +823,10 @@ func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Messa
 		// exceeds the default limit of 8000 bytes of the PostgreSQL notification mechanism. A better way to
 		// do this would be to store the payloads in a separate table. We will do that later.
 		object = proto.Clone(object).(*privatev1.Hub)
-		object.SetKubeconfig(nil)
+		spec := object.GetSpec()
+		if spec != nil {
+			spec.SetKubeconfig(nil)
+		}
 		event.SetHub(object)
 	case *privatev1.ComputeInstanceTemplate:
 		event.SetComputeInstanceTemplate(object)
@@ -1121,46 +1121,38 @@ func (s *GenericServer[O]) setMetadata(object O, metadata metadataIface) {
 	}
 }
 
-// determineAssignedCreators calls the attribution logic to determine the creators that will be assigned to an object that
-// is being created or updated. In case of error it returns a gRPC error that can be directly returned to the client.
-func (s *GenericServer[O]) determineAssignedCreators(ctx context.Context) (result collections.Set[string], err error) {
-	result, err = s.attributionLogic.DetermineAssignedCreators(ctx)
+// determineAssignedCreator calls the attribution logic to determine the creator that will be assigned to an object
+// that is being created. In case of error it returns a gRPC error that can be directly returned to the client.
+func (s *GenericServer[O]) determineAssignedCreator(ctx context.Context) (result string, err error) {
+	result, err = s.attributionLogic.DetermineAssignedCreator(ctx)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,
-			"Failed to determine assigned creators",
+			"Failed to determine assigned creator",
 			slog.Any("error", err),
 		)
-		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assigned creators")
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assigned creator")
 		return
 	}
 	return
 }
 
-// setCreators sets the creators in the object's metadata, creating the metadata if necessary. In case of error it
+// setCreator sets the creator in the object's metadata, creating the metadata if necessary. In case of error it
 // returns a gRPC error that can be directly returned to the client.
-func (s *GenericServer[O]) setCreators(ctx context.Context, object O, creators collections.Set[string]) error {
+func (s *GenericServer[O]) setCreator(ctx context.Context, object O, creator string) error {
 	metadata := s.getMetadata(object)
 	if metadata == nil {
 		metadata = s.newMetadata()
 		s.setMetadata(object, metadata)
 	}
-	if !creators.Finite() {
-		s.logger.ErrorContext(
-			ctx,
-			"Trying to set an infinite creator set",
-			slog.Any("object", object),
-		)
-		return grpcstatus.Errorf(grpccodes.Internal, "failed to set creators")
-	}
-	metadata.SetCreators(creators.Inclusions())
+	metadata.SetCreator(creator)
 	return nil
 }
 
-// determineAssignedTenants calls the tenancy logic to determine what tenants will be assigned to an object that is
+// determineAssignedTenant calls the tenancy logic to determine which tenant will be assigned to an object that is
 // being created or updated. In case of error it returns a gRPC error that can be directly returned to the client.
-func (s *GenericServer[O]) determineAssignedTenants(ctx context.Context,
-	requestObject, currentObject O) (result collections.Set[string], err error) {
+func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
+	requestObject, currentObject O) (result string, err error) {
 	// Check that there are visible tenants:
 	visibleTenants, err := s.tenancyLogic.DetermineVisibleTenants(ctx)
 	if err != nil {
@@ -1193,136 +1185,85 @@ func (s *GenericServer[O]) determineAssignedTenants(ctx context.Context,
 		return
 	}
 
-	// Determine the tenants that are assigned by default to the object:
-	defaultTenants, err := s.tenancyLogic.DetermineDefaultTenants(ctx)
+	// Determine the default tenant:
+	defaultTenant, err := s.tenancyLogic.DetermineDefaultTenant(ctx)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,
-			"Failed to determine default tenants",
+			"Failed to determine default tenant",
 			slog.Any("error", err),
 		)
-		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default tenants")
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default tenant")
 		return
 	}
-	if defaultTenants.Empty() {
-		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no default tenants")
-		return
-	}
-
-	// Get the tenants from the request and current object:
-	requestTenants, err := s.getTenants(ctx, requestObject)
-	if err != nil {
-		return
-	}
-	currentTenants, err := s.getTenants(ctx, currentObject)
-	if err != nil {
+	if defaultTenant == "" {
+		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there is no default tenant")
 		return
 	}
 
-	// Check that the user isn't tring to assign tenants that are invisible to them:
-	invisibleTenants := requestTenants.Difference(visibleTenants)
-	if !invisibleTenants.Empty() {
-		s.logger.WarnContext(
-			ctx,
-			"User is trying to assign tenants that are invisible to them",
-			slog.Any("visible", visibleTenants.Inclusions()),
-			slog.Any("requested", requestTenants.Inclusions()),
-		)
-		invisibleIds := invisibleTenants.Inclusions()
-		if len(invisibleIds) == 1 {
+	// Get the tenant from the request and current object:
+	requestTenant := s.getTenant(requestObject)
+	currentTenant := s.getTenant(currentObject)
+
+	// If the request specifies a tenant, check that it is visible and assignable:
+	if requestTenant != "" {
+		if !visibleTenants.Contains(requestTenant) {
+			s.logger.WarnContext(
+				ctx,
+				"User is trying to assign a tenant that is invisible to them",
+				slog.String("requested", requestTenant),
+			)
 			err = grpcstatus.Errorf(
 				grpccodes.PermissionDenied,
 				"tenant '%s' doesn't exist",
-				invisibleIds[0],
+				requestTenant,
 			)
 			return
 		}
-		sort.Strings(invisibleIds)
-		for i, invisibleId := range invisibleIds {
-			invisibleIds[i] = fmt.Sprintf("'%s'", invisibleId)
-		}
-		err = grpcstatus.Errorf(
-			grpccodes.PermissionDenied,
-			"tenants %s don't exist",
-			english.WordSeries(invisibleIds, "and"),
-		)
-		return
-	}
-
-	// Check that the user isn't tring to assign tenants that are unassignableTenants to them:
-	unassignableTenants := requestTenants.Difference(assignableTenants)
-	if !unassignableTenants.Empty() {
-		s.logger.WarnContext(
-			ctx,
-			"User is trying to assign tenants that are unassignable",
-			slog.Any("assignable", assignableTenants.Inclusions()),
-			slog.Any("requested", requestTenants.Inclusions()),
-		)
-		unassignableIds := unassignableTenants.Inclusions()
-		if len(unassignableIds) == 1 {
+		if !assignableTenants.Contains(requestTenant) {
+			s.logger.WarnContext(
+				ctx,
+				"User is trying to assign a tenant that is unassignable",
+				slog.String("requested", requestTenant),
+			)
 			err = grpcstatus.Errorf(
 				grpccodes.PermissionDenied,
 				"tenant '%s' can't be assigned",
-				unassignableIds[0],
+				requestTenant,
 			)
 			return
 		}
-		sort.Strings(unassignableIds)
-		for i, unassignableId := range unassignableIds {
-			unassignableIds[i] = fmt.Sprintf("'%s'", unassignableId)
-		}
-		err = grpcstatus.Errorf(
-			grpccodes.PermissionDenied,
-			"tenants %s can't be assigned",
-			english.WordSeries(unassignableIds, "and"),
-		)
+		result = requestTenant
 		return
 	}
 
-	// Start with the tenants from the request, or the current tenants, or the default tenants:
-	var initialTenants collections.Set[string]
-	if !requestTenants.Empty() {
-		initialTenants = requestTenants
-	} else if !currentTenants.Empty() {
-		initialTenants = currentTenants
+	// Fall back to the current tenant or the default:
+	if currentTenant != "" {
+		result = currentTenant
 	} else {
-		initialTenants = defaultTenants
+		result = defaultTenant
 	}
-
-	// To the initial tenants we add the assignable tenants that are visible to the user:
-	result = initialTenants.Union(assignableTenants.Intersection(visibleTenants.Negate()))
 	return
 }
 
-// getTenants extracts the tenants from an object's metadata. In case of error it returns a gRPC error that can be
-// directly returned to the client.
-func (s *GenericServer[O]) getTenants(ctx context.Context, object O) (result collections.Set[string], err error) {
-	var tenants []string
+// getTenant extracts the tenant from an object's metadata.
+func (s *GenericServer[O]) getTenant(object O) string {
 	metadata := s.getMetadata(object)
 	if metadata != nil {
-		tenants = metadata.GetTenants()
+		return metadata.GetTenant()
 	}
-	result = collections.NewSet(tenants...)
-	return
+	return ""
 }
 
-// setTenants sets the tenants in the object's metadata, creating the metadata if necessary. In case of error it
+// setTenant sets the tenant in the object's metadata, creating the metadata if necessary. In case of error it
 // returns a gRPC error that can be directly returned to the client.
-func (s *GenericServer[O]) setTenants(ctx context.Context, object O, tenants collections.Set[string]) error {
+func (s *GenericServer[O]) setTenant(ctx context.Context, object O, tenant string) error {
 	metadata := s.getMetadata(object)
 	if metadata == nil {
 		metadata = s.newMetadata()
 		s.setMetadata(object, metadata)
 	}
-	if !tenants.Finite() {
-		s.logger.ErrorContext(
-			ctx,
-			"Trying to set an infinite tenant set",
-			slog.Any("object", object),
-		)
-		return grpcstatus.Errorf(grpccodes.Internal, "failed to set tenants")
-	}
-	metadata.SetTenants(tenants.Inclusions())
+	metadata.SetTenant(tenant)
 	return nil
 }
 

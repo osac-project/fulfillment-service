@@ -67,7 +67,7 @@ func (b *PrivatePublicIPPoolsServerBuilder) SetNotifier(value *database.Notifier
 	return b
 }
 
-// SetAttributionLogic sets the attribution logic used to determine the creators of objects.
+// SetAttributionLogic sets the attribution logic used to determine the creator of objects.
 func (b *PrivatePublicIPPoolsServerBuilder) SetAttributionLogic(value auth.AttributionLogic) *PrivatePublicIPPoolsServerBuilder {
 	b.attributionLogic = value
 	return b

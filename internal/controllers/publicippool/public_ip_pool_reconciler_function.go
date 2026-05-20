@@ -42,7 +42,7 @@ const (
 
 var (
 	errUnsupportedIPFamily   = errors.New("unsupported or unspecified IP family")
-	errInvalidTenantCount    = errors.New("public IP pool must have exactly one tenant assigned")
+	errInvalidTenantCount    = errors.New("public IP pool must have a tenant assigned")
 	errDuplicatePublicIPPool = errors.New("expected at most one public IP pool with identifier")
 	errNoHubsFound           = errors.New("no available hubs found")
 
@@ -183,7 +183,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.PublicIPPoolUuid: t.publicIPPool.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.publicIPPool.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.publicIPPool.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -226,9 +226,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	tenantCount := len(t.publicIPPool.GetMetadata().GetTenants())
-	if !t.publicIPPool.HasMetadata() || tenantCount != 1 {
-		return fmt.Errorf("%w: %d tenants assigned, expected 1", errInvalidTenantCount, tenantCount)
+	if !t.publicIPPool.HasMetadata() || t.publicIPPool.GetMetadata().GetTenant() == "" {
+		return errInvalidTenantCount
 	}
 	return nil
 }
@@ -251,6 +250,12 @@ func (t *task) delete(ctx context.Context) error {
 	}
 	err := t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "public_ip_pool_id", t.publicIPPool.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return err
 	}
 

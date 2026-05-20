@@ -180,7 +180,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.VirtualNetworkUuid: t.virtualNetwork.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.virtualNetwork.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.virtualNetwork.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -223,8 +223,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	if !t.virtualNetwork.HasMetadata() || len(t.virtualNetwork.GetMetadata().GetTenants()) != 1 {
-		return errors.New("virtual network must have exactly one tenant assigned")
+	if !t.virtualNetwork.HasMetadata() || t.virtualNetwork.GetMetadata().GetTenant() == "" {
+		return errors.New("virtual network must have a tenant assigned")
 	}
 	return nil
 }
@@ -239,6 +239,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	err = t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "virtual_network_id", t.virtualNetwork.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 

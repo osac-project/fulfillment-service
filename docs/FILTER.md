@@ -39,11 +39,11 @@ The metadata sub-object exposes the following fields:
 when the object has not been deleted, so `this.metadata.deletion_timestamp != null` selects only
 deleted objects.
 
-`this.metadata.creators` is the list of identities that created the object. Use the `in` operator
-to test membership, for example `'my_user' in this.metadata.creators`.
+`this.metadata.creator` is the identity that created the object. For example,
+`this.metadata.creator == 'my_user'`.
 
-`this.metadata.tenants` is the list of tenants that own the object. Use the `in` operator to test
-membership, for example `'my_tenant' in this.metadata.tenants`.
+`this.metadata.tenant` is the tenant that owns the object. For example,
+`this.metadata.tenant == 'my_tenant'`.
 
 `this.metadata.labels` is the map of labels attached to the object. You can access individual
 label values with the index operator, for example `this.metadata.labels['env'] == 'production'`.
@@ -81,9 +81,8 @@ When the right-hand side is a list literal the expression checks whether the lef
 appears in that list. For example, `this.id in ['abc', 'def']` returns `true` when the object
 identifier is either `abc` or `def`. Note that the list must contain only literal values.
 
-When the right-hand side is an array field such as `this.metadata.creators` or
-`this.metadata.tenants`, the expression checks whether the left-hand value is contained in that
-array. For example, `'admin' in this.metadata.creators`.
+When the right-hand side is an array field, the expression checks whether the left-hand value is
+contained in that array.
 
 When the right-hand side is a map field such as `this.metadata.labels`, the expression checks
 whether the left-hand value exists as a key in the map. For example,
@@ -125,7 +124,7 @@ this.metadata.name.startsWith("prod")
 Select objects created by a specific user:
 
 ```cel
-'my_user' in this.metadata.creators
+this.metadata.creator == 'my_user'
 ```
 
 Select objects that have the label `env` set to `production`:

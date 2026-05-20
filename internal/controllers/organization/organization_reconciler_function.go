@@ -202,10 +202,10 @@ func (t *task) setDefaults() {
 	}
 }
 
-// validateTenant verifies that the organization has exactly one tenant assigned.
+// validateTenant verifies that the organization has a tenant assigned.
 func (t *task) validateTenant() error {
-	if !t.organization.HasMetadata() || len(t.organization.GetMetadata().GetTenants()) != 1 {
-		return errors.New("Organization must have exactly one tenant assigned")
+	if !t.organization.HasMetadata() || t.organization.GetMetadata().GetTenant() == "" {
+		return errors.New("Organization must have a tenant assigned")
 	}
 	return nil
 }

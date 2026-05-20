@@ -74,7 +74,7 @@ var _ = Describe("Tenancy logic", func() {
 	})
 
 	It("Filters field based on user visibility", func() {
-		// Create a tenancy logic that only makes two tenants visible to the user:
+		// Create a tenancy logic that makes certain tenants visible to the user:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_a", "tenant_c"), nil).
@@ -87,52 +87,51 @@ var _ = Describe("Tenancy logic", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Create an object with all tenants in metadata, verify the response only shows visible tenants:
+		// Create an object with a visible tenant, verify the response shows it:
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenants: []string{"tenant_a", "tenant_b", "tenant_c"},
+					Tenant: "tenant_a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
-		Expect(object.GetMetadata().GetTenants()).To(ConsistOf("tenant_a", "tenant_c"))
+		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant_a"))
 
-		// Retrieve the object by identifier and verify again that it only shows the visible tenants:
+		// Retrieve the object by identifier and verify it still shows the tenant:
 		getResponse, err := dao.Get().
 			SetId(object.GetId()).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object = getResponse.GetObject()
-		Expect(object.GetMetadata().GetTenants()).To(ConsistOf("tenant_a", "tenant_c"))
+		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant_a"))
 
-		// Retrieve the object as part of a list and verify again that it only shows the visible tenants:
+		// Retrieve the object as part of a list and verify it still shows the tenant:
 		listResponse, err := dao.List().
 			SetFilter(fmt.Sprintf("this.id == %q", object.GetId())).
 			SetLimit(1).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResponse.GetItems()).To(HaveLen(1))
-		Expect(listResponse.GetItems()[0].GetMetadata().GetTenants()).To(ConsistOf("tenant_a", "tenant_c"))
+		Expect(listResponse.GetItems()[0].GetMetadata().GetTenant()).To(Equal("tenant_a"))
 
-		// Update the object setting all tenants in metadata (as the server would) and verify the
-		// response only shows the visible tenants:
+		// Update the object and verify the response still shows the tenant:
 		object.SetMyString("hello")
-		object.GetMetadata().SetTenants([]string{"tenant_a", "tenant_b", "tenant_c"})
+		object.GetMetadata().SetTenant("tenant_a")
 		updateResponse, err := dao.Update().
 			SetObject(object).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object = updateResponse.GetObject()
-		Expect(object.GetMetadata().GetTenants()).To(ConsistOf("tenant_a", "tenant_c"))
+		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant_a"))
 
-		// Verify the actual database contains all the tenants:
-		var tenants []string
-		row := tx.QueryRow(ctx, "select tenants from objects where id = $1", object.GetId())
-		err = row.Scan(&tenants)
+		// Verify the actual database contains the tenant:
+		var tenant string
+		row := tx.QueryRow(ctx, "select tenant from objects where id = $1", object.GetId())
+		err = row.Scan(&tenant)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(tenants).To(ConsistOf("tenant_a", "tenant_b", "tenant_c"))
+		Expect(tenant).To(Equal("tenant_a"))
 	})
 
 	It("Shows all tenants when user has no tenant restrictions", func() {
@@ -149,17 +148,17 @@ var _ = Describe("Tenancy logic", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Create an object and verify that it shows all tenants:
+		// Create an object and verify that it shows the tenant:
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenants: []string{"tenant_a", "tenant_b", "tenant_c"},
+					Tenant: "tenant_a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
-		Expect(object.GetMetadata().GetTenants()).To(ConsistOf("tenant_a", "tenant_b", "tenant_c"))
+		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant_a"))
 	})
 
 	It("Shows no tenants when user has no visible tenants that intersect with object tenants", func() {
@@ -176,17 +175,17 @@ var _ = Describe("Tenancy logic", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Create an object with tenants that don't overlap with visible tenants:
+		// Create an object with a tenant that doesn't overlap with visible tenants:
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenants: []string{"tenant_y"},
+					Tenant: "tenant_y",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
-		Expect(object.GetMetadata().GetTenants()).To(BeEmpty())
+		Expect(object.GetMetadata().GetTenant()).To(BeEmpty())
 
 		// Verify the object is not found via Get because the SQL tenant filter excludes it:
 		_, err = dao.Get().
@@ -219,7 +218,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenants: []string{"tenant_a"},
+					Tenant: "tenant_a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -257,7 +256,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := daoA.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenants: []string{"tenant_a"},
+					Tenant: "tenant_a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -306,7 +305,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenants: []string{"tenant_a"},
+					Tenant: "tenant_a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -345,7 +344,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := daoA.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenants: []string{"tenant_a"},
+					Tenant: "tenant_a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)

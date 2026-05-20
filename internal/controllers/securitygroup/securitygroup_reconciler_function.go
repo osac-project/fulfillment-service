@@ -196,7 +196,7 @@ func (t *task) update(ctx context.Context) error {
 	// Create or update the Kubernetes object:
 	if object == nil {
 		sgAnnotations := map[string]string{
-			annotations.Tenant: t.securityGroup.GetMetadata().GetTenants()[0],
+			annotations.Tenant: t.securityGroup.GetMetadata().GetTenant(),
 		}
 		if implStrategy != "" {
 			sgAnnotations[implementationStrategyAnnotation] = implStrategy
@@ -250,8 +250,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	if !t.securityGroup.HasMetadata() || len(t.securityGroup.GetMetadata().GetTenants()) != 1 {
-		return errors.New("security group must have exactly one tenant assigned")
+	if !t.securityGroup.HasMetadata() || t.securityGroup.GetMetadata().GetTenant() == "" {
+		return errors.New("security group must have a tenant assigned")
 	}
 	return nil
 }
@@ -327,6 +327,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 
 	hubEntry, err := t.r.hubCache.Get(ctx, t.hubId)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "security_group_id", t.securityGroup.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 	t.hubNamespace = hubEntry.Namespace

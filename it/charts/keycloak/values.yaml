@@ -25,6 +25,12 @@ certs:
     kind: ClusterIssuer
     name:
 
+  # This defines the trusted CA certificates bundle. It should be the name of a ConfigMap in the release namespace
+  # containing trusted CA certificates. All keys in the ConfigMap are picked up, so any key name is accepted as long
+  # as its value is valid PEM content. When set, Keycloak will trust connections signed by those CAs.
+  caBundle:
+    configMap:
+
 # Bootstrap admin credentials used for the initial Keycloak administrator account:
 admin:
   username: admin

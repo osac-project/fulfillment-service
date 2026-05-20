@@ -87,8 +87,8 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			creation_timestamp,
 			deletion_timestamp,
 			finalizers,
-			creators,
-			tenants,
+			creator,
+			tenant,
 			labels,
 			annotations,
 			version,
@@ -105,8 +105,8 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		creationTs      time.Time
 		deletionTs      time.Time
 		finalizers      []string
-		creators        []string
-		tenants         []string
+		creator         string
+		tenant          string
 		labelsData      []byte
 		annotationsData []byte
 		version         int32
@@ -123,8 +123,8 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			&creationTs,
 			&deletionTs,
 			&finalizers,
-			&creators,
-			&tenants,
+			&creator,
+			&tenant,
 			&labelsData,
 			&annotationsData,
 			&version,
@@ -157,8 +157,8 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		creationTs:  creationTs,
 		deletionTs:  deletionTs,
 		finalizers:  finalizers,
-		creators:    creators,
-		tenants:     tenants,
+		creator:     creator,
+		tenant:      tenant,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
@@ -181,8 +181,8 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		id:              r.args.id,
 		creationTs:      creationTs,
 		deletionTs:      deletionTs,
-		creators:        creators,
-		tenants:         tenants,
+		creator:         creator,
+		tenant:          tenant,
 		name:            name,
 		labelsData:      labelsData,
 		annotationsData: annotationsData,

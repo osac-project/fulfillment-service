@@ -25,10 +25,12 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -81,6 +83,8 @@ var _ = Describe("Private compute instances server", func() {
 		Expect(err).ToNot(HaveOccurred())
 		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
 		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.ComputeInstanceCatalogItem](ctx)
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	// Helper function to create a NetworkClass for test setup
@@ -94,7 +98,7 @@ var _ = Describe("Private compute instances server", func() {
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -121,7 +125,7 @@ var _ = Describe("Private compute instances server", func() {
 
 		vn := privatev1.VirtualNetwork_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Ipv4Cidr:     proto.String("10.0.0.0/16"),
@@ -147,7 +151,7 @@ var _ = Describe("Private compute instances server", func() {
 
 		subnet := privatev1.Subnet_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.SubnetSpec_builder{
 				VirtualNetwork: vnID,
@@ -173,7 +177,7 @@ var _ = Describe("Private compute instances server", func() {
 
 		sg := privatev1.SecurityGroup_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.SecurityGroupSpec_builder{
 				VirtualNetwork: vnID,
@@ -262,7 +266,7 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Test Template",
 				Description: "Test template for validation",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{
@@ -795,7 +799,7 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "No Defaults Template",
 				Description: "Template without spec defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 			}.Build()
 			_, err = templatesDao.Create().SetObject(template).Do(ctx)
@@ -835,7 +839,7 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Bare Template",
 				Description: "Template without defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 			}.Build()
 			_, err = templatesDao.Create().SetObject(template).Do(ctx)
@@ -877,7 +881,7 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Partial Defaults Template",
 				Description: "Template with partial spec defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
 					Cores:       proto.Int32(2),
@@ -915,6 +919,215 @@ var _ = Describe("Private compute instances server", func() {
 			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/containerdisks/fedora:latest"))
 			Expect(spec.GetBootDisk().GetSizeGib()).To(Equal(int32(20)))
 		})
+
+		Describe("Catalog item", func() {
+			var catalogItemsDao *dao.GenericDAO[*privatev1.ComputeInstanceCatalogItem]
+
+			BeforeEach(func() {
+				var err error
+				catalogItemsDao, err = dao.NewGenericDAO[*privatev1.ComputeInstanceCatalogItem]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			createCICatalogItem := func(id string, published bool, fieldDefs []*privatev1.FieldDefinition) {
+				_, err := catalogItemsDao.Create().SetObject(
+					privatev1.ComputeInstanceCatalogItem_builder{
+						Id: id,
+						Metadata: privatev1.Metadata_builder{
+							Name:   id + "-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:            "Test CI Catalog Item",
+						Published:        published,
+						Template:         "ci-template-id",
+						FieldDefinitions: fieldDefs,
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			It("Creates compute instance with catalog item", func() {
+				createCICatalogItem("ci-cat-happy", true, nil)
+
+				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-happy",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetId()).ToNot(BeEmpty())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("ci-template-id"))
+				Expect(object.GetSpec().GetCatalogItem()).To(Equal("ci-cat-happy"))
+			})
+
+			It("Creates compute instance with catalog item specified by name", func() {
+				createCICatalogItem("ci-cat-byname", true, nil)
+
+				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-byname-name",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("ci-template-id"))
+			})
+
+			It("Fails when catalog item not found", func() {
+				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "nonexistent",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(Equal(
+					"there is no catalog item with identifier or name 'nonexistent'",
+				))
+			})
+
+			It("Fails when catalog item is not published", func() {
+				createCICatalogItem("ci-cat-unpub", false, nil)
+
+				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-unpub",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(Equal(
+					"catalog item 'ci-cat-unpub' is not published",
+				))
+			})
+
+			It("Fails when both catalog_item and template are set", func() {
+				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "any-catalog-item",
+							Template:    "some-template",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal("catalog_item and template are mutually exclusive"))
+			})
+
+			It("Overrides user value for non-editable field", func() {
+				spec := privatev1.ComputeInstanceSpec_builder{
+					SshKey: proto.String("user-key"),
+				}.Build()
+
+				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:     "ssh_key",
+						Editable: false,
+						Default:  structpb.NewStringValue("forced-key"),
+					}.Build(),
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(spec.GetSshKey()).To(Equal("forced-key"))
+			})
+
+			DescribeTable("validates editable field against JSON Schema",
+				func(value string, expectError bool) {
+					spec := privatev1.ComputeInstanceSpec_builder{
+						SshKey: proto.String(value),
+					}.Build()
+
+					err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:             "ssh_key",
+							Editable:         true,
+							ValidationSchema: `{"type":"string","minLength":10}`,
+						}.Build(),
+					})
+					if expectError {
+						Expect(err).To(HaveOccurred())
+						status, ok := grpcstatus.FromError(err)
+						Expect(ok).To(BeTrue())
+						Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+						Expect(status.Message()).To(ContainSubstring("validation failed for field 'ssh_key'"))
+					} else {
+						Expect(err).ToNot(HaveOccurred())
+						Expect(spec.GetSshKey()).To(Equal(value))
+					}
+				},
+				Entry("rejects value below minLength", "short", true),
+				Entry("accepts value meeting minLength", "long-enough-key", false),
+			)
+
+			It("Applies default for editable field when not provided", func() {
+				spec := privatev1.ComputeInstanceSpec_builder{}.Build()
+
+				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:     "ssh_key",
+						Editable: true,
+						Default:  structpb.NewStringValue("default-key"),
+					}.Build(),
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(spec.GetSshKey()).To(Equal("default-key"))
+			})
+
+			It("Rejects changing catalog_item on update", func() {
+				createCICatalogItem("ci-cat-immut", true, nil)
+
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-immut",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := createResponse.GetObject()
+
+				_, err = server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "different-catalog-item",
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.catalog_item"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"cannot change spec.catalog_item from 'ci-cat-immut' to 'different-catalog-item': catalog item is immutable",
+				))
+			})
+		})
 	})
 
 	Describe("Network validation", func() {
@@ -949,7 +1162,7 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Test Template",
 				Description: "Test template for network validation",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{

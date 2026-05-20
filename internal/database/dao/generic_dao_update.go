@@ -73,20 +73,20 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	}
 	fmt.Fprintf(&r.sql.filter, ` id = $%d`, len(r.sql.params))
 
-	// Get the requested finalizers, name, labels, annotations and tenants:
+	// Get the requested finalizers, name, labels, annotations and tenant:
 	metadata := r.getMetadata(r.object)
 	finalizers := r.getFinalizers(metadata)
 	var (
 		name        string
 		labels      map[string]string
 		annotations map[string]string
-		tenants     []string
+		tenant      string
 	)
 	if metadata != nil {
 		name = metadata.GetName()
 		labels = metadata.GetLabels()
 		annotations = metadata.GetAnnotations()
-		tenants = metadata.GetTenants()
+		tenant = metadata.GetTenant()
 	}
 
 	// Marshal the data, labels and annotations:
@@ -115,18 +115,18 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	addColumn("finalizers", finalizers)
 	addColumn("labels", labelsData)
 	addColumn("annotations", annotationsData)
-	addColumn("tenants", tenants)
+	addColumn("tenant", tenant)
 	addColumn("data", data)
 	fmt.Fprintf(&buffer, ` version = version + 1`)
 	fmt.Fprintf(&buffer, ` where %s`, r.sql.filter.String())
-	fmt.Fprintf(&buffer, ` returning creation_timestamp, deletion_timestamp, creators, version`)
+	fmt.Fprintf(&buffer, ` returning creation_timestamp, deletion_timestamp, creator, version`)
 
 	// Run the SQL statement:
 	sql := buffer.String()
 	var (
 		creationTs time.Time
 		deletionTs time.Time
-		creators   []string
+		creator    string
 		version    int32
 	)
 	err = func() (err error) {
@@ -138,7 +138,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		err = row.Scan(
 			&creationTs,
 			&deletionTs,
-			&creators,
+			&creator,
 			&version,
 		)
 		return
@@ -165,8 +165,8 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		creationTs:  creationTs,
 		deletionTs:  deletionTs,
 		finalizers:  finalizers,
-		creators:    creators,
-		tenants:     tenants,
+		creator:     creator,
+		tenant:      tenant,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
@@ -191,8 +191,8 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 			id:              id,
 			creationTs:      creationTs,
 			deletionTs:      deletionTs,
-			creators:        creators,
-			tenants:         tenants,
+			creator:         creator,
+			tenant:          tenant,
 			name:            name,
 			labelsData:      labelsData,
 			annotationsData: annotationsData,

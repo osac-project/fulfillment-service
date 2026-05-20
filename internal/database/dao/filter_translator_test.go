@@ -239,13 +239,13 @@ var _ = Describe("Filter translator", func() {
 		),
 		Entry(
 			"Filter by creator",
-			`'my_user' in this.metadata.creators`,
-			`creators @> array['my_user']`,
+			`this.metadata.creator == 'my_user'`,
+			`creator = 'my_user'`,
 		),
 		Entry(
 			"Filter by tenant",
-			`'my_tenant' in this.metadata.tenants`,
-			`tenants @> array['my_tenant']`,
+			`this.metadata.tenant == 'my_tenant'`,
+			`tenant = 'my_tenant'`,
 		),
 		Entry(
 			"Translates 'in' with empty list into false",
@@ -286,6 +286,16 @@ var _ = Describe("Filter translator", func() {
 			"Double-quoted string with CEL injection attempt from %q",
 			`this.id == "'] || true || this.id in ['"`,
 			`id = e'\'] || true || this.id in [\''`,
+		),
+		Entry(
+			"Check presence of tenant",
+			`has(this.metadata.tenant)`,
+			`tenant != ''`,
+		),
+		Entry(
+			"Check presence of creator",
+			`has(this.metadata.creator)`,
+			`creator != ''`,
 		),
 	)
 })

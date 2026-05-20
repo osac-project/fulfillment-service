@@ -26,6 +26,11 @@ spec:
   - name: tls
     secret:
       secretName: keycloak-tls
+  {{ if .Values.certs.caBundle.configMap }}
+  - name: cas
+    configMap:
+      name: {{ .Values.certs.caBundle.configMap }}
+  {{ end }}
   - name: db
     projected:
       sources:
@@ -64,6 +69,11 @@ spec:
     - name: tls
       mountPath: /opt/keycloak/tls
       readOnly: true
+    {{ if .Values.certs.caBundle.configMap }}
+    - name: cas
+      mountPath: /opt/keycloak/cas
+      readOnly: true
+    {{ end }}
     - name: db
       mountPath: /opt/keycloak/db
       readOnly: true

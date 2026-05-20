@@ -32,6 +32,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/login"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/logout"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/version"
+	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -101,6 +102,18 @@ func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) erro
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
 
+	// Create and load the settings:
+	settings, err := config.NewSettings().
+		SetLogger(logger).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create settings: %w", err)
+	}
+	err = settings.Load(cmd.Context())
+	if err != nil {
+		return fmt.Errorf("failed to load settings: %w", err)
+	}
+
 	// Create the console:
 	console, err := terminal.NewConsole().
 		SetLogger(logger).
@@ -109,9 +122,10 @@ func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) erro
 		return fmt.Errorf("failed to create console: %w", err)
 	}
 
-	// Replace the default context with one that contains the logger and the console:
+	// Replace the default context with one that contains the logger, the settings, and the console:
 	ctx := cmd.Context()
 	ctx = logging.LoggerIntoContext(ctx, logger)
+	ctx = config.SettingsIntoContext(ctx, settings)
 	ctx = terminal.ConsoleIntoContext(ctx, console)
 	cmd.SetContext(ctx)
 

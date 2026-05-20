@@ -24,6 +24,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -83,7 +84,7 @@ var _ = Describe("Public IPs server", func() {
 		resp, err := publicIPPoolDao.Create().SetObject(
 			privatev1.PublicIPPool_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.PublicIPPoolSpec_builder{
 					Cidrs: []string{"10.0.0.0/24"},

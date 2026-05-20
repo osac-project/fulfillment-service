@@ -107,7 +107,7 @@ Public servers delegate to private servers and add tenant/auth logic:
 Uses `pgx/v5` with a generic DAO pattern:
 - `GenericDAO[O Object]` provides type-safe CRUD for any protobuf message
 - Resources stored as JSON-serialized protobuf in a `data` column
-- Standard columns: `id`, `name`, `creation_timestamp`, `deletion_timestamp`, `finalizers`, `creators`, `tenants`, `labels`, `annotations`, `data`
+- Standard columns: `id`, `name`, `creation_timestamp`, `deletion_timestamp`, `finalizers`, `creator`, `tenant`, `labels`, `annotations`, `data`
 - CEL filter expressions translated to SQL WHERE clauses via `FilterTranslator`
 - Migrations in `internal/database/migrations/` (numbered `*.up.sql` files)
 

@@ -208,7 +208,7 @@ func (x ProjectConditionType) Number() protoreflect.EnumNumber {
 // resource grouping.
 //
 // For nested projects, the spec.parent field references the parent Project ID. Tenant isolation is
-// enforced via the standard metadata.tenants field.
+// enforced via the standard metadata.tenant field.
 //
 // Projects support the following use cases:
 // - Organizing resources by team, department, or application

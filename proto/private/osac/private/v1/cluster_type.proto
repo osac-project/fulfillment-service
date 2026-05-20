@@ -38,6 +38,10 @@ message ClusterSpec {
   optional string ssh_public_key = 5;
   optional string release_image = 6;
   optional ClusterNetwork network = 7;
+
+  // Reference to a cluster catalog item. Mutually exclusive with template during the migration period.
+  // When set, the server fetches the catalog item and applies its field definitions.
+  string catalog_item = 8;
 }
 
 // Networking configuration for a cluster.

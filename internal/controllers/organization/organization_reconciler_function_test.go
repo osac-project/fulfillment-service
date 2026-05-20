@@ -29,10 +29,10 @@ import (
 )
 
 var _ = Describe("Tenant Validation", func() {
-	It("should succeed with exactly one tenant", func() {
+	It("should succeed with a tenant assigned", func() {
 		organization := privatev1.Organization_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -44,10 +44,10 @@ var _ = Describe("Tenant Validation", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail with zero tenants", func() {
+	It("should fail with empty tenant", func() {
 		organization := privatev1.Organization_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{},
+				Tenant: "",
 			}.Build(),
 		}.Build()
 
@@ -57,23 +57,7 @@ var _ = Describe("Tenant Validation", func() {
 
 		err := task.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
-	})
-
-	It("should fail with multiple tenants", func() {
-		organization := privatev1.Organization_builder{
-			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1", "tenant-2"},
-			}.Build(),
-		}.Build()
-
-		task := &task{
-			organization: organization,
-		}
-
-		err := task.validateTenant()
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
 	It("should fail with missing metadata", func() {
@@ -85,7 +69,7 @@ var _ = Describe("Tenant Validation", func() {
 
 		err := task.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 
@@ -125,7 +109,7 @@ var _ = Describe("Finalizer Management", func() {
 	It("should return immediately after adding finalizer", func() {
 		organization := privatev1.Organization_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -216,7 +200,7 @@ var _ = Describe("IDP Sync", func() {
 			Metadata: privatev1.Metadata_builder{
 				Name:       "test-org",
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{"tenant-1"},
+				Tenant:     "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -266,7 +250,7 @@ var _ = Describe("IDP Sync", func() {
 			Metadata: privatev1.Metadata_builder{
 				Name:       "test-org",
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{"tenant-1"},
+				Tenant:     "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -302,7 +286,7 @@ var _ = Describe("IDP Sync", func() {
 			Metadata: privatev1.Metadata_builder{
 				Name:       "test-org",
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{"tenant-1"},
+				Tenant:     "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -331,7 +315,7 @@ var _ = Describe("IDP Sync", func() {
 			Metadata: privatev1.Metadata_builder{
 				Name:       "test-org",
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{"tenant-1"},
+				Tenant:     "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -528,7 +512,7 @@ var _ = Describe("Skip Reconciliation", func() {
 		organization := privatev1.Organization_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{"tenant-1"},
+				Tenant:     "tenant-1",
 			}.Build(),
 			Status: privatev1.OrganizationStatus_builder{
 				State:               privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED,
@@ -550,7 +534,7 @@ var _ = Describe("Skip Reconciliation", func() {
 		organization := privatev1.Organization_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{"tenant-1"},
+				Tenant:     "tenant-1",
 			}.Build(),
 			Status: privatev1.OrganizationStatus_builder{
 				State:   privatev1.OrganizationState_ORGANIZATION_STATE_FAILED,

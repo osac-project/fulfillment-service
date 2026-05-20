@@ -170,7 +170,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 
 	// Run the migrations:
 	c.logger.InfoContext(ctx, "Running database migrations")
-	err = dbTool.Migrate(ctx)
+	err = dbTool.Migrate(ctx, 0)
 	if err != nil {
 		return err
 	}
@@ -938,7 +938,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 			if err != nil {
 				return nil, err
 			}
-			return resp.GetObject().GetKubeconfig(), nil
+			return resp.GetObject().GetSpec().GetKubeconfig(), nil
 		},
 	)
 	kvBackend, err := console.NewKubeVirtBackend().
