@@ -81,3 +81,30 @@ type AuthorizationResource struct {
 	// Attributes for additional metadata
 	Attributes map[string][]string
 }
+
+// IdentityProvider represents an external identity provider configuration.
+// This represents the connection to an upstream IdP (LDAP/AD/OIDC/SAML/etc) that
+// users authenticate against.
+type IdentityProvider struct {
+	// Alias is the unique name for this IdP within the realm
+	Alias string
+
+	// DisplayName is the human-readable name for this IdP
+	DisplayName string
+
+	// Type is the IdP provider type as a free-form string.
+	// Common values: "ldap", "kerberos", "oidc", "saml", "google", "github", "facebook", "microsoft"
+	// The exact set of supported values depends on the underlying IdP system (e.g., Keycloak).
+	Type string
+
+	// Enabled indicates whether this IdP is active
+	Enabled bool
+
+	// Config contains provider-specific configuration settings.
+	// Secrets are automatically filtered by the IdP system and never returned in GET responses.
+	// Example keys:
+	// - LDAP: connectionUrl, bindDn, usersDn, authType, vendor
+	// - OIDC: authorizationUrl, tokenUrl, clientId, issuer, defaultScope
+	// - SAML: singleSignOnServiceUrl, singleLogoutServiceUrl, signingCertificate
+	Config map[string]string
+}

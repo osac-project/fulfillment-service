@@ -243,3 +243,47 @@ func fromKeycloakAuthorizationResource(kcResource *keycloakAuthorizationResource
 		Attributes: kcResource.Attributes,
 	}
 }
+
+// Identity Provider types
+// These map to Keycloak Identity Provider REST API.
+// See: https://www.keycloak.org/docs-api/latest/rest-api/index.html#_identity_providers_resource
+
+// keycloakIdentityProvider represents an external identity provider configuration in Keycloak.
+// Identity providers are configured at the realm level and can be linked to specific organizations.
+type keycloakIdentityProvider struct {
+	Alias       string            `json:"alias,omitempty"`
+	DisplayName string            `json:"displayName,omitempty"`
+	InternalID  string            `json:"internalId,omitempty"`
+	ProviderID  string            `json:"providerId,omitempty"` // "ldap", "oidc", "saml", etc.
+	Enabled     bool              `json:"enabled,omitempty"`
+	Config      map[string]string `json:"config,omitempty"` // Provider-specific configuration
+}
+
+// Conversion functions for identity providers
+func toKeycloakIdentityProvider(idpProvider *idp.IdentityProvider) *keycloakIdentityProvider {
+	if idpProvider == nil {
+		return nil
+	}
+
+	return &keycloakIdentityProvider{
+		Alias:       idpProvider.Alias,
+		DisplayName: idpProvider.DisplayName,
+		ProviderID:  idpProvider.Type,
+		Enabled:     idpProvider.Enabled,
+		Config:      idpProvider.Config,
+	}
+}
+
+func fromKeycloakIdentityProvider(kcIdp *keycloakIdentityProvider) *idp.IdentityProvider {
+	if kcIdp == nil {
+		return nil
+	}
+
+	return &idp.IdentityProvider{
+		Alias:       kcIdp.Alias,
+		DisplayName: kcIdp.DisplayName,
+		Type:        kcIdp.ProviderID,
+		Enabled:     kcIdp.Enabled,
+		Config:      kcIdp.Config,
+	}
+}
