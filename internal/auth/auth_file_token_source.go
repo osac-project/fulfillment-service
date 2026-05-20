@@ -126,15 +126,6 @@ func (s *fileTokenSource) Token(ctx context.Context) (result *Token, err error) 
 			Access: token,
 		}
 		s.timestamp = timestamp
-		s.logger.DebugContext(
-			ctx,
-			"Successfully loaded token from file",
-		)
-	} else {
-		s.logger.DebugContext(
-			ctx,
-			"Using token from file, file has not changed",
-		)
 	}
 
 	// Return the token:

@@ -486,12 +486,6 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 
 	// If the loaded token doesn't expire soon, then we can use it directly, there is no need to request a new one:
 	if loaded != nil && s.isFresh(loaded) {
-		s.logger.DebugContext(
-			ctx,
-			"Using token loaded from storage",
-			slog.String("!access", loaded.Access),
-			slog.Time("expiry", loaded.Expiry),
-		)
 		result = loaded
 		return
 	}
@@ -499,11 +493,6 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 	// If we have a refresh token, then we can try to use it to renew the access token. If this fails we will
 	// report it in the log, and continue with the next step to get a new token.
 	if loaded != nil && loaded.Refresh != "" {
-		s.logger.DebugContext(
-			ctx,
-			"Using refresh token from storage",
-			slog.String("!refresh", loaded.Refresh),
-		)
 		result, err = s.runRefresh(ctx, loaded.Refresh)
 		if err == nil {
 			return
