@@ -74,6 +74,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		labels      map[string]string
 		annotations map[string]string
 		tenant      string
+		project     string
 		creator     string
 	)
 	if metadata != nil {
@@ -81,12 +82,19 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		labels = metadata.GetLabels()
 		annotations = metadata.GetAnnotations()
 		tenant = metadata.GetTenant()
+		project = metadata.GetProject()
 		creator = metadata.GetCreator()
 	}
 
 	// Validate that tenant is not empty:
 	if tenant == "" {
 		err = errors.New("cannot create object with empty tenant")
+		return
+	}
+
+	// Validate that project is not empty:
+	if project == "" {
+		err = errors.New("cannot create object with empty project")
 		return
 	}
 
@@ -111,6 +119,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			finalizers,
 			creator,
 			tenant,
+			project,
 			labels,
 			annotations,
 			data
@@ -122,7 +131,8 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			$5,
 			$6,
 			$7,
-			$8
+			$8,
+			$9
 		)
 		returning
 			creation_timestamp,
@@ -147,6 +157,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			finalizers,
 			creator,
 			tenant,
+			project,
 			labelsData,
 			annotationsData,
 			data,
@@ -176,6 +187,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		finalizers:  finalizers,
 		creator:     creator,
 		tenant:      tenant,
+		project:     project,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,

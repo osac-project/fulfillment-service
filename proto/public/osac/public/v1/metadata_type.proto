@@ -42,6 +42,9 @@ message Metadata {
   // Identifier of the tenant that the object is assigned to.
   string tenant = 5;
 
+  // Identifier of the project that the object is assigned to.
+  string project = 10;
+
   // Labels contains key-value pairs for organizing and selecting objects.
   //
   // Keys consist of an optional prefix and a name separated by '/':

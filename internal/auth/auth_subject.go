@@ -28,65 +28,92 @@ type Subject struct {
 	// Tenants is the set of tenants that the subject belongs to. It may be the universal set if the subject has
 	// access to all tenants.
 	Tenants collections.Set[string]
+
+	// Projects is the set of projects that the subject has access to. It may be the universal set if the subject
+	// has access to all projects.
+	Projects collections.Set[string]
 }
 
 // subjectJson is the JSON representation of a subject used internally for serialization and deserialization.
 type subjectJson struct {
-	User    string   `json:"user"`
-	Tenants []string `json:"tenants"`
+	User     string   `json:"user"`
+	Tenants  []string `json:"tenants"`
+	Projects []string `json:"projects"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshalling for Subject. It interprets the special value '*' in the tenants
-// array as meaning all tenants. This special value must not be combined with specific tenant names, that will be
-// considered as an error.
+// and projects arrays as meaning all tenants or all projects respectively. This special value must not be combined
+// with specific names, that will be considered as an error.
 func (s *Subject) UnmarshalJSON(data []byte) error {
 	var subject subjectJson
 	if err := json.Unmarshal(data, &subject); err != nil {
 		return err
 	}
 	s.User = subject.User
-	s.Tenants = collections.NewSet[string]()
+	var err error
+	s.Tenants, err = unmarshalSet(subject.Tenants, "tenant")
+	if err != nil {
+		return err
+	}
+	s.Projects, err = unmarshalSet(subject.Projects, "project")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// unmarshalSet converts a string slice into a Set, interpreting the special value '*' as the universal set. The
+// kind parameter is used for error messages.
+func unmarshalSet(items []string, kind string) (collections.Set[string], error) {
 	universal := false
-	for _, tenant := range subject.Tenants {
-		if tenant == universalMarker {
+	for _, item := range items {
+		if item == universalMarker {
 			universal = true
 			break
 		}
 	}
 	if universal {
-		if len(subject.Tenants) > 1 {
-			return fmt.Errorf(
-				"the universal marker '%s' cannot be combined with specific tenant names",
-				universalMarker,
+		if len(items) > 1 {
+			return collections.Set[string]{}, fmt.Errorf(
+				"the universal marker '%s' cannot be combined with specific %s names",
+				universalMarker, kind,
 			)
 		}
-		s.Tenants = AllTenants
-	} else {
-		s.Tenants = collections.NewSet(subject.Tenants...)
+		return collections.NewUniversalSet[string](), nil
 	}
-	return nil
+	return collections.NewSet(items...), nil
 }
 
 // MarshalJSON implements custom JSON marshalling for Subject.
 func (s *Subject) MarshalJSON() (data []byte, err error) {
-	var tenants []string
-	if s.Tenants.Universal() {
-		tenants = []string{
-			universalMarker,
-		}
-	} else if s.Tenants.Finite() {
-		tenants = s.Tenants.Inclusions()
-	} else {
-		err = fmt.Errorf("the tenant set is infinite")
+	tenants, err := marshalSet(s.Tenants, "tenant")
+	if err != nil {
+		return
+	}
+	projects, err := marshalSet(s.Projects, "project")
+	if err != nil {
 		return
 	}
 	data, err = json.Marshal(subjectJson{
-		User:    s.User,
-		Tenants: tenants,
+		User:     s.User,
+		Tenants:  tenants,
+		Projects: projects,
 	})
 	return
 }
 
-// universalMarker is the special value used in the subject's tenant list to indicate that the subject has access to all
-// tenants.
+// marshalSet converts a Set into a string slice for JSON serialization. Universal sets are represented as a
+// single-element slice containing the special value '*'. The kind parameter is used for error messages.
+func marshalSet(set collections.Set[string], kind string) ([]string, error) {
+	if set.Universal() {
+		return []string{universalMarker}, nil
+	}
+	if set.Finite() {
+		return set.Inclusions(), nil
+	}
+	return nil, fmt.Errorf("the %s set is infinite", kind)
+}
+
+// universalMarker is the special value used in the subject's tenant and project lists to indicate that the subject has
+// access to all of them.
 const universalMarker = "*"

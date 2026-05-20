@@ -29,7 +29,7 @@ var _ = DescribeMigration("Drop leases tables", func() {
 		Expect(exists).To(BeTrue())
 
 		// Run the migration:
-		err = tool.Migrate(ctx, 43)
+		err = tool.Migrate(ctx, 44)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the table no longer exists:
@@ -50,7 +50,7 @@ var _ = DescribeMigration("Drop leases tables", func() {
 		Expect(exists).To(BeTrue())
 
 		// Run the migration:
-		err = tool.Migrate(ctx, 43)
+		err = tool.Migrate(ctx, 44)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the table no longer exists:

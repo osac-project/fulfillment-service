@@ -92,7 +92,8 @@ var _ = Describe("Virtual networks server", func() {
 			Id:                     "default",
 			ImplementationStrategy: "ovn-kubernetes",
 			Metadata: privatev1.Metadata_builder{
-				Tenant: auth.SharedTenant,
+				Tenant:  auth.SharedTenant,
+				Project: auth.DefaultProject,
 			}.Build(),
 			IsDefault: proto.Bool(true),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
@@ -482,7 +483,8 @@ var _ = Describe("Virtual networks server", func() {
 			altNC := privatev1.NetworkClass_builder{
 				ImplementationStrategy: "ovn-kubernetes",
 				Metadata: privatev1.Metadata_builder{
-					Tenant: "shared",
+					Tenant:  "shared",
+					Project: auth.DefaultProject,
 				}.Build(),
 				Capabilities: privatev1.NetworkClassCapabilities_builder{
 					SupportsIpv4: true,

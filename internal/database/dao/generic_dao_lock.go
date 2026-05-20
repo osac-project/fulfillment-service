@@ -64,7 +64,13 @@ func (r *LockRequest[O]) Do(ctx context.Context) (response *LockResponse[O], err
 
 func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err error) {
 	// Add tenant visibility filter:
-	err = r.addTenancyFilter(ctx)
+	err = r.addTenantFilter(ctx)
+	if err != nil {
+		return
+	}
+
+	// Add project visibility filter:
+	err = r.addProjectFilter(ctx)
 	if err != nil {
 		return
 	}

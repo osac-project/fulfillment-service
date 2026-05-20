@@ -96,14 +96,15 @@ var _ = Describe("Events server visibility", func() {
 	}
 
 	// makeEvent builds a private event with the given tenant and project.
-	makeEvent := func(tenant string) *privatev1.Event {
+	makeEvent := func(tenant, project string) *privatev1.Event {
 		return privatev1.Event_builder{
 			Id:   uuid.New(),
 			Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
 			Cluster: privatev1.Cluster_builder{
 				Id: uuid.New(),
 				Metadata: privatev1.Metadata_builder{
-					Tenant: tenant,
+					Tenant:  tenant,
+					Project: project,
 				}.Build(),
 			}.Build(),
 		}.Build()
@@ -156,10 +157,13 @@ var _ = Describe("Events server visibility", func() {
 	}
 
 	// makeTenancy creates a mock tenancy logic returning the given visible tenants:
-	makeTenancy := func(tenants collections.Set[string]) *auth.MockTenancyLogic {
+	makeTenancy := func(tenants collections.Set[string], projects collections.Set[string]) *auth.MockTenancyLogic {
 		mock := auth.NewMockTenancyLogic(ctrl)
 		mock.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(tenants, nil).
+			AnyTimes()
+		mock.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(projects, nil).
 			AnyTimes()
 		return mock
 	}
@@ -177,12 +181,13 @@ var _ = Describe("Events server visibility", func() {
 	It("Delivers events when tenant is visible", func() {
 		client := startServer(makeTenancy(
 			collections.NewSet("tenant-a"),
+			collections.NewSet("project-a"),
 		))
 		collector, cancel := startWatch(client)
 		defer cancel()
 		Eventually(
 			func() int {
-				sendEvent(makeEvent("tenant-a"))
+				sendEvent(makeEvent("tenant-a", "project-a"))
 				return len(collector.Events())
 			},
 			10*time.Second,
@@ -192,26 +197,72 @@ var _ = Describe("Events server visibility", func() {
 	It("Filters out events when tenant is not visible", func() {
 		client := startServer(makeTenancy(
 			collections.NewSet("tenant-b"),
+			collections.NewSet("project-a"),
 		))
 		collector, cancel := startWatch(client)
 		defer cancel()
-		sendEvent(makeEvent("tenant-a"))
+		sendEvent(makeEvent("tenant-a", "project-a"))
 		Consistently(collector.Events, time.Second).Should(BeEmpty())
 	})
 
 	It("Delivers only visible events when multiple are sent", func() {
 		client := startServer(makeTenancy(
-			collections.NewUniversalSet[string](),
+			collections.NewSet("tenant-a"),
+			collections.NewSet("project-a"),
 		))
 		collector, cancel := startWatch(client)
 		defer cancel()
 		Eventually(
 			func() int {
-				sendEvent(makeEvent("tenant-a"))
-				sendEvent(makeEvent("tenant-b"))
+				sendEvent(makeEvent("tenant-a", "project-a"))
+				sendEvent(makeEvent("tenant-b", "project-b"))
 				return len(collector.Events())
 			},
 			10*time.Second,
-		).Should(BeNumerically(">=", 2))
+		).Should(BeNumerically("==", 1))
+	})
+
+	It("Delivers events when project is visible", func() {
+		client := startServer(makeTenancy(
+			collections.NewSet("tenant-a"),
+			collections.NewSet("project-a"),
+		))
+		collector, cancel := startWatch(client)
+		defer cancel()
+		Eventually(
+			func() int {
+				sendEvent(makeEvent("tenant-a", "project-a"))
+				return len(collector.Events())
+			},
+			10*time.Second,
+		).Should(BeNumerically(">=", 1))
+	})
+
+	It("Filters out events when project is not visible", func() {
+		client := startServer(makeTenancy(
+			collections.NewSet("tenant-a"),
+			collections.NewSet("project-b"),
+		))
+		collector, cancel := startWatch(client)
+		defer cancel()
+		sendEvent(makeEvent("tenant-a", "project-a"))
+		Consistently(collector.Events, time.Second).Should(BeEmpty())
+	})
+
+	It("Delivers only visible events when multiple are sent", func() {
+		client := startServer(makeTenancy(
+			collections.NewSet("tenant-a"),
+			collections.NewSet("project-a"),
+		))
+		collector, cancel := startWatch(client)
+		defer cancel()
+		Eventually(
+			func() int {
+				sendEvent(makeEvent("tenant-a", "project-a"))
+				sendEvent(makeEvent("tenant-a", "project-b"))
+				return len(collector.Events())
+			},
+			10*time.Second,
+		).Should(BeNumerically("==", 1))
 	})
 })

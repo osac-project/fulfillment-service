@@ -35,6 +35,9 @@ message Metadata {
   // Tenant contains the identifier of the tenant that the object belongs to.
   string tenant = 5;
 
+  // Project contains the identifier of the project that the object is assigned to.
+  string project = 10;
+
   // Human friendly name of the object.
   //
   // Has the same restrictions than DNS labels, as described in RFC 1035:

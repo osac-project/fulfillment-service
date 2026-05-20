@@ -14,9 +14,11 @@ import rego.v1
 # Calculate the value for the 'x-subject' header that will be sent to the caller:
 default subject_user = ""
 default subject_tenants = []
+default subject_projects = []
 subject_json := json.marshal({
   "user": subject_user,
   "tenants": subject_tenants,
+  "projects": subject_projects,
 })
 
 # Determine the authentication method from the identity structure. Kubernetes token review responses always contain a
@@ -111,6 +113,10 @@ subject_tenants = [split(input.auth.identity.user.username, ":")[2]] if {
   not is_admin
   authn_method == "serviceaccount"
 }
+
+# Get the subject's project(s). For now all authenticated users have access to all projects. This will be
+# refined when project management is fully implemented.
+subject_projects = ["*"]
 
 # Get the subject's realm roles from JWT
 default subject_realm_roles = []

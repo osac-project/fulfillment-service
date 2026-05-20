@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Red Hat Inc.
+# Copyright (c) 2026 Red Hat Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -23,7 +23,11 @@ columns:
   value: "has(this.metadata.name)? this.metadata.name: '-'"
 
 - header: TITLE
-  value: this.title
+  value: "has(this.spec.title)? this.spec.title: '-'"
 
-- header: PUBLISHED
-  value: "this.published? 'true': 'false'"
+- header: PARENT
+  value: "has(this.spec.parent)? this.spec.parent: '-'"
+
+- header: STATE
+  value: this.status.state
+  type: osac.public.v1.ProjectState
