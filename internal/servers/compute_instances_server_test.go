@@ -73,6 +73,10 @@ var _ = Describe("Compute instances server", func() {
 		Expect(err).ToNot(HaveOccurred())
 		err = dao.CreateTables[*privatev1.ComputeInstance](ctx)
 		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.Subnet](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.SecurityGroup](ctx)
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Describe("Builder", func() {
@@ -130,6 +134,30 @@ var _ = Describe("Compute instances server", func() {
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create a test subnet for all tests to use:
+			subnetsDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			subnet := privatev1.Subnet_builder{
+				Id: "test-subnet",
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				Spec: privatev1.SubnetSpec_builder{
+					VirtualNetwork: "test-vnet",
+					Ipv4Cidr:       proto.String("10.0.0.0/24"),
+				}.Build(),
+				Status: privatev1.SubnetStatus_builder{
+					State: privatev1.SubnetState_SUBNET_STATE_READY,
+				}.Build(),
+			}.Build()
+
+			_, err = subnetsDao.Create().SetObject(subnet).Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -210,6 +238,11 @@ var _ = Describe("Compute instances server", func() {
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template:           "general.small",
 						TemplateParameters: templateParams,
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -236,6 +269,11 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*publicv1.NetworkAttachment{
+								publicv1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -264,6 +302,11 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*publicv1.NetworkAttachment{
+								publicv1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -294,6 +337,11 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*publicv1.NetworkAttachment{
+								publicv1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -322,6 +370,11 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -367,6 +420,11 @@ var _ = Describe("Compute instances server", func() {
 						BootDisk: publicv1.ComputeInstanceDisk_builder{
 							SizeGib: 20,
 						}.Build(),
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -429,6 +487,11 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -505,6 +568,11 @@ var _ = Describe("Compute instances server", func() {
 						Cores:       proto.Int32(8),
 						MemoryGib:   proto.Int32(16),
 						RunStrategy: proto.String("Halted"),
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())

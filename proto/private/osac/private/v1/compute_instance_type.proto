@@ -83,13 +83,11 @@ message ComputeInstanceSpec {
   // User data for the compute instance (e.g. cloud-init, ignition).
   optional string user_data = 11;
 
-  // Deprecated: use network_attachments.
-  optional string subnet = 12 [deprecated = true];
+  // Reserved field numbers for removed fields (do not reuse).
+  reserved 12, 13;
+  reserved "subnet", "security_groups";
 
-  // Deprecated: use network_attachments.
-  repeated string security_groups = 13 [deprecated = true];
-
-  // Preferred: one entry per NIC.
+  // Network attachments: one entry per NIC.
   repeated NetworkAttachment network_attachments = 14;
 
   // Reference to a compute instance catalog item. Mutually exclusive with template during the migration period.
