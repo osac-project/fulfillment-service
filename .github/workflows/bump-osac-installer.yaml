@@ -33,7 +33,7 @@ jobs:
 
       - name: Checkout osac-installer
         if: steps.pr.outputs.found == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: osac-project/osac-installer
           token: ${{ secrets.OSAC_BOT_PAT }}
