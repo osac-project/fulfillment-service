@@ -40,11 +40,11 @@ func Cmd() *cobra.Command {
 			"Rules are specified using key=value pairs separated by commas (e.g. protocol=tcp,port-from=80,port-to=80,ipv4-cidr=0.0.0.0/0). " +
 			"Supported keys: protocol (required: tcp, udp, icmp, all), port-from, port-to, ipv4-cidr, ipv6-cidr.",
 		Example: `  # Create a security group with an HTTP ingress rule
-  osac create securitygroup --name web-sg --virtual-network vnet-abc123 \
+  osac create securitygroup --name web-sg --virtual-network <virtualnetwork-id> \
     --ingress protocol=tcp,port-from=80,port-to=80,ipv4-cidr=0.0.0.0/0
 
   # Create a security group with multiple rules
-  osac create securitygroup --name app-sg --virtual-network vnet-abc123 \
+  osac create securitygroup --name app-sg --virtual-network <virtualnetwork-id> \
     --ingress protocol=tcp,port-from=443,port-to=443,ipv4-cidr=0.0.0.0/0 \
     --ingress protocol=icmp,ipv4-cidr=10.0.0.0/8 \
     --egress protocol=all`,
