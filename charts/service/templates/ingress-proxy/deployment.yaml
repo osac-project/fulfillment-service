@@ -26,6 +26,8 @@ spec:
       labels:
         app: fulfillment-ingress-proxy
     spec:
+      securityContext:
+        runAsNonRoot: true
       volumes:
       - name: config
         configMap:
@@ -35,6 +37,18 @@ spec:
           secretName: fulfillment-api-tls
       containers:
       - name: envoy
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          {{- if ne .Values.variant "openshift" }}
+          runAsUser: 101
+          {{- end }}
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
         image: {{ .Values.images.envoy }}
         volumeMounts:
         - name: config

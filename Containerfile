@@ -61,3 +61,8 @@ RUN \
 
 # Install the binary:
 COPY --from=builder /source/fulfillment-service /usr/local/bin
+
+# Run as a non-root user so that the pod security context can simply set `runAsNonRoot: true` without hardcoding a
+# UID, which works on both vanilla Kubernetes (where the image's USER is used directly) and OpenShift (where the
+# restricted-v2 SCC overrides it with a namespace-allocated UID).
+USER 1000
