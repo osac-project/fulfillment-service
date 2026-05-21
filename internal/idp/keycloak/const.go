@@ -20,7 +20,7 @@ const realmManagementClientID = "realm-management"
 
 // authorizationClientID is the clientId of the Keycloak client that has Authorization Services enabled.
 // This client manages authorization resources for Projects and other protected resources.
-const authorizationClientID = "osac-authorization"
+const authorizationClientID = "authorino-uma"
 
 // keycloakRealmManagementRoles are the standard Keycloak administrative roles.
 //

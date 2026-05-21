@@ -117,8 +117,26 @@ var _ = Describe("Authorization rules", Ordered, func() {
 				},
 			},
 			"idp": map[string]any{
-				"url": "https://keycloak.keycloak.svc.cluster.local:8000",
+				"url":         "https://keycloak.keycloak.svc.cluster.local:8000",
+				"umaClientId": "authorino-uma",
 				"credentials": []any{
+					map[string]any{
+						"secret": map[string]any{
+							"name": "fulfillment-controller-credentials",
+							"items": []any{
+								map[string]any{
+									"key":   "client-id",
+									"param": "client-id",
+								},
+								map[string]any{
+									"key":   "client-secret",
+									"param": "client-secret",
+								},
+							},
+						},
+					},
+				},
+				"umaCredentials": []any{
 					map[string]any{
 						"secret": map[string]any{
 							"name": "fulfillment-controller-credentials",

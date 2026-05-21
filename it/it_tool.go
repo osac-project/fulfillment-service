@@ -376,6 +376,12 @@ func (t *Tool) Setup(ctx context.Context) error {
 		return err
 	}
 
+	// Create the UMA credentials:
+	err = t.createUMACredentials(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Install the service:
 	err = t.deployService(ctx, imageRef)
 	if err != nil {
@@ -848,6 +854,27 @@ func (t *Tool) createControllerCredentials(ctx context.Context) error {
 	return nil
 }
 
+// createUMACredentials creates a Kubernetes secret containing the UMA client credentials that Authorino
+// uses to call Keycloak Authorization Services.
+func (t *Tool) createUMACredentials(ctx context.Context) error {
+	t.logger.DebugContext(ctx, "Creating UMA credentials secret")
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "osac",
+			Name:      "authorino-uma-credentials",
+		},
+		StringData: map[string]string{
+			"client-id":     "authorino-uma",
+			"client-secret": t.secret,
+		},
+	}
+	err := t.kubeClient.Create(ctx, secret)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create UMA credentials secret: %w", err)
+	}
+	return nil
+}
+
 // deployKeycloak installs the Keycloak chart.
 func (t *Tool) deployKeycloak(ctx context.Context) error {
 	// Get the host name:
@@ -1054,11 +1081,81 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 			"realm-management": {
 				"manage-realm",
 				"manage-users",
+				"manage-clients",
+				"manage-authorization",
 				"view-realm",
 				"view-users",
+				"view-clients",
 			},
 		},
 	})
+	addServiceAccount(serviceAccountData{
+		Name:        "Authorino UMA",
+		Description: "Service account for Authorino to request UMA authorization decisions",
+		ClientId:    "authorino-uma",
+	})
+
+	// Enable Authorization Services for the authorino-uma client
+	// Find and update the last added client (authorino-uma)
+	if len(clients) > 0 {
+		lastClient := clients[len(clients)-1]
+		lastClient["authorizationServicesEnabled"] = true
+		lastClient["authorizationSettings"] = map[string]any{
+			"allowRemoteResourceManagement": true,
+			"policyEnforcementMode":         "ENFORCING",
+			"decisionStrategy":              "AFFIRMATIVE",
+			"resources": []map[string]any{
+				{
+					"name":               "Default Resource",
+					"type":               "urn:osac-authz:resources:default",
+					"ownerManagedAccess": false,
+					"attributes":         map[string]any{},
+					"_id":                "default-resource-id",
+					"uris":               []string{"/*"},
+					"scopes": []map[string]string{
+						{"name": "VIEW_PROJECT"},
+						{"name": "MANAGE_PROJECT"},
+					},
+				},
+			},
+			"policies": []map[string]any{
+				{
+					"id":               "tenant-admin-policy-id",
+					"name":             "Tenant Admin Policy",
+					"description":      "Policy that grants access to users with tenant-admin role",
+					"type":             "role",
+					"logic":            "POSITIVE",
+					"decisionStrategy": "UNANIMOUS",
+					"config": map[string]string{
+						"roles": `[{"id":"tenant-admin","required":false}]`,
+					},
+				},
+				{
+					"id":               "default-permission-id",
+					"name":             "Default Permission",
+					"description":      "Default permission - allows users with tenant-admin role to access default resources",
+					"type":             "scope",
+					"logic":            "POSITIVE",
+					"decisionStrategy": "AFFIRMATIVE",
+					"config": map[string]string{
+						"resources":     `["Default Resource"]`,
+						"scopes":        `["VIEW_PROJECT","MANAGE_PROJECT"]`,
+						"applyPolicies": `["Tenant Admin Policy"]`,
+					},
+				},
+			},
+			"scopes": []map[string]string{
+				{
+					"name":        "VIEW_PROJECT",
+					"displayName": "View Project",
+				},
+				{
+					"name":        "MANAGE_PROJECT",
+					"displayName": "Manage Project",
+				},
+			},
+		}
+	}
 
 	// Add the prepared clients, groups and users to the values:
 	valuesData["clients"] = clients
@@ -1456,6 +1553,24 @@ func (t *Tool) deployServiceWithHelm(ctx context.Context, imageRef string) error
 				map[string]any{
 					"secret": map[string]any{
 						"name": controllerCredentialsSecret,
+						"items": []any{
+							map[string]any{
+								"key":   "client-id",
+								"param": "client-id",
+							},
+							map[string]any{
+								"key":   "client-secret",
+								"param": "client-secret",
+							},
+						},
+					},
+				},
+			},
+			"umaClientId": "authorino-uma",
+			"umaCredentials": []any{
+				map[string]any{
+					"secret": map[string]any{
+						"name": "authorino-uma-credentials",
 						"items": []any{
 							map[string]any{
 								"key":   "client-id",
