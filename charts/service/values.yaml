@@ -179,3 +179,20 @@ idp:
   #
   # This parameter is mandatory.
   credentials:
+
+  # UMA (User-Managed Access) client credentials for Authorino to call Keycloak Authorization Services.
+  # Authorino uses these credentials to request authorization decisions from Keycloak's UMA endpoint.
+  # The client must have permission to request authorization for resources.
+  #
+  # For Keycloak, create a confidential client with:
+  # - Authorization Enabled: true
+  # - Service Accounts Enabled: true
+  # - Standard Flow Enabled: false (not needed for UMA)
+  #
+  # Example:
+  # umaClientId: authorino-uma
+  # umaClientSecret: <secret-value>
+  #
+  # These parameters are mandatory when using Keycloak authorization.
+  umaClientId:
+  umaClientSecret:

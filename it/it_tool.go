@@ -1054,6 +1054,11 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 			},
 		},
 	})
+	addServiceAccount(serviceAccountData{
+		Name:        "Authorino UMA",
+		Description: "Service account for Authorino to request UMA authorization decisions",
+		ClientId:    "authorino-uma",
+	})
 
 	// Add the prepared clients, groups and users to the values:
 	valuesData["clients"] = clients
@@ -1464,6 +1469,8 @@ func (t *Tool) deployServiceWithHelm(ctx context.Context, imageRef string) error
 					},
 				},
 			},
+			"umaClientId":     "authorino-uma",
+			"umaClientSecret": t.secret,
 		},
 	}
 	valuesBytes, err := yaml.Marshal(valuesData)
