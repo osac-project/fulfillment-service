@@ -25,13 +25,13 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 // RoleBindingsServerBuilder is a builder for creating instances of RoleBindingsServer.
 type RoleBindingsServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -61,7 +61,7 @@ func (b *RoleBindingsServerBuilder) SetLogger(value *slog.Logger) *RoleBindingsS
 }
 
 // SetNotifier sets the notifier to use. This is optional.
-func (b *RoleBindingsServerBuilder) SetNotifier(value *database.Notifier) *RoleBindingsServerBuilder {
+func (b *RoleBindingsServerBuilder) SetNotifier(value events.Notifier) *RoleBindingsServerBuilder {
 	b.notifier = value
 	return b
 }
