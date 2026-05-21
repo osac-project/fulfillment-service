@@ -18,8 +18,10 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -67,22 +69,20 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewPublicIPAttachmentsClient(conn)
 
-	// Resolve the attachment by name or ID:
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, args[0])
-	listResponse, err := client.List(ctx, publicv1.PublicIPAttachmentsListRequest_builder{
-		Filter: &filter,
-	}.Build())
+	attachment, err := lookup.Find(args[0], "public IP attachment", func(filter string, limit int32) ([]*publicv1.PublicIPAttachment, error) {
+		resp, err := client.List(ctx, publicv1.PublicIPAttachmentsListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve public IP attachment %q: %w", args[0], err)
+		}
+		return resp.GetItems(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to resolve public IP attachment '%s': %w", args[0], err)
-	}
-	if len(listResponse.GetItems()) == 0 {
-		return fmt.Errorf("public IP attachment not found: %s", args[0])
-	}
-	if len(listResponse.GetItems()) > 1 {
-		return fmt.Errorf("multiple public IP attachments match '%s', use the ID instead", args[0])
+		return err
 	}
 
-	attachment := listResponse.GetItems()[0]
 	_, err = client.Delete(ctx, publicv1.PublicIPAttachmentsDeleteRequest_builder{
 		Id: attachment.GetId(),
 	}.Build())

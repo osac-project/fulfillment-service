@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -65,35 +66,23 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewComputeInstancesClient(conn)
 
-	filter := buildFilter(ref)
-	listResponse, err := client.List(ctx, publicv1.ComputeInstancesListRequest_builder{
-		Filter: &filter,
-		Limit:  proto.Int32(2),
-	}.Build())
+	matched, err := lookup.Find(ref, "compute instance", func(filter string, limit int32) ([]*publicv1.ComputeInstance, error) {
+		resp, err := client.List(ctx, publicv1.ComputeInstancesListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe compute instance: %w", err)
+		}
+		return resp.GetItems(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to describe compute instance: %w", err)
-	}
-	if err := guardResult(len(listResponse.GetItems()), ref); err != nil {
 		return err
 	}
 
-	renderComputeInstance(c.console, listResponse.GetItems()[0])
+	renderComputeInstance(c.console, matched)
 
 	return nil
-}
-
-func guardResult(items int, ref string) error {
-	if items == 0 {
-		return fmt.Errorf("compute instance not found: %s", ref)
-	}
-	if items > 1 {
-		return fmt.Errorf("multiple compute instances match '%s', use the ID instead", ref)
-	}
-	return nil
-}
-
-func buildFilter(ref string) string {
-	return fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
 }
 
 func renderComputeInstance(w io.Writer, ci *publicv1.ComputeInstance) {

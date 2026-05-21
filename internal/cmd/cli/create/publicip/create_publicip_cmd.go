@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -50,7 +51,7 @@ func Cmd() *cobra.Command {
 		&runner.args.pool,
 		"pool",
 		"",
-		"ID of the parent PublicIPPool to allocate the address from.",
+		"ID or name of the parent PublicIPPool to allocate the address from.",
 	)
 	result.MarkFlagRequired("pool") //nolint:errcheck
 	// Note: attaching a compute instance at creation time (via --compute-instance flag) is future
@@ -84,10 +85,25 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
+	poolClient := publicv1.NewPublicIPPoolsClient(conn)
+	pool, err := lookup.Find(c.args.pool, "public IP pool", func(filter string, limit int32) ([]*publicv1.PublicIPPool, error) {
+		resp, err := poolClient.List(ctx, publicv1.PublicIPPoolsListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve public IP pool %q: %w", c.args.pool, err)
+		}
+		return resp.GetItems(), nil
+	})
+	if err != nil {
+		return err
+	}
+
 	client := publicv1.NewPublicIPsClient(conn)
 
 	spec := publicv1.PublicIPSpec_builder{
-		Pool: c.args.pool,
+		Pool: pool.GetId(),
 	}
 	publicIP := publicv1.PublicIP_builder{
 		Metadata: publicv1.Metadata_builder{Name: c.args.name}.Build(),

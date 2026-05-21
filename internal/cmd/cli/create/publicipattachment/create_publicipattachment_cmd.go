@@ -18,8 +18,10 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -84,29 +86,42 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
-	// Resolve the PublicIP by name or ID:
-	publicIPsClient := publicv1.NewPublicIPsClient(conn)
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, c.args.publicIP)
-	listResponse, err := publicIPsClient.List(ctx, publicv1.PublicIPsListRequest_builder{
-		Filter: &filter,
-	}.Build())
-	if err != nil {
-		return fmt.Errorf("failed to resolve public IP '%s': %w", c.args.publicIP, err)
-	}
-	if len(listResponse.GetItems()) == 0 {
-		return fmt.Errorf("public IP not found: %s", c.args.publicIP)
-	}
-	if len(listResponse.GetItems()) > 1 {
-		return fmt.Errorf("multiple public IPs match '%s', use the ID instead", c.args.publicIP)
-	}
-	pipID := listResponse.GetItems()[0].GetId()
-
-	// Create the PublicIPAttachment:
+	pipClient := publicv1.NewPublicIPsClient(conn)
+	ciClient := publicv1.NewComputeInstancesClient(conn)
 	attachClient := publicv1.NewPublicIPAttachmentsClient(conn)
+
+	pip, err := lookup.Find(c.args.publicIP, "public IP", func(filter string, limit int32) ([]*publicv1.PublicIP, error) {
+		resp, err := pipClient.List(ctx, publicv1.PublicIPsListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve public IP %q: %w", c.args.publicIP, err)
+		}
+		return resp.GetItems(), nil
+	})
+	if err != nil {
+		return err
+	}
+
+	ci, err := lookup.Find(c.args.computeInstance, "compute instance", func(filter string, limit int32) ([]*publicv1.ComputeInstance, error) {
+		resp, err := ciClient.List(ctx, publicv1.ComputeInstancesListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve compute instance %q: %w", c.args.computeInstance, err)
+		}
+		return resp.GetItems(), nil
+	})
+	if err != nil {
+		return err
+	}
+
 	attachment := publicv1.PublicIPAttachment_builder{
 		Spec: publicv1.PublicIPAttachmentSpec_builder{
-			PublicIp:        pipID,
-			ComputeInstance: &c.args.computeInstance,
+			PublicIp:        pip.GetId(),
+			ComputeInstance: proto.String(ci.GetId()),
 		}.Build(),
 	}.Build()
 
@@ -118,7 +133,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	c.console.Infof(ctx, "Created public IP attachment '%s' (public IP '%s' -> compute instance '%s').\n",
-		response.GetObject().GetId(), pipID, c.args.computeInstance)
+		response.GetObject().GetId(), pip.GetId(), ci.GetId())
 
 	return nil
 }

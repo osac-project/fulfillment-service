@@ -824,6 +824,20 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 	publicv1.RegisterPublicIPsServer(grpcServer, publicIPsServer)
 
+	// Create the public IP pools server (read-only: List + Get):
+	c.logger.InfoContext(ctx, "Creating public IP pools server")
+	publicIPPoolsServer, err := servers.NewPublicIPPoolsServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(publicAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create public IP pools server: %w", err)
+	}
+	publicv1.RegisterPublicIPPoolsServer(grpcServer, publicIPPoolsServer)
+
 	// Create the private public IP pools server:
 	c.logger.InfoContext(ctx, "Creating private public IP pools server")
 	privatePublicIPPoolsServer, err := servers.NewPrivatePublicIPPoolsServer().

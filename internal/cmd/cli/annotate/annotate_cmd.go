@@ -14,7 +14,6 @@ language governing permissions and limitations under the License.
 package annotate
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"log/slog"
@@ -22,7 +21,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
@@ -129,12 +127,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find the object by identifier or name:
-	object, err := c.findObject(ctx, ref)
+	object, err := c.helper.FindObject(ctx, ref, c.console)
 	if err != nil {
 		return err
-	}
-	if object == nil {
-		return nil
 	}
 
 	// Apply the annotation operations:
@@ -148,45 +143,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-// findObject tries to find an object by identifier or name. It uses the list method with a filter that matches
-// either the identifier or the name. Returns an error if no match is found or if multiple matches are found.
-func (c *runnerContext) findObject(ctx context.Context, ref string) (result proto.Message, err error) {
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
-	response, err := c.helper.List(ctx, reflection.ListOptions{
-		Filter: filter,
-		Limit:  10,
-	})
-	if err != nil {
-		err = fmt.Errorf(
-			"failed to find object of type '%s' with identifier or name '%s': %w",
-			c.helper, ref, err,
-		)
-		return
-	}
-	items := response.Items
-	total := response.Total
-
-	switch len(items) {
-	case 0:
-		c.console.Render(ctx, "no_matches.txt", map[string]any{
-			"Object": c.helper.Singular(),
-			"Ref":    ref,
-		})
-		return
-	case 1:
-		result = items[0]
-		return
-	default:
-		c.console.Render(ctx, "multiple_matches.txt", map[string]any{
-			"Matches": items,
-			"Object":  c.helper.Singular(),
-			"Ref":     ref,
-			"Total":   total,
-		})
-		return
-	}
 }
 
 // annotationOperation represents a single annotation set or remove operation.
