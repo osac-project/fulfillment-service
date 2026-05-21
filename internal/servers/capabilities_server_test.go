@@ -33,7 +33,8 @@ var _ = Describe("Capabilities server", func() {
 		It("Can be built if all the required parameters are set", func() {
 			server, err := NewCapabilitiesServer().
 				SetLogger(logger).
-				AddAutnTrustedTokenIssuers("https://my-issuer.com").
+				SetKeycloakUrl("https://my-keycloak.com").
+				SetKeycloakRealm("my-realm").
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(server).ToNot(BeNil())
@@ -41,91 +42,58 @@ var _ = Describe("Capabilities server", func() {
 
 		It("Fails if logger is not set", func() {
 			server, err := NewCapabilitiesServer().
-				AddAutnTrustedTokenIssuers("https://my-issuer.com").
+				SetKeycloakUrl("https://my-keycloak.com").
+				SetKeycloakRealm("my-realm").
 				Build()
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError("logger is mandatory"))
 			Expect(server).To(BeNil())
 		})
+
+		It("Fails if Keycloak URL is not set", func() {
+			server, err := NewCapabilitiesServer().
+				SetLogger(logger).
+				SetKeycloakRealm("my-realm").
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError("keycloak URL is mandatory"))
+			Expect(server).To(BeNil())
+		})
+
+		It("Fails if Keycloak realm is not set", func() {
+			server, err := NewCapabilitiesServer().
+				SetLogger(logger).
+				SetKeycloakUrl("https://my-keycloak.com").
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError("keycloak realm is mandatory"))
+			Expect(server).To(BeNil())
+		})
 	})
 
 	Describe("Behaviour", func() {
-		It("Returns no token issuer", func() {
+		It("Returns the issuer URL computed from Keycloak URL and realm", func() {
 			server, err := NewCapabilitiesServer().
 				SetLogger(logger).
+				SetKeycloakUrl("https://my-keycloak.com").
+				SetKeycloakRealm("my-realm").
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
 			Expect(err).ToNot(HaveOccurred())
-			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(BeEmpty())
+			Expect(response.GetAuthn().GetIssuerUrl()).To(Equal("https://my-keycloak.com/realms/my-realm"))
 		})
 
-		It("Returns one token issuer", func() {
+		It("Removes trailing slashes from the Keycloak URL", func() {
 			server, err := NewCapabilitiesServer().
 				SetLogger(logger).
-				AddAutnTrustedTokenIssuers("https://my-issuer.com").
+				SetKeycloakUrl("https://my-keycloak.com///").
+				SetKeycloakRealm("my-realm").
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
 			Expect(err).ToNot(HaveOccurred())
-			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(Equal([]string{"https://my-issuer.com"}))
-		})
-
-		It("Returns two token issuers", func() {
-			server, err := NewCapabilitiesServer().
-				SetLogger(logger).
-				AddAutnTrustedTokenIssuers(
-					"https://my-issuer.com",
-					"https://your-issuer.com",
-				).
-				Build()
-			Expect(err).ToNot(HaveOccurred())
-			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
-			Expect(err).ToNot(HaveOccurred())
-			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(HaveExactElements(
-				"https://my-issuer.com",
-				"https://your-issuer.com",
-			))
-		})
-
-		It("Sorts the token issuers", func() {
-			server, err := NewCapabilitiesServer().
-				SetLogger(logger).
-				AddAutnTrustedTokenIssuers(
-					"https://your-issuer.com",
-					"https://my-issuer.com",
-				).
-				Build()
-			Expect(err).ToNot(HaveOccurred())
-			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
-			Expect(err).ToNot(HaveOccurred())
-			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(HaveExactElements(
-				"https://my-issuer.com",
-				"https://your-issuer.com",
-			))
-		})
-
-		It("Removes duplicates from the token issuers", func() {
-			server, err := NewCapabilitiesServer().
-				SetLogger(logger).
-				AddAutnTrustedTokenIssuers(
-					"https://my-issuer.com",
-					"https://your-issuer.com",
-					"https://my-issuer.com",
-				).
-				Build()
-			Expect(err).ToNot(HaveOccurred())
-			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
-			Expect(err).ToNot(HaveOccurred())
-			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(HaveExactElements(
-				"https://my-issuer.com",
-				"https://your-issuer.com",
-			))
+			Expect(response.GetAuthn().GetIssuerUrl()).To(Equal("https://my-keycloak.com/realms/my-realm"))
 		})
 	})
 })

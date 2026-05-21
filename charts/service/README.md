@@ -29,7 +29,7 @@ The following table lists the configurable parameters of the chart and their def
 | `certs.caBundle.configMap` | Name of configmap containing trusted CA certificates in PEM format | Required                                                       |
 | `externalHostname`         | Hostname used to access the public API from outside the cluster (see note below) | None                                                |
 | `internalHostname`         | Hostname used to access both the public and private APIs (see note below)        | None                                                |
-| `auth.issuerUrl`           | OAuth issuer URL for authentication                                | `https://keycloak.keycloak.svc.cluster.local:8000/realms/osac` |
+| `keycloak.url`             | Base URL of the Keycloak instance (without realm path)             | None                                                           |
 | `log.level`                | Log level for all components (debug, info, warn, error)            | `info`                                                         |
 | `log.headers`              | Enable logging of HTTP/gRPC headers                                | `false`                                                        |
 | `log.bodies`               | Enable logging of HTTP/gRPC request and response bodies            | `false`                                                        |

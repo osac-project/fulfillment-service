@@ -408,4 +408,5 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 // Common client names:
 const (
 	GrpcClientName = "gRPC"
+	APIClientName  = "API"
 )

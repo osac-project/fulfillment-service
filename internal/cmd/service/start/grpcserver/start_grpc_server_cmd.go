@@ -87,11 +87,11 @@ func Cmd() *cobra.Command {
 		"Files or directories containing trusted CA certificates in PEM format. "+
 			"Used for TLS connections to the external auth service.",
 	)
-	flags.StringSliceVar(
-		&runner.args.trustedTokenIssuers,
-		"grpc-authn-trusted-token-issuers",
-		[]string{},
-		"Comma separated list of token issuers that are advertised as trusted by the gRPC server.",
+	flags.StringVar(
+		&runner.args.keycloakUrl,
+		"keycloak-url",
+		"",
+		"URL of the Keycloak instance used for authentication.",
 	)
 	flags.StringVar(
 		&runner.args.tenancyLogic,
@@ -110,7 +110,7 @@ type runnerContext struct {
 		caFiles             []string
 		authType            string
 		externalAuthAddress string
-		trustedTokenIssuers []string
+		keycloakUrl         string
 		tenancyLogic        string
 	}
 }
@@ -396,7 +396,8 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	c.logger.InfoContext(ctx, "Creating capabilities servers")
 	capabilitiesServer, err := servers.NewCapabilitiesServer().
 		SetLogger(c.logger).
-		AddAutnTrustedTokenIssuers(c.args.trustedTokenIssuers...).
+		SetKeycloakUrl(c.args.keycloakUrl).
+		SetKeycloakRealm(keycloakRealm).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create public capabilities server: %w", err)
@@ -404,7 +405,8 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	publicv1.RegisterCapabilitiesServer(grpcServer, capabilitiesServer)
 	privateCapabilitiesServer, err := servers.NewPrivateCapabilitiesServer().
 		SetLogger(c.logger).
-		AddAuthnTrustedTokenIssuers(c.args.trustedTokenIssuers...).
+		SetKeycloakUrl(c.args.keycloakUrl).
+		SetKeycloakRealm(keycloakRealm).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private capabilities server: %w", err)
@@ -1091,3 +1093,6 @@ const publicMethodRegex = `^/(osac\.public\.v1\.Capabilities/|grpc\.(reflection|
 
 // grpcServerUserAgent is the user agent string for the gRPC server.
 const grpcServerUserAgent = "fulfillment-grpc-server"
+
+// keycloakRealm is the name of the Keycloak realm used by the system.
+const keycloakRealm = "osac"

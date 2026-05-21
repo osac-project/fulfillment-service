@@ -16,26 +16,28 @@ package servers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
-	"slices"
+	"strings"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 )
 
 // PrivateCapabilitiesServerBuilder contains the data and logic needed to create a new private capabilities server.
 type PrivateCapabilitiesServerBuilder struct {
-	logger                   *slog.Logger
-	authnTrustedTokenIssuers []string
+	logger        *slog.Logger
+	keycloakUrl   string
+	keycloakRealm string
 }
 
 var _ privatev1.CapabilitiesServer = (*PrivateCapabilitiesServer)(nil)
 
-// PrivateCapabilitiesServer is the private server for capabilities, like the list of trusted access token issuers.
+// PrivateCapabilitiesServer is the private server for capabilities, like the issuer URL for authentication.
 type PrivateCapabilitiesServer struct {
 	privatev1.UnimplementedCapabilitiesServer
 
-	logger                   *slog.Logger
-	authnTrustedTokenIssuers []string
+	logger    *slog.Logger
+	issuerUrl string
 }
 
 // NewPrivateCapabilitiesServer creates a builder that can then be used to configure and create a new private
@@ -50,28 +52,45 @@ func (b *PrivateCapabilitiesServerBuilder) SetLogger(value *slog.Logger) *Privat
 	return b
 }
 
-// AddAuthnTrustedTokenIssuers adds a list of token issuers whose tokens are accepted by the server for
-// authentication.
-func (b *PrivateCapabilitiesServerBuilder) AddAuthnTrustedTokenIssuers(
-	value ...string) *PrivateCapabilitiesServerBuilder {
-	b.authnTrustedTokenIssuers = append(b.authnTrustedTokenIssuers, value...)
+// SetKeycloakUrl sets the base URL of the Keycloak instance.
+func (b *PrivateCapabilitiesServerBuilder) SetKeycloakUrl(value string) *PrivateCapabilitiesServerBuilder {
+	b.keycloakUrl = value
+	return b
+}
+
+// SetKeycloakRealm sets the Keycloak realm name used to construct the issuer URL.
+func (b *PrivateCapabilitiesServerBuilder) SetKeycloakRealm(value string) *PrivateCapabilitiesServerBuilder {
+	b.keycloakRealm = value
 	return b
 }
 
 // Build uses the data stored in the builder to create a new private capabilities server.
 func (b *PrivateCapabilitiesServerBuilder) Build() (result *PrivateCapabilitiesServer, err error) {
+	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
 		return
 	}
+	if b.keycloakUrl == "" {
+		err = errors.New("keycloak URL is mandatory")
+		return
+	}
+	if b.keycloakRealm == "" {
+		err = errors.New("keycloak realm is mandatory")
+		return
+	}
 
-	authnTrustedTokenIssuers := slices.Clone(b.authnTrustedTokenIssuers)
-	slices.Sort(authnTrustedTokenIssuers)
-	authnTrustedTokenIssuers = slices.Compact(authnTrustedTokenIssuers)
+	// Normalize the Keycloak URL removing any trailing slashes and calculate the issuer URL adding the realm path:
+	keycloakUrl := b.keycloakUrl
+	for strings.HasSuffix(keycloakUrl, "/") {
+		keycloakUrl = strings.TrimSuffix(keycloakUrl, "/")
+	}
+	issuerUrl := fmt.Sprintf("%s/realms/%s", keycloakUrl, b.keycloakRealm)
 
+	// Create the server:
 	result = &PrivateCapabilitiesServer{
-		logger:                   b.logger,
-		authnTrustedTokenIssuers: authnTrustedTokenIssuers,
+		logger:    b.logger,
+		issuerUrl: issuerUrl,
 	}
 	return
 }
@@ -81,8 +100,8 @@ func (s *PrivateCapabilitiesServer) Get(ctx context.Context,
 	request *privatev1.CapabilitiesGetRequest) (response *privatev1.CapabilitiesGetResponse, err error) {
 	response = privatev1.CapabilitiesGetResponse_builder{
 		Authn: &privatev1.AuthnCapabilities{
-			TrustedTokenIssuers: s.authnTrustedTokenIssuers,
+			IssuerUrl: s.issuerUrl,
 		},
 	}.Build()
-	return response, nil
+	return
 }

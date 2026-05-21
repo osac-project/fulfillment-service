@@ -12,10 +12,9 @@ specific language governing permissions and limitations under the License.
 */}}
 
 {{- $caBundleConfigMap := required "certs.caBundle.configMap is required" .Values.certs.caBundle.configMap }}
-{{- $authIssuerUrl := required "auth.issuerUrl is required" .Values.auth.issuerUrl }}
-{{- $authControllerCredentials := required "auth.controllerCredentials is required" .Values.auth.controllerCredentials }}
-{{- $idpUrl := required "idp.url is required" .Values.idp.url }}
-{{- $idpCredentials := required "idp.credentials is required" .Values.idp.credentials }}
+{{- $keycloakUrl := regexReplaceAll "/+$" (required "keycloak.url is required" .Values.keycloak.url) "" }}
+{{- $keycloakCredentials := required "keycloak.credentials is required" .Values.keycloak.credentials }}
+{{- $apiCredentials := required "api.credentials is required" .Values.api.credentials }}
 
 apiVersion: apps/v1
 kind: Deployment
@@ -42,33 +41,10 @@ spec:
       - name: tls
         secret:
           secretName: fulfillment-controller-tls
-      - name: credentials
+      - name: keycloak-credentials
         projected:
           sources:
-          {{ range $authControllerCredentials }}
-          {{ if .configMap }}
-          - configMap:
-              name: {{ .configMap.name }}
-              items:
-              {{ range .configMap.items }}
-              - key: {{ .key }}
-                path: {{ .param }}
-              {{ end }}
-          {{ end }}
-          {{ if .secret }}
-          - secret:
-              name: {{ .secret.name }}
-              items:
-              {{ range .secret.items }}
-              - key: {{ .key }}
-                path: {{ .param }}
-              {{ end }}
-          {{ end }}
-          {{ end }}
-      - name: idp-credentials
-        projected:
-          sources:
-          {{- range $idpCredentials }}
+          {{- range $keycloakCredentials }}
           {{- if .configMap }}
           - configMap:
               name: {{ .configMap.name }}
@@ -88,6 +64,29 @@ spec:
               {{- end }}
           {{- end }}
           {{- end }}
+      - name: api-credentials
+        projected:
+          sources:
+          {{ range $apiCredentials }}
+          {{ if .configMap }}
+          - configMap:
+              name: {{ .configMap.name }}
+              items:
+              {{ range .configMap.items }}
+              - key: {{ .key }}
+                path: {{ .param }}
+              {{ end }}
+          {{ end }}
+          {{ if .secret }}
+          - secret:
+              name: {{ .secret.name }}
+              items:
+              {{ range .secret.items }}
+              - key: {{ .key }}
+                path: {{ .param }}
+              {{ end }}
+          {{ end }}
+          {{ end }}
       containers:
       - name: controller
         image: {{ .Values.images.service }}
@@ -96,11 +95,11 @@ spec:
           mountPath: /etc/fulfillment-controller/tls/cas
         - name: tls
           mountPath: /etc/fulfillment-controller/tls
-        - name: credentials
-          mountPath: /etc/fulfillment-controller/credentials
+        - name: keycloak-credentials
+          mountPath: /etc/fulfillment-controller/keycloak
           readOnly: true
-        - name: idp-credentials
-          mountPath: /etc/fulfillment-controller/idp
+        - name: api-credentials
+          mountPath: /etc/fulfillment-controller/credentials
           readOnly: true
         command:
         {{ if .Values.debug }}
@@ -122,15 +121,13 @@ spec:
         - --log-headers={{ .Values.log.headers }}
         - --log-bodies={{ .Values.log.bodies }}
         - --ca-file=/etc/fulfillment-controller/tls/cas
-        - --auth-issuer-url={{ $authIssuerUrl }}
-        - --auth-client-id-file=/etc/fulfillment-controller/credentials/client-id
-        - --auth-client-secret-file=/etc/fulfillment-controller/credentials/client-secret
-        - --idp-provider={{ .Values.idp.provider }}
-        - --idp-url={{ $idpUrl }}
-        - --idp-client-id-file=/etc/fulfillment-controller/idp/client-id
-        - --idp-client-secret-file=/etc/fulfillment-controller/idp/client-secret
-        - --grpc-server-address=fulfillment-internal-api:8001
-        - --grpc-keep-alive=5m
+        - --keycloak-url={{ $keycloakUrl }}
+        - --keycloak-client-id-file=/etc/fulfillment-controller/keycloak/client-id
+        - --keycloak-client-secret-file=/etc/fulfillment-controller/keycloak/client-secret
+        - --api-server-address=fulfillment-internal-api:8001
+        - --api-keep-alive=5m
+        - --api-client-id-file=/etc/fulfillment-controller/credentials/client-id
+        - --api-client-secret-file=/etc/fulfillment-controller/credentials/client-secret
         - --grpc-listener-address=0.0.0.0:8000
         - --grpc-listener-tls-crt=/etc/fulfillment-controller/tls/tls.crt
         - --grpc-listener-tls-key=/etc/fulfillment-controller/tls/tls.key

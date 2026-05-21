@@ -47,41 +47,6 @@ externalHostname:
 # authorization, but it is good practice to restrict network-level access as an additional layer of defense.
 internalHostname:
 
-# Authentication and authorization configuration:
-auth:
-
-  # This defines the URL of the OAuth issuer used for authentication. This parameter is mandatory.
-  issuerUrl:
-
-  # List of sources for the OAuth client credentials used by the controller to authenticate to the fulfillment API.
-  # The controller uses the OAuth client credentials flow with the issuer URL specified in `auth.issuerUrl`.
-  #
-  # Each entry maps keys from a ConfigMap or Secret to named credential parameters. Each item has a 'key' field that
-  # indicates the name of the key in the ConfigMap (or Secret) and a 'param' field indicating the name of the
-  # credential parameter.
-  #
-  # The supported parameter names are:
-  #
-  # - `client-id`     - The OAuth client identifier.
-  # - `client-secret` - The OAuth client secret.
-  #
-  # For example, if the client identifier and secret are stored in a Secret named `controller-credentials` in keys
-  # named `id` and `secret`, the configuration would look like this:
-  #
-  #   auth:
-  #     controllerCredentials:
-  #     - secret:
-  #         name: controller-credentials
-  #         items:
-  #         - key: id
-  #           param: client-id
-  #         - key: secret
-  #           param: client-secret
-  #
-  # The keys of the ConfigMap and Secret don't need to match the parameter names. In the above example the client
-  # identifier is in an `id` key but the credential parameter name is `client-id`.
-  controllerCredentials:
-
 # Logging configuration:
 log:
 
@@ -146,36 +111,63 @@ database:
   # `uri` key but the connection parameter name is `url`.
   connection: []
 
-# Identity provider configuration. The controller uses this to manage organizations in the identity provider via the
-# organization reconciler. This parameter is mandatory.
-idp:
+# Keycloak configuration. The system uses a single Keycloak instance that acts as a broker for the identity providers of
+# the tenants. The controller uses the Keycloak API to manage organizations and users, and the gRPC server advertises
+# the Keycloak URL as the issuer URL for client authentication.
+keycloak:
 
-  # IDP provider type. Currently only 'keycloak' is supported.
-  provider: keycloak
-
-  # Base URL of the identity provider (e.g., https://keycloak.keycloak.svc.cluster.local:8000). This parameter is
-  # mandatory.
+  # Base URL of the Keycloak instance (e.g., https://keycloak.keycloak.svc.cluster.local:8000). The realm path
+  # `/realms/osac` is appended internally where needed. This parameter is mandatory.
   url:
 
-  # List of sources for the IDP OAuth client credentials. The controller uses the OAuth client credentials flow to
-  # authenticate with the identity provider's admin API. The credentials must have sufficient privileges to manage
-  # organizations and users (for Keycloak, this means the realm-management client roles: manage-realm, manage-users,
-  # view-realm, view-users).
+  # List of sources for the Keycloak API credentials. The controller uses the OAuth client credentials flow to
+  # authenticate with the Keycloak admin API. The credentials must have sufficient privileges to manage organizations
+  # and users (specifically the realm-management client roles: manage-realm, manage-users, view-realm, view-users).
   #
-  # The format follows the same pattern as auth.controllerCredentials:
+  # The format follows the same pattern as `api.credentials`:
   #
-  # idp:
-  #   credentials:
-  #   - secret:
-  #       name: fulfillment-controller-credentials
-  #       items:
-  #       - key: client-id
-  #         param: client-id
-  #       - key: client-secret
-  #         param: client-secret
+  #   keycloak:
+  #     credentials:
+  #     - secret:
+  #         name: fulfillment-controller-credentials
+  #         items:
+  #         - key: client-id
+  #           param: client-id
+  #         - key: client-secret
+  #           param: client-secret
   #
-  # You can reuse the same credentials as auth.controllerCredentials if the osac-controller service account has both
-  # API access and IDP management permissions, or use a separate secret for separation of concerns.
+  # You can reuse the same credentials as `api.credentials` if the controller service account has both API
+  # access and Keycloak management permissions, or use a separate secret for separation of concerns.
   #
   # This parameter is mandatory.
+  credentials:
+
+# API credentials. The controller uses these credentials to authenticate to the API using the OAuth client credentials
+# flow with the Keycloak URL specified in `keycloak.url`.
+api:
+
+  # List of sources for the OAuth client credentials. Each entry maps keys from a ConfigMap or Secret to named
+  # credential parameters. Each item has a 'key' field that indicates the name of the key in the ConfigMap (or
+  # Secret) and a 'param' field indicating the name of the credential parameter.
+  #
+  # The supported parameter names are:
+  #
+  # - `client-id`     - The OAuth client identifier.
+  # - `client-secret` - The OAuth client secret.
+  #
+  # For example, if the client identifier and secret are stored in a Secret named `controller-credentials` in keys
+  # named `id` and `secret`, the configuration would look like this:
+  #
+  #   api:
+  #     credentials:
+  #     - secret:
+  #         name: controller-credentials
+  #         items:
+  #         - key: id
+  #           param: client-id
+  #         - key: secret
+  #           param: client-secret
+  #
+  # The keys of the ConfigMap and Secret don't need to match the parameter names. In the above example the client
+  # identifier is in an `id` key but the credential parameter name is `client-id`.
   credentials:

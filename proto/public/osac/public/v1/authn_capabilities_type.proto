@@ -17,17 +17,17 @@ package osac.public.v1;
 
 // Contains the information that helps client know how authentication is managed by the server.
 message AuthnCapabilities {
-  // A list of the OAuth issuers whose access tokens are accepted by the server.
+  // URL of the OAuth issuer whose access tokens are accepted by the server for authentication.
   //
-  // This means that the client can select one of this and then use the OAuth discovery endpoint to find the details of
-  // the OAuth server. For example if the value is `https://my.oauth.com` then the client can obtain the details of the
-  // authorizatoin server going to the following URL:
+  // The client can use the OAuth discovery endpoint to find the details of the OAuth server. For example if the value
+  // is `https://my.oauth.com` then the client can obtain the details of the authorization server going to the
+  // following URL:
   //
   //   https://my.oauth.com/.well-known/oauth-authorization-server
   //
   // The discovery process is defined in [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414).
   //
-  // Note that having an access token issued by one of this servers doesn't guarantee that the requests from the user
-  // will be accepted: it will still be subject to authorization checks that may grant or deny access.
-  repeated string trusted_token_issuers = 1;
+  // Note that having an access token issued by this server doesn't guarantee that the requests from the user will be
+  // accepted: it will still be subject to authorization checks that may grant or deny access.
+  string issuer_url = 1;
 }

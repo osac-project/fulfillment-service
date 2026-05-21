@@ -1444,9 +1444,27 @@ func (t *Tool) deployServiceWithHelm(ctx context.Context, imageRef string) error
 				},
 			},
 		},
-		"idp": map[string]any{
-			"provider": "keycloak",
-			"url":      fmt.Sprintf("https://%s", keycloakAddr),
+		"keycloak": map[string]any{
+			"url": fmt.Sprintf("https://%s", keycloakAddr),
+			"credentials": []any{
+				map[string]any{
+					"secret": map[string]any{
+						"name": controllerCredentialsSecret,
+						"items": []any{
+							map[string]any{
+								"key":   "client-id",
+								"param": "client-id",
+							},
+							map[string]any{
+								"key":   "client-secret",
+								"param": "client-secret",
+							},
+						},
+					},
+				},
+			},
+		},
+		"api": map[string]any{
 			"credentials": []any{
 				map[string]any{
 					"secret": map[string]any{

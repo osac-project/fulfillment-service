@@ -19,7 +19,7 @@ spec:
   hosts:
   - "*"
   authentication:
-    "fulfillment-api":
+    kubernetes:
       kubernetesTokenReview:
         audiences:
         - https://kubernetes.default.svc
@@ -27,7 +27,7 @@ spec:
       overrides:
         authnMethod:
           value: serviceaccount
-    "keycloak-jwt":
+    keycloak:
       jwt:
         issuerUrl: https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
       overrides:

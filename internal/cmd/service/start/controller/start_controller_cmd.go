@@ -79,88 +79,68 @@ func Cmd() *cobra.Command {
 		"File or directory containing trusted CA certificates.",
 	)
 	flags.StringVar(
-		&runner.args.authIssuerUrl,
-		"auth-issuer-url",
-		"",
-		"Issuer URL for OAuth token acquisition. Required when using '--auth-client-id' and "+
-			"'--auth-client-secret'. Mutually exclusive with '--auth-issuer-url-file'.",
-	)
-	flags.StringVar(
-		&runner.args.authIssuerUrlFile,
-		"auth-issuer-url-file",
-		"",
-		"File containing the issuer URL for OAuth token acquisition. Mutually exclusive with "+
-			"'--auth-issuer-url'.",
-	)
-	flags.StringVar(
-		&runner.args.authClientId,
-		"auth-client-id",
+		&runner.args.apiClientId,
+		"api-client-id",
 		"",
 		"OAuth client identifier for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-id-file'.",
+			"'--api-client-id-file'.",
 	)
 	flags.StringVar(
-		&runner.args.authClientIdFile,
-		"auth-client-id-file",
+		&runner.args.apiClientIdFile,
+		"api-client-id-file",
 		"",
 		"File containing the OAuth client identifier for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-id'.",
+			"'--api-client-id'.",
 	)
 	flags.StringVar(
-		&runner.args.authClientSecret,
-		"auth-client-secret",
+		&runner.args.apiClientSecret,
+		"api-client-secret",
 		"",
 		"OAuth client secret for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-secret-file'.",
+			"'--api-client-secret-file'.",
 	)
 	flags.StringVar(
-		&runner.args.authClientSecretFile,
-		"auth-client-secret-file",
+		&runner.args.apiClientSecretFile,
+		"api-client-secret-file",
 		"",
 		"File containing the OAuth client secret for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-secret'.",
+			"'--api-client-secret'.",
 	)
 	flags.StringVar(
-		&runner.args.idpProvider,
-		"idp-provider",
-		idp.ProviderKeycloak,
-		fmt.Sprintf("Identity provider type (default: %s).", strings.Join(idp.ValidProviders, ", ")),
-	)
-	flags.StringVar(
-		&runner.args.idpURL,
-		"idp-url",
+		&runner.args.keycloakUrl,
+		"keycloak-url",
 		"",
-		"Base URL of the identity provider.",
+		"Base URL of the Keycloak instance.",
 	)
 	flags.StringVar(
-		&runner.args.idpClientIdFile,
-		"idp-client-id-file",
+		&runner.args.keycloakClientIdFile,
+		"keycloak-client-id-file",
 		"",
-		"File containing the OAuth client identifier for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-id'.",
+		"File containing the OAuth client identifier for Keycloak authentication. "+
+			"Mutually exclusive with '--keycloak-client-id'.",
 	)
 	flags.StringVar(
-		&runner.args.idpClientId,
-		"idp-client-id",
+		&runner.args.keycloakClientId,
+		"keycloak-client-id",
 		"",
-		"OAuth client identifier for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-id-file'.",
+		"OAuth client identifier for Keycloak authentication. "+
+			"Mutually exclusive with '--keycloak-client-id-file'.",
 	)
 	flags.StringVar(
-		&runner.args.idpClientSecretFile,
-		"idp-client-secret-file",
+		&runner.args.keycloakClientSecretFile,
+		"keycloak-client-secret-file",
 		"",
-		"File containing the OAuth client secret for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-secret'.",
+		"File containing the OAuth client secret for Keycloak authentication. "+
+			"Mutually exclusive with '--keycloak-client-secret'.",
 	)
 	flags.StringVar(
-		&runner.args.idpClientSecret,
-		"idp-client-secret",
+		&runner.args.keycloakClientSecret,
+		"keycloak-client-secret",
 		"",
-		"OAuth client secret for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-secret-file'.",
+		"OAuth client secret for Keycloak authentication. "+
+			"Mutually exclusive with '--keycloak-client-secret-file'.",
 	)
-	network.AddGrpcClientFlags(flags, network.GrpcClientName, network.DefaultGrpcAddress)
+	network.AddGrpcClientFlags(flags, network.APIClientName, network.DefaultGrpcAddress)
 	network.AddListenerFlags(flags, network.GrpcListenerName, network.DefaultGrpcAddress)
 	network.AddListenerFlags(flags, network.MetricsListenerName, network.DefaultMetricsAddress)
 	return command
@@ -171,19 +151,16 @@ type runnerContext struct {
 	logger *slog.Logger
 	flags  *pflag.FlagSet
 	args   struct {
-		caFiles              []string
-		authIssuerUrl        string
-		authIssuerUrlFile    string
-		authClientId         string
-		authClientIdFile     string
-		authClientSecret     string
-		authClientSecretFile string
-		idpProvider          string
-		idpURL               string
-		idpClientId          string
-		idpClientIdFile      string
-		idpClientSecret      string
-		idpClientSecretFile  string
+		caFiles                  []string
+		apiClientId              string
+		apiClientIdFile          string
+		apiClientSecret          string
+		apiClientSecretFile      string
+		keycloakUrl              string
+		keycloakClientId         string
+		keycloakClientIdFile     string
+		keycloakClientSecret     string
+		keycloakClientSecretFile string
 	}
 	client *grpc.ClientConn
 }
@@ -208,29 +185,31 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	r.flags = cmd.Flags()
 
 	// Check the flags:
-	if r.args.authIssuerUrl != "" && r.args.authIssuerUrlFile != "" {
-		return fmt.Errorf("flags '--auth-issuer-url' and '--auth-issuer-url-file' are mutually exclusive")
+	if r.args.apiClientId != "" && r.args.apiClientIdFile != "" {
+		return fmt.Errorf("flags '--api-client-id' and '--api-client-id-file' are mutually exclusive")
 	}
-	if r.args.authClientId != "" && r.args.authClientIdFile != "" {
-		return fmt.Errorf("flags '--auth-client-id' and '--auth-client-id-file' are mutually exclusive")
+	if r.args.apiClientSecret != "" && r.args.apiClientSecretFile != "" {
+		return fmt.Errorf("flags '--api-client-secret' and '--api-client-secret-file' are mutually exclusive")
 	}
-	if r.args.authClientSecret != "" && r.args.authClientSecretFile != "" {
-		return fmt.Errorf("flags '--auth-client-secret' and '--auth-client-secret-file' are mutually exclusive")
+	if r.args.keycloakClientId != "" && r.args.keycloakClientIdFile != "" {
+		return fmt.Errorf("flags '--keycloak-client-id' and '--keycloak-client-id-file' are mutually exclusive")
 	}
-	if r.args.idpClientId != "" && r.args.idpClientIdFile != "" {
-		return fmt.Errorf("flags '--idp-client-id' and '--idp-client-id-file' are mutually exclusive")
+	if r.args.keycloakClientSecret != "" && r.args.keycloakClientSecretFile != "" {
+		return fmt.Errorf("flags '--keycloak-client-secret' and '--keycloak-client-secret-file' are mutually exclusive")
 	}
-	if r.args.idpClientSecret != "" && r.args.idpClientSecretFile != "" {
-		return fmt.Errorf("flags '--idp-client-secret' and '--idp-client-secret-file' are mutually exclusive")
+	if r.args.keycloakUrl == "" {
+		return fmt.Errorf("flag '--keycloak-url' is required")
 	}
-	if r.args.authIssuerUrl == "" && r.args.authIssuerUrlFile == "" {
-		return fmt.Errorf("flag '--auth-issuer-url' or '--auth-issuer-url-file' is required")
+	if r.args.apiClientId == "" && r.args.apiClientIdFile == "" {
+		return fmt.Errorf("flag '--api-client-id' or '--api-client-id-file' is required")
 	}
-	if r.args.authClientId == "" && r.args.authClientIdFile == "" {
-		return fmt.Errorf("flag '--auth-client-id' or '--auth-client-id-file' is required")
+	if r.args.apiClientSecret == "" && r.args.apiClientSecretFile == "" {
+		return fmt.Errorf("flag '--api-client-secret' or '--api-client-secret-file' is required")
 	}
-	if r.args.authClientSecret == "" && r.args.authClientSecretFile == "" {
-		return fmt.Errorf("flag '--auth-client-secret' or '--auth-client-secret-file' is required")
+
+	// Sanitize the Keycloak URL:
+	for strings.HasSuffix(r.args.keycloakUrl, "/") {
+		r.args.keycloakUrl = strings.TrimSuffix(r.args.keycloakUrl, "/")
 	}
 
 	// Prepare the metrics registerer:
@@ -272,7 +251,7 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	r.logger.InfoContext(ctx, "Creating gRPC client")
 	r.client, err = network.NewGrpcClient().
 		SetLogger(r.logger).
-		SetFlags(r.flags, network.GrpcClientName).
+		SetFlags(r.flags, network.APIClientName).
 		SetCaPool(caPool).
 		SetTokenSource(tokenSource).
 		SetUserAgent(userAgent).
@@ -834,35 +813,25 @@ func (r *runnerContext) waitForServer(ctx context.Context) error {
 // services.
 func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.CertPool) (result auth.TokenSource,
 	err error) {
-	// Get the values of the flags:
-	issuerUrl := r.args.authIssuerUrl
-	if issuerUrl == "" && r.args.authIssuerUrlFile != "" {
-		issuerUrl, err = r.readTrimmedFile(r.args.authIssuerUrlFile)
+	issuerUrl := fmt.Sprintf("%s/realms/%s", r.args.keycloakUrl, keycloakRealm)
+	clientId := r.args.apiClientId
+	if clientId == "" && r.args.apiClientIdFile != "" {
+		clientId, err = r.readTrimmedFile(r.args.apiClientIdFile)
 		if err != nil {
 			err = fmt.Errorf(
-				"failed to read issuer URL from file '%s': %w", r.args.authIssuerUrlFile, err,
+				"failed to read API client identifier from file '%s': %w",
+				r.args.apiClientIdFile, err,
 			)
 			return
 		}
 	}
-	clientId := r.args.authClientId
-	if clientId == "" && r.args.authClientIdFile != "" {
-		clientId, err = r.readTrimmedFile(r.args.authClientIdFile)
+	clientSecret := r.args.apiClientSecret
+	if clientSecret == "" && r.args.apiClientSecretFile != "" {
+		clientSecret, err = r.readTrimmedFile(r.args.apiClientSecretFile)
 		if err != nil {
 			err = fmt.Errorf(
-				"failed to read client identifier from file '%s': %w",
-				r.args.authClientIdFile, err,
-			)
-			return
-		}
-	}
-	clientSecret := r.args.authClientSecret
-	if clientSecret == "" && r.args.authClientSecretFile != "" {
-		clientSecret, err = r.readTrimmedFile(r.args.authClientSecretFile)
-		if err != nil {
-			err = fmt.Errorf(
-				"failed to read client secret from file '%s': %w",
-				r.args.authClientSecretFile, err,
+				"failed to read API client secret from file '%s': %w",
+				r.args.apiClientSecretFile, err,
 			)
 			return
 		}
@@ -902,120 +871,91 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 	return
 }
 
-// createIDPManager creates the IDP client and organization manager. The IDP URL and credentials are mandatory.
+// createIDPManager creates the Keycloak client and organization manager.
 func (r *runnerContext) createIDPManager(ctx context.Context, caPool *x509.CertPool) (*idp.OrganizationManager, error) {
-	if r.args.idpURL == "" {
-		return nil, fmt.Errorf("flag '--idp-url' is required")
+	if r.args.keycloakClientId == "" && r.args.keycloakClientIdFile == "" {
+		return nil, fmt.Errorf("flag '--keycloak-client-id' or '--keycloak-client-id-file' is required")
 	}
-	if r.args.idpClientId == "" && r.args.idpClientIdFile == "" {
-		return nil, fmt.Errorf("flag '--idp-client-id' or '--idp-client-id-file' is required")
-	}
-	if r.args.idpClientSecret == "" && r.args.idpClientSecretFile == "" {
-		return nil, fmt.Errorf("flag '--idp-client-secret' or '--idp-client-secret-file' is required")
+	if r.args.keycloakClientSecret == "" && r.args.keycloakClientSecretFile == "" {
+		return nil, fmt.Errorf("flag '--keycloak-client-secret' or '--keycloak-client-secret-file' is required")
 	}
 
-	// Get the client ID
-	idpClientId := r.args.idpClientId
-	if idpClientId == "" && r.args.idpClientIdFile != "" {
+	keycloakClientId := r.args.keycloakClientId
+	if keycloakClientId == "" && r.args.keycloakClientIdFile != "" {
 		var err error
-		idpClientId, err = r.readTrimmedFile(r.args.idpClientIdFile)
+		keycloakClientId, err = r.readTrimmedFile(r.args.keycloakClientIdFile)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to read IDP client identifier from file '%s': %w",
-				r.args.idpClientIdFile, err,
+				"failed to read Keycloak client identifier from file '%s': %w",
+				r.args.keycloakClientIdFile, err,
 			)
 		}
 	}
 
-	// Get the client secret
-	idpClientSecret := r.args.idpClientSecret
-	if idpClientSecret == "" && r.args.idpClientSecretFile != "" {
+	keycloakClientSecret := r.args.keycloakClientSecret
+	if keycloakClientSecret == "" && r.args.keycloakClientSecretFile != "" {
 		var err error
-		idpClientSecret, err = r.readTrimmedFile(r.args.idpClientSecretFile)
+		keycloakClientSecret, err = r.readTrimmedFile(r.args.keycloakClientSecretFile)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to read IDP client secret from file '%s': %w",
-				r.args.idpClientSecretFile, err,
+				"failed to read Keycloak client secret from file '%s': %w",
+				r.args.keycloakClientSecretFile, err,
 			)
 		}
 	}
 
-	// Get the issuer URL (same as auth issuer URL)
-	issuerUrl := r.args.authIssuerUrl
-	if issuerUrl == "" && r.args.authIssuerUrlFile != "" {
-		var err error
-		issuerUrl, err = r.readTrimmedFile(r.args.authIssuerUrlFile)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to read issuer URL from file '%s': %w",
-				r.args.authIssuerUrlFile, err,
-			)
-		}
-	}
-
+	// Calcualte the issuer URL:
+	issuerUrl := fmt.Sprintf("%s/realms/%s", r.args.keycloakUrl, keycloakRealm)
 	r.logger.DebugContext(
 		ctx,
-		"IDP credentials from flags",
+		"Keycloak credentials from flags",
 		slog.String("issuer_url", issuerUrl),
-		slog.String("!client_id", idpClientId),
-		slog.String("!client_secret", idpClientSecret),
+		slog.String("!client_id", keycloakClientId),
+		slog.String("!client_secret", keycloakClientSecret),
 	)
 
-	// Create a token store that saves the token in memory
-	idpTokenStore, err := auth.NewMemoryTokenStore().
+	keycloakTokenStore, err := auth.NewMemoryTokenStore().
 		SetLogger(r.logger).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create IDP token store: %w", err)
+		return nil, fmt.Errorf("failed to create Keycloak token store: %w", err)
 	}
 
-	// Create OAuth token source for IDP authentication
-	r.logger.InfoContext(ctx, "Creating IDP token source")
-	idpTokenSource, err := oauth.NewTokenSource().
+	r.logger.InfoContext(ctx, "Creating Keycloak token source")
+	keycloakTokenSource, err := oauth.NewTokenSource().
 		SetLogger(r.logger).
-		SetStore(idpTokenStore).
+		SetStore(keycloakTokenStore).
 		SetCaPool(caPool).
 		SetIssuer(issuerUrl).
 		SetFlow(oauth.CredentialsFlow).
-		SetClientId(idpClientId).
-		SetClientSecret(idpClientSecret).
+		SetClientId(keycloakClientId).
+		SetClientSecret(keycloakClientSecret).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create IDP token source: %w", err)
+		return nil, fmt.Errorf("failed to create Keycloak token source: %w", err)
 	}
 
-	// Create IDP client based on provider type
-	r.logger.InfoContext(ctx, "Creating IDP client",
-		slog.String("provider", r.args.idpProvider),
-	)
-
-	var idpClient idp.Client
-	switch r.args.idpProvider {
-	case idp.ProviderKeycloak:
-		idpClient, err = keycloak.NewClient().
-			SetLogger(r.logger).
-			SetBaseURL(r.args.idpURL).
-			SetTokenSource(idpTokenSource).
-			SetCaPool(caPool).
-			Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported IDP provider: %s (supported: %s)", r.args.idpProvider, strings.Join(idp.ValidProviders, ", "))
+	r.logger.InfoContext(ctx, "Creating Keycloak client")
+	keycloakClient, err := keycloak.NewClient().
+		SetLogger(r.logger).
+		SetBaseURL(r.args.keycloakUrl).
+		SetTokenSource(keycloakTokenSource).
+		SetCaPool(caPool).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
 	}
 
-	// Create organization manager
-	r.logger.InfoContext(ctx, "Creating IDP Organization manager")
+	r.logger.InfoContext(ctx, "Creating organization manager")
 	idpManager, err := idp.NewOrganizationManager().
 		SetLogger(r.logger).
-		SetClient(idpClient).
+		SetClient(keycloakClient).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create IDP Organization manager: %w", err)
+		return nil, fmt.Errorf("failed to create organization manager: %w", err)
 	}
 
-	r.logger.InfoContext(ctx, "IDP Organization manager created successfully")
+	r.logger.InfoContext(ctx, "Organization manager created successfully")
 	return idpManager, nil
 }
 
@@ -1031,3 +971,6 @@ func (r *runnerContext) readTrimmedFile(file string) (result string, err error) 
 
 // controllerUserAgent is the user agent string for the controller.
 const controllerUserAgent = "fulfillment-controller"
+
+// keycloakRealm is the name of the Keycloak realm used by the system.
+const keycloakRealm = "osac"

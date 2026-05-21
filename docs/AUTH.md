@@ -230,7 +230,7 @@ https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
 
 ### 2. Update the Fulfillment Service Deployment
 
-When installing the fulfillment service using the Helm chart, set the `auth.issuerUrl` parameter:
+When installing the fulfillment service using the Helm chart, set the `keycloak.url` parameter:
 
 ```bash
 helm install fulfillment-service oci://ghcr.io/osac/charts/fulfillment-service \
@@ -241,15 +241,15 @@ helm install fulfillment-service oci://ghcr.io/osac/charts/fulfillment-service \
   --set hostname=fulfillment-api.osac.cluster.local \
   --set certs.issuerRef.name=default-ca \
   --set certs.caBundle.configMap=ca-bundle \
-  --set auth.issuerUrl=https://keycloak.keycloak.svc.cluster.local:8000/realms/osac \
+  --set keycloak.url=https://keycloak.keycloak.svc.cluster.local:8000 \
   --wait
 ```
 
 Or in a values file:
 
 ```yaml
-auth:
-  issuerUrl: https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
+keycloak:
+  url: https://keycloak.keycloak.svc.cluster.local:8000
 ```
 
 ### 3. Update the AuthConfig Resource
@@ -284,31 +284,27 @@ authentication:
 
 ### 4. Update the Server Configuration
 
-The fulfillment service server component also needs to be configured with the trusted token issuer.
-This is done via the `--grpc-authn-trusted-token-issuers` flag in the deployment.
+The fulfillment service server component also needs to be configured with the base Keycloak URL.
+This is done via the `--keycloak-url` flag in the deployment. The value should be the base URL of
+the Keycloak instance without the realm path, for example
+`https://keycloak.keycloak.svc.cluster.local:8000`. The server appends `/realms/osac` internally
+to construct the issuer URL.
 
-The Helm chart automatically sets this from the `auth.issuerUrl` value. In the deployment, you'll
+The Helm chart automatically sets this from the `keycloak.url` value. In the deployment, you'll
 see:
 
 ```yaml
-- --grpc-authn-trusted-token-issuers=https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
+- --keycloak-url=https://keycloak.keycloak.svc.cluster.local:8000
 ```
 
-### 5. Trusted vs Advertised Token Issuers
+### 5. Keycloak URL
 
-The fulfillment service maintains two separate lists of token issuers:
+The fulfillment service uses a single Keycloak instance that acts as a broker for the identity
+providers of the tenants. The base Keycloak URL is configured via the `--keycloak-url` flag. The
+server appends `/realms/osac` to produce the full issuer URL, which is then used in:
 
-1. **Trusted Token Issuers**: These are the advertised trusted issuers. This list is configured in:
-   - Authorino AuthConfig (for HTTP/gRPC gateway authentication)
-   - Server command-line flag `--grpc-authn-trusted-token-issuers` (for direct gRPC authentication)
-
-2. **Advertised Token Issuers**: These are the issuers that the service advertises to clients
-   (primarily for CLI usage). This allows clients to discover which issuers they can use without
-   explicitly specifying them. The advertised issuers are returned via the metadata API and may or
-   may not be the same as the trusted issuers.
-
-   The advertised issuers are configured via the
-   `--grpc-authn-trusted-token-issuers` flag
+- Authorino AuthConfig (for HTTP/gRPC gateway authentication)
+- The capabilities API `issuer_url` field (so that clients can discover it automatically)
 
 ## User and Group Mapping
 

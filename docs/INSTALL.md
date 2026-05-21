@@ -1005,17 +1005,6 @@ certs:
   caBundle:
     configMap: ca-bundle
 
-auth:
-  issuerUrl: https://keycloak-keycloak.${DOMAIN}/realms/osac
-  controllerCredentials:
-  - secret:
-      name: fulfillment-controller-credentials
-      items:
-      - key: client-id
-        param: client-id
-      - key: client-secret
-        param: client-secret
-
 database:
   connection:
   - secret:
@@ -1033,9 +1022,18 @@ database:
       - key: bundle.pem
         param: sslrootcert
 
-idp:
-  provider: keycloak
+keycloak:
   url: https://keycloak-keycloak.${DOMAIN}
+  credentials:
+  - secret:
+      name: fulfillment-controller-credentials
+      items:
+      - key: client-id
+        param: client-id
+      - key: client-secret
+        param: client-secret
+
+api:
   credentials:
   - secret:
       name: fulfillment-controller-credentials

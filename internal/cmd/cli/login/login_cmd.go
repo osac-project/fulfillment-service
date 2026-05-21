@@ -26,7 +26,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"google.golang.org/grpc"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
@@ -274,7 +273,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Fetch the capabilities:
-	capabilities, err := c.fetchCapabilities(ctx, grpcConn)
+	capabilitiesClient := publicv1.NewCapabilitiesClient(grpcConn)
+	capabilities, err := capabilitiesClient.Get(ctx, publicv1.CapabilitiesGetRequest_builder{}.Build())
 	if err != nil {
 		return fmt.Errorf("failed to fetch capabilities: %w", err)
 	}
@@ -284,11 +284,10 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		slog.Any("capabilities", capabilities),
 	)
 
-	// Select the token issuer. The result may be no issuer, which means that no authentication will be used, it
-	// will all be anonoymous.
-	tokenIssuer, err := c.selectTokenIssuer(ctx, capabilities)
-	if err != nil {
-		return fmt.Errorf("failed to select token issuer: %w", err)
+	// Select the issuer URL: whatever the user specifies or else the one advertised by the server.
+	tokenIssuer := c.args.oauthIssuer
+	if tokenIssuer == "" {
+		tokenIssuer = capabilities.GetAuthn().GetIssuerUrl()
 	}
 
 	// Get the settings from the context, reset them to discard any previous configuration, and create a token store:
@@ -401,35 +400,6 @@ func (c *runnerContext) parseAddress(text string) (address string, plaintext boo
 		return
 	}
 	address, plaintext, err = parser.Parse(text)
-	return
-}
-
-func (c *runnerContext) fetchCapabilities(ctx context.Context,
-	grpcConn *grpc.ClientConn) (result *publicv1.CapabilitiesGetResponse, err error) {
-	capabilitiesClient := publicv1.NewCapabilitiesClient(grpcConn)
-	result, err = capabilitiesClient.Get(ctx, publicv1.CapabilitiesGetRequest_builder{}.Build())
-	return
-}
-
-func (c *runnerContext) selectTokenIssuer(ctx context.Context, capabilities *publicv1.CapabilitiesGetResponse) (result string, err error) {
-	advertisedIssuers := capabilities.GetAuthn().GetTrustedTokenIssuers()
-	if len(advertisedIssuers) > 0 {
-		result = advertisedIssuers[0]
-		if len(advertisedIssuers) > 1 {
-			c.logger.WarnContext(
-				ctx,
-				"Server advertises multiple issuers, selecting the first one",
-				slog.Any("advertised", advertisedIssuers),
-				slog.Any("selected", result),
-			)
-		}
-	} else {
-		c.logger.WarnContext(
-			ctx,
-			"Server advertises no issuers",
-			slog.Any("selected", result),
-		)
-	}
 	return
 }
 

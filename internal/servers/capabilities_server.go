@@ -16,27 +16,29 @@ package servers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
-	"slices"
+	"strings"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
 
 // CapabilitiesServerBuilder contains the data and logic needed to create a new capabilities server.
 type CapabilitiesServerBuilder struct {
-	logger                   *slog.Logger
-	authnTrustedTokenIssuers []string
+	logger        *slog.Logger
+	keycloakUrl   string
+	keycloakRealm string
 }
 
 // Make sure that we implement the interface:
 var _ publicv1.CapabilitiesServer = (*CapabilitiesServer)(nil)
 
-// CapabilitiesServer is the server for capabilities, like the list of trusted access token issuers.
+// CapabilitiesServer is the server for capabilities, like the issuer URL for authentication.
 type CapabilitiesServer struct {
 	publicv1.UnimplementedCapabilitiesServer
 
-	logger                   *slog.Logger
-	authnTrustedTokenIssuers []string
+	logger    *slog.Logger
+	issuerUrl string
 }
 
 // NewCapabilitiesServer creates a builder that can the be used to configure and create a new capabilities server.
@@ -50,9 +52,15 @@ func (b *CapabilitiesServerBuilder) SetLogger(value *slog.Logger) *CapabilitiesS
 	return b
 }
 
-// AddAutnTrustedTokenIssuers adds a list of token issuers whose tokens are accepted by the server for authentication.
-func (b *CapabilitiesServerBuilder) AddAutnTrustedTokenIssuers(value ...string) *CapabilitiesServerBuilder {
-	b.authnTrustedTokenIssuers = append(b.authnTrustedTokenIssuers, value...)
+// SetKeycloakUrl sets the base URL of the Keycloak instance.
+func (b *CapabilitiesServerBuilder) SetKeycloakUrl(value string) *CapabilitiesServerBuilder {
+	b.keycloakUrl = value
+	return b
+}
+
+// SetKeycloakRealm sets the Keycloak realm name used to construct the issuer URL.
+func (b *CapabilitiesServerBuilder) SetKeycloakRealm(value string) *CapabilitiesServerBuilder {
+	b.keycloakRealm = value
 	return b
 }
 
@@ -63,16 +71,28 @@ func (b *CapabilitiesServerBuilder) Build() (result *CapabilitiesServer, err err
 		err = errors.New("logger is mandatory")
 		return
 	}
+	if b.keycloakUrl == "" {
+		err = errors.New("keycloak URL is mandatory")
+		return
+	}
+	if b.keycloakRealm == "" {
+		err = errors.New("keycloak realm is mandatory")
+		return
+	}
 
-	// Make sure that the list of issuers doens't have duplicates, and that it is sorted in a predictable way:
-	authnTrustedTokenIssuers := slices.Clone(b.authnTrustedTokenIssuers)
-	slices.Sort(authnTrustedTokenIssuers)
-	authnTrustedTokenIssuers = slices.Compact(authnTrustedTokenIssuers)
+	// Sanitize the Keycloak URL:
+	keycloakUrl := b.keycloakUrl
+	for strings.HasSuffix(keycloakUrl, "/") {
+		keycloakUrl = strings.TrimSuffix(keycloakUrl, "/")
+	}
 
-	// Create and populate the object:
+	// Calculate the issuer URL:
+	issuerUrl := fmt.Sprintf("%s/realms/%s", keycloakUrl, b.keycloakRealm)
+
+	// Build the server:
 	result = &CapabilitiesServer{
-		logger:                   b.logger,
-		authnTrustedTokenIssuers: authnTrustedTokenIssuers,
+		logger:    b.logger,
+		issuerUrl: issuerUrl,
 	}
 	return
 }
@@ -82,8 +102,8 @@ func (s *CapabilitiesServer) Get(ctx context.Context,
 	request *publicv1.CapabilitiesGetRequest) (response *publicv1.CapabilitiesGetResponse, err error) {
 	response = publicv1.CapabilitiesGetResponse_builder{
 		Authn: &publicv1.AuthnCapabilities{
-			TrustedTokenIssuers: s.authnTrustedTokenIssuers,
+			IssuerUrl: s.issuerUrl,
 		},
 	}.Build()
-	return response, nil
+	return
 }
