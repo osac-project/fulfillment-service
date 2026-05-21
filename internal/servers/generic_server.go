@@ -841,8 +841,6 @@ func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Messa
 		event.SetSubnet(object)
 	case *privatev1.SecurityGroup:
 		event.SetSecurityGroup(object)
-	case *privatev1.Lease:
-		event.SetLease(object)
 	case *privatev1.PublicIPPool:
 		event.SetPublicIpPool(object)
 	case *privatev1.PublicIP:

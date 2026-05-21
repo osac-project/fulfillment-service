@@ -796,20 +796,6 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 	privatev1.RegisterRoleBindingsServer(grpcServer, privateRoleBindingsServer)
 
-	// Create the private leases server:
-	c.logger.InfoContext(ctx, "Creating private leases server")
-	privateLeasesServer, err := servers.NewPrivateLeasesServer().
-		SetLogger(c.logger).
-		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
-		SetTenancyLogic(tenancyLogic).
-		SetMetricsRegisterer(metricsRegisterer).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create private leases server: %w", err)
-	}
-	privatev1.RegisterLeasesServer(grpcServer, privateLeasesServer)
-
 	// Create the public IPs server:
 	c.logger.InfoContext(ctx, "Creating public IPs server")
 	publicIPsServer, err := servers.NewPublicIPsServer().
