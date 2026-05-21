@@ -53,42 +53,9 @@ var _ = Describe("parseNetworkAttachmentFlag", func() {
 	)
 })
 
-var _ = Describe("applyNetworkingFlags", func() {
-	It("should error when legacy subnet and network-attachments are combined", func() {
-		c := &runnerContext{}
-		c.args.subnet = "sub-1"
-		c.args.networkAttachments = []string{"other"}
-		var b publicv1.ComputeInstanceSpec_builder
-		err := c.applyNetworkingFlags(&b)
-		Expect(err).To(HaveOccurred())
-	})
-
-	It("should error when legacy security-groups and network-attachments are combined", func() {
-		c := &runnerContext{}
-		c.args.securityGroups = []string{"sg-1"}
-		c.args.networkAttachments = []string{"sub-x"}
-		var b publicv1.ComputeInstanceSpec_builder
-		err := c.applyNetworkingFlags(&b)
-		Expect(err).To(HaveOccurred())
-	})
-})
+// Legacy subnet and security-groups tests removed - these fields are no longer supported
 
 var _ = Describe("buildSpec", func() {
-	It("should populate spec when legacy networking flags are set", func() {
-		c := &runnerContext{}
-		c.args.subnet = "legacy-sub"
-		c.args.securityGroups = []string{"sg-a", "sg-b"}
-		spec, err := c.buildSpec("tmpl", nil)
-		Expect(err).NotTo(HaveOccurred())
-
-		want := publicv1.ComputeInstanceSpec_builder{
-			Template:       "tmpl",
-			Subnet:         proto.String("legacy-sub"),
-			SecurityGroups: []string{"sg-a", "sg-b"},
-		}.Build()
-		Expect(proto.Equal(spec, want)).To(BeTrue(), "spec should equal expected spec")
-	})
-
 	It("should populate attachments when network-attachment flags are set", func() {
 		c := &runnerContext{}
 		c.args.networkAttachments = []string{"n1", "subnet=n2,security-groups=g1"}

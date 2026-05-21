@@ -533,92 +533,13 @@ func (t *task) buildSpec(ctx context.Context) (osacv1alpha1.ComputeInstanceSpec,
 	// Add explicit spec fields if present:
 	t.addExplicitFields(&spec)
 
-	ciSpec := t.computeInstance.GetSpec()
-
-	// Validate that legacy subnet and new network_attachments are not both set
-	if ciSpec.HasSubnet() && len(ciSpec.GetNetworkAttachments()) > 0 {
-		return osacv1alpha1.ComputeInstanceSpec{}, fmt.Errorf(
-			"cannot use both deprecated subnet field and network_attachments field")
+	// Handle network_attachments (required)
+	err = t.buildSpecNetworkAttachments(ctx, &spec)
+	if err != nil {
+		return osacv1alpha1.ComputeInstanceSpec{}, err
 	}
-
-	// Determine which networking path to use
-	if len(ciSpec.GetNetworkAttachments()) > 0 {
-		// New network_attachments path
-		err = t.buildSpecNetworkAttachments(ctx, &spec)
-		if err != nil {
-			return osacv1alpha1.ComputeInstanceSpec{}, err
-		}
-	} else if ciSpec.HasSubnet() {
-		// Legacy subnet + security_groups path
-		err = t.buildSpecLegacyNetworking(ctx, &spec)
-		if err != nil {
-			return osacv1alpha1.ComputeInstanceSpec{}, err
-		}
-	}
-
-	// Any post-processing for all instances can be added here
 
 	return spec, nil
-}
-
-// buildSpecLegacyNetworking handles the deprecated subnet and security_groups fields.
-// It transforms them into a single NetworkAttachment to maintain consistency with the new path.
-func (t *task) buildSpecLegacyNetworking(ctx context.Context, spec *osacv1alpha1.ComputeInstanceSpec) error {
-	ciSpec := t.computeInstance.GetSpec()
-	subnetID := ciSpec.GetSubnet()
-
-	subnetCR, err := t.getSubnetCR(ctx, subnetID)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to look up Subnet CR for subnet %s: %w", subnetID, err)
-	}
-	if subnetCR == nil {
-		return fmt.Errorf(
-			"Subnet CR not found for subnet %s", subnetID)
-	}
-	subnetRef := subnetCR.GetName()
-	t.r.logger.DebugContext(
-		ctx,
-		"Resolved subnetRef from Subnet CR (legacy path)",
-		slog.String("subnet_id", subnetID),
-		slog.String("subnet_ref", subnetRef),
-	)
-
-	// Resolve legacy security_groups
-	sgRefs := make([]string, 0, len(ciSpec.GetSecurityGroups()))
-	for _, sgID := range ciSpec.GetSecurityGroups() {
-		if sgID == "" {
-			continue
-		}
-		sgCR, sgErr := t.getSecurityGroupCR(ctx, sgID)
-		if sgErr != nil {
-			return fmt.Errorf(
-				"failed to look up SecurityGroup CR for security group %s: %w",
-				sgID, sgErr)
-		}
-		if sgCR == nil {
-			return fmt.Errorf(
-				"SecurityGroup CR not found for security group %s",
-				sgID)
-		}
-		sgRefs = append(sgRefs, sgCR.GetName())
-		t.r.logger.DebugContext(
-			ctx,
-			"Resolved securityGroupRef from SecurityGroup CR (legacy path)",
-			slog.String("security_group_id", sgID),
-			slog.String("security_group_ref", sgCR.GetName()),
-		)
-	}
-
-	// Transform legacy fields into a single NetworkAttachment
-	spec.NetworkAttachments = []osacv1alpha1.NetworkAttachment{
-		{
-			SubnetRef:         subnetRef,
-			SecurityGroupRefs: sgRefs,
-		},
-	}
-
-	return nil
 }
 
 // buildSpecNetworkAttachments handles the network_attachments field.

@@ -53,6 +53,25 @@ var _ = Describe("buildSpec", func() {
 			memory, err := anypb.New(wrapperspb.String("4Gi"))
 			Expect(err).ToNot(HaveOccurred())
 			template := "osac.templates.ocp_virt_vm"
+
+			// Set up fake client with subnet CR
+			hubNamespace := "test-hub"
+			subnetID := "test-subnet"
+			subnetCR := &osacv1alpha1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: hubNamespace,
+					Name:      "test-sn",
+					Labels:    map[string]string{labels.SubnetUuid: subnetID},
+				},
+			}
+			scheme := runtime.NewScheme()
+			Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(subnetCR).
+				Build()
+
 			task := &task{
 				r: &function{logger: logger},
 				computeInstance: privatev1.ComputeInstance_builder{
@@ -64,8 +83,13 @@ var _ = Describe("buildSpec", func() {
 							"memory":    memory,
 						},
 						RestartRequestedAt: timestamppb.New(requestedAt),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
+						},
 					}.Build(),
 				}.Build(),
+				hubNamespace: hubNamespace,
+				hubClient:    fakeClient,
 			}
 
 			// Call the actual buildSpec function
@@ -84,6 +108,25 @@ var _ = Describe("buildSpec", func() {
 		It("Includes explicit fields in spec map when present", func() {
 			ctx := context.Background()
 			template := "osac.templates.ocp_virt_vm"
+
+			// Set up fake client with subnet CR
+			hubNamespace := "test-hub"
+			subnetID := "test-subnet"
+			subnetCR := &osacv1alpha1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: hubNamespace,
+					Name:      "test-sn",
+					Labels:    map[string]string{labels.SubnetUuid: subnetID},
+				},
+			}
+			scheme := runtime.NewScheme()
+			Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(subnetCR).
+				Build()
+
 			task := &task{
 				r: &function{logger: logger},
 				computeInstance: privatev1.ComputeInstance_builder{
@@ -109,9 +152,14 @@ var _ = Describe("buildSpec", func() {
 								SizeGib: 50,
 							}.Build(),
 						},
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 				userDataSecretName: "test-explicit-fields-user-data",
+				hubNamespace:       hubNamespace,
+				hubClient:          fakeClient,
 			}
 
 			spec, err := task.buildSpec(ctx)
@@ -138,14 +186,38 @@ var _ = Describe("buildSpec", func() {
 		It("Excludes explicit fields from spec map when not set", func() {
 			ctx := context.Background()
 			template := "osac.templates.ocp_virt_vm"
+
+			// Set up fake client with subnet CR
+			hubNamespace := "test-hub"
+			subnetID := "test-subnet"
+			subnetCR := &osacv1alpha1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: hubNamespace,
+					Name:      "test-sn",
+					Labels:    map[string]string{labels.SubnetUuid: subnetID},
+				},
+			}
+			scheme := runtime.NewScheme()
+			Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(subnetCR).
+				Build()
+
 			task := &task{
 				r: &function{logger: logger},
 				computeInstance: privatev1.ComputeInstance_builder{
 					Id: "test-no-explicit-fields",
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template,
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
+						},
 					}.Build(),
 				}.Build(),
+				hubNamespace: hubNamespace,
+				hubClient:    fakeClient,
 			}
 
 			spec, err := task.buildSpec(ctx)
@@ -168,6 +240,25 @@ var _ = Describe("buildSpec", func() {
 			memory, err := anypb.New(wrapperspb.String("2Gi"))
 			Expect(err).ToNot(HaveOccurred())
 			template := "osac.templates.ocp_virt_vm"
+
+			// Set up fake client with subnet CR
+			hubNamespace := "test-hub"
+			subnetID := "test-subnet"
+			subnetCR := &osacv1alpha1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: hubNamespace,
+					Name:      "test-sn",
+					Labels:    map[string]string{labels.SubnetUuid: subnetID},
+				},
+			}
+			scheme := runtime.NewScheme()
+			Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(subnetCR).
+				Build()
+
 			task := &task{
 				r: &function{logger: logger},
 				computeInstance: privatev1.ComputeInstance_builder{
@@ -178,9 +269,14 @@ var _ = Describe("buildSpec", func() {
 							"cpu_cores": cpuCores,
 							"memory":    memory,
 						},
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
+						},
 						// No RestartRequestedAt set
 					}.Build(),
 				}.Build(),
+				hubNamespace: hubNamespace,
+				hubClient:    fakeClient,
 			}
 
 			// Call the actual buildSpec function
@@ -614,21 +710,21 @@ var _ = Describe("buildSpec with subnetRef", func() {
 		ctx = context.Background()
 	})
 
-	It("should set networkAttachments when legacy subnet field present and Subnet CR exists", func() {
+	// Legacy subnet test cases removed - these fields are no longer supported
+
+	It("should not set subnetRef when no subnet field", func() {
+		subnetID := "test-subnet"
 		subnetCR := &osacv1alpha1.Subnet{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: hubNamespace,
-				Name:      subnetCRName,
-				Labels: map[string]string{
-					labels.SubnetUuid: subnetID,
-				},
+				Name:      "test-sn",
+				Labels:    map[string]string{labels.SubnetUuid: subnetID},
 			},
 		}
 
 		scheme := runtime.NewScheme()
 		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
 		Expect(corev1.AddToScheme(scheme)).To(Succeed())
-
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(subnetCR).
@@ -641,97 +737,9 @@ var _ = Describe("buildSpec with subnetRef", func() {
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
 					Template: template,
-					Subnet:   proto.String(subnetID),
-				}.Build(),
-			}.Build(),
-			hubNamespace: hubNamespace,
-			hubClient:    fakeClient,
-		}
-
-		spec, err := t.buildSpec(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(spec.NetworkAttachments).To(HaveLen(1))
-		Expect(spec.NetworkAttachments[0].SubnetRef).To(Equal(subnetCRName))
-		Expect(spec.NetworkAttachments[0].SecurityGroupRefs).To(BeEmpty())
-	})
-
-	It("should set networkAttachments with security groups when legacy subnet and security_groups fields present", func() {
-		subnetCR := &osacv1alpha1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: hubNamespace,
-				Name:      subnetCRName,
-				Labels: map[string]string{
-					labels.SubnetUuid: subnetID,
-				},
-			},
-		}
-
-		sgCR1 := &osacv1alpha1.SecurityGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: hubNamespace,
-				Name:      "sg-cr-1",
-				Labels: map[string]string{
-					labels.SecurityGroupUuid: "sg-123",
-				},
-			},
-		}
-
-		sgCR2 := &osacv1alpha1.SecurityGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: hubNamespace,
-				Name:      "sg-cr-2",
-				Labels: map[string]string{
-					labels.SecurityGroupUuid: "sg-456",
-				},
-			},
-		}
-
-		scheme := runtime.NewScheme()
-		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
-		Expect(corev1.AddToScheme(scheme)).To(Succeed())
-
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithObjects(subnetCR, sgCR1, sgCR2).
-			Build()
-
-		template := "osac.templates.ocp_virt_vm"
-		t := &task{
-			r: &function{logger: logger},
-			computeInstance: privatev1.ComputeInstance_builder{
-				Id: "test-instance",
-				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template:       template,
-					Subnet:         proto.String(subnetID),
-					SecurityGroups: []string{"sg-123", "sg-456"},
-				}.Build(),
-			}.Build(),
-			hubNamespace: hubNamespace,
-			hubClient:    fakeClient,
-		}
-
-		spec, err := t.buildSpec(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(spec.NetworkAttachments).To(HaveLen(1))
-		Expect(spec.NetworkAttachments[0].SubnetRef).To(Equal(subnetCRName))
-		Expect(spec.NetworkAttachments[0].SecurityGroupRefs).To(Equal([]string{"sg-cr-1", "sg-cr-2"}))
-	})
-
-	It("should not set subnetRef when no subnet field", func() {
-		scheme := runtime.NewScheme()
-		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
-		Expect(corev1.AddToScheme(scheme)).To(Succeed())
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			Build()
-
-		template := "osac.templates.ocp_virt_vm"
-		t := &task{
-			r: &function{logger: logger},
-			computeInstance: privatev1.ComputeInstance_builder{
-				Id: "test-instance",
-				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template: template,
+					NetworkAttachments: []*privatev1.NetworkAttachment{
+						privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
+					},
 				}.Build(),
 			}.Build(),
 			hubNamespace: hubNamespace,
@@ -741,123 +749,6 @@ var _ = Describe("buildSpec with subnetRef", func() {
 		spec, err := t.buildSpec(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(spec.SubnetRef).To(BeEmpty())
-	})
-
-	It("should return error when Subnet CR not found", func() {
-		scheme := runtime.NewScheme()
-		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
-		Expect(corev1.AddToScheme(scheme)).To(Succeed())
-
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			Build()
-
-		template := "osac.templates.ocp_virt_vm"
-		t := &task{
-			r: &function{logger: logger},
-			computeInstance: privatev1.ComputeInstance_builder{
-				Id: "test-instance",
-				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template: template,
-					Subnet:   proto.String(subnetID),
-				}.Build(),
-			}.Build(),
-			hubNamespace: hubNamespace,
-			hubClient:    fakeClient,
-		}
-
-		_, err := t.buildSpec(ctx)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("Subnet CR not found"))
-	})
-
-	It("should return error when multiple Subnet CRs exist", func() {
-		subnetCR1 := &osacv1alpha1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: hubNamespace,
-				Name:      "subnet-1",
-				Labels: map[string]string{
-					labels.SubnetUuid: subnetID,
-				},
-			},
-		}
-
-		subnetCR2 := &osacv1alpha1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: hubNamespace,
-				Name:      "subnet-2",
-				Labels: map[string]string{
-					labels.SubnetUuid: subnetID,
-				},
-			},
-		}
-
-		scheme := runtime.NewScheme()
-		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
-		Expect(corev1.AddToScheme(scheme)).To(Succeed())
-
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithObjects(subnetCR1, subnetCR2).
-			Build()
-
-		template := "osac.templates.ocp_virt_vm"
-		t := &task{
-			r: &function{logger: logger},
-			computeInstance: privatev1.ComputeInstance_builder{
-				Id: "test-instance",
-				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template: template,
-					Subnet:   proto.String(subnetID),
-				}.Build(),
-			}.Build(),
-			hubNamespace: hubNamespace,
-			hubClient:    fakeClient,
-		}
-
-		_, err := t.buildSpec(ctx)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("failed to look up Subnet CR"))
-	})
-
-	It("should return error when legacy SecurityGroup CR not found", func() {
-		subnetCR := &osacv1alpha1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: hubNamespace,
-				Name:      subnetCRName,
-				Labels: map[string]string{
-					labels.SubnetUuid: subnetID,
-				},
-			},
-		}
-
-		scheme := runtime.NewScheme()
-		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
-		Expect(corev1.AddToScheme(scheme)).To(Succeed())
-
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithObjects(subnetCR).
-			Build()
-
-		template := "osac.templates.ocp_virt_vm"
-		t := &task{
-			r: &function{logger: logger},
-			computeInstance: privatev1.ComputeInstance_builder{
-				Id: "test-instance",
-				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template:       template,
-					Subnet:         proto.String(subnetID),
-					SecurityGroups: []string{"sg-missing"},
-				}.Build(),
-			}.Build(),
-			hubNamespace: hubNamespace,
-			hubClient:    fakeClient,
-		}
-
-		_, err := t.buildSpec(ctx)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("SecurityGroup CR not found"))
 	})
 
 	It("should populate two networkAttachments and omit top-level subnetRef for multi-NIC", func() {
