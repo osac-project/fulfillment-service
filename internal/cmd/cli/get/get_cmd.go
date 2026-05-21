@@ -80,10 +80,10 @@ func Cmd() *cobra.Command {
 		"CEL expression used for filtering results.",
 	)
 	flags.BoolVar(
-		&runner.args.includeDeleted,
-		"include-deleted",
-		false,
-		"Include deleted objects.",
+		&runner.args.includeDeleting,
+		"include-deleting",
+		true,
+		"Include objects that are being deleted.",
 	)
 	flags.BoolVarP(
 		&runner.args.watch,
@@ -97,10 +97,10 @@ func Cmd() *cobra.Command {
 
 type runnerContext struct {
 	args struct {
-		format         string
-		filter         string
-		includeDeleted bool
-		watch          bool
+		format          string
+		filter          string
+		includeDeleting bool
+		watch           bool
 	}
 	ctx            context.Context
 	logger         *slog.Logger
@@ -229,8 +229,8 @@ func (c *runnerContext) list(ctx context.Context, keys []string) (results []prot
 		}
 	}
 
-	// Exclude deleted objects unless explicitly requested.
-	if !c.args.includeDeleted {
+	// Exclude objects being deleted unless explicitly requested.
+	if !c.args.includeDeleting {
 		const notDeletedFilter = "!has(this.metadata.deletion_timestamp)"
 		if options.Filter != "" {
 			options.Filter = fmt.Sprintf("%s && (%s)", notDeletedFilter, options.Filter)
@@ -259,7 +259,7 @@ func (c *runnerContext) renderTable(ctx context.Context, objects []proto.Message
 		SetLogger(c.logger).
 		SetHelper(c.globalHelper).
 		SetWriter(c.console).
-		SetIncludeDeleted(c.args.includeDeleted).
+		SetIncludeDeleting(c.args.includeDeleting).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create table renderer: %w", err)
