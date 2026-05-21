@@ -65,7 +65,13 @@ func (r *ListRequest[O]) Do(ctx context.Context) (response *ListResponse[O], err
 
 func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err error) {
 	// Add tenant visibility filter:
-	err = r.addTenancyFilter(ctx)
+	err = r.addTenantFilter(ctx)
+	if err != nil {
+		return
+	}
+
+	// Add project visibility filter:
+	err = r.addProjectFilter(ctx)
 	if err != nil {
 		return
 	}
@@ -120,6 +126,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 			finalizers,
 			creator,
 			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -177,6 +184,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				finalizers      []string
 				creator         string
 				tenant          string
+				project         string
 				labelsData      []byte
 				annotationsData []byte
 				version         int32
@@ -190,6 +198,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				&finalizers,
 				&creator,
 				&tenant,
+				&project,
 				&labelsData,
 				&annotationsData,
 				&version,
@@ -219,6 +228,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				finalizers:  finalizers,
 				creator:     creator,
 				tenant:      tenant,
+				project:     project,
 				name:        name,
 				labels:      labels,
 				annotations: annotations,

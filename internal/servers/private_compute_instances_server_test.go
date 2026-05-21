@@ -98,7 +98,8 @@ var _ = Describe("Private compute instances server", func() {
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
 			Metadata: privatev1.Metadata_builder{
-				Tenant: auth.SharedTenant,
+				Tenant:  auth.SharedTenant,
+				Project: auth.DefaultProject,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -125,7 +126,8 @@ var _ = Describe("Private compute instances server", func() {
 
 		vn := privatev1.VirtualNetwork_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenant: auth.SharedTenant,
+				Tenant:  auth.SharedTenant,
+				Project: auth.DefaultProject,
 			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Ipv4Cidr:     proto.String("10.0.0.0/16"),
@@ -151,7 +153,8 @@ var _ = Describe("Private compute instances server", func() {
 
 		subnet := privatev1.Subnet_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenant: auth.SharedTenant,
+				Tenant:  auth.SharedTenant,
+				Project: auth.DefaultProject,
 			}.Build(),
 			Spec: privatev1.SubnetSpec_builder{
 				VirtualNetwork: vnID,
@@ -177,7 +180,8 @@ var _ = Describe("Private compute instances server", func() {
 
 		sg := privatev1.SecurityGroup_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenant: auth.SharedTenant,
+				Tenant:  auth.SharedTenant,
+				Project: auth.DefaultProject,
 			}.Build(),
 			Spec: privatev1.SecurityGroupSpec_builder{
 				VirtualNetwork: vnID,
@@ -266,7 +270,8 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Test Template",
 				Description: "Test template for validation",
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{
@@ -799,7 +804,8 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "No Defaults Template",
 				Description: "Template without spec defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 			}.Build()
 			_, err = templatesDao.Create().SetObject(template).Do(ctx)
@@ -839,7 +845,8 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Bare Template",
 				Description: "Template without defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 			}.Build()
 			_, err = templatesDao.Create().SetObject(template).Do(ctx)
@@ -881,7 +888,8 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Partial Defaults Template",
 				Description: "Template with partial spec defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 				SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
 					Cores:       proto.Int32(2),
@@ -937,8 +945,9 @@ var _ = Describe("Private compute instances server", func() {
 					privatev1.ComputeInstanceCatalogItem_builder{
 						Id: id,
 						Metadata: privatev1.Metadata_builder{
-							Name:   id + "-name",
-							Tenant: "shared",
+							Name:    id + "-name",
+							Tenant:  "shared",
+							Project: auth.DefaultProject,
 						}.Build(),
 						Title:            "Test CI Catalog Item",
 						Published:        published,
@@ -1162,7 +1171,8 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Test Template",
 				Description: "Test template for network validation",
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{

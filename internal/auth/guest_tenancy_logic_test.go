@@ -63,4 +63,28 @@ var _ = Describe("Guest tenancy logic", func() {
 			Expect(result.Equal(GuestTenants.Union(SharedTenants))).To(BeTrue())
 		})
 	})
+
+	Describe("Determine assignable projects", func() {
+		It("Should return the universal set", func() {
+			result, err := logic.DetermineAssignableProjects(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Universal()).To(BeTrue())
+		})
+	})
+
+	Describe("Determine default project", func() {
+		It("Should return the default project", func() {
+			result, err := logic.DetermineDefaultProject(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal(DefaultProject))
+		})
+	})
+
+	Describe("Determine visible projects", func() {
+		It("Should return the universal set", func() {
+			result, err := logic.DetermineVisibleProjects(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Universal()).To(BeTrue())
+		})
+	})
 })

@@ -28,7 +28,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
-var _ = Describe("Tenancy logic", func() {
+var _ = Describe("Tenant visibility", func() {
 	var (
 		ctx  context.Context
 		tx   database.Tx
@@ -79,6 +79,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_a", "tenant_c"), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
@@ -91,7 +94,8 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant:  "tenant_a",
+					Project: "my-project",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -140,6 +144,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
@@ -152,7 +159,8 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant:  "tenant_a",
+					Project: "my-project",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -167,6 +175,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_x"), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the DAO:
 		dao, err := NewGenericDAO[*testsv1.Object]().
@@ -179,7 +190,8 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_y",
+					Tenant:  "tenant_y",
+					Project: "my-project",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -208,6 +220,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_a"), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
 			SetTenancyLogic(tenancy).
@@ -218,7 +233,8 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant:  "tenant_a",
+					Project: "my-project",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -246,6 +262,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancyA.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_a"), nil).
 			AnyTimes()
+		tenancyA.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 		daoA, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
 			SetTenancyLogic(tenancyA).
@@ -256,7 +275,8 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := daoA.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant:  "tenant_a",
+					Project: "my-project",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -268,6 +288,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancyB := auth.NewMockTenancyLogic(ctrl)
 		tenancyB.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_b"), nil).
+			AnyTimes()
+		tenancyB.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
 		daoB, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -295,6 +318,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_a"), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
 			SetTenancyLogic(tenancy).
@@ -305,7 +331,8 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant:  "tenant_a",
+					Project: "my-project",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -334,6 +361,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancyA.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_a"), nil).
 			AnyTimes()
+		tenancyA.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the DAO for tenant A and insert the object:
 		daoA, err := NewGenericDAO[*testsv1.Object]().
@@ -344,7 +374,8 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := daoA.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant:  "tenant_a",
+					Project: "my-project",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -356,6 +387,9 @@ var _ = Describe("Tenancy logic", func() {
 		tenancyB := auth.NewMockTenancyLogic(ctrl)
 		tenancyB.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("tenant_b"), nil).
+			AnyTimes()
+		tenancyB.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
 		daoB, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).

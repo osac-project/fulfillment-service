@@ -248,6 +248,11 @@ var _ = Describe("Filter translator", func() {
 			`tenant = 'my_tenant'`,
 		),
 		Entry(
+			"Filter by project",
+			`this.metadata.project == 'my_project'`,
+			`project = 'my_project'`,
+		),
+		Entry(
 			"Translates 'in' with empty list into false",
 			"this.id in []",
 			"false",

@@ -75,6 +75,9 @@ var _ = Describe("Generic DAO events", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 	})
 
 	// runWithTx starts a transaction, runs the given function using it, and ends the transaction when it finishes.
@@ -103,7 +106,8 @@ var _ = Describe("Generic DAO events", func() {
 			_, err = generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 				}).
 				Do(ctx)
@@ -132,7 +136,8 @@ var _ = Describe("Generic DAO events", func() {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 				}).
 				Do(ctx)
@@ -148,7 +153,8 @@ var _ = Describe("Generic DAO events", func() {
 				SetObject(&privatev1.Cluster{
 					Id: object.Id,
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 					Status: &privatev1.ClusterStatus{
 						ApiUrl: "https://api.example.com",
@@ -179,7 +185,8 @@ var _ = Describe("Generic DAO events", func() {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 				}).
 				Do(ctx)
@@ -214,7 +221,8 @@ var _ = Describe("Generic DAO events", func() {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 				}).
 				Do(ctx)
@@ -244,7 +252,8 @@ var _ = Describe("Generic DAO events", func() {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 				}).
 				Do(ctx)
@@ -298,7 +307,8 @@ var _ = Describe("Generic DAO events", func() {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 					Status: &privatev1.ClusterStatus{
 						ApiUrl: "https://my.api",
@@ -326,7 +336,8 @@ var _ = Describe("Generic DAO events", func() {
 				SetObject(&privatev1.Cluster{
 					Id: object.GetId(),
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 					Status: &privatev1.ClusterStatus{
 						ApiUrl: "https://your.api",
@@ -374,7 +385,8 @@ var _ = Describe("Generic DAO events", func() {
 			_, err = generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 				}).
 				Do(ctx)
@@ -405,7 +417,8 @@ var _ = Describe("Generic DAO events", func() {
 			_, err = generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: "my-project",
 					}.Build(),
 				}).
 				Do(ctx)
@@ -435,7 +448,8 @@ var _ = Describe("Generic DAO events", func() {
 				SetObject(
 					privatev1.Cluster_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "my-tenant",
+							Tenant:  "my-tenant",
+							Project: "my-project",
 							Finalizers: []string{
 								"my-finalizer",
 							},

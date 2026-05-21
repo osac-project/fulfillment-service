@@ -52,7 +52,13 @@ func (r *ExistsRequest[O]) Do(ctx context.Context) (response *ExistsResponse, er
 
 func (r *ExistsRequest[O]) do(ctx context.Context) (response *ExistsResponse, err error) {
 	// Add the tenancy filter:
-	err = r.addTenancyFilter(ctx)
+	err = r.addTenantFilter(ctx)
+	if err != nil {
+		return
+	}
+
+	// Add the project filter:
+	err = r.addProjectFilter(ctx)
 	if err != nil {
 		return
 	}

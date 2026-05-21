@@ -41,6 +41,21 @@ func (m *MockTenancyLogic) EXPECT() *MockTenancyLogicMockRecorder {
 	return m.recorder
 }
 
+// DetermineAssignableProjects mocks base method.
+func (m *MockTenancyLogic) DetermineAssignableProjects(ctx context.Context) (collections.Set[string], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DetermineAssignableProjects", ctx)
+	ret0, _ := ret[0].(collections.Set[string])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DetermineAssignableProjects indicates an expected call of DetermineAssignableProjects.
+func (mr *MockTenancyLogicMockRecorder) DetermineAssignableProjects(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineAssignableProjects", reflect.TypeOf((*MockTenancyLogic)(nil).DetermineAssignableProjects), ctx)
+}
+
 // DetermineAssignableTenants mocks base method.
 func (m *MockTenancyLogic) DetermineAssignableTenants(ctx context.Context) (collections.Set[string], error) {
 	m.ctrl.T.Helper()
@@ -56,6 +71,21 @@ func (mr *MockTenancyLogicMockRecorder) DetermineAssignableTenants(ctx any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineAssignableTenants", reflect.TypeOf((*MockTenancyLogic)(nil).DetermineAssignableTenants), ctx)
 }
 
+// DetermineDefaultProject mocks base method.
+func (m *MockTenancyLogic) DetermineDefaultProject(ctx context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DetermineDefaultProject", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DetermineDefaultProject indicates an expected call of DetermineDefaultProject.
+func (mr *MockTenancyLogicMockRecorder) DetermineDefaultProject(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineDefaultProject", reflect.TypeOf((*MockTenancyLogic)(nil).DetermineDefaultProject), ctx)
+}
+
 // DetermineDefaultTenant mocks base method.
 func (m *MockTenancyLogic) DetermineDefaultTenant(ctx context.Context) (string, error) {
 	m.ctrl.T.Helper()
@@ -69,6 +99,21 @@ func (m *MockTenancyLogic) DetermineDefaultTenant(ctx context.Context) (string, 
 func (mr *MockTenancyLogicMockRecorder) DetermineDefaultTenant(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineDefaultTenant", reflect.TypeOf((*MockTenancyLogic)(nil).DetermineDefaultTenant), ctx)
+}
+
+// DetermineVisibleProjects mocks base method.
+func (m *MockTenancyLogic) DetermineVisibleProjects(ctx context.Context) (collections.Set[string], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DetermineVisibleProjects", ctx)
+	ret0, _ := ret[0].(collections.Set[string])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DetermineVisibleProjects indicates an expected call of DetermineVisibleProjects.
+func (mr *MockTenancyLogicMockRecorder) DetermineVisibleProjects(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineVisibleProjects", reflect.TypeOf((*MockTenancyLogic)(nil).DetermineVisibleProjects), ctx)
 }
 
 // DetermineVisibleTenants mocks base method.

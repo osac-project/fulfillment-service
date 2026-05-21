@@ -79,6 +79,9 @@ var _ = Describe("Version", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the DAO:
 		generic, err = NewGenericDAO[*testsv1.Object]().
@@ -101,7 +104,7 @@ var _ = Describe("Version", func() {
 		response, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant", Project: "my-project"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -116,7 +119,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant", Project: "my-project"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -136,7 +139,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant", Project: "my-project"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -157,7 +160,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant", Project: "my-project"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -191,7 +194,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant", Project: "my-project"}.Build(),
 					MyInt32:  0,
 				}.Build(),
 			).
@@ -215,7 +218,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant", Project: "my-project"}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -253,7 +256,7 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant", Project: "my-project"}.Build(),
 					MyString: "v0",
 				}.Build(),
 			).

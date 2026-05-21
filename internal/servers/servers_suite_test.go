@@ -72,6 +72,15 @@ var _ = BeforeSuite(func() {
 	tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 		Return(collections.NewUniversalSet[string](), nil).
 		AnyTimes()
+	tenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+		Return(collections.NewUniversalSet[string](), nil).
+		AnyTimes()
+	tenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+		Return(auth.DefaultProject, nil).
+		AnyTimes()
+	tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+		Return(collections.NewUniversalSet[string](), nil).
+		AnyTimes()
 
 	// Create the set of visible tenants:
 	visibility = collections.NewUniversalSet[string]()

@@ -95,7 +95,8 @@ var _ = Describe("Private public IPs server", func() {
 		resp, err := publicIPPoolDao.Create().SetObject(
 			privatev1.PublicIPPool_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 				Spec: privatev1.PublicIPPoolSpec_builder{
 					Cidrs: []string{"10.0.0.0/24"},
@@ -478,7 +479,8 @@ var _ = Describe("Private public IPs server", func() {
 			resp, err := publicIPPoolDao.Create().SetObject(
 				privatev1.PublicIPPool_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant:  auth.SharedTenant,
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.PublicIPPoolSpec_builder{
 						Cidrs: []string{"10.0.0.0/24"},

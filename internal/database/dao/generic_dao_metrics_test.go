@@ -83,6 +83,9 @@ var _ = Describe("Metrics", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the DAO with metrics enabled:
 		dao, err = NewGenericDAO[*testsv1.Object]().
@@ -98,9 +101,10 @@ var _ = Describe("Metrics", func() {
 			_, err := dao.Create().
 				SetObject(
 					testsv1.Object_builder{
-						Metadata: testsv1.Metadata_builder{
-							Tenant: "my-tenant",
-						}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 					}.Build(),
 				).
 				Do(ctx)
@@ -116,9 +120,10 @@ var _ = Describe("Metrics", func() {
 			_, err := dao.Create().
 				SetObject(
 					testsv1.Object_builder{
-						Metadata: testsv1.Metadata_builder{
-							Tenant: "my-tenant",
-						}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 					}.Build(),
 				).
 				Do(ctx)
@@ -134,9 +139,10 @@ var _ = Describe("Metrics", func() {
 			_, err := dao.Create().
 				SetObject(
 					testsv1.Object_builder{
-						Metadata: testsv1.Metadata_builder{
-							Tenant: "my-tenant",
-						}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 					}.Build(),
 				).
 				Do(ctx)
@@ -150,9 +156,10 @@ var _ = Describe("Metrics", func() {
 
 		It("Includes error code label for failed operations", func() {
 			object := testsv1.Object_builder{
-				Metadata: testsv1.Metadata_builder{
-					Tenant: "my-tenant",
-				}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 			}.Build()
 			object.SetId("duplicate")
 			_, err := dao.Create().
@@ -187,9 +194,10 @@ var _ = Describe("Metrics", func() {
 					_, err := dao.Create().
 						SetObject(
 							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-								}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 							}.Build(),
 						).
 						Do(ctx)
@@ -203,9 +211,10 @@ var _ = Describe("Metrics", func() {
 					response, err := dao.Create().
 						SetObject(
 							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-								}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 							}.Build(),
 						).
 						Do(ctx)
@@ -241,9 +250,10 @@ var _ = Describe("Metrics", func() {
 					response, err := dao.Create().
 						SetObject(
 							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-								}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 							}.Build(),
 						).
 						Do(ctx)
@@ -263,9 +273,10 @@ var _ = Describe("Metrics", func() {
 					response, err := dao.Create().
 						SetObject(
 							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-								}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 							}.Build(),
 						).
 						Do(ctx)
@@ -283,9 +294,10 @@ var _ = Describe("Metrics", func() {
 					response, err := dao.Create().
 						SetObject(
 							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-								}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 							}.Build(),
 						).
 						Do(ctx)
@@ -303,9 +315,10 @@ var _ = Describe("Metrics", func() {
 					response, err := dao.Create().
 						SetObject(
 							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-								}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 							}.Build(),
 						).
 						Do(ctx)
@@ -323,9 +336,10 @@ var _ = Describe("Metrics", func() {
 					response, err := dao.Create().
 						SetObject(
 							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-								}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 							}.Build(),
 						).
 						Do(ctx)
@@ -343,9 +357,10 @@ var _ = Describe("Metrics", func() {
 				_, err := dao.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-							}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
@@ -368,9 +383,10 @@ var _ = Describe("Metrics", func() {
 			_, err = noMetricsDao.Create().
 				SetObject(
 					testsv1.Object_builder{
-						Metadata: testsv1.Metadata_builder{
-							Tenant: "my-tenant",
-						}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant:  "my-tenant",
+						Project: "my-project",
+					}.Build(),
 					}.Build(),
 				).
 				Do(ctx)

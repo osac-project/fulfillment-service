@@ -64,6 +64,7 @@ type EventsServer struct {
 type eventsServerSubInfo struct {
 	stream     grpc.ServerStreamingServer[publicv1.EventsWatchResponse]
 	tenants    collections.Set[string]
+	projects   collections.Set[string]
 	filterSrc  string
 	filterPrg  cel.Program
 	eventsChan chan *publicv1.Event
@@ -97,6 +98,10 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 	}
 	if b.listener == nil {
 		err = errors.New("listener is mandatory")
+		return
+	}
+	if b.tenancyLogic == nil {
+		err = errors.New("tenancy logic is mandatory")
 		return
 	}
 
@@ -180,11 +185,24 @@ func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
 	// Get the context:
 	ctx := stream.Context()
 
-	// Get the subject:
+	// Determine the visible tenants and projects.
 	tenants, err := s.tenancyLogic.DetermineVisibleTenants(ctx)
 	if err != nil {
-		err = fmt.Errorf("failed to determine visible tenants: %w", err)
-		return
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine visible tenants",
+			slog.Any("error", err),
+		)
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to determine visible tenants")
+	}
+	projects, err := s.tenancyLogic.DetermineVisibleProjects(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine visible projects",
+			slog.Any("error", err),
+		)
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to determine visible projects")
 	}
 
 	// Compile the filter expression:
@@ -220,6 +238,7 @@ func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
 	subInfo := eventsServerSubInfo{
 		stream:     stream,
 		tenants:    tenants,
+		projects:   projects,
 		filterSrc:  filterSrc,
 		filterPrg:  filterPrg,
 		eventsChan: make(chan *publicv1.Event),
@@ -319,11 +338,6 @@ func (s *EventsServer) processPayload(ctx context.Context, payload proto.Message
 	return s.processEvent(ctx, public, private)
 }
 
-func (s *EventsServer) extractTenant(ctx context.Context, event *privatev1.Event) string {
-	metadata := s.extractMetadata(ctx, event)
-	return metadata.GetTenant()
-}
-
 func (s *EventsServer) extractMetadata(ctx context.Context, event *privatev1.Event) *privatev1.Metadata {
 	switch {
 	case event.HasCluster():
@@ -369,8 +383,10 @@ func (s *EventsServer) processEvent(ctx context.Context, public *publicv1.Event,
 		accepted := true
 
 		// Check if the user has permission to see the event:
-		tenant := s.extractTenant(ctx, private)
-		visible := sub.tenants.Contains(tenant)
+		metadata := s.extractMetadata(ctx, private)
+		tenant := metadata.GetTenant()
+		project := metadata.GetProject()
+		visible := sub.tenants.Contains(tenant) && sub.projects.Contains(project)
 		if !visible {
 			continue
 		}

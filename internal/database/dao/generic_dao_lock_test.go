@@ -77,6 +77,9 @@ var _ = Describe("Lock", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 		DeferCleanup(ctrl.Finish)
 
 		// Create the DAO:

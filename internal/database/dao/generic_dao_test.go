@@ -93,6 +93,9 @@ var _ = Describe("Generic DAO", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 	})
 
 	Describe("Creation", func() {
@@ -198,6 +201,7 @@ var _ = Describe("Generic DAO", func() {
 			object := &testsv1.Object{
 				Metadata: &testsv1.Metadata{
 					Tenant: "my-tenant",
+					Project: "my-project",
 				},
 			}
 			createResponse, err := generic.Create().
@@ -219,6 +223,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -240,6 +245,7 @@ var _ = Describe("Generic DAO", func() {
 			object := &testsv1.Object{
 				Metadata: &testsv1.Metadata{
 					Tenant: "my-tenant",
+					Project: "my-project",
 				},
 			}
 			response, err := generic.Create().
@@ -256,6 +262,7 @@ var _ = Describe("Generic DAO", func() {
 				Metadata: &testsv1.Metadata{
 					Creator: "my-user",
 					Tenant:  "my-tenant",
+					Project: "my-project",
 				},
 			}
 			response, err := generic.Create().
@@ -274,10 +281,35 @@ var _ = Describe("Generic DAO", func() {
 			Expect(object.GetMetadata().GetCreator()).To(Equal("my-user"))
 		})
 
+		It("Sets project when creating", func() {
+			// Create the object with a project and verify that the result has the project set:
+			object := &testsv1.Object{
+				Metadata: &testsv1.Metadata{
+					Project: "my-project",
+					Tenant:  "my-tenant",
+				},
+			}
+			response, err := generic.Create().
+				SetObject(object).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object = response.GetObject()
+			Expect(object.GetMetadata().GetProject()).To(Equal("my-project"))
+
+			// Get the object and verify that the result has the project set:
+			getResponse, err := generic.Get().
+				SetId(object.GetId()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			Expect(object.GetMetadata().GetProject()).To(Equal("my-project"))
+		})
+
 		It("Sets creation timestamp when creating", func() {
 			object := &testsv1.Object{
 				Metadata: &testsv1.Metadata{
 					Tenant: "my-tenant",
+					Project: "my-project",
 				},
 			}
 			response, err := generic.Create().
@@ -297,6 +329,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -314,6 +347,7 @@ var _ = Describe("Generic DAO", func() {
 				Metadata: &testsv1.Metadata{
 					Name:   "my-name",
 					Tenant: "my-tenant",
+					Project: "my-project",
 				},
 			}
 			response, err := generic.Create().
@@ -339,6 +373,7 @@ var _ = Describe("Generic DAO", func() {
 						"my-label": "my-value",
 					},
 					Tenant: "my-tenant",
+					Project: "my-project",
 				},
 			}
 			response, err := generic.Create().
@@ -367,6 +402,7 @@ var _ = Describe("Generic DAO", func() {
 						"my-annotation": "my-value",
 					},
 					Tenant: "my-tenant",
+					Project: "my-project",
 				},
 			}
 			response, err := generic.Create().
@@ -392,6 +428,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -406,6 +443,7 @@ var _ = Describe("Generic DAO", func() {
 			object := &testsv1.Object{
 				Metadata: &testsv1.Metadata{
 					Tenant: "my-tenant",
+					Project: "my-project",
 				},
 			}
 			_, err := generic.Create().
@@ -419,6 +457,7 @@ var _ = Describe("Generic DAO", func() {
 			object := &testsv1.Object{
 				Metadata: &testsv1.Metadata{
 					Tenant: "my-tenant",
+					Project: "my-project",
 				},
 			}
 			_, err := generic.Create().
@@ -437,6 +476,7 @@ var _ = Describe("Generic DAO", func() {
 						Id: id,
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -450,6 +490,7 @@ var _ = Describe("Generic DAO", func() {
 						Id: id,
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -466,6 +507,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -499,6 +541,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -527,6 +570,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: id,
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -555,6 +599,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -577,6 +622,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -602,6 +648,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 						MyString: "my value",
 						MyBool:   true,
@@ -672,6 +719,7 @@ var _ = Describe("Generic DAO", func() {
 						Metadata: testsv1.Metadata_builder{
 							Finalizers: []string{"a"},
 							Tenant:     "my-tenant",
+							Project: "my-project",
 						}.Build(),
 						MyString: "my value",
 						MyBool:   true,
@@ -758,7 +806,8 @@ var _ = Describe("Generic DAO", func() {
 							Annotations: map[string]string{
 								"my-annotation": "my-value",
 							},
-							Tenant: "my-tenant",
+							Tenant:  "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -814,6 +863,7 @@ var _ = Describe("Generic DAO", func() {
 						Metadata: testsv1.Metadata_builder{
 							Finalizers: []string{"a"},
 							Tenant:     "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -905,6 +955,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "b"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -926,6 +977,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "b"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -948,6 +1000,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -965,6 +1018,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build()).
 					Do(ctx)
@@ -981,6 +1035,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "b"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -998,6 +1053,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "a"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1014,6 +1070,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1036,6 +1093,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1059,6 +1117,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "b"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1081,6 +1140,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1110,6 +1170,7 @@ var _ = Describe("Generic DAO", func() {
 						Id: uuid.New(),
 						Metadata: &testsv1.Metadata{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						},
 					}
 					_, err := generic.Create().
@@ -1221,6 +1282,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1249,6 +1311,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 						MyString: "my_value",
 					}.Build(),
@@ -1273,6 +1336,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 						MyString: "my_value",
 					}.Build(),
@@ -1305,6 +1369,7 @@ var _ = Describe("Generic DAO", func() {
 						Metadata: testsv1.Metadata_builder{
 							Name:   "my-name",
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -1340,6 +1405,7 @@ var _ = Describe("Generic DAO", func() {
 								"my-label": "my-value",
 							},
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -1378,6 +1444,7 @@ var _ = Describe("Generic DAO", func() {
 								"my-annotation": "my-value",
 							},
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -1412,6 +1479,7 @@ var _ = Describe("Generic DAO", func() {
 						Metadata: testsv1.Metadata_builder{
 							Finalizers: []string{"my-finalizer"},
 							Tenant:     "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -1440,6 +1508,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 					}.Build(),
 				).
@@ -1463,6 +1532,95 @@ var _ = Describe("Generic DAO", func() {
 			Expect(object.GetMetadata().GetTenant()).To(Equal("your-tenant"))
 		})
 
+		It("Rejects updating object with empty tenant", func() {
+			response, err := generic.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant:  "my-tenant",
+							Project: "my-project",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object := response.GetObject()
+
+			object.GetMetadata().SetTenant("")
+			_, err = generic.Update().
+				SetObject(object).
+				Do(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("empty tenant"))
+		})
+
+		It("Updates project", func() {
+			response, err := generic.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant:  "my-tenant",
+							Project: "my-project",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object := response.GetObject()
+
+			object.GetMetadata().SetProject("your-project")
+			updateResponse, err := generic.Update().
+				SetObject(object).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			object = updateResponse.GetObject()
+			Expect(object.GetMetadata().GetProject()).To(Equal("your-project"))
+
+			getResponse, err := generic.Get().
+				SetId(object.GetId()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			Expect(object.GetMetadata().GetProject()).To(Equal("your-project"))
+		})
+
+		It("Rejects creating object with empty project", func() {
+			_, err := generic.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("empty project"))
+		})
+
+		It("Rejects updating object with empty project", func() {
+			response, err := generic.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant:  "my-tenant",
+							Project: "my-project",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object := response.GetObject()
+
+			object.GetMetadata().SetProject("")
+			_, err = generic.Update().
+				SetObject(object).
+				Do(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("empty project"))
+		})
+
 		It("Returns not found error when updating object that doesn't exist", func() {
 			_, err := generic.Update().
 				SetObject(
@@ -1470,6 +1628,7 @@ var _ = Describe("Generic DAO", func() {
 						Id: "does-not-exist",
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Project: "my-project",
 						}.Build(),
 						MyString: "some-value",
 					}.Build(),
@@ -1490,6 +1649,7 @@ var _ = Describe("Generic DAO", func() {
 								Id: fmt.Sprintf("%d", i),
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Project: "my-project",
 								}.Build(),
 							}.Build(),
 						).
@@ -1513,6 +1673,7 @@ var _ = Describe("Generic DAO", func() {
 								Id: fmt.Sprintf("%d", i),
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Project: "my-project",
 								}.Build(),
 							}.Build(),
 						).
@@ -1540,6 +1701,7 @@ var _ = Describe("Generic DAO", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Project: "my-project",
 								}.Build(),
 								MyString: fmt.Sprintf("my_value_%d", i),
 							}.Build(),
@@ -1564,6 +1726,7 @@ var _ = Describe("Generic DAO", func() {
 								Id: fmt.Sprintf("%d", i),
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Project: "my-project",
 								}.Build(),
 								MyString: fmt.Sprintf("my_value_%d", i),
 							}.Build(),
@@ -1592,6 +1755,7 @@ var _ = Describe("Generic DAO", func() {
 								Id: fmt.Sprintf("%d", i),
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Project: "my-project",
 								}.Build(),
 								MyString: fmt.Sprintf("my_value_%d", i),
 							}.Build(),
@@ -1616,6 +1780,7 @@ var _ = Describe("Generic DAO", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Project: "my-project",
 								}.Build(),
 								MyInt32: int32(i),
 							}.Build(),
@@ -1638,6 +1803,7 @@ var _ = Describe("Generic DAO", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Project: "my-project",
 								}.Build(),
 								Spec: testsv1.Spec_builder{
 									SpecString: fmt.Sprintf("my_value_%d", i),
@@ -1665,6 +1831,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1692,6 +1859,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1719,6 +1887,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "old",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyTimestamp: timestamppb.New(now.Add(-time.Minute)),
 						}.Build(),
@@ -1731,6 +1900,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "new",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyTimestamp: timestamppb.New(now.Add(+time.Minute)),
 						}.Build(),
@@ -1755,6 +1925,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "old",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyTimestamp: timestamppb.New(now.Add(-time.Minute)),
 						}.Build(),
@@ -1767,6 +1938,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "new",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyTimestamp: timestamppb.New(now.Add(+time.Minute)),
 						}.Build(),
@@ -1790,6 +1962,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							Spec: testsv1.Spec_builder{}.Build(),
 						}.Build(),
@@ -1802,6 +1975,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							Spec: nil,
 						}.Build(),
@@ -1825,6 +1999,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "my value",
 						}.Build(),
@@ -1837,6 +2012,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "",
 						}.Build(),
@@ -1860,6 +2036,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1872,6 +2049,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1899,6 +2077,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1911,6 +2090,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -1937,6 +2117,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							Spec: testsv1.Spec_builder{
 								SpecString: "my value",
@@ -1951,6 +2132,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							Spec: testsv1.Spec_builder{
 								SpecString: "",
@@ -1976,6 +2158,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "my value",
 						}.Build(),
@@ -1988,6 +2171,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "your value",
 						}.Build(),
@@ -2011,6 +2195,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "value my",
 						}.Build(),
@@ -2023,6 +2208,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "value your",
 						}.Build(),
@@ -2046,6 +2232,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "my% value",
 						}.Build(),
@@ -2058,6 +2245,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "my value",
 						}.Build(),
@@ -2081,6 +2269,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "my_ value",
 						}.Build(),
@@ -2093,6 +2282,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 							MyString: "my value",
 						}.Build(),
@@ -2116,6 +2306,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "object_1",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -2127,6 +2318,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "object_2",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -2163,6 +2355,7 @@ var _ = Describe("Generic DAO", func() {
 									"mylabel": "myvalue",
 								},
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -2174,6 +2367,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "object_without_label",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -2199,6 +2393,7 @@ var _ = Describe("Generic DAO", func() {
 									"mylabel": "myvalue",
 								},
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).
@@ -2210,6 +2405,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "object_without_label",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Project: "my-project",
 							}.Build(),
 						}.Build(),
 					).

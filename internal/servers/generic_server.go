@@ -88,6 +88,8 @@ type metadataIface interface {
 	SetCreator(string)
 	GetTenant() string
 	SetTenant(string)
+	GetProject() string
+	SetProject(string)
 	GetVersion() int32
 }
 
@@ -444,6 +446,16 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 		return err
 	}
 
+	// Calculate the assigned project:
+	assignedProject, err := s.determineAssignedProject(ctx, requestObject)
+	if err != nil {
+		return err
+	}
+	err = s.setProject(ctx, requestObject, assignedProject)
+	if err != nil {
+		return err
+	}
+
 	// Save the object:
 	daoResponse, err := s.dao.Create().
 		SetObject(requestObject).
@@ -586,12 +598,32 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		}
 	}
 
-	// Calculate the tenant for the updated object:
-	assignedTenant, err := s.determineAssignedTenant(ctx, tmpObject, currentObject)
+	// Ensure that the tenant hasn't changed, as it is immutable after creation:
+	currentTenant := s.getTenant(currentObject)
+	requestTenant := s.getTenant(tmpObject)
+	if requestTenant != "" && requestTenant != currentTenant {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'metadata.tenant' is immutable and cannot be changed from '%s' to '%s'",
+			currentTenant, requestTenant,
+		)
+	}
+	err = s.setTenant(ctx, tmpObject, currentTenant)
 	if err != nil {
 		return err
 	}
-	err = s.setTenant(ctx, tmpObject, assignedTenant)
+
+	// Ensure that the project hasn't changed, as it is immutable after creation:
+	currentProject := s.getProject(currentObject)
+	requestProject := s.getProject(tmpObject)
+	if requestProject != "" && requestProject != currentProject {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'metadata.project' is immutable and cannot be changed from '%s' to '%s'",
+			currentProject, requestProject,
+		)
+	}
+	err = s.setProject(ctx, tmpObject, currentProject)
 	if err != nil {
 		return err
 	}
@@ -1145,6 +1177,90 @@ func (s *GenericServer[O]) setCreator(ctx context.Context, object O, creator str
 		s.setMetadata(object, metadata)
 	}
 	metadata.SetCreator(creator)
+	return nil
+}
+
+// determineAssignedProject calls the tenancy logic to determine which project will be assigned to an object that
+// is being created. If the request specifies a project it is validated against the visible and assignable sets,
+// otherwise the default project is used. In case of error it returns a gRPC error that can be directly returned
+// to the client.
+func (s *GenericServer[O]) determineAssignedProject(ctx context.Context, requestObject O) (result string,
+	err error) {
+	// Determine the projects that can be assigned to the object:
+	assignableProjects, err := s.tenancyLogic.DetermineAssignableProjects(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine assignable projects",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assignable projects")
+		return
+	}
+	if assignableProjects.Empty() {
+		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no assignable projects")
+		return
+	}
+
+	// Determine the default project:
+	defaultProject, err := s.tenancyLogic.DetermineDefaultProject(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine default project",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default project")
+		return
+	}
+	if defaultProject == "" {
+		err = grpcstatus.Errorf(grpccodes.Internal, "there is no default project")
+		return
+	}
+
+	// If the request specifies a project, check that it is assignable:
+	requestProject := s.getProject(requestObject)
+	if requestProject != "" {
+		if !assignableProjects.Contains(requestProject) {
+			s.logger.WarnContext(
+				ctx,
+				"User is trying to assign a project that is not assignable",
+				slog.String("requested", requestProject),
+			)
+			err = grpcstatus.Errorf(
+				grpccodes.PermissionDenied,
+				"project '%s' can't be assigned",
+				requestProject,
+			)
+			return
+		}
+		result = requestProject
+		return
+	}
+
+	// Fall back to the default project:
+	result = defaultProject
+	return
+}
+
+// getProject extracts the project from an object's metadata.
+func (s *GenericServer[O]) getProject(object O) string {
+	metadata := s.getMetadata(object)
+	if metadata == nil {
+		return ""
+	}
+	return metadata.GetProject()
+}
+
+// setProject sets the project in the object's metadata, creating the metadata if necessary. In case of error it
+// returns a gRPC error that can be directly returned to the client.
+func (s *GenericServer[O]) setProject(ctx context.Context, object O, project string) error {
+	metadata := s.getMetadata(object)
+	if metadata == nil {
+		metadata = s.newMetadata()
+		s.setMetadata(object, metadata)
+	}
+	metadata.SetProject(project)
 	return nil
 }
 

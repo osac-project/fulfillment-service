@@ -71,5 +71,25 @@ func (p *GuestTenancyLogic) DetermineVisibleTenants(_ context.Context) (result c
 	return
 }
 
+// DetermineAssignableProjects returns the universal set, as guest users have no project restrictions.
+func (p *GuestTenancyLogic) DetermineAssignableProjects(_ context.Context) (result collections.Set[string],
+	err error) {
+	result = AllProjects
+	return
+}
+
+// DetermineDefaultProject returns the well-known default project for guest users.
+func (p *GuestTenancyLogic) DetermineDefaultProject(_ context.Context) (result string, err error) {
+	result = DefaultProject
+	return
+}
+
+// DetermineVisibleProjects returns the universal set, as guest users have no project restrictions.
+func (p *GuestTenancyLogic) DetermineVisibleProjects(_ context.Context) (result collections.Set[string],
+	err error) {
+	result = AllProjects
+	return
+}
+
 // GuestTenants is the set of tenants that are assigned to guest users.
 var GuestTenants = collections.NewSet("guest")

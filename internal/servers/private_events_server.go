@@ -156,7 +156,7 @@ func (s *PrivateEventsServer) Watch(request *privatev1.EventsWatchRequest,
 	// Get the context:
 	ctx := stream.Context()
 
-	// Compile the filterPrg expression:
+	// Compile the filter expression:
 	var (
 		filterSrc string
 		filterPrg cel.Program

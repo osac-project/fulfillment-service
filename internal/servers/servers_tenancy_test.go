@@ -96,6 +96,15 @@ var _ = Describe("Tenancy logic", func() {
 				nil,
 			).
 			AnyTimes()
+		tenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+			Return(auth.DefaultProject, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the template using the DAO directly (this is setup for the test):
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
@@ -110,7 +119,8 @@ var _ = Describe("Tenancy logic", func() {
 					Title:       "My template",
 					Description: "My template",
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: auth.DefaultProject,
 					}.Build(),
 				}.Build(),
 			).
@@ -162,7 +172,8 @@ var _ = Describe("Tenancy logic", func() {
 				Title:       "My template",
 				Description: "My template",
 				Metadata: privatev1.Metadata_builder{
-					Tenant: "my-tenant",
+					Tenant:  "my-tenant",
+					Project: auth.DefaultProject,
 				}.Build(),
 			}.Build(),
 			).
@@ -179,6 +190,15 @@ var _ = Describe("Tenancy logic", func() {
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("my-tenant"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+			Return(auth.DefaultProject, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
 
 		// Create the clusters server with the empty tenancy logic:
@@ -218,6 +238,15 @@ var _ = Describe("Tenancy logic", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewSet("my-tenant"), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+			Return(auth.DefaultProject, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the template using the DAO:
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
@@ -232,7 +261,8 @@ var _ = Describe("Tenancy logic", func() {
 					Title:       "My template",
 					Description: "My template",
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
+						Tenant:  "my-tenant",
+						Project: auth.DefaultProject,
 					}.Build(),
 				}.Build(),
 			).
@@ -268,6 +298,152 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(tenant).To(Equal("my-tenant"))
 	})
 
+	It("Rejects changing tenant on update", func() {
+		tenancy := auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
+			Return(collections.NewSet("my-tenant", "your-tenant"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return("my-tenant", nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(collections.NewSet("my-tenant", "your-tenant"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+			Return(auth.DefaultProject, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+
+		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		_, err = templatesDao.Create().
+			SetObject(privatev1.ClusterTemplate_builder{
+				Id:          "my-template",
+				Title:       "My template",
+				Description: "My template",
+				Metadata: privatev1.Metadata_builder{
+					Tenant:  "my-tenant",
+					Project: auth.DefaultProject,
+				}.Build(),
+			}.Build()).
+			Do(ctx)
+		Expect(err).ToNot(HaveOccurred())
+
+		clustersServer, err := NewClustersServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetScheme(testScheme).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		createResponse, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
+					Template: "my-template",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		object := createResponse.GetObject()
+
+		_, err = clustersServer.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Id: object.GetId(),
+				Metadata: publicv1.Metadata_builder{
+					Tenant: "your-tenant",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		Expect(status.Message()).To(ContainSubstring("immutable"))
+	})
+
+	It("Preserves tenant when update does not specify it", func() {
+		tenancy := auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
+			Return(collections.NewSet("my-tenant"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return("my-tenant", nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(collections.NewSet("my-tenant"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+			Return(auth.DefaultProject, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+
+		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		_, err = templatesDao.Create().
+			SetObject(privatev1.ClusterTemplate_builder{
+				Id:          "my-template",
+				Title:       "My template",
+				Description: "My template",
+				Metadata: privatev1.Metadata_builder{
+					Tenant:  "my-tenant",
+					Project: auth.DefaultProject,
+				}.Build(),
+			}.Build()).
+			Do(ctx)
+		Expect(err).ToNot(HaveOccurred())
+
+		clustersServer, err := NewClustersServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetScheme(testScheme).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		createResponse, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
+					Template: "my-template",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		object := createResponse.GetObject()
+
+		updateResponse, err := clustersServer.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Id: object.GetId(),
+				Spec: publicv1.ClusterSpec_builder{
+					NodeSets: map[string]*publicv1.ClusterNodeSet{
+						"compute": publicv1.ClusterNodeSet_builder{
+							HostType: "acme_1tib",
+							Size:     4,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(updateResponse.GetObject().GetMetadata().GetTenant()).To(Equal("my-tenant"))
+	})
+
 	It("Rejects object creation when assigned tenant is invisible to the user", func() {
 		// Create a tenancy logic that returns visible tenants:
 		visible := collections.NewSet("my-tenant")
@@ -281,6 +457,15 @@ var _ = Describe("Tenancy logic", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(visible, nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+			Return(auth.DefaultProject, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
 
 		// Create the template:
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
@@ -292,7 +477,8 @@ var _ = Describe("Tenancy logic", func() {
 			SetObject(privatev1.ClusterTemplate_builder{
 				Id: "our-template",
 				Metadata: privatev1.Metadata_builder{
-					Tenant: "my-tenant",
+					Tenant:  "my-tenant",
+					Project: auth.DefaultProject,
 				}.Build(),
 			}.Build(),
 			).Do(ctx)

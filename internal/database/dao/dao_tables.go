@@ -71,6 +71,7 @@ func createMainTable(ctx context.Context, tx database.Tx, object string) error {
 			finalizers text[] not null default '{}',
 			creator text not null default '',
 			tenant text not null default '',
+			project text not null default '',
 			labels jsonb not null default '{}'::jsonb,
 			annotations jsonb not null default '{}'::jsonb,
 			version integer not null default 0,
@@ -94,6 +95,7 @@ func createArchivedTable(ctx context.Context, tx database.Tx, object string) err
 			archival_timestamp timestamp with time zone not null default now(),
 			creator text not null default '',
 			tenant text not null default '',
+			project text not null default '',
 			labels jsonb not null default '{}'::jsonb,
 			annotations jsonb not null default '{}'::jsonb,
 			version integer not null default 0,
@@ -111,6 +113,7 @@ func createIndexes(ctx context.Context, tx database.Tx, object string) error {
 		"create index if not exists %[1]s_by_name on %[1]s (name)",
 		"create index if not exists %[1]s_by_owner on %[1]s (creator)",
 		"create index if not exists %[1]s_by_tenant on %[1]s (tenant)",
+		"create index if not exists %[1]s_by_project on %[1]s (project)",
 		"create index if not exists %[1]s_by_label on %[1]s using gin (labels)",
 	}
 	for _, format := range indexes {

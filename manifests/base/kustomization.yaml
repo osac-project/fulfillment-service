@@ -24,6 +24,7 @@ resources:
 - authorino
 - grpc-server
 - ingress-proxy
+- policy-server
 - rest-gateway
 - client
 - admin
