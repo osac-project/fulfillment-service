@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	"github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 )
 
@@ -50,37 +51,28 @@ func captureListFn(captured *string) ListFunc[*fakeItem] {
 }
 
 var _ = Describe("Find", func() {
-	Describe("CEL filter construction", func() {
-		It("should build the correct filter for a plain name", func() {
+	table.DescribeTable("CEL filter construction",
+		func(ref, expectedFilter string) {
 			var got string
-			_, _ = Find("my-vm", "compute instance", captureListFn(&got))
-			Expect(got).To(Equal(`this.id == "my-vm" || this.metadata.name == "my-vm"`))
-		})
-
-		It("should build the correct filter for a UUID-style ID", func() {
-			var got string
-			_, _ = Find("550e8400-e29b-41d4-a716-446655440000", "cluster", captureListFn(&got))
-			Expect(got).To(Equal(`this.id == "550e8400-e29b-41d4-a716-446655440000" || this.metadata.name == "550e8400-e29b-41d4-a716-446655440000"`))
-		})
-
-		It("should escape double quotes in the reference", func() {
-			var got string
-			_, _ = Find(`my"vm`, "compute instance", captureListFn(&got))
-			Expect(got).To(ContainSubstring(`"my\"vm"`))
-		})
-
-		It("should escape backslashes in the reference", func() {
-			var got string
-			_, _ = Find(`my\vm`, "compute instance", captureListFn(&got))
-			Expect(got).To(ContainSubstring(`"my\\vm"`))
-		})
-
-		It("should pass through single quotes without escaping", func() {
-			var got string
-			_, _ = Find("my'vm", "compute instance", captureListFn(&got))
-			Expect(got).To(Equal(`this.id == "my'vm" || this.metadata.name == "my'vm"`))
-		})
-	})
+			_, _ = Find(ref, "compute instance", captureListFn(&got))
+			Expect(got).To(Equal(expectedFilter))
+		},
+		table.Entry("plain name",
+			"my-vm",
+			`this.id == "my-vm" || this.metadata.name == "my-vm"`),
+		table.Entry("UUID-style ID",
+			"550e8400-e29b-41d4-a716-446655440000",
+			`this.id == "550e8400-e29b-41d4-a716-446655440000" || this.metadata.name == "550e8400-e29b-41d4-a716-446655440000"`),
+		table.Entry("double quotes are escaped",
+			`my"vm`,
+			`this.id == "my\"vm" || this.metadata.name == "my\"vm"`),
+		table.Entry("backslashes are escaped",
+			`my\vm`,
+			`this.id == "my\\vm" || this.metadata.name == "my\\vm"`),
+		table.Entry("single quotes pass through unescaped",
+			"my'vm",
+			`this.id == "my'vm" || this.metadata.name == "my'vm"`),
+	)
 
 	Describe("match count handling", func() {
 		It("should return the single item on exactly one match", func() {

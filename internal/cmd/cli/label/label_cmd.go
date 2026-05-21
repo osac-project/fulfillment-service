@@ -133,9 +133,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if object == nil {
-		return nil
-	}
 
 	// Apply the label operations:
 	metadata := c.helper.GetMetadata(object)

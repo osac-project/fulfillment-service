@@ -160,9 +160,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if object == nil {
-		return nil
-	}
 
 	// Render the object:
 	var render func(proto.Message) ([]byte, error)

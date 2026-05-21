@@ -197,6 +197,10 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	if err != nil {
 		return err
 	}
+	err = publicv1.RegisterPublicIPPoolsHandler(ctx, gatewayMux, c.grpcClient)
+	if err != nil {
+		return err
+	}
 	err = publicv1.RegisterPublicIPsHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err

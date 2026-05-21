@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
@@ -89,9 +88,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
-	poolClient := privatev1.NewPublicIPPoolsClient(conn)
-	pool, err := lookup.Find(c.args.pool, "public IP pool", func(filter string, limit int32) ([]*privatev1.PublicIPPool, error) {
-		resp, err := poolClient.List(ctx, privatev1.PublicIPPoolsListRequest_builder{
+	poolClient := publicv1.NewPublicIPPoolsClient(conn)
+	pool, err := lookup.Find(c.args.pool, "public IP pool", func(filter string, limit int32) ([]*publicv1.PublicIPPool, error) {
+		resp, err := poolClient.List(ctx, publicv1.PublicIPPoolsListRequest_builder{
 			Filter: proto.String(filter),
 			Limit:  proto.Int32(limit),
 		}.Build())
