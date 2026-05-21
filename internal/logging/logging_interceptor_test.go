@@ -305,6 +305,7 @@ var _ = Describe("Interceptor", func() {
 			// Verify send log:
 			sendMessage := messages[0]
 			Expect(sendMessage["msg"]).To(Equal("Sent stream message"))
+			Expect(sendMessage["bytes"]).To(BeNumerically(">", 0))
 		})
 
 		It("Skips logging for reflection methods", func() {
