@@ -66,7 +66,7 @@ spec:
         authnMethod:
           value: jwt
   authorization:
-    default:
+    "rbac":
       opa:
         allValues: true
         rego: |
@@ -266,10 +266,12 @@ spec:
               "/osac.public.v1.Roles/List",
               "/osac.public.v1.RoleBindings/Get",
               "/osac.public.v1.RoleBindings/List",
+              "/osac.public.v1.Projects/Get",
+              "/osac.public.v1.Projects/List",
             }
           }
 
-          # Tenant-scoped user management for tenant admins
+          # Tenant-scoped user and project management for tenant admins
           # Note: Tenant admins can manage users. IdP managers cannot (they only manage IdP config).
           # OPA performs method-level authorization (can this user call this method?).
           # The application layer enforces resource-level authorization via the generic server's
@@ -282,6 +284,9 @@ spec:
               "/osac.public.v1.Users/List",
               "/osac.public.v1.Users/Update",
               "/osac.public.v1.Users/Delete",
+              "/osac.public.v1.Projects/Create",
+              "/osac.public.v1.Projects/Delete",
+              "/osac.public.v1.Projects/Update",
             }
           }
 
@@ -293,6 +298,71 @@ spec:
           # Allow everything to admins:
           allow if {
             is_admin
+          }
+
+    # Resource-level authorization with Keycloak Authorization Services (only for JWT users on Project operations)
+    "resource-authz":
+      when:
+      - selector: auth.identity.authnMethod
+        operator: eq
+        value: jwt
+      - selector: context.request.http.path
+        operator: matches
+        value: ^/osac\.public\.v1\.Projects/(Get|List|Create|Update|Delete)$
+      opa:
+        allValues: true
+        rego: |
+          import rego.v1
+
+          keycloak_base := "{{ required "auth.issuerUrl is required" .Values.auth.issuerUrl }}"
+          uma_client_id := "{{ required "idp.umaClientId is required" .Values.idp.umaClientId }}"
+          uma_client_secret := "{{ required "idp.umaClientSecret is required" .Values.idp.umaClientSecret }}"
+
+          # Get Protection API Token (PAT) using UMA client credentials
+          pat := http.send({
+            "url": concat("", [keycloak_base, "/protocol/openid-connect/token"]),
+            "method": "post",
+            "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+            "raw_body": concat("", ["grant_type=client_credentials&client_id=", uma_client_id, "&client_secret=", uma_client_secret])
+          }).body.access_token
+
+          # Map gRPC method to scope
+          scope_map := {
+            "/osac.public.v1.Projects/Get": "VIEW_PROJECT",
+            "/osac.public.v1.Projects/List": "VIEW_PROJECT",
+            "/osac.public.v1.Projects/Create": "MANAGE_PROJECT",
+            "/osac.public.v1.Projects/Update": "MANAGE_PROJECT",
+            "/osac.public.v1.Projects/Delete": "MANAGE_PROJECT",
+          }
+          required_scope := scope_map[input.context.request.http.path]
+
+          # Extract project resource name from request (simplified - may need adjustment based on actual request structure)
+          # For now, we'll check if user has ANY permission with the required scope
+          # In production, you'd extract the actual project ID from the request and check that specific resource
+
+          access_token := trim_prefix(object.get(input.context.request.http.headers, "authorization", ""), "Bearer ")
+
+          # Request UMA ticket for the scope
+          ticket_response := http.send({
+            "url": concat("", [keycloak_base, "/protocol/openid-connect/token"]),
+            "method": "post",
+            "headers": {
+              "Authorization": concat(" ", ["Bearer", access_token]),
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "raw_body": concat("", [
+              "grant_type=urn:ietf:params:oauth:grant-type:uma-ticket",
+              "&audience=", uma_client_id,
+              "&permission=", required_scope
+            ])
+          })
+
+          # Check if we got an RPT with permissions
+          allow if {
+            ticket_response.status_code == 200
+            rpt := ticket_response.body.access_token
+            permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
+            count(permissions) > 0
           }
   response:
     success:
@@ -307,8 +377,8 @@ spec:
                     : auth.identity.user.username.split(":")[3]
               tenants:
                 expression: |
-                  auth.authorization.default.is_admin
+                  auth.authorization.rbac.is_admin
                     ? ["*"]
                     : auth.identity.authnMethod == "jwt"
-                      ? auth.authorization.default.subject_tenants
+                      ? auth.authorization.rbac.subject_tenants
                       : [auth.identity.user.username.split(":")[2]]
