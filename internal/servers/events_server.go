@@ -23,7 +23,6 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
-	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -34,15 +33,17 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/packages"
+	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
+// EventsServerBuilder contains the data and logic needed to create an EventsServer.
 type EventsServerBuilder struct {
 	logger       *slog.Logger
-	flags        *pflag.FlagSet
-	dbUrl        string
+	listener     events.Listener
 	tenancyLogic auth.TenancyLogic
 }
 
@@ -52,7 +53,7 @@ type EventsServer struct {
 	publicv1.UnimplementedEventsServer
 
 	logger       *slog.Logger
-	listener     *database.Listener
+	listener     events.Listener
 	subs         map[string]eventsServerSubInfo
 	subsLock     *sync.RWMutex
 	celEnv       *cel.Env
@@ -62,7 +63,7 @@ type EventsServer struct {
 
 type eventsServerSubInfo struct {
 	stream     grpc.ServerStreamingServer[publicv1.EventsWatchResponse]
-	subject    *auth.Subject
+	tenants    collections.Set[string]
 	filterSrc  string
 	filterPrg  cel.Program
 	eventsChan chan *publicv1.Event
@@ -77,18 +78,14 @@ func (b *EventsServerBuilder) SetLogger(value *slog.Logger) *EventsServerBuilder
 	return b
 }
 
-func (b *EventsServerBuilder) SetFlags(value *pflag.FlagSet) *EventsServerBuilder {
-	b.flags = value
-	return b
-}
-
-func (b *EventsServerBuilder) SetDbUrl(value string) *EventsServerBuilder {
-	b.dbUrl = value
+// SetListener sets the listener that will be used to receive event notifications. This is mandatory.
+func (b *EventsServerBuilder) SetListener(value events.Listener) *EventsServerBuilder {
+	b.listener = reflection.NormalizeNil(value)
 	return b
 }
 
 func (b *EventsServerBuilder) SetTenancyLogic(value auth.TenancyLogic) *EventsServerBuilder {
-	b.tenancyLogic = value
+	b.tenancyLogic = reflection.NormalizeNil(value)
 	return b
 }
 
@@ -98,8 +95,8 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 		err = errors.New("logger is mandatory")
 		return
 	}
-	if b.dbUrl == "" {
-		err = errors.New("database connection URL is mandatory")
+	if b.listener == nil {
+		err = errors.New("listener is mandatory")
 		return
 	}
 
@@ -119,41 +116,16 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 		return
 	}
 
-	// Create the tenancy logic:
-	tenancyLogic := b.tenancyLogic
-	if tenancyLogic == nil {
-		tenancyLogic, err = auth.NewGuestTenancyLogic().
-			SetLogger(b.logger).
-			Build()
-		if err != nil {
-			err = fmt.Errorf("failed to create tenancy logic: %w", err)
-			return
-		}
-	}
-
 	// Create the object early so that whe can use its methods as callback functions:
-	s := &EventsServer{
+	result = &EventsServer{
 		logger:       b.logger,
+		listener:     b.listener,
 		subs:         map[string]eventsServerSubInfo{},
 		subsLock:     &sync.RWMutex{},
 		celEnv:       celEnv,
 		mapper:       mapper,
-		tenancyLogic: tenancyLogic,
+		tenancyLogic: b.tenancyLogic,
 	}
-
-	// Create the notification listener:
-	s.listener, err = database.NewListener().
-		SetLogger(b.logger).
-		SetUrl(b.dbUrl).
-		SetChannel("events").
-		AddPayloadCallback(s.processPayload).
-		Build()
-	if err != nil {
-		err = fmt.Errorf("failed to create notification listener: %w", err)
-		return
-	}
-
-	result = s
 	return
 }
 
@@ -200,7 +172,7 @@ func (b *EventsServerBuilder) createCelEnv() (result *cel.Env, err error) {
 // Starts starts the background components of the server, in particular the notification listener. This is a blocking
 // operation, and will return only when the context is canceled.
 func (s *EventsServer) Start(ctx context.Context) error {
-	return s.listener.Listen(ctx)
+	return s.listener.Listen(ctx, s.processPayload)
 }
 
 func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
@@ -209,7 +181,11 @@ func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
 	ctx := stream.Context()
 
 	// Get the subject:
-	subject := auth.SubjectFromContext(ctx)
+	tenants, err := s.tenancyLogic.DetermineVisibleTenants(ctx)
+	if err != nil {
+		err = fmt.Errorf("failed to determine visible tenants: %w", err)
+		return
+	}
 
 	// Compile the filter expression:
 	var (
@@ -243,7 +219,7 @@ func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
 	)
 	subInfo := eventsServerSubInfo{
 		stream:     stream,
-		subject:    subject,
+		tenants:    tenants,
 		filterSrc:  filterSrc,
 		filterPrg:  filterPrg,
 		eventsChan: make(chan *publicv1.Event),
@@ -343,43 +319,6 @@ func (s *EventsServer) processPayload(ctx context.Context, payload proto.Message
 	return s.processEvent(ctx, public, private)
 }
 
-// checkTenancy checks if the object is visible to the current user.
-func (s *EventsServer) checkTenancy(ctx context.Context, event *privatev1.Event) (result bool, err error) {
-	// Get the visible tenants for the current user:
-	visibleTenants, err := s.tenancyLogic.DetermineVisibleTenants(ctx)
-	if err != nil {
-		err = fmt.Errorf("failed to determine visible tenants: %w", err)
-		return
-	}
-	if visibleTenants.Empty() {
-		result = true
-		return
-	}
-
-	// If the visible tenants contain the object tenant, then the user can see the event, otherwise they can't:
-	objectTenant := s.extractTenant(ctx, event)
-	if !visibleTenants.Contains(objectTenant) {
-		s.logger.DebugContext(
-			ctx,
-			"Event is not visible to the current user",
-			slog.Any("event", event),
-			slog.Any("visible_tenants", visibleTenants),
-			slog.String("object_tenant", objectTenant),
-		)
-		result = false
-		return
-	}
-	s.logger.DebugContext(
-		ctx,
-		"Event is visible to the current user",
-		slog.Any("event", event),
-		slog.Any("visible_tenants", visibleTenants),
-		slog.String("object_tenant", objectTenant),
-	)
-	result = true
-	return
-}
-
 func (s *EventsServer) extractTenant(ctx context.Context, event *privatev1.Event) string {
 	metadata := s.extractMetadata(ctx, event)
 	return metadata.GetTenant()
@@ -429,18 +368,11 @@ func (s *EventsServer) processEvent(ctx context.Context, public *publicv1.Event,
 		)
 		accepted := true
 
-		// In order to check the tenancy, and maybe for other things as well, we need to have a context that
-		// looks like the context passed to a service method. In particular we need to have the subject of the
-		// user. So we need to create a new context.
-		ctx := auth.ContextWithSubject(ctx, sub.subject)
-
 		// Check if the user has permission to see the event:
-		visible, err := s.checkTenancy(ctx, private)
-		if err != nil {
-			return fmt.Errorf("failed to check tenancy: %w", err)
-		}
+		tenant := s.extractTenant(ctx, private)
+		visible := sub.tenants.Contains(tenant)
 		if !visible {
-			return nil
+			continue
 		}
 
 		// Apply user-defined filter:

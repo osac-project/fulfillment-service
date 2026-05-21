@@ -23,7 +23,6 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
-	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -32,15 +31,15 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
+// PrivateEventsServerBuilder contains the data and logic needed to create a PrivateEventsServer.
 type PrivateEventsServerBuilder struct {
-	logger *slog.Logger
-	flags  *pflag.FlagSet
-	dbUrl  string
+	logger   *slog.Logger
+	listener events.Listener
 }
 
 var _ privatev1.EventsServer = (*PrivateEventsServer)(nil)
@@ -49,7 +48,7 @@ type PrivateEventsServer struct {
 	privatev1.UnimplementedEventsServer
 
 	logger   *slog.Logger
-	listener *database.Listener
+	listener events.Listener
 	subs     map[string]privateEventsServerSubInfo
 	subsLock *sync.RWMutex
 	celEnv   *cel.Env
@@ -71,13 +70,9 @@ func (b *PrivateEventsServerBuilder) SetLogger(value *slog.Logger) *PrivateEvent
 	return b
 }
 
-func (b *PrivateEventsServerBuilder) SetFlags(value *pflag.FlagSet) *PrivateEventsServerBuilder {
-	b.flags = value
-	return b
-}
-
-func (b *PrivateEventsServerBuilder) SetDbUrl(value string) *PrivateEventsServerBuilder {
-	b.dbUrl = value
+// SetListener sets the listener that will be used to receive event notifications. This is mandatory.
+func (b *PrivateEventsServerBuilder) SetListener(value events.Listener) *PrivateEventsServerBuilder {
+	b.listener = value
 	return b
 }
 
@@ -87,8 +82,8 @@ func (b *PrivateEventsServerBuilder) Build() (result *PrivateEventsServer, err e
 		err = errors.New("logger is mandatory")
 		return
 	}
-	if b.dbUrl == "" {
-		err = errors.New("database connection URL is mandatory")
+	if b.listener == nil {
+		err = errors.New("listener is mandatory")
 		return
 	}
 
@@ -99,27 +94,14 @@ func (b *PrivateEventsServerBuilder) Build() (result *PrivateEventsServer, err e
 		return
 	}
 
-	// Create the object early so that whe can use its methods as callback functions:
-	s := &PrivateEventsServer{
+	// Create the object:
+	result = &PrivateEventsServer{
 		logger:   b.logger,
+		listener: b.listener,
 		subs:     map[string]privateEventsServerSubInfo{},
 		subsLock: &sync.RWMutex{},
 		celEnv:   celEnv,
 	}
-
-	// Create the notification listener:
-	s.listener, err = database.NewListener().
-		SetLogger(b.logger).
-		SetUrl(b.dbUrl).
-		SetChannel("events").
-		AddPayloadCallback(s.processPayload).
-		Build()
-	if err != nil {
-		err = fmt.Errorf("failed to create notification listener: %w", err)
-		return
-	}
-
-	result = s
 	return
 }
 
@@ -166,7 +148,7 @@ func (b *PrivateEventsServerBuilder) createCelEnv() (result *cel.Env, err error)
 // Starts starts the background components of the server, in particular the notification listener. This is a blocking
 // operation, and will return only when the context is canceled.
 func (s *PrivateEventsServer) Start(ctx context.Context) error {
-	return s.listener.Listen(ctx)
+	return s.listener.Listen(ctx, s.processPayload)
 }
 
 func (s *PrivateEventsServer) Watch(request *privatev1.EventsWatchRequest,

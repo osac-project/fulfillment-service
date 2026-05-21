@@ -87,12 +87,11 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetLogger(c.logger).
 		SetUrl(dbUrl).
 		SetChannel(c.channel).
-		AddPayloadCallback(c.processPayload).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create listener: %w", err)
 	}
-	err = listener.Listen(ctx)
+	err = listener.Listen(ctx, c.processPayload)
 	if err == nil || errors.Is(err, context.Canceled) {
 		c.logger.InfoContext(ctx, "Listener finished")
 	} else {

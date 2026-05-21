@@ -984,10 +984,17 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 
 	// Create the events server:
 	c.logger.InfoContext(ctx, "Creating events server")
+	eventsListener, err := database.NewListener().
+		SetLogger(c.logger).
+		SetUrl(dbTool.URL()).
+		SetChannel("events").
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create events listener: %w", err)
+	}
 	eventsServer, err := servers.NewEventsServer().
 		SetLogger(c.logger).
-		SetFlags(c.flags).
-		SetDbUrl(dbTool.URL()).
+		SetListener(eventsListener).
 		SetTenancyLogic(tenancyLogic).
 		Build()
 	if err != nil {
@@ -1009,10 +1016,17 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 
 	// Create the private events server:
 	c.logger.InfoContext(ctx, "Creating private events server")
+	privateEventsListener, err := database.NewListener().
+		SetLogger(c.logger).
+		SetUrl(dbTool.URL()).
+		SetChannel("events").
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private events listener: %w", err)
+	}
 	privateEventsServer, err := servers.NewPrivateEventsServer().
 		SetLogger(c.logger).
-		SetFlags(c.flags).
-		SetDbUrl(dbTool.URL()).
+		SetListener(privateEventsListener).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private events server: %w", err)
