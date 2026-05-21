@@ -1,8 +1,5 @@
-# This is the base image, both for the builder and runtime containers.
-ARG BASE=registry.access.redhat.com/ubi10/ubi:10.1-1773895909
-
 # First stage is to build the image that contains the image with all the development tools needed to build the binary.
-FROM ${BASE} AS builder
+FROM registry.access.redhat.com/hi/go:1.26-builder AS builder
 
 # Set this to 'true' to build the binary with debugging symbols and disabling optimizations.
 ARG DEBUG=false
@@ -10,7 +7,7 @@ ARG DEBUG=false
 # Install packages:
 RUN \
   set -e; \
-  pkgs=(git golang); \
+  pkgs=(git); \
   dnf install -y "${pkgs[@]}"; \
   dnf clean all -y
 
@@ -42,22 +39,17 @@ RUN \
   fi; \
   go build -gcflags="${gcflags}" -ldflags="${ldflags}" ./cmd/fulfillment-service
 
-# Second stage is to build the image that contains the binary, without the development tools, except the debugger
-# if enabled.
-FROM ${BASE} AS runtime
+# dlv stage — only pulled into the build graph when targeting runtime-debug.
+FROM builder AS dlv-builder
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
-# Set this to 'true' to include the 'dlv' debugger in the image.
-ARG DEBUG=false
-
-# Install packages:
-RUN \
-  set -e; \
-  pkgs=(openssl); \
-  if [[ "${DEBUG}" == "true" ]]; then \
-    pkgs+=(delve); \
-  fi; \
-  dnf install -y "${pkgs[@]}"; \
-  dnf clean all -y
-
-# Install the binary:
+# Common runtime base with the service binary.
+FROM registry.access.redhat.com/hi/core-runtime:latest-openssl AS runtime-base
 COPY --from=builder /source/fulfillment-service /usr/local/bin
+
+# Debug variant — adds dlv on top of the base; build with: podman build --target runtime-debug .
+FROM runtime-base AS runtime-debug
+COPY --from=dlv-builder /go/bin/dlv /usr/local/bin
+
+# Default (non-debug) runtime — must stay last so plain `podman build .` targets it.
+FROM runtime-base AS runtime

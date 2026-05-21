@@ -161,6 +161,11 @@ command like this:
 
     $ podman build -t quay.io/myuser/fulfillment-service:latest .
 
+To build the debug variant (includes the `dlv` debugger and disables compiler optimisations), use the
+`runtime-debug` target:
+
+    $ podman build --build-arg DEBUG=true --target runtime-debug -t quay.io/myuser/fulfillment-service:latest .
+
 If you want to deploy to an OpenShift cluster then you will also need to push the image, so that the cluster can pull
 it:
 

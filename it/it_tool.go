@@ -466,6 +466,10 @@ func (t *Tool) buildImage(ctx context.Context) (result string, err error) {
 		gitVersion = strings.TrimSpace(string(versionBytes))
 	}
 
+	buildTarget := "runtime"
+	if t.debug {
+		buildTarget = "runtime-debug"
+	}
 	buildCmd, err := testing.NewCommand().
 		SetLogger(t.logger).
 		SetHome(t.projectDir).
@@ -475,6 +479,7 @@ func (t *Tool) buildImage(ctx context.Context) (result string, err error) {
 			"build",
 			"--build-arg", fmt.Sprintf("DEBUG=%t", t.debug),
 			"--build-arg", fmt.Sprintf("VERSION=%s", gitVersion),
+			"--target", buildTarget,
 			"--tag", imageRef,
 			"--file", "Containerfile",
 			".",
