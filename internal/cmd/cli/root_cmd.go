@@ -37,10 +37,10 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
 
-func Root() *cobra.Command {
+func Root() (result *cobra.Command, err error) {
 	// create the runner and the command:
 	runner := &runnerContext{}
-	result := &cobra.Command{
+	result = &cobra.Command{
 		Use:               "osac",
 		Short:             "CLI for the Open Sovereign AI Cloud platform",
 		SilenceUsage:      true,
@@ -48,8 +48,48 @@ func Root() *cobra.Command {
 		PersistentPreRunE: runner.persistentPreRun,
 	}
 
+	// Determine the name of the binary, as we will use it to determine the cache and config directories:
+	runner.binaryName = filepath.Base(os.Args[0])
+
+	// Determine the default configuration directory:
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		err = fmt.Errorf("failed to determine user configuration directory: %w", err)
+		return
+	}
+	defaultConfigDir := filepath.Join(userConfigDir, runner.binaryName)
+
+	// Determine the default cache directory:
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil {
+		err = fmt.Errorf("failed to determine user cache directory: %w", err)
+		return
+	}
+	defaultCacheDir := filepath.Join(userCacheDir, runner.binaryName)
+
 	// Add flags:
-	logging.AddFlags(result.PersistentFlags())
+	flags := result.PersistentFlags()
+	logging.AddFlags(flags)
+	flags.StringVar(
+		&runner.args.configDir,
+		configFlag,
+		defaultConfigDir,
+		fmt.Sprintf(
+			"Directory where the configuration files are stored. Can also be set with the '%s' "+
+				"environment variable.",
+			configEnvVar,
+		),
+	)
+	flags.StringVar(
+		&runner.args.cacheDir,
+		cacheFlag,
+		defaultCacheDir,
+		fmt.Sprintf(
+			"Directory where the cache and log files are stored. Can also be set with the '%s' "+
+				"environment variable.",
+			cacheEnvVar,
+		),
+	)
 
 	// Add commands:
 	result.AddCommand(annotate.Cmd())
@@ -64,36 +104,72 @@ func Root() *cobra.Command {
 	result.AddCommand(logout.Cmd())
 	result.AddCommand(version.Cmd())
 
-	return result
+	return
 }
 
 type runnerContext struct {
+	binaryName string
+	args       struct {
+		configDir string
+		cacheDir  string
+	}
 }
 
 func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) error {
-	// In order to avoid mixing log messages with output we configure the log to go by default to a file in the user
-	// cache directory.
-	//
-	// The path of the cache directory and of the log file are calculated from the name from the name of the binary.
-	// For example, if the name of the binary is `osac` then the cache directory will be
-	// `~/.cache/osac` and the log file will be `~/.cache/osac/osac.log`.
-	baseName := filepath.Base(os.Args[0])
-	userCacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return err
+	var err error
+
+	// Get the actual flags:
+	flags := cmd.Flags()
+
+	// Determine the configuration directory, using the environment variable only if the user hasn't explicitly set the flag:
+	configDir := c.args.configDir
+	if !flags.Changed(configFlag) {
+		value := os.Getenv(configEnvVar)
+		if value != "" {
+			configDir = value
+		}
 	}
-	cacheDir := filepath.Join(userCacheDir, baseName)
+	configDir, err = filepath.Abs(configDir)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to calculate absolute path of config directory '%s': %w",
+			configDir, err,
+		)
+	}
+	err = os.MkdirAll(configDir, 0700)
+	if errors.Is(err, os.ErrExist) {
+		err = nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create config directory '%s': %w", configDir, err)
+	}
+
+	// Determine the cache directory, using the environment variable only if the user hasn't explicitly set the flag:
+	cacheDir := c.args.cacheDir
+	if !flags.Changed(cacheFlag) {
+		value := os.Getenv(cacheEnvVar)
+		if value != "" {
+			cacheDir = value
+		}
+	}
+	cacheDir, err = filepath.Abs(cacheDir)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to calculate absolute path of cache directory '%s': %w",
+			cacheDir, err,
+		)
+	}
 	err = os.MkdirAll(cacheDir, 0700)
 	if errors.Is(err, os.ErrExist) {
 		err = nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create cache directory '%s': %w", cacheDir, err)
 	}
-	logFile := filepath.Join(cacheDir, baseName+".log")
 
 	// By the default the logger is configured to write to the log file, and only errors. This Will be overriden by
 	// the command line flags.
+	logFile := filepath.Join(cacheDir, c.binaryName+".log")
 	logger, err := logging.NewLogger().
 		SetFile(logFile).
 		SetFlags(cmd.Flags()).
@@ -105,6 +181,7 @@ func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) erro
 	// Create and load the settings:
 	settings, err := config.NewSettings().
 		SetLogger(logger).
+		SetDir(configDir).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create settings: %w", err)
@@ -131,3 +208,15 @@ func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) erro
 
 	return nil
 }
+
+// Names of command line flags:
+const (
+	configFlag = "config"
+	cacheFlag  = "cache"
+)
+
+// Names of the environment variables:
+const (
+	configEnvVar = "OSAC_CONFIG"
+	cacheEnvVar  = "OSAC_CACHE"
+)

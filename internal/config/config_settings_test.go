@@ -49,6 +49,15 @@ var _ = Describe("Settings", func() {
 	Describe("Builder", func() {
 		It("Fails if logger is nil", func() {
 			settings, err := NewSettings().
+				SetDir(tmp).
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(settings).To(BeNil())
+		})
+
+		It("Fails if directory is empty", func() {
+			settings, err := NewSettings().
+				SetLogger(logger).
 				Build()
 			Expect(err).To(HaveOccurred())
 			Expect(settings).To(BeNil())
@@ -197,8 +206,8 @@ var _ = Describe("Settings", func() {
 			err = settings.Save(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
-			// Verify that the keyring contains the expected data:
-			data, err := keyring.Get("osac", "secrets")
+			// Verify that the keyring contains the expected data under the scoped key:
+			data, err := keyring.Get("osac", "secrets:"+tmp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(data).To(MatchJSON(`{
 				"access_token": "my-access-token",
@@ -236,8 +245,8 @@ var _ = Describe("Settings", func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 
-			// Verify that the keyring contains the expected data:
-			data, err := keyring.Get("osac", "secrets")
+			// Verify that the keyring contains the expected data under the scoped key:
+			data, err := keyring.Get("osac", "secrets:"+tmp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(data).To(MatchJSON(`{
 				"access_token": "new-access",

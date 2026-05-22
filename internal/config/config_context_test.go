@@ -15,6 +15,7 @@ package config
 
 import (
 	"context"
+	"os"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
@@ -22,8 +23,12 @@ import (
 
 var _ = Describe("Context", func() {
 	It("Extracts settings from the context if previously added", func() {
+		tmp, err := os.MkdirTemp("", "*.test")
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(os.RemoveAll, tmp)
 		settings, err := NewSettings().
 			SetLogger(logger).
+			SetDir(tmp).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		ctx := SettingsIntoContext(context.Background(), settings)

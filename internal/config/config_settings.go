@@ -64,9 +64,7 @@ func (b *SettingsBuilder) SetLogger(value *slog.Logger) *SettingsBuilder {
 	return b
 }
 
-// SetDir sets the directory where the settings files will be stored. This is optional and intended for unit tests
-// where it is convenient to use a temporary directory to avoid overwriting the settings of a real user. If not set,
-// the default user configuration directory is used.
+// SetDir sets the directory where the settings files will be stored. This is mandatory.
 func (b *SettingsBuilder) SetDir(value string) *SettingsBuilder {
 	b.dir = value
 	return b
@@ -79,22 +77,15 @@ func (b *SettingsBuilder) Build() (result *Settings, err error) {
 		err = errors.New("logger is mandatory")
 		return
 	}
-
-	// Resolve the directory:
-	dir := b.dir
-	if dir == "" {
-		var configDir string
-		configDir, err = os.UserConfigDir()
-		if err != nil {
-			return
-		}
-		dir = filepath.Join(configDir, "osac")
+	if b.dir == "" {
+		err = errors.New("directory is mandatory")
+		return
 	}
 
 	// Create the object:
 	result = &Settings{
 		logger: b.logger,
-		dir:    dir,
+		dir:    b.dir,
 		lock:   &sync.RWMutex{},
 	}
 	return

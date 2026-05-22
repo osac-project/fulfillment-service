@@ -45,6 +45,7 @@ var _ = Describe("Secret store", func() {
 			keyring.MockInit()
 			store, err := NewSecretStore().
 				SetLogger(logger).
+				SetDir("/some/dir").
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(store).To(BeAssignableToTypeOf(&keyringSecretStore{}))
@@ -54,6 +55,7 @@ var _ = Describe("Secret store", func() {
 			keyring.MockInitWithError(fmt.Errorf("keyring backend not available"))
 			store, err := NewSecretStore().
 				SetLogger(logger).
+				SetDir("/some/dir").
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(store).To(BeAssignableToTypeOf(&fileSecretStore{}))
@@ -82,6 +84,33 @@ var _ = Describe("Secret store", func() {
 			file := filepath.Join(tmp, "secrets.json")
 			Expect(file).To(BeAnExistingFile())
 		})
+
+		It("Passes the directory to the keyring store when the keyring is available", func() {
+			// Create the store using a temporary directory:
+			keyring.MockInit()
+			tmp, err := os.MkdirTemp("", "*.test")
+			Expect(err).ToNot(HaveOccurred())
+			store, err := NewSecretStore().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Save a secret to force the creation of the secrets file:
+			err = store.Save(ctx, &mySecret{
+				User:     "my-user",
+				Password: "my-pass",
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			// Check that the secret was saved to the keyring under the key 'secrets:...':
+			data, err := keyring.Get("osac", "secrets:"+tmp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(data).To(MatchJSON(`{
+				"user": "my-user",
+				"password": "my-pass"
+			}`))
+		})
 	})
 
 	Describe("Keyring store", func() {
@@ -96,8 +125,16 @@ var _ = Describe("Secret store", func() {
 			// Create the store
 			store, err = NewKeyringSecretStore().
 				SetLogger(logger).
+				SetDir("/my/config").
 				Build()
 			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Fails if directory is empty", func() {
+			_, err := NewKeyringSecretStore().
+				SetLogger(logger).
+				Build()
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Saves data", func() {
@@ -110,7 +147,7 @@ var _ = Describe("Secret store", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify that the data has been saved to the keyring:
-			data, err := keyring.Get("osac", "secrets")
+			data, err := keyring.Get("osac", "secrets:/my/config")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(data).To(MatchJSON(`{
 				"user": "my-user",
@@ -120,7 +157,7 @@ var _ = Describe("Secret store", func() {
 
 		It("Loads data", func() {
 			// Save the data to the keyring directly:
-			err := keyring.Set("osac", "secrets", `{
+			err := keyring.Set("osac", "secrets:/my/config", `{
 				"user": "my-user",
 				"password": "my-pass"
 			}`)
@@ -148,7 +185,7 @@ var _ = Describe("Secret store", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify that the keyring is empty:
-			_, err = keyring.Get("osac", "secrets")
+			_, err = keyring.Get("osac", "secrets:/my/config")
 			Expect(err).To(MatchError(keyring.ErrNotFound))
 
 		})
@@ -156,6 +193,42 @@ var _ = Describe("Secret store", func() {
 		It("Does not fail when clearing an already empty store", func() {
 			err := store.Save(ctx, nil)
 			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Describe("Keyring store isolation", func() {
+		BeforeEach(func() {
+			keyring.MockInit()
+		})
+
+		It("Isolates secrets between different directories", func() {
+			storeA, err := NewKeyringSecretStore().
+				SetLogger(logger).
+				SetDir("/dir-a").
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			storeB, err := NewKeyringSecretStore().
+				SetLogger(logger).
+				SetDir("/dir-b").
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			err = storeA.Save(ctx, &mySecret{User: "user-a", Password: "pass-a"})
+			Expect(err).ToNot(HaveOccurred())
+
+			err = storeB.Save(ctx, &mySecret{User: "user-b", Password: "pass-b"})
+			Expect(err).ToNot(HaveOccurred())
+
+			var secretA mySecret
+			err = storeA.Load(ctx, &secretA)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(secretA.User).To(Equal("user-a"))
+
+			var secretB mySecret
+			err = storeB.Load(ctx, &secretB)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(secretB.User).To(Equal("user-b"))
 		})
 	})
 

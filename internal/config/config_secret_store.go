@@ -56,9 +56,9 @@ func (b *SecretStoreBuilder) SetLogger(value *slog.Logger) *SecretStoreBuilder {
 	return b
 }
 
-// SetDir sets the directory where the file-based secret store will write its file. This is optional and intended for
-// unit tests where it is convenient to use a temporary directory to avoid overwriting the settings of a real user. If
-// not set, the default user configuration directory is used.
+// SetDir sets the directory where the settings are stored. This is mandatory. It affects both the file-based fallback
+// store (which writes to this directory) and the keyring-backed store (which uses the directory path to scope its
+// keyring key, ensuring that independent configurations do not collide).
 func (b *SecretStoreBuilder) SetDir(value string) *SecretStoreBuilder {
 	b.dir = value
 	return b
@@ -79,6 +79,7 @@ func (b *SecretStoreBuilder) Build() (result SecretStore, err error) {
 	if probeErr == nil || errors.Is(probeErr, keyring.ErrNotFound) {
 		result, err = NewKeyringSecretStore().
 			SetLogger(b.logger).
+			SetDir(b.dir).
 			Build()
 	} else {
 		result, err = NewFileSecretStore().
@@ -94,6 +95,7 @@ func (b *SecretStoreBuilder) Build() (result SecretStore, err error) {
 // keyring. Don't create instances of this type directly, use the NewKeyringSecretStore function instead.
 type KeyringSecretStoreBuilder struct {
 	logger *slog.Logger
+	dir    string
 }
 
 // NewKeyringSecretStore creates a builder that can then be used to configure and create a keyring-backed secret store.
@@ -107,25 +109,46 @@ func (b *KeyringSecretStoreBuilder) SetLogger(value *slog.Logger) *KeyringSecret
 	return b
 }
 
+// SetDir sets the configuration directory. The keyring key is scoped to this directory so that independent
+// configurations stored in different directories do not share secrets. This is mandatory.
+func (b *KeyringSecretStoreBuilder) SetDir(value string) *KeyringSecretStoreBuilder {
+	b.dir = value
+	return b
+}
+
 // Build uses the data stored in the builder to create and configure a new keyring-backed secret store.
 func (b *KeyringSecretStoreBuilder) Build() (result SecretStore, err error) {
+	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
 		return
 	}
+	if b.dir == "" {
+		err = errors.New("directory is mandatory")
+		return
+	}
+
+	// The keyring key is always 'secrets:<dir>' where 'dir' is the absolute path of the configuration directory.
+	key := keyringKey + ":" + b.dir
+
+	// Create the store:
 	result = &keyringSecretStore{
 		logger: b.logger,
+		key:    key,
 	}
 	return
 }
 
-// keyringSecretStore stores secret data as a single entry in the operating system keyring.
+// keyringSecretStore stores secret data as a single entry in the operating system keyring. The key field is
+// computed at build time and varies depending on the configuration directory, so that independent configurations
+// do not share secrets.
 type keyringSecretStore struct {
 	logger *slog.Logger
+	key    string
 }
 
 func (s *keyringSecretStore) Load(ctx context.Context, object any) error {
-	data, err := keyring.Get(keyringService, keyringKey)
+	data, err := keyring.Get(keyringService, s.key)
 	if errors.Is(err, keyring.ErrNotFound) {
 		s.logger.DebugContext(
 			ctx,
@@ -144,7 +167,7 @@ func (s *keyringSecretStore) Load(ctx context.Context, object any) error {
 		ctx,
 		"Loaded secrets from keyring",
 		slog.String("service", keyringService),
-		slog.String("key", keyringKey),
+		slog.String("key", s.key),
 		slog.Any("!settings", object),
 	)
 	return nil
@@ -152,7 +175,7 @@ func (s *keyringSecretStore) Load(ctx context.Context, object any) error {
 
 func (s *keyringSecretStore) Save(ctx context.Context, object any) error {
 	if object == nil {
-		err := keyring.Delete(keyringService, keyringKey)
+		err := keyring.Delete(keyringService, s.key)
 		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
 			return fmt.Errorf("failed to delete from keyring: %w", err)
 		}
@@ -166,7 +189,7 @@ func (s *keyringSecretStore) Save(ctx context.Context, object any) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal secrets: %w", err)
 	}
-	err = keyring.Set(keyringService, keyringKey, string(data))
+	err = keyring.Set(keyringService, s.key, string(data))
 	if err != nil {
 		return fmt.Errorf("failed to write to keyring: %w", err)
 	}
@@ -174,7 +197,7 @@ func (s *keyringSecretStore) Save(ctx context.Context, object any) error {
 		ctx,
 		"Saved secrets to keyring",
 		slog.String("service", keyringService),
-		slog.String("key", keyringKey),
+		slog.String("key", s.key),
 		slog.Any("!settings", object),
 	)
 	return nil
@@ -198,9 +221,8 @@ func (b *FileSecretStoreBuilder) SetLogger(value *slog.Logger) *FileSecretStoreB
 	return b
 }
 
-// SetDir sets the directory where the secrets file will be written. This is optional and intended for unit tests
-// where it is convenient to use a temporary directory to avoid overwriting the settings of a real user. If not set,
-// the default user configuration directory is used.
+// SetDir sets the directory where the secrets file will be written. When not set, the default user configuration
+// directory is used.
 func (b *FileSecretStoreBuilder) SetDir(value string) *FileSecretStoreBuilder {
 	b.dir = value
 	return b
