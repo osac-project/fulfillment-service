@@ -46,10 +46,13 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "computeinstance [flags]",
-		Aliases: []string{string(proto.MessageName((*publicv1.ComputeInstance)(nil)))},
-		Short:   "Create a compute instance",
-		RunE:    runner.run,
+		Use:                   "computeinstance [FLAG...]",
+		Aliases:               []string{string(proto.MessageName((*publicv1.ComputeInstance)(nil)))},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -57,106 +60,106 @@ func Cmd() *cobra.Command {
 		"name",
 		"n",
 		"",
-		"Name of the compute instance.",
+		nameFlagHelp,
 	)
 	flags.StringVarP(
 		&runner.args.template,
 		"template",
 		"t",
 		"",
-		"Template identifier or name",
+		templateFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.catalogItem,
 		"catalog-item",
 		"",
-		"Catalog item identifier. Replaces --template.",
+		catalogItemFlagHelp,
 	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterValues,
 		"template-parameter",
 		"p",
 		[]string{},
-		"Template parameter in the format 'name=value'.",
+		templateParameterFlagHelp,
 	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterFiles,
 		"template-parameter-file",
 		"f",
 		[]string{},
-		"Template parameter from file in the format 'name=filename'.",
+		templateParameterFileFlagHelp,
 	)
 	flags.Int32Var(
 		&runner.args.cores,
 		"cores",
 		0,
-		"Number of CPU cores.",
+		coresFlagHelp,
 	)
 	flags.Int32Var(
 		&runner.args.memoryGiB,
 		"memory-gib",
 		0,
-		"Memory size in GiB.",
+		memoryFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.imageSourceRef,
 		"image",
 		"",
-		"Image reference (e.g. OCI image URL).",
+		imageFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.imageSourceType,
 		"image-source-type",
 		"registry",
-		"Image source type.",
+		imageSourceTypeFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.sshKey,
 		"ssh-key",
 		"",
-		"SSH public key.",
+		sshKeyFlagHelp,
 	)
 	flags.Int32Var(
 		&runner.args.bootDiskSizeGiB,
 		"boot-disk-size",
 		0,
-		"Boot disk size in GiB.",
+		bootDiskSizeFlagHelp,
 	)
 	flags.StringSliceVar(
 		&runner.args.additionalDisks,
 		"additional-disk",
 		[]string{},
-		"Additional disk size in GiB (e.g. '100'). Repeatable.",
+		additionalDiskFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.runStrategy,
 		"run-strategy",
 		"",
-		"Run strategy (e.g. 'Always' or 'Halted').",
+		runStrategyFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.userData,
 		"user-data",
 		"",
-		"User data for the compute instance (e.g. cloud-init, ignition).",
+		userDataFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.subnet,
 		"subnet",
 		"",
-		"Fulfillment subnet ID for the primary NIC (deprecated; prefer --network-attachment).",
+		subnetFlagHelp,
 	)
 	flags.StringSliceVar(
 		&runner.args.securityGroups,
 		"security-group",
 		nil,
-		"Fulfillment security group ID applied with --subnet (deprecated). Repeatable.",
+		securityGroupFlagHelp,
 	)
 	flags.StringArrayVar(
 		&runner.args.networkAttachments,
 		"network-attachment",
 		nil,
-		"Per-NIC attachment: subnet ID, or subnet=<id>[,security-groups=<id>,<id>...]. Repeatable. Incompatible with --subnet and --security-group.",
+		networkAttachmentFlagHelp,
 	)
 
 	// Mark deprecated flags
@@ -966,3 +969,99 @@ func (c *runnerContext) validTemplateParameters(template *publicv1.ComputeInstan
 
 	return results
 }
+
+const shortHelp = `Create a compute instance.`
+
+const longHelp = `
+Create a compute instance.
+`
+
+const nameFlagHelp = `
+_NAME_ - Name of the compute instance.
+`
+
+const templateFlagHelp = `
+_TEMPLATE_ - Template identifier or name. Mutually exclusive with
+{{ bt }}--catalog-item{{ bt }}.
+`
+
+const catalogItemFlagHelp = `
+_ID_ - Catalog item identifier. Mutually exclusive with
+{{ bt }}--template{{ bt }}.
+`
+
+const templateParameterFlagHelp = `
+_NAME=VALUE_ - Template parameter in the format
+{{ bt }}name=value{{ bt }}. Can be specified multiple times.
+`
+
+const templateParameterFileFlagHelp = `
+_NAME=FILE_ - Template parameter whose value is read from a file, in the
+format {{ bt }}name=filename{{ bt }}. Can be specified multiple
+times.
+`
+
+const coresFlagHelp = `
+_COUNT_ - Number of CPU cores.
+`
+
+const memoryFlagHelp = `
+_SIZE_ - Memory size in GiB.
+`
+
+const imageFlagHelp = `
+_URL_ - Image reference, for example an OCI image URL.
+`
+
+const imageSourceTypeFlagHelp = `
+_TYPE_ - Image source type.
+`
+
+const sshKeyFlagHelp = `
+_KEY_ - SSH public key.
+`
+
+const bootDiskSizeFlagHelp = `
+_SIZE_ - Boot disk size in GiB.
+`
+
+const additionalDiskFlagHelp = `
+_SIZE_ - Additional disk size in GiB. Can be specified multiple times to add
+more than one disk.
+`
+
+const runStrategyFlagHelp = `
+_STRATEGY_ - Run strategy, for example {{ bt }}Always{{ bt }} or
+{{ bt }}Halted{{ bt }}.
+`
+
+const userDataFlagHelp = `
+_DATA_ - User data for the compute instance, for example cloud-init or
+ignition configuration.
+`
+
+const subnetFlagHelp = `
+_ID_ - Subnet ID for the primary NIC.
+
+This flag is deprecated. Use {{ bt }}--network-attachment{{ bt }}
+instead.
+`
+
+const securityGroupFlagHelp = `
+_ID_ - Security group ID applied together with
+{{ bt }}--subnet{{ bt }}. Can be specified multiple times.
+
+This flag is deprecated. Use {{ bt }}--network-attachment{{ bt }}
+instead.
+`
+
+const networkAttachmentFlagHelp = `
+_SPEC_ - Per-NIC network attachment. The value can be a plain subnet ID, or a
+comma-separated specification in the format
+{{ bt }}subnet=ID[,security-groups=ID,ID...]{{ bt }}. Can be
+specified multiple times to attach multiple NICs.
+
+This flag is incompatible with the deprecated
+{{ bt }}--subnet{{ bt }} and
+{{ bt }}--security-group{{ bt }} flags.
+`

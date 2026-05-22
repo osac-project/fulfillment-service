@@ -31,9 +31,11 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "token [OPTION]...",
-		Short: "Shows the authentication token, requesting a new one if necessary",
-		RunE:  runner.run,
+		Use:                   "token [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.BoolVarP(
@@ -41,36 +43,35 @@ func Cmd() *cobra.Command {
 		"refresh",
 		"r",
 		false,
-		"Show the refresh token instead of the access token.",
+		refreshFlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.header,
 		"header",
 		"H",
 		false,
-		"Print the token header. This will work only if the token is a JSON web token.",
+		headerFlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.payload,
 		"payload",
 		"p",
 		false,
-		"Shows the token payload in JSON format. This will work only if the token is a JSON web token.",
+		payloadFlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.rfc3339,
 		"rfc-3339",
 		"R",
 		false,
-		"Displays the time claims as RFC 3339 timestamps. By default the time claims are displayed as "+
-			"seconds since the Unix epoch, as that is the format used by JSON web tokens",
+		rfc3339FlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.utc,
 		"utc",
 		"U",
 		false,
-		"Displays the time claims using the UTC time zone.",
+		utcFlagHelp,
 	)
 
 	return result
@@ -188,3 +189,33 @@ func (c *runnerContext) replaceTimeClaim(ctx context.Context, name string, value
 	}
 	return t.Format(time.RFC3339)
 }
+
+const shortHelp = `Shows the authentication token, requesting a new one if necessary`
+
+const longHelp = `
+Shows the authentication token, requesting a new one if necessary.
+`
+
+const refreshFlagHelp = `
+_[BOOLEAN]_ - Show the refresh token instead of the access token.
+`
+
+const headerFlagHelp = `
+_[BOOLEAN]_ - Print the token header. This only works if the token is a JSON
+web token.
+`
+
+const payloadFlagHelp = `
+_[BOOLEAN]_ - Show the token payload in JSON format. This only works if the
+token is a JSON web token.
+`
+
+const rfc3339FlagHelp = `
+_[BOOLEAN]_ - Display the time claims as RFC 3339 timestamps. By default the
+time claims are displayed as seconds since the Unix epoch, as that is the
+format used by JSON web tokens.
+`
+
+const utcFlagHelp = `
+_[BOOLEAN]_ - Display the time claims using the UTC time zone.
+`

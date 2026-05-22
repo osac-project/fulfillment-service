@@ -38,16 +38,19 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "password [CLUSTER] [OPTION]...",
-		Short: "Get password",
-		RunE:  runner.run,
+		Use:                   "password [FLAG...] ID|NAME",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVar(
 		&runner.args.key,
 		"cluster",
 		"",
-		"Name or identifier of the cluster.",
+		clusterFlagHelp,
 	)
 	flags.MarkDeprecated("cluster", "use positional argument instead.\n")
 	return result
@@ -157,3 +160,15 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = `Get password`
+
+const longHelp = `
+Get password for a cluster.
+`
+
+const clusterFlagHelp = `
+_NAME|ID_ - Name or identifier of the cluster.
+
+This flag is deprecated. Use a positional argument instead.
+`

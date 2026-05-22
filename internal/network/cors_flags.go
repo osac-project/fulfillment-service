@@ -35,7 +35,7 @@ func AddCorsFlags(flags *pflag.FlagSet, name string) {
 		[]string{
 			"*",
 		},
-		fmt.Sprintf("%s CORS allowed origins.", name),
+		fmt.Sprintf(corsAllowedOriginsFlagHelp, name),
 	)
 }
 
@@ -49,3 +49,7 @@ const (
 func corsFlagName(name, suffix string) string {
 	return fmt.Sprintf("%s-%s", strings.ToLower(name), suffix)
 }
+
+const corsAllowedOriginsFlagHelp = `
+_[ORIGIN...]_ - %s CORS allowed origins.
+`

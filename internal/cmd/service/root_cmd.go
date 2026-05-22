@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/help"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/dev"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/migrate"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/probe"
@@ -30,11 +31,13 @@ func Root() *cobra.Command {
 	// create the runner and the command:
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:               "fulfillment-service",
-		Short:             "Fullfillment service",
-		SilenceUsage:      true,
-		SilenceErrors:     true,
-		PersistentPreRunE: runner.persistentPreRun,
+		Use:                   "fulfillment-service COMMAND [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		SilenceUsage:          true,
+		SilenceErrors:         true,
+		PersistentPreRunE:     runner.persistentPreRun,
 	}
 
 	// Add flags:
@@ -46,6 +49,9 @@ func Root() *cobra.Command {
 	result.AddCommand(probe.Cmd())
 	result.AddCommand(start.Cmd())
 	result.AddCommand(version.Cmd())
+
+	// Configure the root command, and therefore all its subcommands, to use Markdown for their help output:
+	help.Setup(result)
 
 	return result
 }
@@ -69,3 +75,9 @@ func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) erro
 
 	return nil
 }
+
+const shortHelp = `Fulfillment service.`
+
+const longHelp = `
+Fulfillment service.
+`

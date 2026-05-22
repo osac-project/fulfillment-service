@@ -28,6 +28,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/edit"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/help"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/label"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/login"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/logout"
@@ -41,11 +42,13 @@ func Root() (result *cobra.Command, err error) {
 	// create the runner and the command:
 	runner := &runnerContext{}
 	result = &cobra.Command{
-		Use:               "osac",
-		Short:             "CLI for the Open Sovereign AI Cloud platform",
-		SilenceUsage:      true,
-		SilenceErrors:     true,
-		PersistentPreRunE: runner.persistentPreRun,
+		Use:                   "osac COMMAND [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		SilenceUsage:          true,
+		SilenceErrors:         true,
+		PersistentPreRunE:     runner.persistentPreRun,
 	}
 
 	// Determine the name of the binary, as we will use it to determine the cache and config directories:
@@ -74,21 +77,13 @@ func Root() (result *cobra.Command, err error) {
 		&runner.args.configDir,
 		configFlag,
 		defaultConfigDir,
-		fmt.Sprintf(
-			"Directory where the configuration files are stored. Can also be set with the '%s' "+
-				"environment variable.",
-			configEnvVar,
-		),
+		configFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.cacheDir,
 		cacheFlag,
 		defaultCacheDir,
-		fmt.Sprintf(
-			"Directory where the cache and log files are stored. Can also be set with the '%s' "+
-				"environment variable.",
-			cacheEnvVar,
-		),
+		cacheFlagHelp,
 	)
 
 	// Add commands:
@@ -103,6 +98,9 @@ func Root() (result *cobra.Command, err error) {
 	result.AddCommand(login.Cmd())
 	result.AddCommand(logout.Cmd())
 	result.AddCommand(version.Cmd())
+
+	// Configure the root command, and therefore all its subcommands, to use Markdown for their help output:
+	help.Setup(result)
 
 	return
 }
@@ -220,3 +218,24 @@ const (
 	configEnvVar = "OSAC_CONFIG"
 	cacheEnvVar  = "OSAC_CACHE"
 )
+
+const shortHelp = `CLI for the _Open Sovereign AI Cloud_ platform`
+
+const longHelp = `
+Command line interface for the _Open Sovereign AI Cloud_ platform.
+`
+
+const configFlagHelp = `
+_DIRECTORY_ - Directory where configuration files are stored. Can also be set with the {{ bt }}OSAC_CONFIG{{ bt }}
+environment variable. If both are provided, the flag takes precedence.
+
+Configuration is stored in a file named {{ bt }}config.json{{ bt }} inside this directory.
+
+Secrets, such as tokens and passwords, are stored in the operating system keyring. If the keyring is not available,
+they are stored in a file named {{ bt }}secrets.json{{ bt }} inside this directory.
+`
+
+const cacheFlagHelp = `
+_DIRECTORY_ - Directory where cache and log files are stored. Can also be set with the {{ bt }}OSAC_CACHE{{ bt }}
+environment variable. If both are provided, the flag takes precedence.
+`

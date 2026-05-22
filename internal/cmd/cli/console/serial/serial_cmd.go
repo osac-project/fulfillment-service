@@ -46,33 +46,12 @@ func Cmd() *cobra.Command {
 func computeInstanceCmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "computeinstance <name-or-id>",
-		Short: "Access compute instance serial console",
-		Long: `Open an interactive serial console session to a compute instance.
-
-The console provides direct access to the compute instance's serial port,
-allowing you to interact with it as if connected via a physical serial cable.
-
-The instance can be specified by name or ID.
-
-To disconnect: press Ctrl+] at any time, or type ~. after Enter.
-The session continues running after you disconnect.
-
-Login credentials:
-  Cloud images (e.g., Fedora) require a password to be set via cloud-init
-  at instance creation time. Without this, serial console login will be rejected.
-  Example cloud-init config (base64-encoded):
-
-    #cloud-config
-    password: my-password
-    chpasswd:
-      expire: false
-
-  Pass it as a template parameter when creating the instance:
-    osac create computeinstance --template <template> \
-      -p cloud_init_config=<base64-encoded-config>`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "computeinstance [FLAG...] ID|NAME",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 
 	flags := result.Flags()
@@ -80,7 +59,7 @@ Login credentials:
 		&runner.args.timeout,
 		"timeout",
 		30*time.Minute,
-		"Session timeout.",
+		timeoutFlagHelp,
 	)
 
 	return result
@@ -181,3 +160,39 @@ func (c *runnerContext) proxyIO(ctx context.Context, cancel context.CancelFunc, 
 		},
 	})
 }
+
+const shortHelp = "Access compute instance serial console"
+
+const longHelp = `
+Open an interactive serial console session to a compute instance.
+
+The console provides direct access to the compute instance's serial port,
+allowing you to interact with it as if connected via a physical serial cable.
+
+The instance can be specified by name or identifier.
+
+To disconnect: press {{ bt }}Ctrl+]{{ bt }} at any time, or type {{ bt }}~.{{ bt }}
+after Enter. The session continues running after you disconnect.
+
+Cloud images (e.g., Fedora) require a password to be set via _cloud-init_
+at instance creation time. Without this, serial console login will be rejected.
+Example _cloud-init_ configuration:
+
+{{ bt 3 }}yaml
+#cloud-config
+password: ...
+chpasswd:
+  expire: false
+{{ bt 3 }}
+
+Pass it as a template parameter when creating the instance:
+
+{{ bt 3 }}shell
+{{ binary }} create computeinstance --template <template> \
+-p cloud_init_config=<base64-encoded-config>
+{{ bt 3}}
+`
+
+const timeoutFlagHelp = `
+_TIMEOUT_ - Session timeout.
+`

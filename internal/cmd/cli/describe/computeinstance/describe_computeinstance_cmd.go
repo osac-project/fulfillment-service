@@ -32,11 +32,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "computeinstance [flags] ID_OR_NAME",
-		Aliases: []string{"computeinstances"},
-		Short:   "Describe a compute instance",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runner.run,
+		Use:                   "computeinstance [FLAG...] ID|NAME",
+		Aliases:               []string{"computeinstances"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -117,3 +119,9 @@ func renderComputeInstance(w io.Writer, ci *publicv1.ComputeInstance) {
 	}
 	writer.Flush()
 }
+
+const shortHelp = `Describe a compute instance.`
+
+const longHelp = `
+Describe a compute instance.
+`

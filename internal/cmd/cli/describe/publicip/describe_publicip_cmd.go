@@ -31,17 +31,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "publicip [flags] ID_OR_NAME",
-		Aliases: []string{"publicips"},
-		Short:   "Describe a public IP",
-		Long:    "Display detailed information about a public IP, identified by ID or name.",
-		Example: `  # Describe a public IP by ID
-  osac describe publicip pip-abc123
-
-  # Describe a public IP by name
-  osac describe publicip my-ip`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "publicip [FLAG...] ID|NAME",
+		Aliases:               []string{"publicips"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -138,3 +134,21 @@ func RenderPublicIP(w io.Writer, pip *publicv1.PublicIP) {
 	fmt.Fprintf(writer, "Message:\t%s\n", message)
 	writer.Flush()
 }
+
+const shortHelp = `Describe a public IP`
+
+const longHelp = `
+Display detailed information about a public IP, referenced by identifier or name.
+
+Examples:
+
+{{ bt 3 }}shell
+# Describe a public IP by identifier:
+{{ binary }} describe publicip 019e5fee-0742-78b7-8c4a-e2501f44783a
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Describe a public IP by name:
+{{ binary }} describe publicip my-ip
+{{ bt 3 }}
+`

@@ -29,14 +29,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "publicip [flags]",
-		Aliases: []string{string(proto.MessageName((*publicv1.PublicIP)(nil)))},
-		Short:   "Create a public IP",
-		Long:    "Allocate a public IP address from an existing PublicIPPool.",
-		Example: `  # Create a public IP from a pool
-  osac create publicip --name my-ip --pool pool-abc123`,
-		Args: cobra.NoArgs,
-		RunE: runner.run,
+		Use:                   "publicip [FLAG...]",
+		Aliases:               []string{string(proto.MessageName((*publicv1.PublicIP)(nil)))},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -44,13 +43,13 @@ func Cmd() *cobra.Command {
 		"name",
 		"n",
 		"",
-		"Name of the public IP.",
+		nameFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.pool,
 		"pool",
 		"",
-		"ID of the parent PublicIPPool to allocate the address from.",
+		poolFlagHelp,
 	)
 	result.MarkFlagRequired("pool") //nolint:errcheck
 	// Note: attaching a compute instance at creation time (via --compute-instance flag) is future
@@ -103,3 +102,24 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = `Create a public IP.`
+
+const longHelp = `
+Allocate a public IP address from an existing PublicIPPool.
+
+Examples:
+
+{{ bt 3 }}shell
+# Create a public IP from a pool
+{{ binary }} create publicip --name my-ip --pool pool-abc123
+{{ bt 3 }}
+`
+
+const nameFlagHelp = `
+_NAME_ - Name of the public IP.
+`
+
+const poolFlagHelp = `
+_ID_ - Identifier of the parent PublicIPPool to allocate the address from.
+`

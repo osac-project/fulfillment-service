@@ -32,13 +32,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "grpc-server",
-		Short: "Checks the health of the gRPC server",
-		Long: "Checks the health of the gRPC server using the gRPC health checking protocol. " +
-			"This command is intended to be used as a liveness or readiness probe in Kubernetes. " +
-			"It exits with code 0 if the server is healthy, or a non-zero code otherwise.",
-		Args: cobra.NoArgs,
-		RunE: runner.run,
+		Use:                   "grpc-server [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := command.Flags()
 	network.AddGrpcClientFlags(flags, network.GrpcClientName, network.DefaultGrpcAddress)
@@ -46,13 +45,13 @@ func Cmd() *cobra.Command {
 		&runner.args.caFiles,
 		"ca-file",
 		[]string{},
-		"Files or directories containing trusted CA certificates in PEM format.",
+		caFileFlagHelp,
 	)
 	flags.DurationVar(
 		&runner.args.timeout,
 		"grpc-server-timeout",
 		time.Second,
-		"Timeout for the gRPC server health check request.",
+		grpcServerTimeoutFlagHelp,
 	)
 	return command
 }
@@ -141,3 +140,21 @@ func (c *runnerContext) checkHealth(ctx context.Context, conn *grpc.ClientConn) 
 
 // userAgent is the user agent string for the gRPC probe.
 const userAgent = "fulfillment-grpc-probe"
+
+const shortHelp = "Checks the health of the gRPC server"
+
+const longHelp = `
+Checks the health of the gRPC server using the gRPC health checking protocol.
+This command is intended to be used as a liveness or readiness probe in
+Kubernetes. It exits with code 0 if the server is healthy, or a non-zero code
+otherwise.
+`
+
+const caFileFlagHelp = `
+_FILE|DIRECTORY_ - Files or directories containing trusted CA certificates in PEM
+format.
+`
+
+const grpcServerTimeoutFlagHelp = `
+_TIMEOUT_ - Timeout for the gRPC server health check request.
+`

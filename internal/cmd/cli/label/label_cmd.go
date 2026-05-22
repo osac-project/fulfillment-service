@@ -37,9 +37,11 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "label OBJECT ID|NAME LABEL...",
-		Short: "Add or remove labels from objects",
-		RunE:  runner.run,
+		Use:                   "label [FLAG...] OBJECT ID|NAME LABEL...",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -246,3 +248,38 @@ func (c *runnerContext) applyLabelOperations(metadata reflection.Metadata, opera
 		metadata.SetLabels(labels)
 	}
 }
+
+const shortHelp = `Add or remove labels from objects`
+
+const longHelp = `
+Add or remove labels from objects.
+
+Labels are key-value pairs attached to objects that can be used to organize and select them. Unlike annotations, labels
+are intended for identifying and grouping objects; for example, they can be used in filters when listing objects.
+
+To add or update a label use the {{ bt }}key=value{{ bt }} syntax:
+
+{{ bt 3 }}shell
+{{ binary }} label clusters my-cluster env=production
+{{ bt 3 }}
+
+Multiple labels can be set at once:
+
+{{ bt 3 }}shell
+{{ binary }} label clusters my-cluster env=production team=platform
+{{ bt 3 }}
+
+To remove a label append a dash ({{ bt }}-{{ bt }}) to the key name:
+
+{{ bt 3 }}shell
+{{ binary }} label clusters my-cluster env-
+{{ bt 3 }}
+
+Adding and removing labels can be combined in a single command:
+
+{{ bt 3 }}shell
+{{ binary }} label clusters my-cluster env- team=networking
+{{ bt 3 }}
+
+Objects can be referenced by their identifier or by their name.
+`

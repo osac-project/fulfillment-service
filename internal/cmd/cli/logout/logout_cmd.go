@@ -24,9 +24,11 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "logout [flags]",
-		Short: "Discard connection and authentication details",
-		RunE:  runner.run,
+		Use:                   "logout [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -52,3 +54,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = `Discard connection and authentication details`
+
+const longHelp = `
+Discard connection and authentication details.
+`

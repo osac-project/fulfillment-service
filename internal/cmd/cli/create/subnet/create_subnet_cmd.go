@@ -30,18 +30,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "subnet [flags]",
-		Aliases: []string{string(proto.MessageName((*publicv1.Subnet)(nil)))},
-		Short:   "Create a subnet",
-		Long: "Create a subnet within an existing virtual network. " +
-			"At least one of --ipv4-cidr or --ipv6-cidr must be provided.",
-		Example: `  # Create an IPv4-only subnet
-  osac create subnet --name my-subnet --virtual-network vnet-abc123 --ipv4-cidr 10.0.1.0/24
-
-  # Create a dual-stack subnet
-  osac create subnet --name my-subnet --virtual-network vnet-abc123 --ipv4-cidr 10.0.1.0/24 --ipv6-cidr fd00:1234::/64`,
-		Args: cobra.NoArgs,
-		RunE: runner.run,
+		Use:                   "subnet [FLAG...]",
+		Aliases:               []string{string(proto.MessageName((*publicv1.Subnet)(nil)))},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -49,25 +44,25 @@ func Cmd() *cobra.Command {
 		"name",
 		"n",
 		"",
-		"Name of the subnet.",
+		nameFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.virtualNetwork,
 		"virtual-network",
 		"",
-		"ID of the parent virtual network.",
+		virtualNetworkFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.ipv4Cidr,
 		"ipv4-cidr",
 		"",
-		"IPv4 CIDR block for this subnet (e.g. 10.0.1.0/24).",
+		ipv4CidrFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.ipv6Cidr,
 		"ipv6-cidr",
 		"",
-		"IPv6 CIDR block for this subnet (e.g. fd00:1234::/64).",
+		ipv6CidrFlagHelp,
 	)
 	return result
 }
@@ -132,3 +127,40 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = `Create a subnet.`
+
+const longHelp = `
+Create a subnet within an existing virtual network. At least one of
+{{ bt }}--ipv4-cidr{{ bt }} or {{ bt }}--ipv6-cidr{{ bt }} must be provided.
+
+To create an IPv4-only subnet:
+
+{{ bt 3 }}shell
+{{ binary }} create subnet --name my-subnet --virtual-network vnet-abc123 --ipv4-cidr 10.0.1.0/24
+{{ bt 3 }}
+
+To create a dual-stack subnet:
+
+{{ bt 3 }}shell
+{{ binary }} create subnet --name my-subnet --virtual-network vnet-abc123 --ipv4-cidr 10.0.1.0/24 --ipv6-cidr fd00:1234::/64
+{{ bt 3 }}
+`
+
+const nameFlagHelp = `
+_NAME_ - Name of the subnet.
+`
+
+const virtualNetworkFlagHelp = `
+_ID_ - Identifier of the parent virtual network.
+`
+
+const ipv4CidrFlagHelp = `
+_CIDR_ - IPv4 CIDR block for this subnet, for example
+{{ bt }}10.0.1.0/24{{ bt }}.
+`
+
+const ipv6CidrFlagHelp = `
+_CIDR_ - IPv6 CIDR block for this subnet, for example
+{{ bt }}fd00:1234::/64{{ bt }}.
+`

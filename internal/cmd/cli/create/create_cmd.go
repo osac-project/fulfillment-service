@@ -45,9 +45,11 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "create [OPTION]...",
-		Short: "Create objects",
-		RunE:  runner.run,
+		Use:                   "create [FLAG...] -f FILE",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
 	result.AddCommand(cluster.Cmd())
 	result.AddCommand(computeinstance.Cmd())
@@ -63,8 +65,7 @@ func Cmd() *cobra.Command {
 		"filename",
 		"f",
 		"",
-		"Name of the file containg the object to create. This is mandatory. If the value is '-' the object is "+
-			"read from the standard input.",
+		filenameFlagHelp,
 	)
 	return result
 }
@@ -239,3 +240,32 @@ func (c *runnerContext) decodeObjects(input io.Reader) (result []proto.Message, 
 	result = objects
 	return
 }
+
+const shortHelp = `Create objects`
+
+const longHelp = `
+Create objects from a YAML or JSON file. The input file must contain one or more objects encoded as protocol buffers
+{{ bt }}Any{{ bt }} messages, which include the {{ bt }}@type{{ bt }} field to identify the object type.
+
+To create an object from a file:
+
+{{ bt 3 }}shell
+{{ binary }} create -f my-cluster.yaml
+{{ bt 3 }}
+
+To read the object from standard input:
+
+{{ bt 3 }}shell
+cat my-cluster.yaml | {{ binary }} create -f -
+{{ bt 3 }}
+
+The input file can contain multiple documents separated by {{ bt }}---{{ bt }}, and each document can be a single object
+or a list of objects. All objects are created in order.
+
+There are also subcommands for creating specific types of objects with dedicated flags instead of a file. Use {{ bt
+}}--help{{ bt }} on any subcommand for details.
+`
+
+const filenameFlagHelp = `
+_FILE_ - Name of the file containing the object to create. Use {{ bt }}-{{ bt }} to read from standard input.
+`

@@ -30,7 +30,9 @@ func Cmd() *cobra.Command {
 	result := &cobra.Command{
 		Use:     "hub",
 		Aliases: []string{string(proto.MessageName((*privatev1.Hub)(nil)))},
-		Short:   "Create a hub",
+		Short:   shortHelp,
+		Long:    longHelp,
+		Args:    cobra.NoArgs,
 		RunE:    runner.run,
 	}
 	flags := result.Flags()
@@ -38,19 +40,19 @@ func Cmd() *cobra.Command {
 		&runner.id,
 		"id",
 		"",
-		"Unique identifier of the hub.",
+		idFlagHelp,
 	)
 	flags.StringVar(
 		&runner.kubeconfig,
 		"kubeconfig",
 		"",
-		"Kubeconfig file containing the details to connect to the Kubernetes API.",
+		kubeconfigFlagHelp,
 	)
 	flags.StringVar(
 		&runner.namespace,
 		"namespace",
 		"",
-		"Namespace where cluster orders will be created.",
+		namespaceFlagHelp,
 	)
 	return result
 }
@@ -128,3 +130,22 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = `Create a hub.`
+
+const longHelp = `
+Create a hub.
+`
+
+const idFlagHelp = `
+_ID_ - Unique identifier of the hub.
+`
+
+const kubeconfigFlagHelp = `
+_FILE_ - Kubeconfig file containing the details to connect to the Kubernetes
+API.
+`
+
+const namespaceFlagHelp = `
+_NAMESPACE_ - Namespace where cluster orders will be created.
+`

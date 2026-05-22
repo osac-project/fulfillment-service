@@ -33,23 +33,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "securitygroup [flags]",
-		Aliases: []string{string(proto.MessageName((*publicv1.SecurityGroup)(nil)))},
-		Short:   "Create a security group",
-		Long: "Create a security group with optional ingress and egress firewall rules. " +
-			"Rules are specified using key=value pairs separated by commas (e.g. protocol=tcp,port-from=80,port-to=80,ipv4-cidr=0.0.0.0/0). " +
-			"Supported keys: protocol (required: tcp, udp, icmp, all), port-from, port-to, ipv4-cidr, ipv6-cidr.",
-		Example: `  # Create a security group with an HTTP ingress rule
-  osac create securitygroup --name web-sg --virtual-network vnet-abc123 \
-    --ingress protocol=tcp,port-from=80,port-to=80,ipv4-cidr=0.0.0.0/0
-
-  # Create a security group with multiple rules
-  osac create securitygroup --name app-sg --virtual-network vnet-abc123 \
-    --ingress protocol=tcp,port-from=443,port-to=443,ipv4-cidr=0.0.0.0/0 \
-    --ingress protocol=icmp,ipv4-cidr=10.0.0.0/8 \
-    --egress protocol=all`,
-		Args: cobra.NoArgs,
-		RunE: runner.run,
+		Use:                   "securitygroup [FLAG...]",
+		Aliases:               []string{string(proto.MessageName((*publicv1.SecurityGroup)(nil)))},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -57,25 +47,25 @@ func Cmd() *cobra.Command {
 		"name",
 		"n",
 		"",
-		"Name of the security group.",
+		nameFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.virtualNetwork,
 		"virtual-network",
 		"",
-		"ID of the virtual network to associate with this security group.",
+		virtualNetworkFlagHelp,
 	)
 	flags.StringArrayVar(
 		&runner.args.ingressRules,
 		"ingress",
 		nil,
-		"Ingress rule in key=value,... format (e.g. protocol=tcp,port-from=80,port-to=80,ipv4-cidr=0.0.0.0/0). Can be specified multiple times.",
+		ingressFlagHelp,
 	)
 	flags.StringArrayVar(
 		&runner.args.egressRules,
 		"egress",
 		nil,
-		"Egress rule in key=value,... format (e.g. protocol=all). Can be specified multiple times.",
+		egressFlagHelp,
 	)
 	return result
 }
@@ -271,3 +261,55 @@ func parsePort(value string) (int32, error) {
 	}
 	return int32(n), nil
 }
+
+const shortHelp = `Create a security group.`
+
+const longHelp = `
+Create a security group with optional ingress and egress firewall rules.
+
+Rules are specified using {{ bt }}key=value{{ bt }} pairs separated by commas. For example:
+{{ bt }}protocol=tcp,port-from=80,port-to=80,ipv4-cidr=0.0.0.0/0{{ bt }}.
+
+Supported keys:
+
+* {{ bt }}protocol{{ bt }} - Required, one of {{ bt }}tcp{{ bt }}, {{ bt }}udp{{ bt }}, {{ bt }}icmp{{ bt }} or {{ bt }}all{{ bt }}.
+* {{ bt }}port-from{{ bt }} - Optional, port number from which the traffic is allowed.
+* {{ bt }}port-to{{ bt }} - Optional, port number to which the traffic is allowed.
+* {{ bt }}ipv4-cidr{{ bt }} - Optional, IPv4 CIDR block for the traffic.
+
+Examples:
+
+{{ bt 3 }}shell
+# Create a security group with an HTTP ingress rule
+{{ binary }} create securitygroup --name web-sg --virtual-network vnet-abc123 \
+--ingress protocol=tcp,port-from=80,port-to=80,ipv4-cidr=0.0.0.0/0
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Create a security group with multiple rules
+{{ binary }} create securitygroup --name app-sg --virtual-network vnet-abc123 \
+--ingress protocol=tcp,port-from=443,port-to=443,ipv4-cidr=0.0.0.0/0 \
+--ingress protocol=icmp,ipv4-cidr=10.0.0.0/8 \
+--egress protocol=all
+{{ bt 3 }}
+`
+
+const nameFlagHelp = `
+_NAME_ - Name of the security group.
+`
+
+const virtualNetworkFlagHelp = `
+_ID_ - Identifier of the virtual network to associate with this security
+group.
+`
+
+const ingressFlagHelp = `
+_RULE_ - Ingress rule in {{ bt }}key=value,...{{ bt }} format, for example
+{{ bt }}protocol=tcp,port-from=80,port-to=80,ipv4-cidr=0.0.0.0/0{{ bt }}.
+Can be specified multiple times.
+`
+
+const egressFlagHelp = `
+_RULE_ - Egress rule in {{ bt }}key=value,...{{ bt }} format, for example
+{{ bt }}protocol=all{{ bt }}. Can be specified multiple times.
+`

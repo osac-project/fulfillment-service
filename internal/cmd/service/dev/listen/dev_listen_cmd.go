@@ -32,10 +32,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "listen",
-		Short: "Listens for notifications",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "listen [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := command.Flags()
 	database.AddFlags(flags)
@@ -43,7 +45,7 @@ func Cmd() *cobra.Command {
 		&runner.channel,
 		"channel",
 		"",
-		"Name of the channel",
+		channelFlagHelp,
 	)
 	return command
 }
@@ -121,3 +123,13 @@ func (c *runnerContext) processPayload(ctx context.Context, payload proto.Messag
 
 	return nil
 }
+
+const shortHelp = `Listens for notifications`
+
+const longHelp = `
+Listens for notifications.
+`
+
+const channelFlagHelp = `
+_CHANNEL_ - Name of the channel.
+`

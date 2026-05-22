@@ -52,9 +52,11 @@ func Cmd() *cobra.Command {
 		},
 	}
 	result := &cobra.Command{
-		Use:   "edit OBJECT ID|NAME",
-		Short: "Edit objects",
-		RunE:  runner.run,
+		Use:                   "edit [FLAG...] OBJECT ID|NAME",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -62,10 +64,7 @@ func Cmd() *cobra.Command {
 		"output",
 		"o",
 		outputFormatYaml,
-		fmt.Sprintf(
-			"Output format, one of '%s' or '%s'.",
-			outputFormatJson, outputFormatYaml,
-		),
+		outputFlagHelp,
 	)
 	return result
 }
@@ -381,3 +380,33 @@ var editorEnvVars = []string{
 
 // defualtEditor is the editor used when the environment variables don't indicate any other editor.
 const defaultEditor = "vi"
+
+const shortHelp = `Edit objects`
+
+const longHelp = `
+Edit an object by opening it in a text editor.
+
+The object is fetched from the server, rendered as YAML (or JSON), and opened in your preferred editor. When you save
+and close the editor the modified object is sent back to the server.
+
+To edit a cluster:
+
+{{ bt 3 }}shell
+{{ binary }} edit cluster my-cluster
+{{ bt 3 }}
+
+The editor is selected from the {{ bt }}EDITOR{{ bt }} or {{ bt }}VISUAL{{ bt }} environment variables, falling back to
+{{ bt }}vi{{ bt }} if neither is set.
+
+By default the object is rendered as YAML. Use the {{ bt }}--output{{ bt }} flag to switch to JSON:
+
+{{ bt 3 }}shell
+{{ binary }} edit cluster my-cluster -o json
+{{ bt 3 }}
+
+Objects can be referenced by their identifier or by their name.
+`
+
+const outputFlagHelp = `
+_FORMAT_ - Format used for editing. Must be one of {{ bt }}json{{ bt }} or {{ bt }}yaml{{ bt }}.
+`

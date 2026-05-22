@@ -31,11 +31,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "cluster [flags] ID_OR_NAME",
-		Aliases: []string{"clusters"},
-		Short:   "Describe a cluster",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runner.run,
+		Use:                   "cluster [FLAG...] ID|NAME",
+		Aliases:               []string{"clusters"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -113,3 +115,9 @@ func renderCluster(w io.Writer, cluster *publicv1.Cluster) {
 	fmt.Fprintf(writer, "State:\t%s\n", state)
 	writer.Flush()
 }
+
+const shortHelp = `Describe a cluster.`
+
+const longHelp = `
+Describe a cluster.
+`

@@ -22,12 +22,19 @@ import (
 
 func Cmd() *cobra.Command {
 	result := &cobra.Command{
-		Use:    "dev",
-		Short:  "Tools for developers",
-		Args:   cobra.NoArgs,
-		Hidden: true,
+		Use:                   "dev COMMAND [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
 	}
 	result.AddCommand(listen.Cmd())
 	result.AddCommand(watch.Cmd())
 	return result
 }
+
+const shortHelp = `Tools for developers`
+
+const longHelp = `
+Tools for developers.
+`

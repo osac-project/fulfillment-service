@@ -45,19 +45,12 @@ func Cmd() *cobra.Command {
 func computeInstanceCmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "computeinstance <name-or-id>",
-		Short: "Access compute instance VNC console",
-		Long: `Open a VNC console session to a compute instance.
-
-Starts a local TCP proxy and launches a VNC viewer. The proxy bridges
-the local TCP socket to the server-side VNC stream via gRPC.
-
-The instance can be specified by name or ID.
-
-If no viewer is found, use --proxy-only to start only the TCP proxy
-and connect with your own VNC client.`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "computeinstance [FLAG...] ID|NAME",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 
 	flags := result.Flags()
@@ -228,3 +221,17 @@ func (c *runnerContext) proxyVNC(
 	}
 	return proxyErr
 }
+
+const shortHelp = "Access compute instance VNC console"
+
+const longHelp = `
+Open a VNC console session to a compute instance.
+
+Starts a local TCP proxy and launches a VNC viewer. The proxy bridges
+the local TCP socket to the server-side VNC stream via gRPC.
+
+The instance can be specified by name or identifier.
+
+If no viewer is found, use {{ bt }}--proxy-only{{ bt }} to start only the TCP proxy
+and connect with your own VNC client.
+`

@@ -44,10 +44,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "rest-gateway",
-		Short: "Starts the REST gateway",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "rest-gateway [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := command.Flags()
 	network.AddListenerFlags(flags, network.HttpListenerName, network.DefaultHttpAddress)
@@ -58,7 +60,7 @@ func Cmd() *cobra.Command {
 		&runner.args.caFiles,
 		"ca-file",
 		[]string{},
-		"File or directory containing trusted CA certificates.",
+		caFileFlagHelp,
 	)
 	return command
 }
@@ -396,3 +398,13 @@ func (c *runnerContext) handleHealth(
 
 // userAgent is the user agent string for the REST gateway.
 const userAgent = "fulfillment-rest-gateway"
+
+const shortHelp = `Starts the REST gateway`
+
+const longHelp = `
+Starts the REST gateway.
+`
+
+const caFileFlagHelp = `
+_FILE|DIRECTORY_ - File or directory containing trusted CA certificates.
+`

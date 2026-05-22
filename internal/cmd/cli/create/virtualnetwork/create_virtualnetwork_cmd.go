@@ -30,18 +30,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "virtualnetwork [flags]",
-		Aliases: []string{string(proto.MessageName((*publicv1.VirtualNetwork)(nil)))},
-		Short:   "Create a virtual network",
-		Long: "Create a virtual network with the specified network class and IP addressing configuration. " +
-			"At least one of --ipv4-cidr or --ipv6-cidr must be provided.",
-		Example: `  # Create an IPv4-only virtual network
-  osac create virtualnetwork --name my-network --network-class udn-net --ipv4-cidr 10.0.0.0/16
-
-  # Create a dual-stack virtual network
-  osac create virtualnetwork --name my-network --network-class udn-net --ipv4-cidr 10.0.0.0/16 --ipv6-cidr fd00::/64`,
-		Args: cobra.NoArgs,
-		RunE: runner.run,
+		Use:                   "virtualnetwork [FLAG...]",
+		Aliases:               []string{string(proto.MessageName((*publicv1.VirtualNetwork)(nil)))},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -49,25 +44,25 @@ func Cmd() *cobra.Command {
 		"name",
 		"n",
 		"",
-		"Name of the virtual network.",
+		nameFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.networkClass,
 		"network-class",
 		"",
-		"Network class to use for this virtual network.",
+		networkClassFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.ipv4Cidr,
 		"ipv4-cidr",
 		"",
-		"IPv4 CIDR block for this network (e.g. 10.0.0.0/16).",
+		ipv4CidrFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.ipv6Cidr,
 		"ipv6-cidr",
 		"",
-		"IPv6 CIDR block for this network (e.g. fd00::/64).",
+		ipv6CidrFlagHelp,
 	)
 	return result
 }
@@ -148,3 +143,41 @@ func validateNetworkClass(networkClass string) error {
 	}
 	return nil
 }
+
+const shortHelp = `Create a virtual network.`
+
+const longHelp = `
+Create a virtual network with the specified network class and IP addressing
+configuration. At least one of {{ bt }}--ipv4-cidr{{ bt }} or
+{{ bt }}--ipv6-cidr{{ bt }} must be provided.
+
+To create an IPv4-only virtual network:
+
+{{ bt 3 }}shell
+{{ binary }} create virtualnetwork --name my-network --network-class udn-net --ipv4-cidr 10.0.0.0/16
+{{ bt 3 }}
+
+To create a dual-stack virtual network:
+
+{{ bt 3 }}shell
+{{ binary }} create virtualnetwork --name my-network --network-class udn-net --ipv4-cidr 10.0.0.0/16 --ipv6-cidr fd00::/64
+{{ bt 3 }}
+`
+
+const nameFlagHelp = `
+_NAME_ - Name of the virtual network.
+`
+
+const networkClassFlagHelp = `
+_CLASS_ - Network class to use for this virtual network.
+`
+
+const ipv4CidrFlagHelp = `
+_CIDR_ - IPv4 CIDR block for this network, for example
+{{ bt }}10.0.0.0/16{{ bt }}.
+`
+
+const ipv6CidrFlagHelp = `
+_CIDR_ - IPv6 CIDR block for this network, for example
+{{ bt }}fd00::/64{{ bt }}.
+`

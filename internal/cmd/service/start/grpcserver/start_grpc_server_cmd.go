@@ -56,10 +56,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "grpc-server",
-		Short: "Starts the gRPC server",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "grpc-server [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := command.Flags()
 	network.AddListenerFlags(flags, network.GrpcListenerName, network.DefaultGrpcAddress)
@@ -69,36 +71,31 @@ func Cmd() *cobra.Command {
 		&runner.args.authType,
 		"grpc-authn-type",
 		auth.GrpcGuestAuthType,
-		fmt.Sprintf(
-			"Type of authentication. Valid values are '%s' and '%s'.",
-			auth.GrpcGuestAuthType, auth.GrpcExternalAuthType,
-		),
+		grpcAuthnTypeFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.externalAuthAddress,
 		"grpc-authn-external-address",
 		"",
-		"Address of the external auth service using the Envoy ext_authz gRPC protocol. "+
-			"Required when --auth-type is set to 'external'.",
+		grpcAuthnExternalAddressFlagHelp,
 	)
 	flags.StringSliceVar(
 		&runner.args.caFiles,
 		"ca-file",
 		[]string{},
-		"Files or directories containing trusted CA certificates in PEM format. "+
-			"Used for TLS connections to the external auth service.",
+		caFileFlagHelp,
 	)
 	flags.StringSliceVar(
 		&runner.args.trustedTokenIssuers,
 		"grpc-authn-trusted-token-issuers",
 		[]string{},
-		"Comma separated list of token issuers that are advertised as trusted by the gRPC server.",
+		grpcAuthnTrustedTokenIssuersFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.tenancyLogic,
 		"tenancy-logic",
 		"default",
-		"Type of tenancy logic to use. Valid values are 'default' and 'guest'.",
+		tenancyLogicFlagHelp,
 	)
 	return command
 }
@@ -1092,3 +1089,35 @@ const publicMethodRegex = `^/(osac\.public\.v1\.Capabilities/|grpc\.(reflection|
 
 // grpcServerUserAgent is the user agent string for the gRPC server.
 const grpcServerUserAgent = "fulfillment-grpc-server"
+
+const shortHelp = `Starts the gRPC server`
+
+const longHelp = `
+Starts the gRPC server.
+`
+
+const grpcAuthnTypeFlagHelp = `
+_TYPE_ - Type of authentication. Valid values are {{ bt }}guest{{ bt }}
+and {{ bt }}external{{ bt }}.
+`
+
+const grpcAuthnExternalAddressFlagHelp = `
+_ADDRESS_ - Address of the external auth service using the
+Envoy ext_authz gRPC protocol. Required when {{ bt }}--grpc-authn-type{{ bt }}
+is set to {{ bt }}external{{ bt }}.
+`
+
+const caFileFlagHelp = `
+_FILE_ - Files or directories containing trusted CA certificates in PEM
+format. Used for TLS connections to the external auth service.
+`
+
+const grpcAuthnTrustedTokenIssuersFlagHelp = `
+_ISSUERS_ - Comma separated list of token issuers that
+are advertised as trusted by the gRPC server.
+`
+
+const tenancyLogicFlagHelp = `
+_LOGIC_ - Type of tenancy logic to use. Valid values are
+{{ bt }}default{{ bt }} and {{ bt }}guest{{ bt }}.
+`

@@ -28,17 +28,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "publicipattachment ATTACHMENT",
-		Short: "Delete a public IP attachment",
-		Long: "Delete a PublicIPAttachment to detach a public IP from its target. " +
-			"The attachment is identified by its ID or name.",
-		Example: `  # Delete an attachment by name
-  osac delete publicipattachment my-attachment
-
-  # Delete an attachment by ID
-  osac delete publicipattachment pia-abc123`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "publicipattachment ID|NAME",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -94,3 +89,22 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = `Delete a public IP attachment.`
+
+const longHelp = `
+Delete a public IP attachment to detach a public IP from its target.
+The attachment is referenced by its identifier or name.
+
+Examples:
+
+{{ bt 3 }}shell
+# Delete an attachment by name:
+{{ binary }} delete publicipattachment my-attachment
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Delete an attachment by identifier:
+{{ binary }} delete publicipattachment 019e634d-c9a9-7299-bd92-0f725e753421
+{{ bt 3 }}
+`

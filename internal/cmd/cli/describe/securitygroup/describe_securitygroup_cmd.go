@@ -32,17 +32,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "securitygroup [flags] ID_OR_NAME",
-		Aliases: []string{"securitygroups"},
-		Short:   "Describe a security group",
-		Long:    "Display detailed information about a security group, identified by ID or name, including its ingress and egress rules.",
-		Example: `  # Describe a security group by ID
-  osac describe securitygroup sg-abc123
-
-  # Describe a security group by name
-  osac describe securitygroup web-sg`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "securitygroup [FLAG...] ID|NAME",
+		Aliases:               []string{"securitygroups"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -166,3 +162,22 @@ func renderRules(w io.Writer, label string, rules []*publicv1.SecurityRule) {
 	}
 	ruleWriter.Flush()
 }
+
+const shortHelp = "Describe a security group"
+
+const longHelp = `
+Display detailed information about a security group, referenced by identifier or name,
+including its ingress and egress rules.
+
+Examples:
+
+{{ bt 3 }}shell
+# Describe a security group by identifier:
+{{ binary }} describe securitygroup 019e5fef-6d56-78d1-b282-7b5456b86888
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Describe a security group by name:
+{{ binary }} describe securitygroup web-sg
+{{ bt 3 }}
+`

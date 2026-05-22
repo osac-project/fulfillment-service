@@ -140,6 +140,22 @@ The following automated checks are configured and should be run at the appropria
 - **Before committing**: Run `buf lint` before every `git commit` to catch proto issues early.
 - **Before creating a PR**: Run `gofmt -s -w .` (auto-formats, then fails if any files changed — commit the fixes first), `buf lint`, and `ginkgo run -r internal`.
 
+## CLI Command Help Text
+
+When adding or modifying CLI commands, write help text (both `Short` and `Long` descriptions, as
+well as flag help strings) using Markdown. The help system renders Markdown at display time, so the
+source strings should use Markdown syntax for emphasis, inline code, code blocks, and similar
+formatting.
+
+Because raw backticks would conflict with Go string syntax, use the `{{ bt }}` template function for
+inline code and `{{ bt 3 }}` for fenced code blocks.
+
+For flag help, start with a short type hint in italics (e.g. `_[BOOLEAN]_`, `_URL_`,
+`_FILE|DIRECTORY_`) followed by a dash and the description.
+
+Refer to existing commands such as `internal/cmd/cli/login/login_cmd.go` for style and examples of
+how help text is structured.
+
 ## Common Pitfalls
 
 - Proto changes require both `buf lint` and `buf generate` before committing

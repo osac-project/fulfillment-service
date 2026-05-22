@@ -29,14 +29,12 @@ func AddFlags(flags *pflag.FlagSet) {
 	_ = flags.String(
 		urlFlagName,
 		"",
-		"Database connection URL.",
+		urlFlagHelp,
 	)
 	_ = flags.String(
 		urlFileFlagName,
 		"",
-		"File or directory containing the database connection settings. When pointing to a file, "+
-			"the URL is read from the file. When pointing to a directory, the tool scans for files "+
-			"named after connection parameters and builds the URL from them.",
+		urlFileFlagHelp,
 	)
 }
 
@@ -45,3 +43,14 @@ const (
 	urlFlagName     = "db-url"
 	urlFileFlagName = "db-url-file"
 )
+
+const urlFlagHelp = `
+_URL_ - Database connection URL.
+`
+
+const urlFileFlagHelp = `
+_FILE|DIRECTORY_ - File or directory containing the database connection
+settings. When pointing to a file the URL is read from it. When pointing to a
+directory the tool scans for files named after connection parameters and builds
+the URL from them.
+`

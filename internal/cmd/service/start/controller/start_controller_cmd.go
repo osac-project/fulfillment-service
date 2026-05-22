@@ -66,99 +66,91 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "controller",
-		Short: "Starts the controller",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "controller [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := command.Flags()
 	flags.StringArrayVar(
 		&runner.args.caFiles,
 		"ca-file",
 		[]string{},
-		"File or directory containing trusted CA certificates.",
+		caFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authIssuerUrl,
 		"auth-issuer-url",
 		"",
-		"Issuer URL for OAuth token acquisition. Required when using '--auth-client-id' and "+
-			"'--auth-client-secret'. Mutually exclusive with '--auth-issuer-url-file'.",
+		authIssuerUrlFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authIssuerUrlFile,
 		"auth-issuer-url-file",
 		"",
-		"File containing the issuer URL for OAuth token acquisition. Mutually exclusive with "+
-			"'--auth-issuer-url'.",
+		authIssuerUrlFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authClientId,
 		"auth-client-id",
 		"",
-		"OAuth client identifier for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-id-file'.",
+		authClientIdFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authClientIdFile,
 		"auth-client-id-file",
 		"",
-		"File containing the OAuth client identifier for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-id'.",
+		authClientIdFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authClientSecret,
 		"auth-client-secret",
 		"",
-		"OAuth client secret for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-secret-file'.",
+		authClientSecretFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authClientSecretFile,
 		"auth-client-secret-file",
 		"",
-		"File containing the OAuth client secret for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-secret'.",
+		authClientSecretFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpProvider,
 		"idp-provider",
 		idp.ProviderKeycloak,
-		fmt.Sprintf("Identity provider type (default: %s).", strings.Join(idp.ValidProviders, ", ")),
+		idpProviderFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpURL,
 		"idp-url",
 		"",
-		"Base URL of the identity provider.",
+		idpUrlFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpClientIdFile,
 		"idp-client-id-file",
 		"",
-		"File containing the OAuth client identifier for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-id'.",
+		idpClientIdFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpClientId,
 		"idp-client-id",
 		"",
-		"OAuth client identifier for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-id-file'.",
+		idpClientIdFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpClientSecretFile,
 		"idp-client-secret-file",
 		"",
-		"File containing the OAuth client secret for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-secret'.",
+		idpClientSecretFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpClientSecret,
 		"idp-client-secret",
 		"",
-		"OAuth client secret for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-secret-file'.",
+		idpClientSecretFlagHelp,
 	)
 	network.AddGrpcClientFlags(flags, network.GrpcClientName, network.DefaultGrpcAddress)
 	network.AddListenerFlags(flags, network.GrpcListenerName, network.DefaultGrpcAddress)
@@ -1042,3 +1034,74 @@ func (r *runnerContext) readTrimmedFile(file string) (result string, err error) 
 
 // controllerUserAgent is the user agent string for the controller.
 const controllerUserAgent = "fulfillment-controller"
+
+const shortHelp = `Starts the controller`
+
+const longHelp = `
+Starts the controller.
+`
+
+const caFileFlagHelp = `
+_FILE|DIRECTORY_ - File or directory containing trusted CA certificates.
+`
+
+const authIssuerUrlFlagHelp = `
+_URL_ - Issuer URL for OAuth token acquisition. Required when using
+{{ bt }}--auth-client-id{{ bt }} and {{ bt }}--auth-client-secret{{ bt }}.
+Mutually exclusive with {{ bt }}--auth-issuer-url-file{{ bt }}.
+`
+
+const authIssuerUrlFileFlagHelp = `
+_FILE_ - File containing the issuer URL for OAuth token
+acquisition. Mutually exclusive with {{ bt }}--auth-issuer-url{{ bt }}.
+`
+
+const authClientIdFlagHelp = `
+_ID_ - OAuth client identifier for authentication with the API.
+Mutually exclusive with {{ bt }}--auth-client-id-file{{ bt }}.
+`
+
+const authClientIdFileFlagHelp = `
+_FILE_ - File containing the OAuth client identifier for
+authentication with the API. Mutually exclusive with
+{{ bt }}--auth-client-id{{ bt }}.
+`
+
+const authClientSecretFlagHelp = `
+_SECRET_ - OAuth client secret for authentication with the API.
+Mutually exclusive with {{ bt }}--auth-client-secret-file{{ bt }}.
+`
+
+const authClientSecretFileFlagHelp = `
+_FILE_ - File containing the OAuth client secret for
+authentication with the API. Mutually exclusive with
+{{ bt }}--auth-client-secret{{ bt }}.
+`
+
+const idpProviderFlagHelp = `
+_PROVIDER_ - Identity provider type. Valid values are {{ bt }}keycloak{{ bt }}.
+`
+
+const idpUrlFlagHelp = `
+_URL_ - Base URL of the identity provider.
+`
+
+const idpClientIdFileFlagHelp = `
+_FILE_ - File containing the OAuth client identifier for IDP
+authentication. Mutually exclusive with {{ bt }}--idp-client-id{{ bt }}.
+`
+
+const idpClientIdFlagHelp = `
+_ID_ - OAuth client identifier for IDP authentication. Mutually
+exclusive with {{ bt }}--idp-client-id-file{{ bt }}.
+`
+
+const idpClientSecretFileFlagHelp = `
+_FILE_ - File containing the OAuth client secret for IDP
+authentication. Mutually exclusive with {{ bt }}--idp-client-secret{{ bt }}.
+`
+
+const idpClientSecretFlagHelp = `
+_SECRET_ - OAuth client secret for IDP authentication. Mutually
+exclusive with {{ bt }}--idp-client-secret-file{{ bt }}.
+`

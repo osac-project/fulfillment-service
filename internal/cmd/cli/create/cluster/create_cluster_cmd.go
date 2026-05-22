@@ -46,10 +46,13 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "cluster [flags]",
-		Aliases: []string{string(proto.MessageName((*publicv1.Cluster)(nil)))},
-		Short:   "Create a cluster",
-		RunE:    runner.run,
+		Use:                   "cluster [FLAG...]",
+		Aliases:               []string{string(proto.MessageName((*publicv1.Cluster)(nil)))},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -57,76 +60,76 @@ func Cmd() *cobra.Command {
 		"name",
 		"n",
 		"",
-		"Name of the cluster.",
+		nameFlagHelp,
 	)
 	flags.StringVarP(
 		&runner.args.template,
 		"template",
 		"t",
 		"",
-		"Template identifier or name",
+		templateFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.catalogItem,
 		"catalog-item",
 		"",
-		"Catalog item identifier. Replaces --template.",
+		catalogItemFlagHelp,
 	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterValues,
 		"template-parameter",
 		"p",
 		[]string{},
-		"Template parameter in the format 'name=value'.",
+		templateParameterFlagHelp,
 	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterFiles,
 		"template-parameter-file",
 		"f",
 		[]string{},
-		"Template parameter from file in the format 'name=filename'.",
+		templateParameterFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.pullSecret,
 		"pull-secret",
 		"",
-		"Pull secret for authenticating to image repositories (inline value).",
+		pullSecretFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.pullSecretFile,
 		"pull-secret-file",
 		"",
-		"Path to a file containing the pull secret.",
+		pullSecretFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.sshPublicKey,
 		"ssh-public-key",
 		"",
-		"SSH public key to install on cluster worker nodes.",
+		sshPublicKeyFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.sshPublicKeyFile,
 		"ssh-public-key-file",
 		"",
-		"Path to a file containing the SSH public key.",
+		sshPublicKeyFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.releaseImage,
 		"release-image",
 		"",
-		"OCP release image URL (e.g., quay.io/openshift-release-dev/ocp-release:4.17.0-multi).",
+		releaseImageFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.podCIDR,
 		"pod-cidr",
 		"",
-		"CIDR for the cluster's pod network. If omitted, the server default is used.",
+		podCIDRFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.serviceCIDR,
 		"service-cidr",
 		"",
-		"CIDR for the cluster's service network. If omitted, the server default is used.",
+		serviceCIDRFlagHelp,
 	)
 	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
 	result.MarkFlagsOneRequired("catalog-item", "template")
@@ -767,3 +770,67 @@ func (c *runnerContext) validTemplateParameters(template *publicv1.ClusterTempla
 
 	return results
 }
+
+const shortHelp = `Create a cluster`
+
+const longHelp = `
+Create a cluster.
+`
+
+const nameFlagHelp = `
+_NAME_ - Name of the cluster.
+`
+
+const templateFlagHelp = `
+_TEMPLATE_ - Template identifier or name. Mutually exclusive with
+{{ bt }}--catalog-item{{ bt }}.
+`
+
+const catalogItemFlagHelp = `
+_ID_ - Catalog item identifier. Mutually exclusive with
+{{ bt }}--template{{ bt }}.
+`
+
+const templateParameterFlagHelp = `
+_NAME=VALUE_ - Template parameter in the format
+{{ bt }}name=value{{ bt }}. Can be specified multiple times.
+`
+
+const templateParameterFileFlagHelp = `
+_NAME=FILE_ - Template parameter whose value is read from a file, in the
+format {{ bt }}name=filename{{ bt }}. Can be specified multiple
+times.
+`
+
+const pullSecretFlagHelp = `
+_SECRET_ - Pull secret for authenticating to image repositories, provided as
+an inline value. See also {{ bt }}--pull-secret-file{{ bt }}.
+`
+
+const pullSecretFileFlagHelp = `
+_FILE_ - Path to a file containing the pull secret.
+`
+
+const sshPublicKeyFlagHelp = `
+_KEY_ - SSH public key to install on cluster worker nodes, provided as an
+inline value. See also {{ bt }}--ssh-public-key-file{{ bt }}.
+`
+
+const sshPublicKeyFileFlagHelp = `
+_FILE_ - Path to a file containing the SSH public key.
+`
+
+const releaseImageFlagHelp = `
+_URL_ - OCP release image URL, for example
+{{ bt }}quay.io/openshift-release-dev/ocp-release:4.17.0-multi{{ bt }}.
+`
+
+const podCIDRFlagHelp = `
+_CIDR_ - CIDR for the cluster's pod network. If omitted the server default
+is used.
+`
+
+const serviceCIDRFlagHelp = `
+_CIDR_ - CIDR for the cluster's service network. If omitted the server
+default is used.
+`

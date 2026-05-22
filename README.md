@@ -276,9 +276,9 @@ Once the cluster is running, you can log in using the credentials flow:
 ```bash
 $ osac login \
 --ca-file bundle.pem \
---oauth-flow credentials \
---oauth-client-id osac-admin \
---oauth-client-secret my-secret \
+--flow credentials \
+--client-id osac-admin \
+--client-secret my-secret \
 --private \
 https://fulfillment-internal-api.osac.svc.cluster.local:8000
 ```

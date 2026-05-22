@@ -38,27 +38,27 @@ func AddGrpcClientFlags(flags *pflag.FlagSet, name, addr string) {
 	_ = flags.String(
 		grpcClientFlagName(name, grpcClientServerNetworkFlagSuffix),
 		"tcp",
-		fmt.Sprintf("%s server network.", name),
+		fmt.Sprintf(grpcClientServerNetworkFlagHelp, name),
 	)
 	_ = flags.String(
 		grpcClientFlagName(name, grpcClientServerAddrFlagSuffix),
 		addr,
-		fmt.Sprintf("%s server address.", name),
+		fmt.Sprintf(grpcClientServerAddrFlagHelp, name),
 	)
 	_ = flags.Bool(
 		grpcClientFlagName(name, grpcClientServerPlaintextFlagSuffix),
 		false,
-		fmt.Sprintf("%s disable TLS.", name),
+		fmt.Sprintf(grpcClientServerPlaintextFlagHelp, name),
 	)
 	_ = flags.Bool(
 		grpcClientFlagName(name, grpcClientServerInsecureFlagSuffix),
 		false,
-		fmt.Sprintf("%s disable TLS certificate validation.", name),
+		fmt.Sprintf(grpcClientServerInsecureFlagHelp, name),
 	)
 	_ = flags.Duration(
 		grpcClientFlagName(name, grpcClientKeepAliveFlagSuffix),
 		5*time.Minute,
-		fmt.Sprintf("%s keep alive interval.", name),
+		fmt.Sprintf(grpcClientKeepAliveFlagHelp, name),
 	)
 }
 
@@ -76,3 +76,23 @@ const (
 func grpcClientFlagName(name, suffix string) string {
 	return fmt.Sprintf("%s-%s", strings.ToLower(name), suffix)
 }
+
+const grpcClientServerNetworkFlagHelp = `
+_NETWORK_ - %s server network.
+`
+
+const grpcClientServerAddrFlagHelp = `
+_ADDRESS_ - %s server address.
+`
+
+const grpcClientServerPlaintextFlagHelp = `
+_[BOOLEAN]_ - %s enable or disable TLS.
+`
+
+const grpcClientServerInsecureFlagHelp = `
+_[BOOLEAN]_ - %s enable or disable TLS certificate validation.
+`
+
+const grpcClientKeepAliveFlagHelp = `
+_DURATION_ - %s keep alive interval.
+`

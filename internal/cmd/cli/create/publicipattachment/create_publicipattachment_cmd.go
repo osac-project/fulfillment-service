@@ -28,30 +28,25 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "publicipattachment [flags]",
-		Short: "Attach a public IP to a compute instance",
-		Long: "Create a PublicIPAttachment to bind a public IP to a compute instance. " +
-			"Both --publicip and --compute-instance flags are required.",
-		Example: `  # Attach a public IP to a compute instance
-  osac create publicipattachment --publicip my-ip --compute-instance my-vm
-
-  # Attach using IDs
-  osac create publicipattachment --publicip pip-abc123 --compute-instance ci-xyz789`,
-		Args: cobra.NoArgs,
-		RunE: runner.run,
+		Use:                   "publicipattachment [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVar(
 		&runner.args.publicIP,
 		"publicip",
 		"",
-		"ID or name of the public IP to attach.",
+		publicIPFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.computeInstance,
 		"compute-instance",
 		"",
-		"ID or name of the compute instance to attach the public IP to.",
+		computeInstanceFlagHelp,
 	)
 	result.MarkFlagRequired("publicip")         //nolint:errcheck
 	result.MarkFlagRequired("compute-instance") //nolint:errcheck
@@ -122,3 +117,26 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = `Attach a public IP to a compute instance.`
+
+const longHelp = `
+Create a public IP attachment to bind a public IP to a compute instance.
+Both {{ bt }}--publicip{{ bt }} and {{ bt }}--compute-instance{{ bt }} flags
+are required.
+
+Examples:
+
+{{ bt 3 }}shell
+{{ binary }} create publicipattachment --publicip my-ip --compute-instance my-vm
+{{ bt 3 }}
+`
+
+const publicIPFlagHelp = `
+_ID|NAME_ - Identifier or name of the public IP to attach.
+`
+
+const computeInstanceFlagHelp = `
+_ID|NAME_ - Identifier or name of the compute instance to attach the public
+IP to.
+`

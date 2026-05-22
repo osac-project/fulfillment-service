@@ -41,9 +41,11 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "delete OBJECT [OPTION]... [ID|NAME]...",
-		Short: "Delete objects",
-		RunE:  runner.run,
+		Use:                   "delete [FLAG...] OBJECT ID|NAME...",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
 	result.AddCommand(publicipattachment.Cmd())
 	return result
@@ -220,3 +222,27 @@ func (c *runnerContext) findMatches(ctx context.Context, refs []string) (result 
 
 	return
 }
+
+const shortHelp = `Delete objects`
+
+const longHelp = `
+Delete one or more objects from the server.
+
+Objects can be referenced by their identifier or by their name.
+
+To delete a single cluster:
+
+{{ bt 3 }}shell
+{{ binary }} delete clusters my-cluster
+{{ bt 3 }}
+
+Multiple objects can be deleted at once:
+
+{{ bt 3 }}shell
+{{ binary }} delete clusters my-cluster my-other-cluster
+{{ bt 3 }}
+
+All specified objects are resolved before any deletion takes place. If any
+reference is ambiguous or not found the command stops without deleting
+anything.
+`

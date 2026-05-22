@@ -32,17 +32,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "subnet [flags] ID_OR_NAME",
-		Aliases: []string{"subnets"},
-		Short:   "Describe a subnet",
-		Long:    "Display detailed information about a subnet, identified by ID or name.",
-		Example: `  # Describe a subnet by ID
-  osac describe subnet subnet-abc123
-
-  # Describe a subnet by name
-  osac describe subnet my-subnet`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "subnet [FLAG...] ID|NAME",
+		Aliases:               []string{"subnets"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -137,3 +133,21 @@ func RenderSubnet(w io.Writer, s *publicv1.Subnet) {
 	fmt.Fprintf(writer, "Message:\t%s\n", message)
 	writer.Flush()
 }
+
+const shortHelp = "Describe a subnet"
+
+const longHelp = `
+Display detailed information about a subnet, referenced by identifier or name.
+
+Examples:
+
+{{ bt 3 }}shell
+# Describe a subnet by identifier:
+{{ binary }} describe subnet 019e5ff0-6266-7310-acf3-94e99a3786c9
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Describe a subnet by name:
+{{ binary }} describe subnet my-subnet
+{{ bt 3 }}
+`

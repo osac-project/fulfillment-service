@@ -1076,9 +1076,9 @@ Log in using the `osac-admin` service account credentials via the internal API:
 ```shell
 osac login \
 --ca-file bundle.pem \
---oauth-flow credentials \
---oauth-client-id osac-admin \
---oauth-client-secret "${OSAC_ADMIN_CLIENT_SECRET}" \
+--flow credentials \
+--client-id osac-admin \
+--client-secret "${OSAC_ADMIN_CLIENT_SECRET}" \
 --private \
 https://fulfillment-internal-api-osac.${DOMAIN}
 ```

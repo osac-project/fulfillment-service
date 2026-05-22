@@ -32,17 +32,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "virtualnetwork [flags] ID_OR_NAME",
-		Aliases: []string{"virtualnetworks"},
-		Short:   "Describe a virtual network",
-		Long:    "Display detailed information about a virtual network, identified by ID or name.",
-		Example: `  # Describe a virtual network by ID
-  osac describe virtualnetwork vnet-abc123
-
-  # Describe a virtual network by name
-  osac describe virtualnetwork my-network`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "virtualnetwork [FLAG...] ID|NAME",
+		Aliases:               []string{"virtualnetworks"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -137,3 +133,21 @@ func RenderVirtualNetwork(w io.Writer, vn *publicv1.VirtualNetwork) {
 	fmt.Fprintf(writer, "Message:\t%s\n", message)
 	writer.Flush()
 }
+
+const shortHelp = `Describe a virtual network.`
+
+const longHelp = `
+Display detailed information about a virtual network, referenced by identifier or name.
+
+Examples:
+
+{{ bt 3 }}shell
+# Describe a virtual network by identifier:
+{{ binary }} describe virtualnetwork 019e5ff1-4c40-7185-8402-b2f0372b65e7
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Describe a virtual network by name:
+{{ binary }} describe virtualnetwork my-network
+{{ bt 3 }}
+`

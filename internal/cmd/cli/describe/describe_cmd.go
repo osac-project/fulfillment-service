@@ -27,7 +27,8 @@ import (
 func Cmd() *cobra.Command {
 	result := &cobra.Command{
 		Use:   "describe",
-		Short: "Describe a resource",
+		Short: shortHelp,
+		Long:  longHelp,
 	}
 	result.AddCommand(cluster.Cmd())
 	result.AddCommand(computeinstance.Cmd())
@@ -37,3 +38,9 @@ func Cmd() *cobra.Command {
 	result.AddCommand(securitygroup.Cmd())
 	return result
 }
+
+const shortHelp = `Describe a resource`
+
+const longHelp = `
+Describe a resource.
+`

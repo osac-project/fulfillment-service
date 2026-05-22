@@ -37,9 +37,11 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "annotate OBJECT ID|NAME ANNOTATION...",
-		Short: "Add or remove annotations from objects",
-		RunE:  runner.run,
+		Use:                   "annotate [FLAG...] OBJECT ID|NAME KEY=VALUE...",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -253,3 +255,38 @@ func (c *runnerContext) applyAnnotationOperations(metadata reflection.Metadata, 
 		metadata.SetAnnotations(annotations)
 	}
 }
+
+const shortHelp = `Add or remove annotations from objects`
+
+const longHelp = `
+Add or remove annotations from objects.
+
+Annotations are key-value pairs attached to objects that can be used to store arbitrary metadata, such as contact
+information, descriptions or links to external systems.
+
+To add or update an annotation use the {{ bt }}key=value{{ bt }} syntax:
+
+{{ bt 3 }}shell
+{{ binary }} annotate cluster my-cluster description="Production cluster"
+{{ bt 3 }}
+
+Multiple annotations can be set at once:
+
+{{ bt 3 }}shell
+{{ binary }} annotate cluster my-cluster owner=team-a env=production
+{{ bt 3 }}
+
+To remove an annotation append a dash ({{ bt }}-{{ bt }}) to the key name:
+
+{{ bt 3 }}shell
+{{ binary }} annotate cluster my-cluster owner-
+{{ bt 3 }}
+
+Adding and removing annotations can be combined in a single command:
+
+{{ bt 3 }}shell
+{{ binary }} annotate cluster my-cluster owner- env=staging
+{{ bt 3 }}
+
+Objects can be referenced by their identifier or by their name.
+`

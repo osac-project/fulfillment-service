@@ -27,10 +27,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "migrate",
-		Short: "Run database migrations",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "migrate [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	database.AddFlags(command.Flags())
 	return command
@@ -74,3 +76,9 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	logger.InfoContext(ctx, "Database migrations completed successfully")
 	return nil
 }
+
+const shortHelp = `Run database migrations`
+
+const longHelp = `
+Run database migrations.
+`
