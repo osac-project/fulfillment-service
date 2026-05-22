@@ -43,6 +43,7 @@ import (
 var templatesFS embed.FS
 
 func Cmd() *cobra.Command {
+	// Create the runner and the command:
 	runner := &runnerContext{}
 	result := &cobra.Command{
 		Use:                   "login [FLAGS] ADDRESS",
@@ -50,6 +51,8 @@ func Cmd() *cobra.Command {
 		Short:                 "Save connection and authentication details.",
 		RunE:                  runner.run,
 	}
+
+	// Define the flags:
 	flags := result.Flags()
 	flags.BoolVar(
 		&runner.args.plaintext,
@@ -98,29 +101,29 @@ func Cmd() *cobra.Command {
 			"execution.",
 	)
 	flags.StringVar(
-		&runner.args.oauthIssuer,
-		"oauth-issuer",
+		&runner.args.issuer,
+		"issuer",
 		"",
-		"OAuth issuer URL. This is optional. By default the first issuer advertised by the server is used.",
+		"OAuth issuer URL. This is optional. By default the issuer advertised by the server is used.",
 	)
 	flags.StringVar(
-		&runner.args.oauthFlow,
-		"oauth-flow",
-		string(oauth.DeviceFlow),
+		&runner.args.flow,
+		"flow",
+		defaultFlow,
 		fmt.Sprintf(
 			"OAuth flow to use. Must be '%s', '%s', '%s' or '%s'.",
 			oauth.CodeFlow, oauth.DeviceFlow, oauth.CredentialsFlow, oauth.PasswordFlow,
 		),
 	)
 	flags.StringVar(
-		&runner.args.oauthClientId,
-		"oauth-client-id",
-		"osac-cli",
+		&runner.args.clientId,
+		"client-id",
+		defaultClientId,
 		"OAuth client identifier.",
 	)
 	flags.StringVar(
-		&runner.args.oauthClientSecret,
-		"oauth-client-secret",
+		&runner.args.clientSecret,
+		"client-secret",
 		"",
 		fmt.Sprintf(
 			"OAuth client secret. This is required for the '%s' flow.",
@@ -128,14 +131,14 @@ func Cmd() *cobra.Command {
 		),
 	)
 	flags.StringSliceVar(
-		&runner.args.oauthScopes,
-		"oauth-scopes",
+		&runner.args.scopes,
+		"scopes",
 		[]string{},
 		"Comma separated list of OAuth scopes to request.",
 	)
 	flags.StringVar(
-		&runner.args.oauthRedirectUri,
-		"oauth-redirect-uri",
+		&runner.args.redirectUri,
+		"redirect-uri",
 		defaultRedirectUri,
 		fmt.Sprintf(
 			"Redirect URI to use for the OAuth code flow. The default value '%s' means "+
@@ -144,8 +147,8 @@ func Cmd() *cobra.Command {
 		),
 	)
 	flags.StringVar(
-		&runner.args.oauthUser,
-		"oauth-user",
+		&runner.args.user,
+		"user",
 		"",
 		fmt.Sprintf(
 			"OAuth user name. This is required for the '%s' flow.",
@@ -153,18 +156,79 @@ func Cmd() *cobra.Command {
 		),
 	)
 	flags.StringVar(
-		&runner.args.oauthPassword,
-		"oauth-password",
+		&runner.args.password,
+		"password",
 		"",
 		fmt.Sprintf(
 			"OAuth password. This is required for the '%s' flow.",
 			oauth.PasswordFlow,
 		),
 	)
+
+	// Define the depreacated alternatives for the OAuth flags:
+	flags.StringVar(
+		&runner.args.issuer,
+		"oauth-issuer",
+		"",
+		"Alternative for the '--issuer' flag.",
+	)
+	flags.MarkDeprecated("oauth-issuer", "use '--issuer' instead")
+	flags.StringVar(
+		&runner.args.flow,
+		"oauth-flow",
+		defaultFlow,
+		"Alternative for the '--flow' flag.",
+	)
+	flags.MarkDeprecated("oauth-flow", "use '--flow' instead")
+	flags.StringVar(
+		&runner.args.clientId,
+		"oauth-client-id",
+		defaultClientId,
+		"Deprecated alternative for the '--client-id' flag.",
+	)
+	flags.MarkDeprecated("oauth-client-id", "use '--client-id' instead")
+	flags.StringVar(
+		&runner.args.clientSecret,
+		"oauth-client-secret",
+		"",
+		"Deprecated alternative for the '--client-secret' flag.",
+	)
+	flags.MarkDeprecated("oauth-client-secret", "use '--client-secret' instead")
+	flags.StringSliceVar(
+		&runner.args.scopes,
+		"oauth-scopes",
+		[]string{},
+		"Deprecated alternative for the '--scopes' flag.",
+	)
+	flags.MarkDeprecated("oauth-scopes", "use '--scopes' instead")
+	flags.StringVar(
+		&runner.args.redirectUri,
+		"oauth-redirect-uri",
+		defaultRedirectUri,
+		"Deprecated alternative for the '--redirect-uri' flag.",
+	)
+	flags.MarkDeprecated("oauth-redirect-uri", "use '--redirect-uri' instead")
+	flags.StringVar(
+		&runner.args.user,
+		"oauth-user",
+		"",
+		"Deprecated alternative for the '--user' flag.",
+	)
+	flags.MarkDeprecated("oauth-user", "use '--user' instead")
+	flags.StringVar(
+		&runner.args.password,
+		"oauth-password",
+		"",
+		"Deprecated alternative for the '--password' flag.",
+	)
+	flags.MarkDeprecated("oauth-password", "use '--password' instead")
+
+	// Mark hidden flags:
 	flags.MarkHidden("address")
 	flags.MarkHidden("private")
 	flags.MarkHidden("token")
 	flags.MarkHidden("token-script")
+
 	return result
 }
 
@@ -177,21 +241,21 @@ type runnerContext struct {
 	caPool     *x509.CertPool
 	tokenStore auth.TokenStore
 	args       struct {
-		plaintext         bool
-		insecure          bool
-		caFiles           []string
-		address           string
-		private           bool
-		token             string
-		tokenScript       string
-		oauthIssuer       string
-		oauthFlow         string
-		oauthClientId     string
-		oauthClientSecret string
-		oauthScopes       []string
-		oauthRedirectUri  string
-		oauthUser         string
-		oauthPassword     string
+		plaintext    bool
+		insecure     bool
+		caFiles      []string
+		address      string
+		private      bool
+		token        string
+		tokenScript  string
+		issuer       string
+		flow         string
+		clientId     string
+		clientSecret string
+		scopes       []string
+		redirectUri  string
+		user         string
+		password     string
 	}
 }
 
@@ -344,14 +408,14 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	} else if c.args.tokenScript != "" {
 		cfg.SetTokenScript(c.args.tokenScript)
 	} else if tokenIssuer != "" {
-		cfg.SetOauthIssuer(tokenIssuer)
-		cfg.SetOAuthFlow(oauth.Flow(c.args.oauthFlow))
-		cfg.SetOAuthClientId(c.args.oauthClientId)
-		cfg.SetOAuthClientSecret(c.args.oauthClientSecret)
-		cfg.SetOAuthScopes(c.args.oauthScopes)
-		cfg.SetOAuthRedirectUri(c.args.oauthRedirectUri)
-		cfg.SetOAuthUser(c.args.oauthUser)
-		cfg.SetOAuthPassword(c.args.oauthPassword)
+		cfg.SetIssuer(tokenIssuer)
+		cfg.SetFlow(oauth.Flow(c.args.flow))
+		cfg.SetClientId(c.args.clientId)
+		cfg.SetClientSecret(c.args.clientSecret)
+		cfg.SetScopes(c.args.scopes)
+		cfg.SetRedirectUri(c.args.redirectUri)
+		cfg.SetUser(c.args.user)
+		cfg.SetPassword(c.args.password)
 	}
 
 	// Replace the gRPC anonymous connection with the authenticated one:
@@ -475,13 +539,13 @@ func (c *runnerContext) createTokenSource(ctx context.Context, tokenIssuer strin
 			SetCaPool(c.caPool).
 			SetInteractive(true).
 			SetIssuer(tokenIssuer).
-			SetFlow(oauth.Flow(c.args.oauthFlow)).
-			SetClientId(c.args.oauthClientId).
-			SetClientSecret(c.args.oauthClientSecret).
-			SetScopes(c.args.oauthScopes...).
-			SetRedirectUri(c.args.oauthRedirectUri).
-			SetUsername(c.args.oauthUser).
-			SetPassword(c.args.oauthPassword).
+			SetFlow(oauth.Flow(c.args.flow)).
+			SetClientId(c.args.clientId).
+			SetClientSecret(c.args.clientSecret).
+			SetScopes(c.args.scopes...).
+			SetRedirectUri(c.args.redirectUri).
+			SetUsername(c.args.user).
+			SetPassword(c.args.password).
 			Build()
 		if err != nil {
 			err = fmt.Errorf("failed to create OAuth token source: %w", err)
@@ -549,6 +613,12 @@ func (l *oauthFlowListener) End(ctx context.Context, event oauth.FlowEndEvent) e
 	}
 	return nil
 }
+
+// defaultFlow is the default OAuth flow to use.
+const defaultFlow = string(oauth.DeviceFlow)
+
+// defaultClientId is the default OAuth client identifier to use.
+const defaultClientId = "osac-cli"
 
 // defaultRedirectUri is the default redirect URI used for the OAuth code flow. The value 'http://localhost:0' means
 // binding to localhost on a randomly selected port.

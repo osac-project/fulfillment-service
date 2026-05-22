@@ -66,10 +66,10 @@ var _ = Describe("Settings", func() {
 			content := []byte(`{
 				"address": "api.example.com:443",
 				"insecure": true,
-				"oauth_flow": "code",
-				"oauth_issuer": "https://example.com",
-				"oauth_redirect_uri": "https://example.com/callback",
-				"oauth_scopes": ["openid"],
+				"flow": "code",
+				"issuer": "https://example.com",
+				"redirect_uri": "https://example.com/callback",
+				"scopes": ["openid"],
 				"private": true
 			}`)
 			err := os.WriteFile(file, content, 0600)
@@ -87,10 +87,10 @@ var _ = Describe("Settings", func() {
 			// Verify the settings:
 			Expect(settings.Address()).To(Equal("api.example.com:443"))
 			Expect(settings.Insecure()).To(BeTrue())
-			Expect(settings.OAuthFlow()).To(Equal(oauth.CodeFlow))
-			Expect(settings.OAuthIssuer()).To(Equal("https://example.com"))
-			Expect(settings.OAuthRedirectUri()).To(Equal("https://example.com/callback"))
-			Expect(settings.OAuthScopes()).To(Equal([]string{"openid"}))
+			Expect(settings.Flow()).To(Equal(oauth.CodeFlow))
+			Expect(settings.Issuer()).To(Equal("https://example.com"))
+			Expect(settings.RedirectUri()).To(Equal("https://example.com/callback"))
+			Expect(settings.Scopes()).To(Equal([]string{"openid"}))
 			Expect(settings.Private()).To(BeTrue())
 		})
 
@@ -104,10 +104,10 @@ var _ = Describe("Settings", func() {
 			settings.SetAddress("api.example.com:443")
 			settings.SetInsecure(true)
 			settings.SetPrivate(true)
-			settings.SetOAuthFlow(oauth.CodeFlow)
-			settings.SetOAuthRedirectUri("https://example.com/callback")
-			settings.SetOAuthScopes([]string{"openid"})
-			settings.SetOauthIssuer("https://example.com")
+			settings.SetFlow(oauth.CodeFlow)
+			settings.SetRedirectUri("https://example.com/callback")
+			settings.SetScopes([]string{"openid"})
+			settings.SetIssuer("https://example.com")
 			err = settings.Save(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -118,10 +118,10 @@ var _ = Describe("Settings", func() {
 			Expect(content).To(MatchJSON(`{
 				"address": "api.example.com:443",
 				"insecure": true,
-				"oauth_flow": "code",
-				"oauth_issuer": "https://example.com",
-				"oauth_redirect_uri": "https://example.com/callback",
-				"oauth_scopes": ["openid"],
+				"flow": "code",
+				"issuer": "https://example.com",
+				"redirect_uri": "https://example.com/callback",
+				"scopes": ["openid"],
 				"private": true
 			}`))
 		})
@@ -136,10 +136,10 @@ var _ = Describe("Settings", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(settings.Address()).To(BeEmpty())
 			Expect(settings.Insecure()).To(BeFalse())
-			Expect(settings.OAuthFlow()).To(Equal(oauth.Flow("")))
-			Expect(settings.OAuthIssuer()).To(BeEmpty())
-			Expect(settings.OAuthRedirectUri()).To(BeEmpty())
-			Expect(settings.OAuthScopes()).To(BeEmpty())
+			Expect(settings.Flow()).To(Equal(oauth.Flow("")))
+			Expect(settings.Issuer()).To(BeEmpty())
+			Expect(settings.RedirectUri()).To(BeEmpty())
+			Expect(settings.Scopes()).To(BeEmpty())
 			Expect(settings.Private()).To(BeFalse())
 		})
 
@@ -188,10 +188,10 @@ var _ = Describe("Settings", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			settings.SetTokenExpiry(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
-			settings.SetOAuthClientId("my-client")
-			settings.SetOAuthClientSecret("my-secret")
-			settings.SetOAuthUser("my-user")
-			settings.SetOAuthPassword("my-password")
+			settings.SetClientId("my-client")
+			settings.SetClientSecret("my-secret")
+			settings.SetUser("my-user")
+			settings.SetPassword("my-password")
 			settings.SetAccessToken("my-access-token")
 			settings.SetRefreshToken("my-refresh-token")
 			err = settings.Save(ctx)
@@ -204,10 +204,10 @@ var _ = Describe("Settings", func() {
 				"access_token": "my-access-token",
 				"refresh_token": "my-refresh-token",
 				"token_expiry": "2026-06-01T12:00:00Z",
-				"oauth_client_id": "my-client",
-				"oauth_client_secret": "my-secret",
-				"oauth_user": "my-user",
-				"oauth_password": "my-password"
+				"client_id": "my-client",
+				"client_secret": "my-secret",
+				"user": "my-user",
+				"password": "my-password"
 			}`))
 
 			// Verify that the settings file is empty:
@@ -260,10 +260,10 @@ var _ = Describe("Settings", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			settings.SetTokenExpiry(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
-			settings.SetOAuthClientId("my-client")
-			settings.SetOAuthClientSecret("my-secret")
-			settings.SetOAuthUser("my-user")
-			settings.SetOAuthPassword("my-password")
+			settings.SetClientId("my-client")
+			settings.SetClientSecret("my-secret")
+			settings.SetUser("my-user")
+			settings.SetPassword("my-password")
 			settings.SetAccessToken("my-access-token")
 			settings.SetRefreshToken("my-refresh-token")
 			err = settings.Save(ctx)
@@ -277,10 +277,10 @@ var _ = Describe("Settings", func() {
 				"access_token": "my-access-token",
 				"refresh_token": "my-refresh-token",
 				"token_expiry": "2026-06-01T12:00:00Z",
-				"oauth_client_id": "my-client",
-				"oauth_client_secret": "my-secret",
-				"oauth_user": "my-user",
-				"oauth_password": "my-password"
+				"client_id": "my-client",
+				"client_secret": "my-secret",
+				"user": "my-user",
+				"password": "my-password"
 			}`))
 		})
 

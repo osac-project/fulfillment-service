@@ -102,28 +102,28 @@ func (b *SettingsBuilder) Build() (result *Settings, err error) {
 
 // generalSettings contains the non-secret fields of the configuration. These are persisted to a JSON file.
 type generalSettings struct {
-	TokenScript      string     `json:"token_script,omitempty"`
-	Plaintext        bool       `json:"plaintext,omitempty"`
-	Insecure         bool       `json:"insecure,omitempty"`
-	CaFiles          []CaFile   `json:"ca_files,omitempty"`
-	Address          string     `json:"address,omitempty"`
-	Private          bool       `json:"private,omitempty"`
-	OAuthFlow        oauth.Flow `json:"oauth_flow,omitempty"`
-	OAuthIssuer      string     `json:"oauth_issuer,omitempty"`
-	OAuthScopes      []string   `json:"oauth_scopes,omitempty"`
-	OAuthRedirectUri string     `json:"oauth_redirect_uri,omitempty"`
+	TokenScript string     `json:"token_script,omitempty"`
+	Plaintext   bool       `json:"plaintext,omitempty"`
+	Insecure    bool       `json:"insecure,omitempty"`
+	CaFiles     []CaFile   `json:"ca_files,omitempty"`
+	Address     string     `json:"address,omitempty"`
+	Private     bool       `json:"private,omitempty"`
+	Flow        oauth.Flow `json:"flow,omitempty"`
+	Issuer      string     `json:"issuer,omitempty"`
+	Scopes      []string   `json:"scopes,omitempty"`
+	RedirectUri string     `json:"redirect_uri,omitempty"`
 }
 
 // secretSettings contains the secret fields of the configuration. These are stored as a single
 // JSON-encoded entry in the operating system keyring rather than in the configuration file.
 type secretSettings struct {
-	AccessToken       string    `json:"access_token,omitempty"`
-	RefreshToken      string    `json:"refresh_token,omitempty"`
-	TokenExpiry       time.Time `json:"token_expiry,omitempty"`
-	OAuthClientId     string    `json:"oauth_client_id,omitempty"`
-	OAuthClientSecret string    `json:"oauth_client_secret,omitempty"`
-	OAuthUser         string    `json:"oauth_user,omitempty"`
-	OAuthPassword     string    `json:"oauth_password,omitempty"`
+	AccessToken  string    `json:"access_token,omitempty"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	TokenExpiry  time.Time `json:"token_expiry,omitempty"`
+	ClientId     string    `json:"client_id,omitempty"`
+	ClientSecret string    `json:"client_secret,omitempty"`
+	User         string    `json:"user,omitempty"`
+	Password     string    `json:"password,omitempty"`
 }
 
 // CaFile represents a CA certificate file with its name and optionally its content. The content is stored for relative
@@ -211,44 +211,44 @@ func (s *Settings) SetTokenExpiry(value time.Time) {
 	s.secret.TokenExpiry = value
 }
 
-// OAuthFlow returns the OAuth flow type.
-func (s *Settings) OAuthFlow() oauth.Flow {
-	return s.general.OAuthFlow
+// Flow returns the OAuth flow type.
+func (s *Settings) Flow() oauth.Flow {
+	return s.general.Flow
 }
 
-// SetOAuthFlow sets the OAuth flow type.
-func (s *Settings) SetOAuthFlow(value oauth.Flow) {
-	s.general.OAuthFlow = value
+// SetFlow sets the OAuth flow type.
+func (s *Settings) SetFlow(value oauth.Flow) {
+	s.general.Flow = value
 }
 
-// OAuthIssuer returns the OAuth issuer URL.
-func (s *Settings) OAuthIssuer() string {
-	return s.general.OAuthIssuer
+// Issuer returns the OAuth issuer URL.
+func (s *Settings) Issuer() string {
+	return s.general.Issuer
 }
 
-// SetOauthIssuer sets the OAuth issuer URL.
-func (s *Settings) SetOauthIssuer(value string) {
-	s.general.OAuthIssuer = value
+// SetIssuer sets the OAuth issuer URL.
+func (s *Settings) SetIssuer(value string) {
+	s.general.Issuer = value
 }
 
-// OAuthScopes returns the OAuth scopes.
-func (s *Settings) OAuthScopes() []string {
-	return s.general.OAuthScopes
+// Scopes returns the OAuth scopes.
+func (s *Settings) Scopes() []string {
+	return s.general.Scopes
 }
 
-// SetOAuthScopes sets the OAuth scopes.
-func (s *Settings) SetOAuthScopes(value []string) {
-	s.general.OAuthScopes = value
+// SetScopes sets the OAuth scopes.
+func (s *Settings) SetScopes(value []string) {
+	s.general.Scopes = value
 }
 
-// OAuthRedirectUri returns the OAuth redirect URI.
-func (s *Settings) OAuthRedirectUri() string {
-	return s.general.OAuthRedirectUri
+// RedirectUri returns the OAuth redirect URI.
+func (s *Settings) RedirectUri() string {
+	return s.general.RedirectUri
 }
 
-// SetOAuthRedirectUri sets the OAuth redirect URI.
-func (s *Settings) SetOAuthRedirectUri(value string) {
-	s.general.OAuthRedirectUri = value
+// SetRedirectUri sets the OAuth redirect URI.
+func (s *Settings) SetRedirectUri(value string) {
+	s.general.RedirectUri = value
 }
 
 // SetAccessToken sets the access token.
@@ -261,24 +261,24 @@ func (s *Settings) SetRefreshToken(value string) {
 	s.secret.RefreshToken = value
 }
 
-// SetOAuthClientId sets the OAuth client identifier.
-func (s *Settings) SetOAuthClientId(value string) {
-	s.secret.OAuthClientId = value
+// SetClientId sets the OAuth client identifier.
+func (s *Settings) SetClientId(value string) {
+	s.secret.ClientId = value
 }
 
-// SetOAuthClientSecret sets the OAuth client secret.
-func (s *Settings) SetOAuthClientSecret(value string) {
-	s.secret.OAuthClientSecret = value
+// SetClientSecret sets the OAuth client secret.
+func (s *Settings) SetClientSecret(value string) {
+	s.secret.ClientSecret = value
 }
 
-// SetOAuthUser sets the OAuth user name.
-func (s *Settings) SetOAuthUser(value string) {
-	s.secret.OAuthUser = value
+// SetUser sets the OAuth user name.
+func (s *Settings) SetUser(value string) {
+	s.secret.User = value
 }
 
-// SetOAuthPassword sets the OAuth password.
-func (s *Settings) SetOAuthPassword(value string) {
-	s.secret.OAuthPassword = value
+// SetPassword sets the OAuth password.
+func (s *Settings) SetPassword(value string) {
+	s.secret.Password = value
 }
 
 // Load populates the settings from the configuration file and the secret store.
@@ -407,7 +407,7 @@ func (c *Settings) TokenSource(ctx context.Context) (result auth.TokenSource, er
 	tokenStore := c.TokenStore()
 
 	// If an OAuth flow has been configured, then use it to create a non interactive OAuth token source:
-	if c.general.OAuthFlow != "" {
+	if c.general.Flow != "" {
 		var caPool *x509.CertPool
 		caPool, err = c.CaPool(ctx)
 		if err != nil {
@@ -416,15 +416,15 @@ func (c *Settings) TokenSource(ctx context.Context) (result auth.TokenSource, er
 		}
 		result, err = oauth.NewTokenSource().
 			SetLogger(c.logger).
-			SetFlow(c.general.OAuthFlow).
+			SetFlow(c.general.Flow).
 			SetInteractive(false).
-			SetIssuer(c.general.OAuthIssuer).
-			SetClientId(c.secret.OAuthClientId).
-			SetClientSecret(c.secret.OAuthClientSecret).
-			SetScopes(c.general.OAuthScopes...).
-			SetRedirectUri(c.general.OAuthRedirectUri).
-			SetUsername(c.secret.OAuthUser).
-			SetPassword(c.secret.OAuthPassword).
+			SetIssuer(c.general.Issuer).
+			SetClientId(c.secret.ClientId).
+			SetClientSecret(c.secret.ClientSecret).
+			SetScopes(c.general.Scopes...).
+			SetRedirectUri(c.general.RedirectUri).
+			SetUsername(c.secret.User).
+			SetPassword(c.secret.Password).
 			SetInsecure(c.general.Insecure).
 			SetCaPool(caPool).
 			SetStore(tokenStore).
