@@ -17,15 +17,20 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/testing"
 )
 
@@ -33,11 +38,14 @@ var _ = Describe("gRPC client", func() {
 	var (
 		ctx    context.Context
 		cancel context.CancelFunc
+		ctrl   *gomock.Controller
 	)
 
 	BeforeEach(func() {
 		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 		DeferCleanup(cancel)
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
 	})
 
 	It("Can't be created without a logger", func() {
@@ -328,5 +336,193 @@ var _ = Describe("gRPC client", func() {
 
 		// Verify the authority was captured and equals our custom host:
 		Expect(authority).To(Equal("my.example.com"))
+	})
+
+	It("Retries once when the server returns the unauthenticated status code", func() {
+		// Create a TLS listener:
+		tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+		Expect(err).ToNot(HaveOccurred())
+		tlsListener := tls.NewListener(tcpListener, &tls.Config{
+			Certificates: []tls.Certificate{
+				testing.LocalhostCertificate(),
+			},
+		})
+
+		// Track call count and return the unauthenticated status code only on the first call:
+		var calls atomic.Int32
+		interceptor := func(ctx context.Context, request any, info *grpc.UnaryServerInfo,
+			handler grpc.UnaryHandler) (response any, err error) {
+			if calls.Add(1) == 1 {
+				err = status.Error(codes.Unauthenticated, "token expired")
+				return
+			}
+			response, err = handler(ctx, request)
+			return
+		}
+
+		// Start the server:
+		server := grpc.NewServer(grpc.UnaryInterceptor(interceptor))
+		healthServer := health.NewServer()
+		healthpb.RegisterHealthServer(server, healthServer)
+		healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+		go func() {
+			defer GinkgoRecover()
+			_ = server.Serve(tlsListener)
+		}()
+		defer server.Stop()
+
+		// There should be two calls to get the token, and one call to invalidate it:
+		token := &auth.Token{
+			Access: "test-token",
+			Expiry: time.Now().Add(time.Hour),
+		}
+		tokenSource := auth.NewMockTokenSource(ctrl)
+		tokenSource.EXPECT().Token(gomock.Any()).Return(token, nil).Times(2)
+		tokenSource.EXPECT().Invalidate(gomock.Any()).Return(nil).Times(1)
+
+		// Create the client with the token source so the retry interceptor is active:
+		client, err := NewGrpcClient().
+			SetLogger(logger).
+			SetAddress(tcpListener.Addr().String()).
+			SetInsecure(true).
+			SetTokenSource(tokenSource).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		defer func() {
+			err := client.Close()
+			Expect(err).ToNot(HaveOccurred())
+		}()
+
+		// The first attempt gets the unauthenticated status code, but the retry should succeed:
+		healthClient := healthpb.NewHealthClient(client)
+		response, err := healthClient.Check(ctx, &healthpb.HealthCheckRequest{
+			Service: "",
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response.Status).To(Equal(healthpb.HealthCheckResponse_SERVING))
+		Expect(calls.Load()).To(BeNumerically("==", 2))
+	})
+
+	It("Returns the unauthenticated status code when the retry also fails", func() {
+		// Create a TLS listener:
+		tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+		Expect(err).ToNot(HaveOccurred())
+		tlsListener := tls.NewListener(tcpListener, &tls.Config{
+			Certificates: []tls.Certificate{
+				testing.LocalhostCertificate(),
+			},
+		})
+
+		// Always return the unauthenticated status code:
+		var calls atomic.Int32
+		interceptor := func(ctx context.Context, request any, info *grpc.UnaryServerInfo,
+			handler grpc.UnaryHandler) (response any, err error) {
+			calls.Add(1)
+			err = status.Error(codes.Unauthenticated, "invalid credentials")
+			return
+		}
+
+		// Start the server:
+		server := grpc.NewServer(grpc.UnaryInterceptor(interceptor))
+		healthServer := health.NewServer()
+		healthpb.RegisterHealthServer(server, healthServer)
+		healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+		go func() {
+			defer GinkgoRecover()
+			_ = server.Serve(tlsListener)
+		}()
+		defer server.Stop()
+
+		// There should be two calls to get the token, and one call to invalidate it:
+		token := &auth.Token{
+			Access: "test-token",
+			Expiry: time.Now().Add(time.Hour),
+		}
+		tokenSource := auth.NewMockTokenSource(ctrl)
+		tokenSource.EXPECT().Token(gomock.Any()).Return(token, nil).Times(2)
+		tokenSource.EXPECT().Invalidate(gomock.Any()).Return(nil).Times(1)
+
+		// Create the client:
+		client, err := NewGrpcClient().
+			SetLogger(logger).
+			SetAddress(tcpListener.Addr().String()).
+			SetInsecure(true).
+			SetTokenSource(tokenSource).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		defer func() {
+			err := client.Close()
+			Expect(err).ToNot(HaveOccurred())
+		}()
+
+		// Both attempts fail, so the error is returned to the caller:
+		healthClient := healthpb.NewHealthClient(client)
+		_, err = healthClient.Check(ctx, &healthpb.HealthCheckRequest{
+			Service: "",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.Unauthenticated))
+		Expect(calls.Load()).To(BeNumerically("==", 2))
+	})
+
+	It("Does not retry when the server returns a status code other than unauthenticated", func() {
+		// Create a TLS listener:
+		tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+		Expect(err).ToNot(HaveOccurred())
+		tlsListener := tls.NewListener(tcpListener, &tls.Config{
+			Certificates: []tls.Certificate{
+				testing.LocalhostCertificate(),
+			},
+		})
+
+		// Always return the permission denied status code:
+		var calls atomic.Int32
+		interceptor := func(ctx context.Context, request any, info *grpc.UnaryServerInfo,
+			handler grpc.UnaryHandler) (response any, err error) {
+			calls.Add(1)
+			err = status.Error(codes.PermissionDenied, "forbidden")
+			return
+		}
+
+		// Start the server:
+		server := grpc.NewServer(grpc.UnaryInterceptor(interceptor))
+		healthServer := health.NewServer()
+		healthpb.RegisterHealthServer(server, healthServer)
+		healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+		go func() {
+			defer GinkgoRecover()
+			_ = server.Serve(tlsListener)
+		}()
+		defer server.Stop()
+
+		// There should be one call to get the token, and no call to invalidate it:
+		token := &auth.Token{
+			Access: "test-token",
+			Expiry: time.Now().Add(time.Hour),
+		}
+		tokenSource := auth.NewMockTokenSource(ctrl)
+		tokenSource.EXPECT().Token(gomock.Any()).Return(token, nil).Times(1)
+
+		// Create the client:
+		client, err := NewGrpcClient().
+			SetLogger(logger).
+			SetAddress(tcpListener.Addr().String()).
+			SetInsecure(true).
+			SetTokenSource(tokenSource).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		defer func() {
+			err := client.Close()
+			Expect(err).ToNot(HaveOccurred())
+		}()
+
+		// The error is returned directly without retrying:
+		healthClient := healthpb.NewHealthClient(client)
+		_, err = healthClient.Check(ctx, &healthpb.HealthCheckRequest{
+			Service: "",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.PermissionDenied))
+		Expect(calls.Load()).To(Equal(int32(1)))
 	})
 })
