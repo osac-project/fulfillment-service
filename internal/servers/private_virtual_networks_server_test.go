@@ -1447,7 +1447,9 @@ var _ = Describe("Private virtual networks server", func() {
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-			vn.GetStatus().SetState(privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY)
+			vn.SetStatus(privatev1.VirtualNetworkStatus_builder{
+				State: privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY,
+			}.Build())
 			_, err = vnDao.Update().SetObject(vn).Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -1518,7 +1520,9 @@ var _ = Describe("Private virtual networks server", func() {
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-			vn.GetStatus().SetState(privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY)
+			vn.SetStatus(privatev1.VirtualNetworkStatus_builder{
+				State: privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY,
+			}.Build())
 			_, err = vnDao.Update().SetObject(vn).Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -1608,7 +1612,9 @@ var _ = Describe("Private virtual networks server", func() {
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-			vn.GetStatus().SetState(privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY)
+			vn.SetStatus(privatev1.VirtualNetworkStatus_builder{
+				State: privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY,
+			}.Build())
 			_, err = vnDao.Update().SetObject(vn).Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 

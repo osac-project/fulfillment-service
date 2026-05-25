@@ -25,7 +25,7 @@ func NormalizeNil[T any](value T) T {
 			var zero T
 			return zero
 		}
-		if elem.Kind() == reflect.Pointer && elem.IsNil() {
+		if elem.Kind() == reflect.Ptr && elem.IsNil() {
 			var zero T
 			return zero
 		}

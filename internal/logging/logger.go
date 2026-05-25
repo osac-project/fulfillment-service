@@ -422,8 +422,10 @@ func (h *loggerHelper) dumpStack(stack []byte, dump *errorDump) {
 	// Skip all the stack frames till we find the first that isn't inside this logging package or the 'slog'
 	// package, as those are of no interest in most cases.
 	frames := goroutine.Stack
-	for len(frames) != 0 {
-
+	for {
+		if len(frames) == 0 {
+			break
+		}
 		frame := frames[0]
 		if !h.isInternalFunction(frame.Func) {
 			break

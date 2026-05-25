@@ -188,6 +188,12 @@ func (c *Console) Errorf(ctx context.Context, format string, args ...any) {
 	}
 }
 
+// Stderr returns the writer used for error output. This is the writer
+// configured via SetStderr on the builder, defaulting to os.Stderr.
+func (c *Console) Stderr() io.Writer {
+	return c.stderr
+}
+
 // Render renders the given template with the given data to stdout. The template should be a template file name that
 // was added via AddTemplatesFS. If no template file systems have been added, this method will log an error.
 func (c *Console) Render(ctx context.Context, template string, data any) {
