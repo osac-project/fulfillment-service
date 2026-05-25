@@ -22,5 +22,5 @@ import (
 
 func TestDescribeVirtualNetwork(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Describe Virtual Network Suite")
+	RunSpecs(t, "Describe virtual network command")
 }

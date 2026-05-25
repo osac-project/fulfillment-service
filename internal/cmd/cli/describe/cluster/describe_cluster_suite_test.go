@@ -22,5 +22,5 @@ import (
 
 func TestDescribeCluster(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Describe Cluster Suite")
+	RunSpecs(t, "Describe cluster command")
 }

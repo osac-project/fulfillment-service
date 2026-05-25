@@ -22,5 +22,5 @@ import (
 
 func TestDescribeComputeInstance(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Describe Compute Instance Suite")
+	RunSpecs(t, "Describe compute instance command")
 }

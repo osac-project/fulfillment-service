@@ -15,7 +15,6 @@ package idp
 
 import (
 	"context"
-	"log/slog"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,7 +26,6 @@ var _ = Describe("ResourceManager", func() {
 		ctx           context.Context
 		ctrl          *gomock.Controller
 		mockClient    *MockClient
-		logger        *slog.Logger
 		manager       *ResourceManager
 		testProjectID string
 		testTenant    string
@@ -38,7 +36,6 @@ var _ = Describe("ResourceManager", func() {
 		ctx = context.Background()
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = NewMockClient(ctrl)
-		logger = slog.Default()
 
 		testProjectID = "project-123"
 		testTenant = "acme"

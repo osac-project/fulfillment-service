@@ -15,7 +15,6 @@ package project
 
 import (
 	"context"
-	"log/slog"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -173,13 +172,13 @@ var _ = Describe("Validation and Activation", func() {
 
 		var err error
 		resourceManager, err = idp.NewResourceManager().
-			SetLogger(slog.Default()).
+			SetLogger(logger).
 			SetClient(mockIdpClient).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
 		functionObj = &function{
-			logger:          slog.Default(),
+			logger:          logger,
 			projectsClient:  mockClient,
 			resourceManager: resourceManager,
 		}

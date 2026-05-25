@@ -22,5 +22,5 @@ import (
 
 func TestDescribeSecurityGroup(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Describe SecurityGroup Suite")
+	RunSpecs(t, "Describe security group command")
 }

@@ -25,7 +25,7 @@ import (
 
 func TestIdp(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "IdP package")
+	RunSpecs(t, "Identity provider package")
 }
 
 var (

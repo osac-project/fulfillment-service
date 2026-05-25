@@ -24,7 +24,7 @@ import (
 
 func TestPublicIP(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "PublicIP controller")
+	RunSpecs(t, "Public IP controller")
 }
 
 // Logger used for tests:

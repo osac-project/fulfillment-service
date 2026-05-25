@@ -21,6 +21,8 @@ import (
 var _ = Describe("Create cluster flag registration", func() {
 	It("should register --catalog-item flag", func() {
 		cmd := Cmd()
+		cmd.SetOut(GinkgoWriter)
+		cmd.SetErr(GinkgoWriter)
 		flag := cmd.Flags().Lookup("catalog-item")
 		Expect(flag).NotTo(BeNil())
 		Expect(flag.Usage).To(ContainSubstring("Catalog item"))
@@ -28,12 +30,16 @@ var _ = Describe("Create cluster flag registration", func() {
 
 	It("should still register --template flag", func() {
 		cmd := Cmd()
+		cmd.SetOut(GinkgoWriter)
+		cmd.SetErr(GinkgoWriter)
 		flag := cmd.Flags().Lookup("template")
 		Expect(flag).NotTo(BeNil())
 	})
 
 	It("should register --catalog-item without a short flag", func() {
 		cmd := Cmd()
+		cmd.SetOut(GinkgoWriter)
+		cmd.SetErr(GinkgoWriter)
 		flag := cmd.Flags().Lookup("catalog-item")
 		Expect(flag).NotTo(BeNil())
 		Expect(flag.Shorthand).To(BeEmpty())
@@ -41,6 +47,8 @@ var _ = Describe("Create cluster flag registration", func() {
 
 	It("should keep -t as shorthand for --template", func() {
 		cmd := Cmd()
+		cmd.SetOut(GinkgoWriter)
+		cmd.SetErr(GinkgoWriter)
 		flag := cmd.Flags().Lookup("template")
 		Expect(flag).NotTo(BeNil())
 		Expect(flag.Shorthand).To(Equal("t"))
@@ -50,6 +58,8 @@ var _ = Describe("Create cluster flag registration", func() {
 var _ = Describe("Create cluster flag validation", func() {
 	It("should return error when both --catalog-item and --template are set", func() {
 		cmd := Cmd()
+		cmd.SetOut(GinkgoWriter)
+		cmd.SetErr(GinkgoWriter)
 		cmd.SetArgs([]string{"--catalog-item", "cat-001", "--template", "tpl-001", "--name", "test"})
 		err := cmd.Execute()
 		Expect(err).To(HaveOccurred())
@@ -60,6 +70,8 @@ var _ = Describe("Create cluster flag validation", func() {
 
 	It("should return error when neither --catalog-item nor --template is set", func() {
 		cmd := Cmd()
+		cmd.SetOut(GinkgoWriter)
+		cmd.SetErr(GinkgoWriter)
 		cmd.SetArgs([]string{"--name", "test"})
 		err := cmd.Execute()
 		Expect(err).To(HaveOccurred())

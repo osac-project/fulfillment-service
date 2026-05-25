@@ -11,7 +11,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package virtualnetwork
+package securitygroup
 
 import (
 	"testing"
@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestCreateVirtualNetwork(t *testing.T) {
+func TestSecurityGroup(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "CreateVirtualNetwork command")
+	RunSpecs(t, "Create security group command")
 }

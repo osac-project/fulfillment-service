@@ -14,13 +14,27 @@ language governing permissions and limitations under the License.
 package project
 
 import (
+	"log/slog"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
 func TestProject(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Project Controller Suite")
+	RunSpecs(t, "Project controller")
 }
+
+var logger *slog.Logger
+
+var _ = BeforeSuite(func() {
+	var err error
+
+	logger, err = logging.NewLogger().
+		SetLevel(slog.LevelDebug.String()).
+		SetWriter(GinkgoWriter).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+})
