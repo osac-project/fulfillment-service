@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	gotesting "testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
@@ -32,7 +33,6 @@ import (
 
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/logging"
-	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
 
 func TestMigrations(t *gotesting.T) {
@@ -44,8 +44,8 @@ func TestMigrations(t *gotesting.T) {
 var (
 	ctx    context.Context
 	logger *slog.Logger
-	server *DatabaseServer
-	db     *Database
+	server *database.Container
+	db     *database.Instance
 	tool   database.Tool
 	pool   *pgxpool.Pool
 )
@@ -61,8 +61,20 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	// Create the database server:
-	server = MakeDatabaseServer()
-	DeferCleanup(server.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	DeferCleanup(cancel)
+	server, err = database.NewContainer().
+		SetLogger(logger).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+	err = server.Start(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		err = server.Stop(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	})
 })
 
 // DescribeMigration is a testing utility to test database migrations. It creates a database and applies all the
@@ -138,13 +150,14 @@ func DescribeMigration(description string, body func()) bool {
 			ctx = context.Background()
 
 			// Create the database:
-			db = server.MakeDatabase()
+			db, err = server.NewInstance().Build()
+			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(db.Close)
 
 			// Create the database tool:
 			tool, err = database.NewTool().
 				SetLogger(logger).
-				SetURL(db.MakeURL()).
+				SetURL(db.Url()).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 

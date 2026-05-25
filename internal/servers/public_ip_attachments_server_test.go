@@ -88,9 +88,10 @@ var _ = Describe("Public IP attachments server", func() {
 		ctx = context.Background()
 
 		// Prepare the database pool:
-		db := server.MakeDatabase()
+		db, err := server.NewInstance().Build()
+		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
+		pool, err := pgxpool.New(ctx, db.Url())
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
 

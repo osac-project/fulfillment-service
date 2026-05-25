@@ -25,9 +25,10 @@ var _ = Describe("Transaction manager", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		DeferCleanup(ctrl.Finish)
 
-		db := dbServer.MakeDatabase()
+		db, err := server.NewInstance().Build()
+		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err = pgxpool.New(ctx, db.MakeURL())
+		pool, err = pgxpool.New(ctx, db.Url())
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
 	})

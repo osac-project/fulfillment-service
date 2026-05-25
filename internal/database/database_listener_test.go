@@ -109,9 +109,10 @@ var _ = Describe("Listener", func() {
 			DeferCleanup(cancel)
 
 			// Prepare the database pool:
-			db := dbServer.MakeDatabase()
+			db, err := server.NewInstance().Build()
+			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(db.Close)
-			pool, err := pgxpool.New(ctx, db.MakeURL())
+			pool, err := pgxpool.New(ctx, db.Url())
 			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(pool.Close)
 
@@ -132,7 +133,7 @@ var _ = Describe("Listener", func() {
 			payloads = make(chan proto.Message)
 			listener, err = NewListener().
 				SetLogger(logger).
-				SetUrl(db.MakeURL()).
+				SetUrl(db.Url()).
 				SetChannel(channel).
 				SetWaitTimeout(100 * time.Millisecond).
 				SetRetryInterval(10 * time.Millisecond).

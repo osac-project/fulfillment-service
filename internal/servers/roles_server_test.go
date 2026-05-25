@@ -39,9 +39,10 @@ var _ = Describe("Public roles server", func() {
 
 		ctx = context.Background()
 
-		db := server.MakeDatabase()
+		db, err := server.NewInstance().Build()
+		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
+		pool, err := pgxpool.New(ctx, db.Url())
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
 
