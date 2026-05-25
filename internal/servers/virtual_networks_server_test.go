@@ -80,6 +80,10 @@ var _ = Describe("Virtual networks server", func() {
 		Expect(err).ToNot(HaveOccurred())
 		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
 		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.Subnet](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.SecurityGroup](ctx)
+		Expect(err).ToNot(HaveOccurred())
 
 		// Create a default NetworkClass for tests:
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
