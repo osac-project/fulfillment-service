@@ -35,13 +35,16 @@ var (
 	_ = metadata.Join
 )
 
-func request_Console_GetAccess_0(ctx context.Context, marshaler runtime.Marshaler, client ConsoleClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_ConsoleSessions_Create_0(ctx context.Context, marshaler runtime.Marshaler, client ConsoleSessionsClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ConsoleGetAccessRequest
+		protoReq ConsoleSessionsCreateRequest
 		metadata runtime.ServerMetadata
 		e        int32
 		err      error
 	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
 	val, ok := pathParams["resource_type"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "resource_type")
@@ -59,17 +62,20 @@ func request_Console_GetAccess_0(ctx context.Context, marshaler runtime.Marshale
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "resource_id", err)
 	}
-	msg, err := client.GetAccess(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.Create(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
 
-func local_request_Console_GetAccess_0(ctx context.Context, marshaler runtime.Marshaler, server ConsoleServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_ConsoleSessions_Create_0(ctx context.Context, marshaler runtime.Marshaler, server ConsoleSessionsServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ConsoleGetAccessRequest
+		protoReq ConsoleSessionsCreateRequest
 		metadata runtime.ServerMetadata
 		e        int32
 		err      error
 	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
 	val, ok := pathParams["resource_type"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "resource_type")
@@ -87,43 +93,43 @@ func local_request_Console_GetAccess_0(ctx context.Context, marshaler runtime.Ma
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "resource_id", err)
 	}
-	msg, err := server.GetAccess(ctx, &protoReq)
+	msg, err := server.Create(ctx, &protoReq)
 	return msg, metadata, err
 }
 
-// RegisterConsoleHandlerServer registers the http handlers for service Console to "mux".
-// UnaryRPC     :call ConsoleServer directly.
+// RegisterConsoleSessionsHandlerServer registers the http handlers for service ConsoleSessions to "mux".
+// UnaryRPC     :call ConsoleSessionsServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
-// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterConsoleHandlerFromEndpoint instead.
+// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterConsoleSessionsHandlerFromEndpoint instead.
 // GRPC interceptors will not work for this type of registration. To use interceptors, you must use the "runtime.WithMiddlewares" option in the "runtime.NewServeMux" call.
-func RegisterConsoleHandlerServer(ctx context.Context, mux *runtime.ServeMux, server ConsoleServer) error {
-	mux.Handle(http.MethodGet, pattern_Console_GetAccess_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+func RegisterConsoleSessionsHandlerServer(ctx context.Context, mux *runtime.ServeMux, server ConsoleSessionsServer) error {
+	mux.Handle(http.MethodPost, pattern_ConsoleSessions_Create_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/osac.public.v1.Console/GetAccess", runtime.WithHTTPPathPattern("/api/osac/public/v1/console/{resource_type}/{resource_id}/access"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/osac.public.v1.ConsoleSessions/Create", runtime.WithHTTPPathPattern("/api/osac/public/v1/console/{resource_type}/{resource_id}/session"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_Console_GetAccess_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_ConsoleSessions_Create_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_Console_GetAccess_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_ConsoleSessions_Create_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 
 	return nil
 }
 
-// RegisterConsoleHandlerFromEndpoint is same as RegisterConsoleHandler but
+// RegisterConsoleSessionsHandlerFromEndpoint is same as RegisterConsoleSessionsHandler but
 // automatically dials to "endpoint" and closes the connection when "ctx" gets done.
-func RegisterConsoleHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
+func RegisterConsoleSessionsHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
 	conn, err := grpc.NewClient(endpoint, opts...)
 	if err != nil {
 		return err
@@ -142,45 +148,45 @@ func RegisterConsoleHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeM
 			}
 		}()
 	}()
-	return RegisterConsoleHandler(ctx, mux, conn)
+	return RegisterConsoleSessionsHandler(ctx, mux, conn)
 }
 
-// RegisterConsoleHandler registers the http handlers for service Console to "mux".
+// RegisterConsoleSessionsHandler registers the http handlers for service ConsoleSessions to "mux".
 // The handlers forward requests to the grpc endpoint over "conn".
-func RegisterConsoleHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
-	return RegisterConsoleHandlerClient(ctx, mux, NewConsoleClient(conn))
+func RegisterConsoleSessionsHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+	return RegisterConsoleSessionsHandlerClient(ctx, mux, NewConsoleSessionsClient(conn))
 }
 
-// RegisterConsoleHandlerClient registers the http handlers for service Console
-// to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "ConsoleClient".
-// Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "ConsoleClient"
+// RegisterConsoleSessionsHandlerClient registers the http handlers for service ConsoleSessions
+// to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "ConsoleSessionsClient".
+// Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "ConsoleSessionsClient"
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
-// "ConsoleClient" to call the correct interceptors. This client ignores the HTTP middlewares.
-func RegisterConsoleHandlerClient(ctx context.Context, mux *runtime.ServeMux, client ConsoleClient) error {
-	mux.Handle(http.MethodGet, pattern_Console_GetAccess_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+// "ConsoleSessionsClient" to call the correct interceptors. This client ignores the HTTP middlewares.
+func RegisterConsoleSessionsHandlerClient(ctx context.Context, mux *runtime.ServeMux, client ConsoleSessionsClient) error {
+	mux.Handle(http.MethodPost, pattern_ConsoleSessions_Create_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/osac.public.v1.Console/GetAccess", runtime.WithHTTPPathPattern("/api/osac/public/v1/console/{resource_type}/{resource_id}/access"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/osac.public.v1.ConsoleSessions/Create", runtime.WithHTTPPathPattern("/api/osac/public/v1/console/{resource_type}/{resource_id}/session"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_Console_GetAccess_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_ConsoleSessions_Create_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_Console_GetAccess_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_ConsoleSessions_Create_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	return nil
 }
 
 var (
-	pattern_Console_GetAccess_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 1, 0, 4, 1, 5, 5, 1, 0, 4, 1, 5, 6, 2, 7}, []string{"api", "osac", "public", "v1", "console", "resource_type", "resource_id", "access"}, ""))
+	pattern_ConsoleSessions_Create_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 1, 0, 4, 1, 5, 5, 1, 0, 4, 1, 5, 6, 2, 7}, []string{"api", "osac", "public", "v1", "console", "resource_type", "resource_id", "session"}, ""))
 )
 
 var (
-	forward_Console_GetAccess_0 = runtime.ForwardResponseMessage
+	forward_ConsoleSessions_Create_0 = runtime.ForwardResponseMessage
 )

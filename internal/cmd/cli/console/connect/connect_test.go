@@ -15,6 +15,7 @@ package connect
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"log/slog"
@@ -25,7 +26,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	experiementalcredentials "google.golang.org/grpc/experimental/credentials"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -74,13 +75,12 @@ func makeOpts(conn *grpc.ClientConn) Options {
 
 var _ = Describe("Auto-reconnect", func() {
 	It("should classify transient server errors for retry", func() {
-		testSrv := &testConsoleServer{failFirst: 2}
-		addr, cleanup, err := startTestGRPCServer(testSrv)
-		Expect(err).NotTo(HaveOccurred())
+		testSrv := &testConsoleProxyServer{failFirst: 2}
+		addr, cleanup := startTestGRPCServer(testSrv)
 		DeferCleanup(cleanup)
 
 		conn, err := grpc.NewClient(addr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithTransportCredentials(experiementalcredentials.NewTLSWithALPNDisabled(&tls.Config{InsecureSkipVerify: true})),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Close()
@@ -89,19 +89,19 @@ var _ = Describe("Auto-reconnect", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// First call: server returns Unavailable (transient).
+		// First call: proxy returns Unavailable (transient).
 		err = connectOnce(ctx, opts, drainHandler)
 		Expect(err).To(HaveOccurred())
 		Expect(IsPermanentError(err)).To(BeFalse(), "Unavailable should be transient")
 		Expect(testSrv.connectCount.Load()).To(Equal(int32(1)))
 
-		// Second call: server returns Unavailable again.
+		// Second call: proxy returns Unavailable again.
 		err = connectOnce(ctx, opts, drainHandler)
 		Expect(err).To(HaveOccurred())
 		Expect(IsPermanentError(err)).To(BeFalse())
 		Expect(testSrv.connectCount.Load()).To(Equal(int32(2)))
 
-		// Third call: server succeeds (sends CONNECTED then DISCONNECTED, exits cleanly).
+		// Third call: proxy succeeds (sends CONNECTED then DISCONNECTED, exits cleanly).
 		err = connectOnce(ctx, opts, drainHandler)
 		// Server sends DISCONNECTED, drainHandler returns nil.
 		Expect(err).To(SatisfyAny(BeNil(), MatchError(ErrConnectionLost)))
@@ -109,13 +109,12 @@ var _ = Describe("Auto-reconnect", func() {
 	})
 
 	It("should not retry on permanent errors", func() {
-		permanentSrv := &publicv1.UnimplementedConsoleServer{}
-		addr, cleanup, err := startTestGRPCServer(permanentSrv)
-		Expect(err).NotTo(HaveOccurred())
+		permanentSrv := &publicv1.UnimplementedConsoleProxyServer{}
+		addr, cleanup := startTestGRPCServer(permanentSrv)
 		DeferCleanup(cleanup)
 
 		conn, err := grpc.NewClient(addr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithTransportCredentials(experiementalcredentials.NewTLSWithALPNDisabled(&tls.Config{InsecureSkipVerify: true})),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Close()
@@ -132,13 +131,12 @@ var _ = Describe("Auto-reconnect", func() {
 
 	It("should exercise the full WithRetry path", func() {
 		// Server fails first 2, succeeds on 3rd.
-		testSrv := &testConsoleServer{failFirst: 2}
-		addr, cleanup, err := startTestGRPCServer(testSrv)
-		Expect(err).NotTo(HaveOccurred())
+		testSrv := &testConsoleProxyServer{failFirst: 2}
+		addr, cleanup := startTestGRPCServer(testSrv)
 		DeferCleanup(cleanup)
 
 		conn, err := grpc.NewClient(addr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithTransportCredentials(experiementalcredentials.NewTLSWithALPNDisabled(&tls.Config{InsecureSkipVerify: true})),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Close()
@@ -149,7 +147,7 @@ var _ = Describe("Auto-reconnect", func() {
 
 		// WithRetry should retry the transient failures and eventually succeed.
 		err = WithRetry(ctx, opts, drainHandler)
-		// Should complete — either nil or a clean exit from the DISCONNECTED status.
+		// Should complete -- either nil or a clean exit from the DISCONNECTED status.
 		Expect(err).To(SatisfyAny(BeNil(), MatchError(ErrConnectionLost)))
 		Expect(testSrv.connectCount.Load()).To(Equal(int32(3)))
 	})
@@ -159,13 +157,12 @@ var _ = Describe("Auto-reconnect", func() {
 var _ = Describe("connectOnce edge cases", func() {
 	It("should handle stream EOF after connected status", func() {
 		// Server that connects then immediately returns (EOF on stream).
-		eofSrv := &eofAfterConnectServer{}
-		addr, cleanup, err := startTestGRPCServer(eofSrv)
-		Expect(err).NotTo(HaveOccurred())
+		eofSrv := &eofAfterConnectProxyServer{}
+		addr, cleanup := startTestGRPCServer(eofSrv)
 		DeferCleanup(cleanup)
 
 		conn, err := grpc.NewClient(addr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithTransportCredentials(experiementalcredentials.NewTLSWithALPNDisabled(&tls.Config{InsecureSkipVerify: true})),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Close()
@@ -184,7 +181,7 @@ var _ = Describe("connectOnce edge cases", func() {
 
 var _ = Describe("Proxy", func() {
 	It("should bridge data bidirectionally", func() {
-		stream, ctx, cancel, cleanup := openTestStream(&echoConsoleServer{})
+		stream, ctx, cancel, cleanup := openTestStream(&echoConsoleProxyServer{})
 		defer cleanup()
 
 		// Simulate local connection with a pipe.
@@ -223,14 +220,14 @@ var _ = Describe("Proxy", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(buf[:n]).To(Equal(testData2))
 
-		// Close client side — bridge should exit cleanly.
+		// Close client side -- bridge should exit cleanly.
 		pipeClient.Close()
 
 		Eventually(bridgeDone).WithTimeout(2 * time.Second).Should(Receive(BeNil()))
 	})
 
 	It("should handle server disconnect status", func() {
-		stream, ctx, cancel, cleanup := openTestStream(&disconnectAfterConnectServer{})
+		stream, ctx, cancel, cleanup := openTestStream(&disconnectAfterConnectProxyServer{})
 		defer cleanup()
 
 		pipeServer, pipeClient := net.Pipe()
@@ -249,7 +246,7 @@ var _ = Describe("Proxy", func() {
 	})
 
 	It("should return ErrLocalIOFailed when the local side breaks", func() {
-		stream, ctx, cancel, cleanup := openTestStream(&echoConsoleServer{})
+		stream, ctx, cancel, cleanup := openTestStream(&echoConsoleProxyServer{})
 		defer cleanup()
 
 		// Use io.Pipe so CloseWithError can inject a non-EOF error,

@@ -32,152 +32,111 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Console_Connect_FullMethodName   = "/osac.public.v1.Console/Connect"
-	Console_GetAccess_FullMethodName = "/osac.public.v1.Console/GetAccess"
+	ConsoleSessions_Create_FullMethodName = "/osac.public.v1.ConsoleSessions/Create"
 )
 
-// ConsoleClient is the client API for Console service.
+// ConsoleSessionsClient is the client API for ConsoleSessions service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Service for interactive console access to resources.
-type ConsoleClient interface {
-	// Bidirectional stream for console access. The first message sent by the
-	// client must be a ConsoleConnectInit. Subsequent messages carry terminal
-	// input (ConsoleInput) or resize events (ConsoleResize).
-	//
-	// No google.api.http annotation: gRPC-Gateway does not support bidi streaming.
-	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConsoleConnectRequest, ConsoleConnectResponse], error)
-	// Check console availability for a resource without establishing a connection.
-	GetAccess(ctx context.Context, in *ConsoleGetAccessRequest, opts ...grpc.CallOption) (*ConsoleGetAccessResponse, error)
+// Service for console session ticket management.
+type ConsoleSessionsClient interface {
+	// Create a console session ticket. The ticket is a signed JWT that
+	// authorizes a single console connection via the console-proxy service.
+	Create(ctx context.Context, in *ConsoleSessionsCreateRequest, opts ...grpc.CallOption) (*ConsoleSessionsCreateResponse, error)
 }
 
-type consoleClient struct {
+type consoleSessionsClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewConsoleClient(cc grpc.ClientConnInterface) ConsoleClient {
-	return &consoleClient{cc}
+func NewConsoleSessionsClient(cc grpc.ClientConnInterface) ConsoleSessionsClient {
+	return &consoleSessionsClient{cc}
 }
 
-func (c *consoleClient) Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConsoleConnectRequest, ConsoleConnectResponse], error) {
+func (c *consoleSessionsClient) Create(ctx context.Context, in *ConsoleSessionsCreateRequest, opts ...grpc.CallOption) (*ConsoleSessionsCreateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Console_ServiceDesc.Streams[0], Console_Connect_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[ConsoleConnectRequest, ConsoleConnectResponse]{ClientStream: stream}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Console_ConnectClient = grpc.BidiStreamingClient[ConsoleConnectRequest, ConsoleConnectResponse]
-
-func (c *consoleClient) GetAccess(ctx context.Context, in *ConsoleGetAccessRequest, opts ...grpc.CallOption) (*ConsoleGetAccessResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ConsoleGetAccessResponse)
-	err := c.cc.Invoke(ctx, Console_GetAccess_FullMethodName, in, out, cOpts...)
+	out := new(ConsoleSessionsCreateResponse)
+	err := c.cc.Invoke(ctx, ConsoleSessions_Create_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// ConsoleServer is the server API for Console service.
-// All implementations must embed UnimplementedConsoleServer
+// ConsoleSessionsServer is the server API for ConsoleSessions service.
+// All implementations must embed UnimplementedConsoleSessionsServer
 // for forward compatibility.
 //
-// Service for interactive console access to resources.
-type ConsoleServer interface {
-	// Bidirectional stream for console access. The first message sent by the
-	// client must be a ConsoleConnectInit. Subsequent messages carry terminal
-	// input (ConsoleInput) or resize events (ConsoleResize).
-	//
-	// No google.api.http annotation: gRPC-Gateway does not support bidi streaming.
-	Connect(grpc.BidiStreamingServer[ConsoleConnectRequest, ConsoleConnectResponse]) error
-	// Check console availability for a resource without establishing a connection.
-	GetAccess(context.Context, *ConsoleGetAccessRequest) (*ConsoleGetAccessResponse, error)
-	mustEmbedUnimplementedConsoleServer()
+// Service for console session ticket management.
+type ConsoleSessionsServer interface {
+	// Create a console session ticket. The ticket is a signed JWT that
+	// authorizes a single console connection via the console-proxy service.
+	Create(context.Context, *ConsoleSessionsCreateRequest) (*ConsoleSessionsCreateResponse, error)
+	mustEmbedUnimplementedConsoleSessionsServer()
 }
 
-// UnimplementedConsoleServer must be embedded to have
+// UnimplementedConsoleSessionsServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedConsoleServer struct{}
+type UnimplementedConsoleSessionsServer struct{}
 
-func (UnimplementedConsoleServer) Connect(grpc.BidiStreamingServer[ConsoleConnectRequest, ConsoleConnectResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method Connect not implemented")
+func (UnimplementedConsoleSessionsServer) Create(context.Context, *ConsoleSessionsCreateRequest) (*ConsoleSessionsCreateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Create not implemented")
 }
-func (UnimplementedConsoleServer) GetAccess(context.Context, *ConsoleGetAccessRequest) (*ConsoleGetAccessResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAccess not implemented")
-}
-func (UnimplementedConsoleServer) mustEmbedUnimplementedConsoleServer() {}
-func (UnimplementedConsoleServer) testEmbeddedByValue()                 {}
+func (UnimplementedConsoleSessionsServer) mustEmbedUnimplementedConsoleSessionsServer() {}
+func (UnimplementedConsoleSessionsServer) testEmbeddedByValue()                         {}
 
-// UnsafeConsoleServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ConsoleServer will
+// UnsafeConsoleSessionsServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ConsoleSessionsServer will
 // result in compilation errors.
-type UnsafeConsoleServer interface {
-	mustEmbedUnimplementedConsoleServer()
+type UnsafeConsoleSessionsServer interface {
+	mustEmbedUnimplementedConsoleSessionsServer()
 }
 
-func RegisterConsoleServer(s grpc.ServiceRegistrar, srv ConsoleServer) {
-	// If the following call pancis, it indicates UnimplementedConsoleServer was
+func RegisterConsoleSessionsServer(s grpc.ServiceRegistrar, srv ConsoleSessionsServer) {
+	// If the following call pancis, it indicates UnimplementedConsoleSessionsServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&Console_ServiceDesc, srv)
+	s.RegisterService(&ConsoleSessions_ServiceDesc, srv)
 }
 
-func _Console_Connect_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ConsoleServer).Connect(&grpc.GenericServerStream[ConsoleConnectRequest, ConsoleConnectResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Console_ConnectServer = grpc.BidiStreamingServer[ConsoleConnectRequest, ConsoleConnectResponse]
-
-func _Console_GetAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ConsoleGetAccessRequest)
+func _ConsoleSessions_Create_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConsoleSessionsCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ConsoleServer).GetAccess(ctx, in)
+		return srv.(ConsoleSessionsServer).Create(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Console_GetAccess_FullMethodName,
+		FullMethod: ConsoleSessions_Create_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ConsoleServer).GetAccess(ctx, req.(*ConsoleGetAccessRequest))
+		return srv.(ConsoleSessionsServer).Create(ctx, req.(*ConsoleSessionsCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// Console_ServiceDesc is the grpc.ServiceDesc for Console service.
+// ConsoleSessions_ServiceDesc is the grpc.ServiceDesc for ConsoleSessions service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var Console_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "osac.public.v1.Console",
-	HandlerType: (*ConsoleServer)(nil),
+var ConsoleSessions_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "osac.public.v1.ConsoleSessions",
+	HandlerType: (*ConsoleSessionsServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetAccess",
-			Handler:    _Console_GetAccess_Handler,
+			MethodName: "Create",
+			Handler:    _ConsoleSessions_Create_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "Connect",
-			Handler:       _Console_Connect_Handler,
-			ServerStreams: true,
-			ClientStreams: true,
-		},
-	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "osac/public/v1/console_service.proto",
 }

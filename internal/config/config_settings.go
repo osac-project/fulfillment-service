@@ -468,6 +468,18 @@ func (c *Settings) Connect(ctx context.Context, flags *pflag.FlagSet) (result *g
 		return
 	}
 
+	return c.connect(ctx, flags, tokenSource)
+}
+
+// ConnectPlain creates a gRPC connection without channel-level token credentials.
+// Use this for services that handle their own auth via per-call credentials
+// (e.g., console proxy with ticket-based PerRPCCredentials).
+func (c *Settings) ConnectPlain(ctx context.Context, flags *pflag.FlagSet) (*grpc.ClientConn, error) {
+	return c.connect(ctx, flags, nil)
+}
+
+// connect builds a gRPC connection, optionally with token-based auth.
+func (c *Settings) connect(ctx context.Context, flags *pflag.FlagSet, tokenSource auth.TokenSource) (result *grpc.ClientConn, err error) {
 	// Create the version interceptor:
 	versionInterceptor, err := version.NewInterceptor().
 		SetLogger(c.logger).

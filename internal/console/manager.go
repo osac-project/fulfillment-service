@@ -86,24 +86,37 @@ func (b *ManagerBuilder) Build() (*Manager, error) {
 	}, nil
 }
 
+// ConnectResult holds the result of a successful Manager.Connect call.
+type ConnectResult struct {
+	// Conn is the bidirectional connection to the backend console.
+	Conn io.ReadWriteCloser
+
+	// SessionCtx is cancelled when the session ends — by eviction, timeout,
+	// or parent context cancellation. Callers should pass this to the relay
+	// so that session lifecycle events terminate the proxy.
+	SessionCtx context.Context
+}
+
 // Connect establishes a console connection to the target resource.
-// It returns an io.ReadWriteCloser for bidirectional communication.
-// The returned connection is closed when ctx is cancelled or the session times out.
+// The returned ConnectResult contains both the connection and the session context.
+//
+// target.BackendURI is the session identity for deduplication — two connections
+// with the same BackendURI are considered the same console endpoint.
 //
 // If clientID is non-empty and matches an existing session from the same user,
 // the stale session is evicted and the new connection is admitted. This handles
 // reconnection after unclean TCP disconnects.
-func (m *Manager) Connect(ctx context.Context, target Target, user, clientID string) (io.ReadWriteCloser, error) {
+func (m *Manager) Connect(ctx context.Context, target Target, user, clientID string) (*ConnectResult, error) {
+	if target.BackendURI == "" {
+		return nil, fmt.Errorf("backend URI is required")
+	}
+
 	backend, ok := m.backends[target.ResourceType]
 	if !ok {
 		return nil, fmt.Errorf("unsupported resource type %q", target.ResourceType)
 	}
 
-	consoleType := target.ConsoleType
-	if consoleType == "" {
-		return nil, fmt.Errorf("console type is required")
-	}
-	sessionKey := fmt.Sprintf("%s/%s/%s", target.ResourceType, target.ResourceID, consoleType)
+	sessionKey := target.BackendURI
 
 	var oldCancel context.CancelFunc
 
@@ -157,12 +170,15 @@ func (m *Manager) Connect(ctx context.Context, target Target, user, clientID str
 		return nil, err
 	}
 
-	return &managedConnection{
-		ReadWriteCloser: conn,
-		manager:         m,
-		sessionKey:      sessionKey,
-		session:         s,
-		cancel:          sessionCancel,
+	return &ConnectResult{
+		Conn: &managedConnection{
+			ReadWriteCloser: conn,
+			manager:         m,
+			sessionKey:      sessionKey,
+			session:         s,
+			cancel:          sessionCancel,
+		},
+		SessionCtx: sessionCtx,
 	}, nil
 }
 

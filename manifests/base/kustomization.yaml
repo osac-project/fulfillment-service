@@ -23,6 +23,7 @@ resources:
 - database
 - authorino
 - grpc-server
+- console-proxy
 - ingress-proxy
 - rest-gateway
 - admin

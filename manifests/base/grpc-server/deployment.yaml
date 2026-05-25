@@ -35,10 +35,30 @@ spec:
       - name: tls
         secret:
           secretName: fulfillment-grpc-server-tls
+      - name: token-signer
+        secret:
+          secretName: fulfillment-token-signer-tls
+      - name: token-encryption-cert
+        secret:
+          secretName: fulfillment-token-encryption-tls
+          items:
+          - key: tls.crt
+            path: tls.crt
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: grpc-server
         image: fulfillment-service
         imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         volumeMounts:
         - name: cas
           mountPath: /etc/fulfillment-grpc-server/tls/cas
@@ -46,6 +66,12 @@ spec:
           mountPath: /secrets/cert
         - name: tls
           mountPath: /etc/fulfillment-grpc-server/tls
+        - name: token-signer
+          mountPath: /etc/fulfillment-token-signer/tls
+          readOnly: true
+        - name: token-encryption-cert
+          mountPath: /etc/fulfillment-token-encryption/tls
+          readOnly: true
         command:
         - /usr/local/bin/fulfillment-service
         - start
@@ -67,18 +93,16 @@ spec:
         - --grpc-authn-external-address=authorino-authorino-authorization:50051
         - --tenancy-logic=default
         - --metrics-listener-address=0.0.0.0:8002
-        - --console-listener-address=0.0.0.0:8090
-        - --console-listener-tls-crt=/etc/fulfillment-grpc-server/tls/tls.crt
-        - --console-listener-tls-key=/etc/fulfillment-grpc-server/tls/tls.key
+        - --token-signer-crt=/etc/fulfillment-token-signer/tls/tls.crt
+        - --token-signer-key=/etc/fulfillment-token-signer/tls/tls.key
+        - --token-encryption-crt=/etc/fulfillment-token-encryption/tls/tls.crt
+        - --token-issuer=https://fulfillment-rest-gateway:8000
         ports:
         - name: grpc
           containerPort: 8000
           protocol: TCP
         - name: metrics
           containerPort: 8002
-          protocol: TCP
-        - name: console
-          containerPort: 8090
           protocol: TCP
         livenessProbe:
           exec:

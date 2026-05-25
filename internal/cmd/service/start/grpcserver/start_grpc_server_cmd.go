@@ -23,7 +23,6 @@ import (
 	"syscall"
 	"time"
 
-	envoyauthv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -50,6 +49,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/recovery"
 	"github.com/osac-project/fulfillment-service/internal/servers"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
+	"github.com/osac-project/fulfillment-service/internal/token"
 	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
@@ -67,7 +67,6 @@ func Cmd() *cobra.Command {
 	flags := command.Flags()
 	network.AddListenerFlags(flags, network.GrpcListenerName, network.DefaultGrpcAddress)
 	network.AddListenerFlags(flags, network.MetricsListenerName, network.DefaultMetricsAddress)
-	network.AddListenerFlags(flags, consoleListenerName, defaultConsoleAddress)
 	database.AddFlags(flags)
 	flags.StringVar(
 		&runner.args.authType,
@@ -99,6 +98,30 @@ func Cmd() *cobra.Command {
 		"default",
 		tenancyLogicFlagHelp,
 	)
+	flags.StringVar(
+		&runner.args.tokenSignerCrt,
+		"token-signer-crt",
+		"",
+		tokenSignerCrtFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.tokenSignerKey,
+		"token-signer-key",
+		"",
+		tokenSignerKeyFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.tokenEncryptionCrt,
+		"token-encryption-crt",
+		"",
+		tokenEncryptionCrtFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.tokenIssuer,
+		"token-issuer",
+		"",
+		tokenIssuerFlagHelp,
+	)
 	return command
 }
 
@@ -112,6 +135,10 @@ type runnerContext struct {
 		externalAuthAddress string
 		trustedTokenIssuers []string
 		tenancyLogic        string
+		tokenSignerCrt      string
+		tokenSignerKey      string
+		tokenEncryptionCrt  string
+		tokenIssuer         string
 	}
 }
 
@@ -950,60 +977,40 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 	privatev1.RegisterUsersServer(grpcServer, privateUsersServer)
 
-	// Create the console manager and server:
-	c.logger.InfoContext(ctx, "Creating console server")
-	hubConfigProvider := console.HubConfigProviderFromKubeconfigs(
-		func(ctx context.Context, id string) ([]byte, error) {
-			tx, err := txManager.Begin(ctx)
-			if err != nil {
-				return nil, err
-			}
-			defer txManager.End(ctx, tx)
-			txCtx := database.TxIntoContext(ctx, tx)
-			resp, err := privateHubsServer.Get(txCtx, privatev1.HubsGetRequest_builder{
-				Id: id,
-			}.Build())
-			if err != nil {
-				return nil, err
-			}
-			return resp.GetObject().GetSpec().GetKubeconfig(), nil
-		},
+	// Create the token sealer (sign + encrypt infrastructure):
+	c.logger.InfoContext(ctx, "Creating token sealer")
+	tokenSealer, err := token.NewSealer(
+		c.logger,
+		c.args.tokenSignerCrt,
+		c.args.tokenSignerKey,
+		c.args.tokenEncryptionCrt,
+		c.args.tokenIssuer,
+		[]string{console.TicketAudience},
 	)
-	kvBackend, err := console.NewKubeVirtBackend().
-		SetLogger(c.logger).
-		SetHubConfigProvider(hubConfigProvider).
-		Build()
 	if err != nil {
-		return fmt.Errorf("failed to create kubevirt backend: %w", err)
+		return fmt.Errorf("failed to create token sealer: %w", err)
 	}
-	consoleManager, err := console.NewManager().
-		SetLogger(c.logger).
-		AddBackend("compute_instance", kvBackend).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create console manager: %w", err)
-	}
-	consoleServer, err := servers.NewConsoleServer().
-		SetLogger(c.logger).
-		SetManager(consoleManager).
-		SetComputeInstancesServer(privateComputeInstancesServer).
-		SetHubServer(privateHubsServer).
-		SetTxManager(txManager).
-		SetScheme(hubScheme).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create console server: %w", err)
-	}
-	publicv1.RegisterConsoleServer(grpcServer, consoleServer)
 
-	// Create the WebSocket console handler:
-	c.logger.InfoContext(ctx, "Creating console WebSocket handler")
+	// Wrap the token sealer for console-specific ticket claim mapping:
+	ticketSealer := console.NewTicketSealer(tokenSealer)
 
-	// Build the shared console target resolver:
+	// Create the signing keys server (serves JWKS at /.well-known/jwks.json):
+	c.logger.InfoContext(ctx, "Creating signing keys server")
+	signingKeysServer, err := servers.NewSigningKeysServer().
+		SetLogger(c.logger).
+		SetSealer(tokenSealer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create signing keys server: %w", err)
+	}
+	publicv1.RegisterSigningKeysServer(grpcServer, signingKeysServer)
+
+	// Build the shared lookups and console target resolver:
+	hubLookup := servers.NewPrivateServerHubLookup(privateHubsServer)
 	consoleResolver, err := servers.NewConsoleTargetResolver().
 		SetLogger(c.logger).
 		SetComputeInstanceLookup(servers.NewPrivateServerCILookup(privateComputeInstancesServer)).
-		SetHubLookup(servers.NewPrivateServerHubLookup(privateHubsServer)).
+		SetHubLookup(hubLookup).
 		SetHubClientFactory(servers.NewDefaultHubClientFactory(hubScheme)).
 		SetTxManager(txManager).
 		Build()
@@ -1011,90 +1018,17 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		return fmt.Errorf("failed to create console target resolver: %w", err)
 	}
 
-	// Create the WebSocket authenticator (mirrors the guest/external switch for gRPC auth):
-	var wsAuth auth.WebSocketAuthenticator
-	switch strings.ToLower(c.args.authType) {
-	case auth.GrpcGuestAuthType:
-		wsAuth, err = auth.NewGuestWebSocketAuth().
-			SetLogger(c.logger).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create guest websocket auth: %w", err)
-		}
-	case auth.GrpcExternalAuthType:
-		// Build a shared ExternalAuthChecker for the WebSocket path.
-		// The external auth gRPC client was already created above for the interceptor.
-		externalAuthClientForWS, err := network.NewGrpcClient().
-			SetLogger(c.logger).
-			SetAddress(c.args.externalAuthAddress).
-			SetCaPool(caPool).
-			SetUserAgent(userAgent).
-			SetMetricsSubsystem("outbound_console").
-			SetMetricsRegisterer(metricsRegisterer).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create external auth client for console: %w", err)
-		}
-		wsChecker, err := auth.NewExternalAuthChecker().
-			SetLogger(c.logger).
-			SetAuthClient(envoyauthv3.NewAuthorizationClient(externalAuthClientForWS)).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create external auth checker for console: %w", err)
-		}
-		wsAuth, err = auth.NewExternalWebSocketAuth().
-			SetLogger(c.logger).
-			SetChecker(wsChecker).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create external websocket auth: %w", err)
-		}
-	}
-
-	wsHandler, err := servers.NewConsoleWebSocketHandler().
+	// Create the console sessions server:
+	c.logger.InfoContext(ctx, "Creating console server")
+	consoleServer, err := servers.NewConsoleServer().
 		SetLogger(c.logger).
-		SetAuthenticator(wsAuth).
+		SetSealer(ticketSealer).
 		SetResolver(consoleResolver).
-		SetManager(consoleManager).
 		Build()
 	if err != nil {
-		return fmt.Errorf("failed to create console websocket handler: %w", err)
+		return fmt.Errorf("failed to create console server: %w", err)
 	}
-
-	// Create the console HTTP mux and middleware chain:
-	consoleMux := http.NewServeMux()
-	consoleMux.Handle(
-		"GET /api/osac/public/v1/console/compute_instance/{resource_id}/connect/{console_type}",
-		wsHandler,
-	)
-	consoleHandler := servers.ConsolePanicRecovery(c.logger,
-		servers.ConsoleMetrics(metricsRegisterer,
-			servers.ConsoleLogging(c.logger, consoleMux)))
-
-	// Create and start the console HTTP listener:
-	c.logger.InfoContext(ctx, "Creating console listener")
-	consoleListener, err := network.NewListener().
-		SetLogger(c.logger).
-		SetFlags(c.flags, consoleListenerName).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create console listener: %w", err)
-	}
-	c.logger.InfoContext(ctx, "Starting console server",
-		slog.String("address", consoleListener.Addr().String()),
-	)
-	consoleHTTPServer := &http.Server{
-		Handler: consoleHandler,
-	}
-	go func() {
-		err := consoleHTTPServer.Serve(consoleListener)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			c.logger.ErrorContext(ctx, "Console server failed",
-				slog.Any("error", err),
-			)
-		}
-	}()
-	shutdown.AddHttpServer(consoleListenerName, 0, consoleHTTPServer)
+	publicv1.RegisterConsoleSessionsServer(grpcServer, consoleServer)
 
 	// Create the events server:
 	c.logger.InfoContext(ctx, "Creating events server")
@@ -1213,9 +1147,9 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	return shutdown.Wait()
 }
 
-// publicMethodRegex is regular expression for the methods that are considered public, including the capabilities, and
-// reflection, health methods. These will skip authentication and authorization.
-const publicMethodRegex = `^/(osac\.public\.v1\.Capabilities/|grpc\.(reflection|health)\.).*$`
+// publicMethodRegex is regular expression for the methods that are considered public, including the capabilities,
+// JWKS, reflection, and health methods. These will skip authentication and authorization.
+const publicMethodRegex = `^/(osac\.public\.v1\.(Capabilities/|SigningKeys/)|grpc\.(reflection|health)\.).*$`
 
 // grpcServerUserAgent is the user agent string for the gRPC server.
 const grpcServerUserAgent = "fulfillment-grpc-server"
@@ -1252,8 +1186,22 @@ _LOGIC_ - Type of tenancy logic to use. Valid values are
 {{ bt }}default{{ bt }} and {{ bt }}guest{{ bt }}.
 `
 
-// consoleListenerName is the name used for the console HTTP listener flags.
-const consoleListenerName = "console"
+const tokenSignerCrtFlagHelp = `
+_FILE_ - Path to the PEM-encoded signing certificate used to sign
+JWT tokens issued by this server.
+`
 
-// defaultConsoleAddress is the default address for the console HTTP listener.
-const defaultConsoleAddress = ":8090"
+const tokenSignerKeyFlagHelp = `
+_FILE_ - Path to the PEM-encoded private key used to sign
+JWT tokens issued by this server.
+`
+
+const tokenEncryptionCrtFlagHelp = `
+_FILE_ - Path to the PEM-encoded encryption certificate (public key)
+of the token recipient. Used to encrypt the JWE envelope of issued tokens.
+`
+
+const tokenIssuerFlagHelp = `
+_URL_ - Issuer URL for JWT tokens. Used as the iss claim. Token
+consumers derive the JWKS endpoint as <issuer>/.well-known/jwks.json.
+`

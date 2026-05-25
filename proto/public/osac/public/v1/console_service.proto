@@ -16,6 +16,7 @@ syntax = "proto3";
 package osac.public.v1;
 
 import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
 
 // Type of resource to connect a console to.
 enum ConsoleResourceType {
@@ -90,32 +91,34 @@ message ConsoleStatus {
   string message = 2;
 }
 
-// Request to check console availability without connecting.
-message ConsoleGetAccessRequest {
+// Request to create a console session ticket.
+message ConsoleSessionsCreateRequest {
   ConsoleResourceType resource_type = 1;
   string resource_id = 2;
+  ConsoleType type = 3;
+  // Stable identifier for the CLI process. When a new connection arrives with
+  // a client_id matching an existing session from the same user, the server
+  // evicts the stale session and admits the new one. Empty means no eviction.
+  string client_id = 4;
 }
 
-// Response with console availability information.
-message ConsoleGetAccessResponse {
-  bool available = 1;
-  string reason = 2;
-  repeated ConsoleType supported_types = 3;
+// Response with a signed JWT ticket for console access.
+message ConsoleSessionsCreateResponse {
+  // Signed JWT ticket. Treat as a secret -- it grants console access
+  // without further authentication.
+  string ticket = 1;
+  google.protobuf.Timestamp expires_at = 2;
 }
 
-// Service for interactive console access to resources.
-service Console {
-  // Bidirectional stream for console access. The first message sent by the
-  // client must be a ConsoleConnectInit. Subsequent messages carry terminal
-  // input (ConsoleInput) or resize events (ConsoleResize).
-  //
-  // No google.api.http annotation: gRPC-Gateway does not support bidi streaming.
-  rpc Connect(stream ConsoleConnectRequest) returns (stream ConsoleConnectResponse);
-
-  // Check console availability for a resource without establishing a connection.
-  rpc GetAccess(ConsoleGetAccessRequest) returns (ConsoleGetAccessResponse) {
+// Service for console session ticket management.
+service ConsoleSessions {
+  // Create a console session ticket. The ticket is a signed JWT that
+  // authorizes a single console connection via the console-proxy service.
+  rpc Create(ConsoleSessionsCreateRequest) returns (ConsoleSessionsCreateResponse) {
     option (google.api.http) = {
-      get: "/api/osac/public/v1/console/{resource_type}/{resource_id}/access"
+      post: "/api/osac/public/v1/console/{resource_type}/{resource_id}/session"
+      body: "*"
     };
   }
+
 }

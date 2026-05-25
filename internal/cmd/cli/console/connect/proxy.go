@@ -50,7 +50,7 @@ type ProxyOptions struct {
 // It blocks until the stream ends, ctx is cancelled, or an error occurs.
 func Proxy(ctx context.Context,
 	cancel context.CancelFunc,
-	stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse],
+	stream grpc.BidiStreamingClient[publicv1.ConsoleProxyConnectRequest, publicv1.ConsoleProxyConnectResponse],
 	opts ProxyOptions) error {
 
 	bufSize := opts.BufSize
@@ -119,7 +119,7 @@ func Proxy(ctx context.Context,
 					errCh <- nil
 					return
 				}
-				sendErr := stream.Send(publicv1.ConsoleConnectRequest_builder{
+				sendErr := stream.Send(publicv1.ConsoleProxyConnectRequest_builder{
 					Input: publicv1.ConsoleInput_builder{
 						Data: bytes.Clone(data),
 					}.Build(),

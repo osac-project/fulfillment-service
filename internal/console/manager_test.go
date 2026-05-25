@@ -148,21 +148,31 @@ var _ = Describe("Manager", func() {
 				Namespace:    "ns",
 				CRName:       "vm-1",
 				ConsoleType:  ConsoleTypeSerial,
+				BackendURI:   "wss://hub/ns/vm-1/console",
 			}
 
-			conn, err := mgr.Connect(ctx, target, "testuser", "")
+			result, err := mgr.Connect(ctx, target, "testuser", "")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(conn).NotTo(BeNil())
+			Expect(result.Conn).NotTo(BeNil())
+			Expect(result.SessionCtx).NotTo(BeNil())
 			Expect(mgr.ActiveSessions()).To(Equal(1))
 
-			err = conn.Close()
+			err = result.Conn.Close()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(mgr.ActiveSessions()).To(Equal(0))
 		})
 
+		It("should reject missing backend URI", func() {
+			ctx := context.Background()
+			target := Target{ResourceType: "compute_instance", ConsoleType: ConsoleTypeSerial}
+			_, err := mgr.Connect(ctx, target, "testuser", "")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("backend URI is required"))
+		})
+
 		It("should reject unsupported resource type", func() {
 			ctx := context.Background()
-			target := Target{ResourceType: "unknown", ConsoleType: ConsoleTypeSerial}
+			target := Target{ResourceType: "unknown", BackendURI: "wss://hub/unknown"}
 			_, err := mgr.Connect(ctx, target, "testuser", "")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("unsupported"))
@@ -174,21 +184,22 @@ var _ = Describe("Manager", func() {
 				ResourceType: "compute_instance",
 				ResourceID:   "test-123",
 				ConsoleType:  ConsoleTypeSerial,
+				BackendURI:   "wss://hub/ns/test-123/console",
 			}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "")
+			result1, err := mgr.Connect(ctx, target, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = mgr.Connect(ctx, target, "user2", "")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already has an active console session"))
 
-			conn1.Close()
+			result1.Conn.Close()
 
 			// Should succeed after the first session is closed.
-			conn2, err := mgr.Connect(ctx, target, "user2", "")
+			result2, err := mgr.Connect(ctx, target, "user2", "")
 			Expect(err).NotTo(HaveOccurred())
-			conn2.Close()
+			result2.Conn.Close()
 		})
 
 		It("should allow simultaneous serial and VNC sessions to the same resource", func() {
@@ -197,23 +208,25 @@ var _ = Describe("Manager", func() {
 				ResourceType: "compute_instance",
 				ResourceID:   "test-123",
 				ConsoleType:  ConsoleTypeSerial,
+				BackendURI:   "wss://hub/ns/test-123/console",
 			}
 			vncTarget := Target{
 				ResourceType: "compute_instance",
 				ResourceID:   "test-123",
 				ConsoleType:  ConsoleTypeVNC,
+				BackendURI:   "wss://hub/ns/test-123/vnc",
 			}
 
-			conn1, err := mgr.Connect(ctx, serialTarget, "user1", "")
+			result1, err := mgr.Connect(ctx, serialTarget, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
-			conn2, err := mgr.Connect(ctx, vncTarget, "user1", "")
+			result2, err := mgr.Connect(ctx, vncTarget, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(mgr.ActiveSessions()).To(Equal(2))
 
-			conn1.Close()
-			conn2.Close()
+			result1.Conn.Close()
+			result2.Conn.Close()
 			Expect(mgr.ActiveSessions()).To(Equal(0))
 		})
 
@@ -223,46 +236,47 @@ var _ = Describe("Manager", func() {
 				ResourceType: "compute_instance",
 				ResourceID:   "test-123",
 				ConsoleType:  ConsoleTypeVNC,
+				BackendURI:   "wss://hub/ns/test-123/vnc",
 			}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "")
+			result1, err := mgr.Connect(ctx, target, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = mgr.Connect(ctx, target, "user2", "")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already has an active console session"))
 
-			conn1.Close()
+			result1.Conn.Close()
 		})
 
 		It("should allow sessions to different resources", func() {
 			ctx := context.Background()
-			target1 := Target{ResourceType: "compute_instance", ResourceID: "vm-1", ConsoleType: ConsoleTypeSerial}
-			target2 := Target{ResourceType: "compute_instance", ResourceID: "vm-2", ConsoleType: ConsoleTypeSerial}
+			target1 := Target{ResourceType: "compute_instance", ResourceID: "vm-1", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/vm-1/console"}
+			target2 := Target{ResourceType: "compute_instance", ResourceID: "vm-2", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/vm-2/console"}
 
-			conn1, err := mgr.Connect(ctx, target1, "user1", "")
+			result1, err := mgr.Connect(ctx, target1, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
-			conn2, err := mgr.Connect(ctx, target2, "user1", "")
+			result2, err := mgr.Connect(ctx, target2, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(mgr.ActiveSessions()).To(Equal(2))
 
-			conn1.Close()
-			conn2.Close()
+			result1.Conn.Close()
+			result2.Conn.Close()
 			Expect(mgr.ActiveSessions()).To(Equal(0))
 		})
 
 		It("should handle double close gracefully", func() {
 			ctx := context.Background()
-			target := Target{ResourceType: "compute_instance", ResourceID: "vm-1", ConsoleType: ConsoleTypeSerial}
-			conn, err := mgr.Connect(ctx, target, "user1", "")
+			target := Target{ResourceType: "compute_instance", ResourceID: "vm-1", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/vm-1/console"}
+			result, err := mgr.Connect(ctx, target, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
-			err = conn.Close()
+			err = result.Conn.Close()
 			Expect(err).NotTo(HaveOccurred())
 
-			err = conn.Close()
+			err = result.Conn.Close()
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -281,19 +295,20 @@ var _ = Describe("Manager", func() {
 				ResourceType: "compute_instance",
 				ResourceID:   "timeout-test",
 				ConsoleType:  ConsoleTypeSerial,
+				BackendURI:   "wss://hub/ns/timeout-test/console",
 			}
 
-			conn, err := timeoutMgr.Connect(ctx, target, "testuser", "")
+			result, err := timeoutMgr.Connect(ctx, target, "testuser", "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(timeoutMgr.ActiveSessions()).To(Equal(1))
 
 			// Read should block until timeout fires, then return context.DeadlineExceeded.
 			buf := make([]byte, 64)
-			_, readErr := conn.Read(buf)
+			_, readErr := result.Conn.Read(buf)
 			Expect(readErr).To(HaveOccurred())
 			Expect(readErr.Error()).To(ContainSubstring("deadline exceeded"))
 
-			conn.Close()
+			result.Conn.Close()
 			Expect(timeoutMgr.ActiveSessions()).To(Equal(0))
 		})
 
@@ -310,117 +325,138 @@ var _ = Describe("Manager", func() {
 				ResourceType: "compute_instance",
 				ResourceID:   "timeout-reuse",
 				ConsoleType:  ConsoleTypeSerial,
+				BackendURI:   "wss://hub/ns/timeout-reuse/console",
 			}
 
-			conn1, err := timeoutMgr.Connect(ctx, target, "user1", "")
+			result1, err := timeoutMgr.Connect(ctx, target, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			// Wait for timeout.
 			time.Sleep(100 * time.Millisecond)
-			conn1.Close()
+			result1.Conn.Close()
 
 			// Should be able to open a new session.
-			conn2, err := timeoutMgr.Connect(ctx, target, "user2", "")
+			result2, err := timeoutMgr.Connect(ctx, target, "user2", "")
 			Expect(err).NotTo(HaveOccurred())
-			conn2.Close()
+			result2.Conn.Close()
 		})
 	})
 
 	Describe("CancelSessions", func() {
 		It("should cancel all active sessions", func() {
 			ctx := context.Background()
-			target1 := Target{ResourceType: "compute_instance", ResourceID: "vm-1", ConsoleType: ConsoleTypeSerial}
-			target2 := Target{ResourceType: "compute_instance", ResourceID: "vm-2", ConsoleType: ConsoleTypeSerial}
+			target1 := Target{ResourceType: "compute_instance", ResourceID: "vm-1", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/vm-1/console"}
+			target2 := Target{ResourceType: "compute_instance", ResourceID: "vm-2", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/vm-2/console"}
 
-			conn1, err := mgr.Connect(ctx, target1, "user1", "")
+			result1, err := mgr.Connect(ctx, target1, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
-			conn2, err := mgr.Connect(ctx, target2, "user2", "")
+			result2, err := mgr.Connect(ctx, target2, "user2", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(mgr.ActiveSessions()).To(Equal(2))
 
 			mgr.CancelSessions()
 
-			conn1.Close()
-			conn2.Close()
+			result1.Conn.Close()
+			result2.Conn.Close()
 		})
 	})
 
 	Describe("Session Eviction", func() {
 		It("should evict stale session with same client_id and user", func() {
 			ctx := context.Background()
-			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial}
+			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/test-123/console"}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result1, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(mgr.ActiveSessions()).To(Equal(1))
 
-			conn2, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result2, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(mgr.ActiveSessions()).To(Equal(1))
 
 			// Old connection Close should be a no-op for the session map.
-			conn1.Close()
+			result1.Conn.Close()
 			Expect(mgr.ActiveSessions()).To(Equal(1))
 
-			conn2.Close()
+			result2.Conn.Close()
 			Expect(mgr.ActiveSessions()).To(Equal(0))
+		})
+
+		It("should cancel evicted session context", func() {
+			ctx := context.Background()
+			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/test-123/console"}
+
+			result1, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result1.SessionCtx.Err()).To(BeNil())
+
+			result2, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Eviction should have cancelled the old session context.
+			Expect(result1.SessionCtx.Err()).NotTo(BeNil())
+			// New session context should still be active.
+			Expect(result2.SessionCtx.Err()).To(BeNil())
+
+			result1.Conn.Close()
+			result2.Conn.Close()
 		})
 
 		It("should reject when same user has different client_id", func() {
 			ctx := context.Background()
-			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial}
+			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/test-123/console"}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result1, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = mgr.Connect(ctx, target, "user1", "client-xyz")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already has an active console session"))
 
-			conn1.Close()
+			result1.Conn.Close()
 		})
 
 		It("should reject when different user has same client_id", func() {
 			ctx := context.Background()
-			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial}
+			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/test-123/console"}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result1, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = mgr.Connect(ctx, target, "user2", "client-abc")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already has an active console session"))
 
-			conn1.Close()
+			result1.Conn.Close()
 		})
 
 		It("should not evict when client_id is empty", func() {
 			ctx := context.Background()
-			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial}
+			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/test-123/console"}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "")
+			result1, err := mgr.Connect(ctx, target, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = mgr.Connect(ctx, target, "user1", "")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already has an active console session"))
 
-			conn1.Close()
+			result1.Conn.Close()
 		})
 
 		It("should not evict when existing session has no client_id", func() {
 			ctx := context.Background()
-			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial}
+			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/test-123/console"}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "")
+			result1, err := mgr.Connect(ctx, target, "user1", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already has an active console session"))
 
-			conn1.Close()
+			result1.Conn.Close()
 		})
 
 		It("should not corrupt new session when old connection closes after eviction", func() {
@@ -432,40 +468,40 @@ var _ = Describe("Manager", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			ctx := context.Background()
-			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial}
+			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/test-123/console"}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result1, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 
-			conn2, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result2, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 
 			// Old connection closes after eviction — must not remove new session.
-			conn1.Close()
+			result1.Conn.Close()
 			Expect(mgr.ActiveSessions()).To(Equal(1))
 
-			conn2.Close()
+			result2.Conn.Close()
 			Expect(mgr.ActiveSessions()).To(Equal(0))
 		})
 
 		It("should allow new session after eviction and close", func() {
 			ctx := context.Background()
-			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial}
+			target := Target{ResourceType: "compute_instance", ResourceID: "test-123", ConsoleType: ConsoleTypeSerial, BackendURI: "wss://hub/ns/test-123/console"}
 
-			conn1, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result1, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 
-			conn2, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result2, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 
-			conn1.Close()
-			conn2.Close()
+			result1.Conn.Close()
+			result2.Conn.Close()
 			Expect(mgr.ActiveSessions()).To(Equal(0))
 
 			// Should be able to open a fresh session.
-			conn3, err := mgr.Connect(ctx, target, "user1", "client-abc")
+			result3, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
-			conn3.Close()
+			result3.Conn.Close()
 		})
 	})
 })

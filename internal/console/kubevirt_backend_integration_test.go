@@ -102,34 +102,36 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		conn, err := mgr.Connect(ctx, Target{
+		target := Target{
 			ResourceType: "compute_instance",
 			ResourceID:   "ci-123",
 			HubID:        "hub-1",
 			Namespace:    "test-ns",
 			CRName:       "test-vm",
 			ConsoleType:  ConsoleTypeSerial,
-		}, "testuser", "")
+			BackendURI:   "ws://" + wsServer.Addr() + "/apis/console.osac.openshift.io/v1alpha1/namespaces/test-ns/computeinstances/test-vm/console",
+		}
+		result, err := mgr.Connect(ctx, target, "testuser", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mgr.ActiveSessions()).To(Equal(1))
-		defer conn.Close()
+		defer result.Conn.Close()
 
 		// Read banner.
 		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
+		n, err := result.Conn.Read(buf)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(buf[:n])).To(ContainSubstring("Welcome"))
 
 		// Send and receive.
-		_, err = conn.Write([]byte("ls\n"))
+		_, err = result.Conn.Write([]byte("ls\n"))
 		Expect(err).NotTo(HaveOccurred())
 
-		n, err = conn.Read(buf)
+		n, err = result.Conn.Read(buf)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(buf[:n])).To(Equal("echo: ls\n"))
 
 		// Close and verify session removed.
-		err = conn.Close()
+		err = result.Conn.Close()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mgr.ActiveSessions()).To(Equal(0))
 	})
@@ -208,11 +210,12 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 			Namespace:    "test-ns",
 			CRName:       "test-vm",
 			ConsoleType:  ConsoleTypeSerial,
+			BackendURI:   "ws://" + wsServer.Addr() + "/apis/console.osac.openshift.io/v1alpha1/namespaces/test-ns/computeinstances/test-vm/console",
 		}
 
-		conn1, err := mgr.Connect(ctx, target, "user1", "")
+		result1, err := mgr.Connect(ctx, target, "user1", "")
 		Expect(err).NotTo(HaveOccurred())
-		defer conn1.Close()
+		defer result1.Conn.Close()
 
 		// Second connection to same resource should fail.
 		_, err = mgr.Connect(ctx, target, "user2", "")
@@ -220,10 +223,10 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		Expect(err.Error()).To(ContainSubstring("already has an active console session"))
 
 		// After closing first, second should succeed.
-		conn1.Close()
-		conn2, err := mgr.Connect(ctx, target, "user2", "")
+		result1.Conn.Close()
+		result2, err := mgr.Connect(ctx, target, "user2", "")
 		Expect(err).NotTo(HaveOccurred())
-		conn2.Close()
+		result2.Conn.Close()
 	})
 
 	It("should connect to VNC subresource when console type is vnc", func() {

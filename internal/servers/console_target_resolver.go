@@ -40,7 +40,7 @@ type ComputeInstanceLookup interface {
 // ConsoleComputeInstanceInfo is the subset of compute instance state needed by
 // the resolver: running status and hub assignment.
 type ConsoleComputeInstanceInfo struct {
-	State string
+	State privatev1.ComputeInstanceState
 	HubID string
 }
 
@@ -59,9 +59,9 @@ type ConsoleTargetResolverBuilder struct {
 	txManager        database.TxManager
 }
 
-// ConsoleTargetResolver resolves a resource type and ID to a console.Target. It is shared between
-// the gRPC console server and the WebSocket console handler to avoid duplicating the resolution
-// logic.
+// ConsoleTargetResolver resolves a resource type and ID to a console.Target. The gRPC console
+// server uses it during session creation to resolve the target before sealing it into the
+// encrypted ticket.
 type ConsoleTargetResolver struct {
 	logger           *slog.Logger
 	ciLookup         ComputeInstanceLookup
@@ -125,19 +125,24 @@ func (b *ConsoleTargetResolverBuilder) Build() (*ConsoleTargetResolver, error) {
 	}, nil
 }
 
-// ResolveComputeInstance resolves a compute instance ID to a console.Target. It manages its own
-// transaction if no transaction is present in the context (streaming RPCs and WebSocket paths),
-// or reuses an existing one (unary RPCs like GetAccess).
-func (r *ConsoleTargetResolver) ResolveComputeInstance(ctx context.Context, resourceID string) (*console.Target, error) {
+// ResolveComputeInstance resolves a compute instance ID and console type to a fully populated
+// console.Target including the pre-computed backend URI and token. It manages its own transaction
+// if no transaction is present in the context (e.g. streaming RPCs without the tx interceptor),
+// or reuses an existing one (unary RPCs like Create).
+func (r *ConsoleTargetResolver) ResolveComputeInstance(ctx context.Context, resourceID, consoleType string) (result *console.Target, err error) {
 	// Check if there is already a transaction in the context (e.g. from the unary tx interceptor).
 	// Only create a new one if needed.
-	_, err := database.TxFromContext(ctx)
-	if err != nil {
-		tx, txErr := r.txManager.Begin(ctx)
-		if txErr != nil {
-			return nil, status.Errorf(codes.Internal, "failed to begin transaction: %v", txErr)
+	_, txErr := database.TxFromContext(ctx)
+	if txErr != nil {
+		tx, beginErr := r.txManager.Begin(ctx)
+		if beginErr != nil {
+			return nil, status.Errorf(codes.Internal, "failed to begin transaction: %v", beginErr)
 		}
-		defer r.txManager.End(ctx, tx)
+		defer func() {
+			if endErr := r.txManager.End(ctx, tx); endErr != nil && err == nil {
+				err = status.Errorf(codes.Internal, "transaction cleanup failed: %v", endErr)
+			}
+		}()
 		ctx = database.TxIntoContext(ctx, tx)
 	}
 
@@ -153,9 +158,9 @@ func (r *ConsoleTargetResolver) ResolveComputeInstance(ctx context.Context, reso
 	}
 
 	// Verify running state.
-	if ciInfo.State != "running" {
+	if ciInfo.State != privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING {
 		return nil, status.Errorf(codes.FailedPrecondition,
-			"compute instance %q is not running (state: %s)", resourceID, ciInfo.State)
+			"compute instance %q is not running (state: %s)", resourceID, ciInfo.State.String())
 	}
 
 	// Verify hub assignment.
@@ -164,10 +169,16 @@ func (r *ConsoleTargetResolver) ResolveComputeInstance(ctx context.Context, reso
 			"compute instance %q has no hub assigned", resourceID)
 	}
 
-	// Query the hub cluster for the ComputeInstance CR.
-	namespace, crName, err := r.getComputeInstanceFromHub(ctx, ciInfo.HubID, resourceID)
+	// Query the hub cluster for the ComputeInstance CR and get the kubeconfig.
+	namespace, crName, kubeconfig, err := r.getComputeInstanceFromHub(ctx, ciInfo.HubID, resourceID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Build the pre-computed backend target from the kubeconfig.
+	backendURI, backendToken, err := console.BuildBackendTarget(kubeconfig, namespace, crName, consoleType)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to build backend target: %v", err)
 	}
 
 	return &console.Target{
@@ -176,12 +187,15 @@ func (r *ConsoleTargetResolver) ResolveComputeInstance(ctx context.Context, reso
 		HubID:        ciInfo.HubID,
 		Namespace:    namespace,
 		CRName:       crName,
+		ConsoleType:  consoleType,
+		BackendURI:   backendURI,
+		BackendToken: backendToken,
 	}, nil
 }
 
 // getComputeInstanceFromHub queries the hub cluster for the ComputeInstance CR matching the given
-// instance ID, and returns its namespace and name.
-func (r *ConsoleTargetResolver) getComputeInstanceFromHub(ctx context.Context, hubID, instanceID string) (namespace, crName string, err error) {
+// instance ID, and returns its namespace, name, and the raw kubeconfig bytes.
+func (r *ConsoleTargetResolver) getComputeInstanceFromHub(ctx context.Context, hubID, instanceID string) (namespace, crName string, kubeconfig []byte, err error) {
 	// Get the hub's kubeconfig and namespace.
 	kubeconfig, hubNamespace, err := r.hubLookup.GetKubeconfig(ctx, hubID)
 	if err != nil {
@@ -190,6 +204,10 @@ func (r *ConsoleTargetResolver) getComputeInstanceFromHub(ctx context.Context, h
 		} else {
 			err = status.Errorf(codes.Internal, "failed to get hub %q: %v", hubID, err)
 		}
+		return
+	}
+	if hubNamespace == "" {
+		err = status.Errorf(codes.Internal, "hub %q returned empty namespace", hubID)
 		return
 	}
 
@@ -248,7 +266,7 @@ func (r *ConsoleTargetResolver) getComputeInstanceFromHub(ctx context.Context, h
 		err = status.Errorf(codes.FailedPrecondition, "%s", msg)
 		return
 	}
-	return obj.GetNamespace(), obj.GetName(), nil
+	return obj.GetNamespace(), obj.GetName(), kubeconfig, nil
 }
 
 // privateServerCILookup wraps the private ComputeInstancesServer to implement ComputeInstanceLookup.
@@ -271,15 +289,9 @@ func (l *privateServerCILookup) GetForConsole(ctx context.Context, id string) (*
 	}
 	ci := resp.GetObject()
 	ciStatus := ci.GetStatus()
-	state := ciStatus.GetState().String()
-
-	// Normalize the state string to a simple lowercase value for the resolver.
-	if ciStatus.GetState() == privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING {
-		state = "running"
-	}
 
 	return &ConsoleComputeInstanceInfo{
-		State: state,
+		State: ciStatus.GetState(),
 		HubID: ciStatus.GetHub(),
 	}, nil
 }

@@ -27,9 +27,8 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 )
 
-// CheckParams are the transport-independent inputs to an ext-auth check. Both the gRPC interceptor
-// and the WebSocket authenticator build these from their respective request formats, then delegate
-// to ExternalAuthChecker.Check.
+// CheckParams are the transport-independent inputs to an ext-auth check. The gRPC interceptor
+// builds these from incoming metadata and delegates to ExternalAuthChecker.Check.
 type CheckParams struct {
 	// Method is the HTTP method to present to the auth service. Always POST for gRPC-style checks.
 	Method string
@@ -53,8 +52,8 @@ type ExternalAuthCheckerBuilder struct {
 
 // ExternalAuthChecker performs ext_authz checks against an authorization service. It encapsulates
 // the full check flow: building the CheckRequest, calling authClient.Check(), and parsing the
-// response into a Subject. Both the gRPC interceptor and the WebSocket authenticator use this
-// to avoid duplicating the request construction logic.
+// response into a Subject. The gRPC interceptor uses this so that request construction and
+// response parsing are encapsulated in one place.
 type ExternalAuthChecker struct {
 	logger     *slog.Logger
 	authClient envoyauthv3.AuthorizationClient
@@ -89,8 +88,8 @@ func (b *ExternalAuthCheckerBuilder) Build() (*ExternalAuthChecker, error) {
 }
 
 // Check performs the ext-auth check and returns a context with the Subject injected, or an error.
-// The returned errors are gRPC status errors: PermissionDenied when the auth service denies access,
-// Internal when the check cannot be completed.
+// The returned errors are gRPC status errors: the auth service's own status code when it denies
+// access, Internal when the check cannot be completed.
 func (c *ExternalAuthChecker) Check(ctx context.Context, params CheckParams) (context.Context, error) {
 	logger := c.logger.With(
 		slog.String("method", params.Path),
@@ -99,7 +98,9 @@ func (c *ExternalAuthChecker) Check(ctx context.Context, params CheckParams) (co
 	// Build the check request:
 	request := c.buildCheckRequest(params)
 	logger = logger.With(
-		slog.Any("request", request),
+		slog.String("request_method", params.Method),
+		slog.Any("request_headers_present", headerKeys(params.Headers)),
+		slog.Any("context_extensions", params.ContextExtensions),
 	)
 
 	// Call the external service:
@@ -112,7 +113,8 @@ func (c *ExternalAuthChecker) Check(ctx context.Context, params CheckParams) (co
 		return ctx, externalAuthInternalError
 	}
 	logger = logger.With(
-		slog.Any("response", response),
+		slog.String("response_code", grpccodes.Code(response.GetStatus().GetCode()).String()),
+		slog.String("response_message", response.GetStatus().GetMessage()),
 	)
 	logger.DebugContext(ctx, "Received check response from external service")
 
@@ -209,12 +211,22 @@ func subjectFromCheckHeader(header *envoycorev3.HeaderValue) (*Subject, error) {
 	subject := &Subject{}
 	err := json.Unmarshal([]byte(value), subject)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal subject from header '%s' with value '%s': %w", key, value, err)
+		return nil, fmt.Errorf("failed to unmarshal subject from header '%s': %w", key, err)
 	}
 	if subject.User == "" {
 		return nil, fmt.Errorf("header '%s' is missing the 'user' field", key)
 	}
 	return subject, nil
+}
+
+// headerKeys returns the keys of a string map, for logging header presence
+// without exposing header values.
+func headerKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // externalAuthInternalError is the error returned when an internal error prevents completing the

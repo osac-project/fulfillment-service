@@ -119,15 +119,15 @@ data:
 
                   # This route is for the WebSocket console proxy. Console sessions are long-lived
                   # and require HTTP/1.1 for the WebSocket upgrade. This route must be matched
-                  # before the rest-gateway route which catches all /api/... paths.
+                  # before the rest-gateway route which catches all /api/... paths. The ticket
+                  # travels in the Authorization header or console-ticket cookie, not the URL.
                   - name: console-ws
                     match:
-                      safe_regex:
-                        regex: /api/osac/public/v1/console/compute_instance/[^/]+/connect/.*
+                      path: /api/osac/public/v1/console/connect
                     route:
-                      cluster: console
+                      cluster: console-proxy-ws
                       timeout: 0s
-                      idle_timeout: 0s
+                      idle_timeout: 1800s
 
                   # This route is for the REST gateway. The public API endpoints use path prefixes
                   # like /api/fulfillment/, /api/events/, and /api/osac/.
@@ -151,17 +151,18 @@ data:
                       timeout: 0s
                       idle_timeout: 0s
 
-                  # This route is for the Console.Connect bidirectional stream. Like Watch streams,
-                  # console sessions are long-lived and must not be subject to the default request
-                  # timeout. The CLI enforces its own 30-minute session timeout.
-                  - name: console
+                  # This route is for the ConsoleProxy.Connect bidirectional stream. Like Watch
+                  # streams, console sessions are long-lived and must not be subject to the
+                  # default request timeout. The backend enforces a 30-minute session timeout
+                  # via context deadline (see manager.go).
+                  - name: console-proxy-grpc
                     match:
                       safe_regex:
-                        regex: /osac\.public\..*Console/Connect
+                        regex: /osac\.public\..*ConsoleProxy/Connect
                     route:
-                      cluster: grpc-server
+                      cluster: console-proxy-grpc
                       timeout: 0s
-                      idle_timeout: 0s
+                      idle_timeout: 1800s
 
                   # This route is for public API and gRPC reflection unary requests.
                   - name: grpc-server
@@ -267,13 +268,13 @@ data:
                       timeout: 0s
                       idle_timeout: 0s
 
-                  # This route is for the Console.Connect bidirectional stream.
-                  - name: console
+                  # This route is for the ConsoleProxy.Connect bidirectional stream.
+                  - name: console-proxy-grpc
                     match:
                       safe_regex:
-                        regex: /osac\.public\..*Console/Connect
+                        regex: /osac\.public\..*ConsoleProxy/Connect
                     route:
-                      cluster: grpc-server
+                      cluster: console-proxy-grpc
                       timeout: 0s
                       idle_timeout: 0s
 
@@ -377,22 +378,51 @@ data:
                 trusted_ca:
                   filename: /etc/envoy/tls/ca.crt
 
-      # This cluster connects to the console WebSocket listener on the gRPC server pod.
-      # It must use HTTP/1.1 (no http2_protocol_options) because WebSocket requires an
-      # HTTP/1.1 upgrade handshake.
-      - name: console
+      # This cluster connects to the console proxy WebSocket listener. It must use
+      # HTTP/1.1 (no http2_protocol_options) because WebSocket requires an HTTP/1.1
+      # upgrade handshake.
+      - name: console-proxy-ws
         connect_timeout: 1s
         type: STRICT_DNS
         lb_policy: ROUND_ROBIN
         load_assignment:
-          cluster_name: console
+          cluster_name: console-proxy-ws
           endpoints:
           - lb_endpoints:
             - endpoint:
                 address:
                   socket_address:
-                    address: fulfillment-grpc-server
+                    address: fulfillment-console-proxy
                     port_value: 8090
+        transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+            common_tls_context:
+              validation_context:
+                trusted_ca:
+                  filename: /etc/envoy/tls/ca.crt
+
+      # This cluster connects to the console proxy gRPC listener for the
+      # ConsoleProxy.Connect bidirectional stream.
+      - name: console-proxy-grpc
+        connect_timeout: 1s
+        type: STRICT_DNS
+        lb_policy: ROUND_ROBIN
+        typed_extension_protocol_options:
+          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+            explicit_http_config:
+              http2_protocol_options: {}
+        load_assignment:
+          cluster_name: console-proxy-grpc
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: fulfillment-console-proxy
+                    port_value: 8000
         transport_socket:
           name: envoy.transport_sockets.tls
           typed_config:

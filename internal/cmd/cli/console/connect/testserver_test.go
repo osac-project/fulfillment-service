@@ -15,37 +15,29 @@ package connect
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
-	"net"
 	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
+	experiementalcredentials "google.golang.org/grpc/experimental/credentials"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/testing"
 )
 
-// recvInit reads the first message from a console stream and validates
-// that it is an init message.
-func recvInit(stream publicv1.Console_ConnectServer) error {
-	req, err := stream.Recv()
-	if err != nil {
-		return err
-	}
-	if req.GetInit() == nil {
-		return status.Error(codes.InvalidArgument, "first message must be init")
-	}
-	return nil
-}
+const testTicket = "test-ticket-value"
 
-// sendStatus sends a console status message on the stream.
-func sendStatus(stream publicv1.Console_ConnectServer, state publicv1.ConsoleConnectionState, msg string) {
-	_ = stream.Send(publicv1.ConsoleConnectResponse_builder{
+// sendProxyStatus sends a ConsoleStatus message on the proxy stream.
+func sendProxyStatus(stream publicv1.ConsoleProxy_ConnectServer, state publicv1.ConsoleConnectionState, msg string) error {
+	return stream.Send(publicv1.ConsoleProxyConnectResponse_builder{
 		Status: publicv1.ConsoleStatus_builder{
 			State:   state,
 			Message: msg,
@@ -53,56 +45,63 @@ func sendStatus(stream publicv1.Console_ConnectServer, state publicv1.ConsoleCon
 	}.Build())
 }
 
-// startTestGRPCServer starts an in-process gRPC server with the Console service.
-func startTestGRPCServer(srv publicv1.ConsoleServer) (addr string, cleanup func(), err error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return "", nil, err
-	}
-
-	grpcServer := grpc.NewServer()
-	publicv1.RegisterConsoleServer(grpcServer, srv)
-
-	go grpcServer.Serve(listener)
-
-	return listener.Addr().String(), func() {
-		grpcServer.GracefulStop()
-	}, nil
+// mockCreateSessionServer implements ConsoleSessions.Create, always returning a fixed ticket.
+type mockCreateSessionServer struct {
+	publicv1.UnimplementedConsoleSessionsServer
 }
 
-// openTestStream starts a gRPC server, connects a client, sends the init
-// handshake, and waits for CONNECTED status. Returns the ready-to-use
-// bidirectional stream, the request context, and a cleanup function.
-func openTestStream(srv publicv1.ConsoleServer) (
-	stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse],
+func (s *mockCreateSessionServer) Create(ctx context.Context, req *publicv1.ConsoleSessionsCreateRequest) (*publicv1.ConsoleSessionsCreateResponse, error) {
+	return publicv1.ConsoleSessionsCreateResponse_builder{
+		Ticket:    testTicket,
+		ExpiresAt: timestamppb.New(time.Now().Add(30 * time.Second)),
+	}.Build(), nil
+}
+
+// startTestGRPCServer starts an in-process TLS gRPC server with both ConsoleSessions
+// (for Create) and ConsoleProxy (for Connect) services.
+func startTestGRPCServer(proxySrv publicv1.ConsoleProxyServer) (addr string, cleanup func()) {
+	srv := testing.NewTLSServer()
+	publicv1.RegisterConsoleSessionsServer(srv.Registrar(), &mockCreateSessionServer{})
+	publicv1.RegisterConsoleProxyServer(srv.Registrar(), proxySrv)
+	srv.Start()
+	return srv.Address(), srv.Stop
+}
+
+// openTestStream starts a TLS gRPC server, connects a client, creates a session,
+// opens a proxy stream with the ticket as a per-call credential, and waits for
+// CONNECTED status. Returns the ready-to-use bidirectional stream.
+func openTestStream(proxySrv publicv1.ConsoleProxyServer) (
+	stream grpc.BidiStreamingClient[publicv1.ConsoleProxyConnectRequest, publicv1.ConsoleProxyConnectResponse],
 	ctx context.Context,
 	cancel context.CancelFunc,
 	cleanup func(),
 ) {
-	addr, grpcCleanup, err := startTestGRPCServer(srv)
-	Expect(err).NotTo(HaveOccurred())
+	addr, grpcCleanup := startTestGRPCServer(proxySrv)
 
 	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(experiementalcredentials.NewTLSWithALPNDisabled(&tls.Config{InsecureSkipVerify: true})),
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	client := publicv1.NewConsoleClient(conn)
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 
-	stream, err = client.Connect(ctx)
-	Expect(err).NotTo(HaveOccurred())
-
-	err = stream.Send(publicv1.ConsoleConnectRequest_builder{
-		Init: publicv1.ConsoleConnectInit_builder{
+	// Create session to get ticket.
+	consoleClient := publicv1.NewConsoleSessionsClient(conn)
+	sessionResp, err := consoleClient.Create(ctx,
+		publicv1.ConsoleSessionsCreateRequest_builder{
 			ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-			ResourceId:   "test-vm",
+			ResourceId:   "019dd9f6-0000-7000-8000-000000000001",
 			Type:         publicv1.ConsoleType_CONSOLE_TYPE_VNC,
 			ClientId:     "test-client",
-		}.Build(),
-	}.Build())
+		}.Build())
 	Expect(err).NotTo(HaveOccurred())
 
+	// Open proxy stream with ticket as per-call credential.
+	proxyClient := publicv1.NewConsoleProxyClient(conn)
+	stream, err = proxyClient.Connect(ctx, grpc.PerRPCCredentials(auth.NewTicketCredentials(sessionResp.GetTicket())))
+	Expect(err).NotTo(HaveOccurred())
+
+	// Wait for CONNECTED status.
 	resp, err := stream.Recv()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(resp.GetStatus().GetState()).To(Equal(
@@ -118,7 +117,7 @@ func openTestStream(srv publicv1.ConsoleServer) (
 
 // drainHandler is a StreamHandler that reads from the stream until
 // it receives a DISCONNECTED status or EOF.
-func drainHandler(_ context.Context, _ context.CancelFunc, stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse]) error {
+func drainHandler(_ context.Context, _ context.CancelFunc, stream grpc.BidiStreamingClient[publicv1.ConsoleProxyConnectRequest, publicv1.ConsoleProxyConnectResponse]) error {
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
@@ -135,65 +134,66 @@ func drainHandler(_ context.Context, _ context.CancelFunc, stream grpc.BidiStrea
 	}
 }
 
-// testConsoleServer implements publicv1.ConsoleServer for reconnect testing.
-type testConsoleServer struct {
-	publicv1.UnimplementedConsoleServer
+// testConsoleProxyServer implements ConsoleProxyServer for reconnect testing.
+// It simulates transient failures for the first N connections.
+type testConsoleProxyServer struct {
+	publicv1.UnimplementedConsoleProxyServer
 	connectCount atomic.Int32
 	failFirst    int32
 }
 
-func (s *testConsoleServer) Connect(stream publicv1.Console_ConnectServer) error {
+func (s *testConsoleProxyServer) Connect(stream publicv1.ConsoleProxy_ConnectServer) error {
 	count := s.connectCount.Add(1)
-
-	if err := recvInit(stream); err != nil {
-		return err
-	}
 
 	// Simulate transient failures for the first N connections.
 	if count <= s.failFirst {
 		return status.Error(codes.Unavailable, fmt.Sprintf("simulated failure %d", count))
 	}
 
-	sendStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTING, "Connecting...")
-	sendStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED, "Connected")
-
-	// Send disconnect immediately so the client exits cleanly.
-	sendStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_DISCONNECTED, "Session ended by server")
-
-	return nil
-}
-
-// eofAfterConnectServer sends CONNECTING + CONNECTED then returns (server-side stream close).
-type eofAfterConnectServer struct {
-	publicv1.UnimplementedConsoleServer
-}
-
-func (s *eofAfterConnectServer) Connect(stream publicv1.Console_ConnectServer) error {
-	if err := recvInit(stream); err != nil {
+	if err := sendProxyStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTING, "Connecting..."); err != nil {
+		return err
+	}
+	if err := sendProxyStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED, "Connected"); err != nil {
 		return err
 	}
 
-	sendStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTING, "Connecting...")
-	sendStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED, "Connected")
+	// Send disconnect immediately so the client exits cleanly.
+	if err := sendProxyStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_DISCONNECTED, "Session ended by server"); err != nil {
+		return err
+	}
 
-	// Return immediately — this causes EOF on client's Recv().
 	return nil
 }
 
-// echoConsoleServer echoes data back through the console stream.
-type echoConsoleServer struct {
-	publicv1.UnimplementedConsoleServer
+// eofAfterConnectProxyServer sends CONNECTING + CONNECTED then returns (server-side stream close).
+type eofAfterConnectProxyServer struct {
+	publicv1.UnimplementedConsoleProxyServer
+}
+
+func (s *eofAfterConnectProxyServer) Connect(stream publicv1.ConsoleProxy_ConnectServer) error {
+	if err := sendProxyStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTING, "Connecting..."); err != nil {
+		return err
+	}
+	if err := sendProxyStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED, "Connected"); err != nil {
+		return err
+	}
+
+	// Return immediately -- this causes EOF on client's Recv().
+	return nil
+}
+
+// echoConsoleProxyServer echoes data back through the console proxy stream.
+type echoConsoleProxyServer struct {
+	publicv1.UnimplementedConsoleProxyServer
 	connectCount atomic.Int32
 }
 
-func (s *echoConsoleServer) Connect(stream publicv1.Console_ConnectServer) error {
+func (s *echoConsoleProxyServer) Connect(stream publicv1.ConsoleProxy_ConnectServer) error {
 	s.connectCount.Add(1)
 
-	if err := recvInit(stream); err != nil {
+	if err := sendProxyStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED, "Connected"); err != nil {
 		return err
 	}
-
-	sendStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED, "Connected")
 
 	// Echo loop.
 	for {
@@ -207,7 +207,7 @@ func (s *echoConsoleServer) Connect(stream publicv1.Console_ConnectServer) error
 		if input := req.GetInput(); input != nil {
 			data := input.GetData()
 			if len(data) > 0 {
-				err := stream.Send(publicv1.ConsoleConnectResponse_builder{
+				err := stream.Send(publicv1.ConsoleProxyConnectResponse_builder{
 					Output: publicv1.ConsoleOutput_builder{
 						Data: data,
 					}.Build(),
@@ -220,18 +220,18 @@ func (s *echoConsoleServer) Connect(stream publicv1.Console_ConnectServer) error
 	}
 }
 
-// disconnectAfterConnectServer sends CONNECTED then DISCONNECTED immediately.
-type disconnectAfterConnectServer struct {
-	publicv1.UnimplementedConsoleServer
+// disconnectAfterConnectProxyServer sends CONNECTED then DISCONNECTED immediately.
+type disconnectAfterConnectProxyServer struct {
+	publicv1.UnimplementedConsoleProxyServer
 }
 
-func (s *disconnectAfterConnectServer) Connect(stream publicv1.Console_ConnectServer) error {
-	if err := recvInit(stream); err != nil {
+func (s *disconnectAfterConnectProxyServer) Connect(stream publicv1.ConsoleProxy_ConnectServer) error {
+	if err := sendProxyStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED, "Connected"); err != nil {
 		return err
 	}
-
-	sendStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED, "Connected")
-	sendStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_DISCONNECTED, "Session ended")
+	if err := sendProxyStatus(stream, publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_DISCONNECTED, "Session ended"); err != nil {
+		return err
+	}
 
 	return nil
 }

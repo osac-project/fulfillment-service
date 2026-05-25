@@ -16,9 +16,17 @@ package servers
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"io"
+	"math/big"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -26,7 +34,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,6 +48,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/console"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
+	"github.com/osac-project/fulfillment-service/internal/token"
 )
 
 // mockCIServer implements just the Get method of privatev1.ComputeInstancesServer.
@@ -188,12 +196,86 @@ var testScheme = func() *runtime.Scheme {
 	return s
 }()
 
+// testKubeconfig is a minimal valid kubeconfig YAML for tests.
+var testKubeconfig = []byte(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://test-hub.example.com:6443
+    insecure-skip-tls-verify: true
+  name: test
+contexts:
+- context:
+    cluster: test
+    user: test
+  name: test
+current-context: test
+users:
+- name: test
+  user:
+    token: test-hub-token
+`)
+
 // newFakeClient creates a fake K8s client with the given objects.
 func newFakeClient(objects ...clnt.Object) clnt.Client {
 	return fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(objects...).
 		Build()
+}
+
+// createTestSealer generates temporary cert/key files for signing and encryption,
+// and creates a TicketSealer for test assertions.
+func createTestSealer() (*console.TicketSealer, string) {
+	tmpDir, err := os.MkdirTemp("", "console-server-test-*")
+	Expect(err).NotTo(HaveOccurred())
+
+	signingCertFile := filepath.Join(tmpDir, "signing-tls.crt")
+	signingKeyFile := filepath.Join(tmpDir, "signing-tls.key")
+	encryptionCertFile := filepath.Join(tmpDir, "encryption-tls.crt")
+	encryptionKeyFile := filepath.Join(tmpDir, "encryption-tls.key")
+
+	generateSelfSignedCert(signingCertFile, signingKeyFile, "test-signer")
+	generateSelfSignedCert(encryptionCertFile, encryptionKeyFile, "test-encryption")
+	_ = encryptionKeyFile // only the cert is needed by the sealer
+
+	tokenSealer, err := token.NewSealer(
+		logger, signingCertFile, signingKeyFile, encryptionCertFile,
+		"https://fulfillment.test.example.com", []string{console.TicketAudience},
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	return console.NewTicketSealer(tokenSealer), tmpDir
+}
+
+// generateSelfSignedCert generates a self-signed RSA certificate and writes
+// the cert and key files to disk.
+func generateSelfSignedCert(certFile, keyFile, cn string) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: cn},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		DNSNames:              []string{cn},
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &rsaKey.PublicKey, rsaKey)
+	Expect(err).NotTo(HaveOccurred())
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyDER, err := x509.MarshalPKCS8PrivateKey(rsaKey)
+	Expect(err).NotTo(HaveOccurred())
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+
+	err = os.WriteFile(certFile, certPEM, 0600)
+	Expect(err).NotTo(HaveOccurred())
+	err = os.WriteFile(keyFile, keyPEM, 0600)
+	Expect(err).NotTo(HaveOccurred())
 }
 
 var _ = Describe("Console Server", func() {
@@ -214,7 +296,7 @@ var _ = Describe("Console Server", func() {
 			Object: privatev1.Hub_builder{
 				Id: "hub-1",
 				Spec: privatev1.HubSpec_builder{
-					Kubeconfig: []byte("fake-kubeconfig"),
+					Kubeconfig: testKubeconfig,
 					Namespace:  hubNamespace,
 				}.Build(),
 			}.Build(),
@@ -225,324 +307,125 @@ var _ = Describe("Console Server", func() {
 
 	Describe("Build", func() {
 		It("should fail without logger", func() {
+			sealer, tmpDir := createTestSealer()
+			defer os.RemoveAll(tmpDir)
+
 			_, err := NewConsoleServer().
-				SetManager(&console.Manager{}).
-				SetComputeInstancesServer(ciServer).
-				SetHubServer(hubServer).
-				SetTxManager(&mockTxManager{}).
+				SetSealer(sealer).
+				SetResolver(&ConsoleTargetResolver{}).
 				Build()
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("logger"))
 		})
 
-		It("should fail without manager", func() {
+		It("should fail without sealer", func() {
 			_, err := NewConsoleServer().
 				SetLogger(logger).
-				SetComputeInstancesServer(ciServer).
-				SetHubServer(hubServer).
-				SetTxManager(&mockTxManager{}).
+				SetResolver(&ConsoleTargetResolver{}).
 				Build()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("manager"))
+			Expect(err.Error()).To(ContainSubstring("sealer"))
 		})
 
-		It("should fail without compute instances server", func() {
-			mgr, err := console.NewManager().
-				SetLogger(logger).
-				AddBackend("compute_instance", &mockBackendForServer{}).
-				Build()
-			Expect(err).NotTo(HaveOccurred())
+		It("should fail without resolver", func() {
+			sealer, tmpDir := createTestSealer()
+			defer os.RemoveAll(tmpDir)
 
-			_, err = NewConsoleServer().
+			_, err := NewConsoleServer().
 				SetLogger(logger).
-				SetManager(mgr).
-				SetHubServer(hubServer).
-				SetTxManager(&mockTxManager{}).
+				SetSealer(sealer).
 				Build()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("compute instances"))
-		})
-
-		It("should fail without hubs server", func() {
-			mgr, err := console.NewManager().
-				SetLogger(logger).
-				AddBackend("compute_instance", &mockBackendForServer{}).
-				Build()
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = NewConsoleServer().
-				SetLogger(logger).
-				SetManager(mgr).
-				SetComputeInstancesServer(ciServer).
-				SetTxManager(&mockTxManager{}).
-				Build()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("hubs server"))
+			Expect(err.Error()).To(ContainSubstring("resolver"))
 		})
 
 		It("should build successfully with all dependencies", func() {
-			mgr, err := console.NewManager().
-				SetLogger(logger).
-				AddBackend("compute_instance", &mockBackendForServer{}).
-				Build()
-			Expect(err).NotTo(HaveOccurred())
+			sealer, tmpDir := createTestSealer()
+			defer os.RemoveAll(tmpDir)
 
 			server, err := NewConsoleServer().
 				SetLogger(logger).
-				SetManager(mgr).
-				SetComputeInstancesServer(ciServer).
-				SetHubServer(hubServer).
-				SetTxManager(&mockTxManager{}).
-				SetScheme(testScheme).
+				SetSealer(sealer).
+				SetResolver(&ConsoleTargetResolver{}).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(server).NotTo(BeNil())
 		})
 	})
 
-	Describe("GetAccess", func() {
+	Describe("Create", func() {
 		var (
-			server  publicv1.ConsoleServer
-			fakeK8s clnt.Client
-		)
-
-		buildServer := func() {
-			backend := &mockBackendForServer{conn: newMockConn("")}
-			mgr, err := console.NewManager().
-				SetLogger(logger).
-				AddBackend("compute_instance", backend).
-				Build()
-			Expect(err).NotTo(HaveOccurred())
-
-			server, err = NewConsoleServer().
-				SetLogger(logger).
-				SetManager(mgr).
-				SetComputeInstancesServer(ciServer).
-				SetHubServer(hubServer).
-				SetHubClientFactory(newFakeHubClientFactory(fakeK8s)).
-				SetTxManager(&mockTxManager{}).
-				SetScheme(testScheme).
-				Build()
-			Expect(err).NotTo(HaveOccurred())
-		}
-
-		It("should return available when compute instance is running with VM reference on hub", func() {
-			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
-				Object: privatev1.ComputeInstance_builder{
-					Id: "ci-123",
-					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
-						Hub:   "hub-1",
-					}.Build(),
-				}.Build(),
-			}.Build()
-
-			fakeK8s = setupHubMock("ci-123", "test-ns", osacv1alpha1.ComputeInstancePhaseRunning)
-			buildServer()
-
-			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
-			resp, err := server.GetAccess(ctx, publicv1.ConsoleGetAccessRequest_builder{
-				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-				ResourceId:   "ci-123",
-			}.Build())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.GetAvailable()).To(BeTrue())
-			Expect(resp.GetSupportedTypes()).To(ContainElement(publicv1.ConsoleType_CONSOLE_TYPE_SERIAL))
-			Expect(resp.GetSupportedTypes()).To(ContainElement(publicv1.ConsoleType_CONSOLE_TYPE_VNC))
-		})
-
-		It("should return unavailable when compute instance is not running", func() {
-			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
-				Object: privatev1.ComputeInstance_builder{
-					Id: "ci-123",
-					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
-					}.Build(),
-				}.Build(),
-			}.Build()
-
-			fakeK8s = newFakeClient()
-			buildServer()
-
-			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
-			resp, err := server.GetAccess(ctx, publicv1.ConsoleGetAccessRequest_builder{
-				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-				ResourceId:   "ci-123",
-			}.Build())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.GetAvailable()).To(BeFalse())
-			Expect(resp.GetReason()).To(ContainSubstring("not running"))
-		})
-
-		It("should return unavailable when CR not found on hub", func() {
-			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
-				Object: privatev1.ComputeInstance_builder{
-					Id: "ci-123",
-					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
-						Hub:   "hub-1",
-					}.Build(),
-				}.Build(),
-			}.Build()
-
-			// Hub returns successfully but no CR exists on the cluster.
-			hubServer.getResponse = privatev1.HubsGetResponse_builder{
-				Object: privatev1.Hub_builder{
-					Id: "hub-1",
-					Spec: privatev1.HubSpec_builder{
-						Kubeconfig: []byte("fake-kubeconfig"),
-						Namespace:  "test-ns",
-					}.Build(),
-				}.Build(),
-			}.Build()
-			fakeK8s = newFakeClient()
-			buildServer()
-
-			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
-			resp, err := server.GetAccess(ctx, publicv1.ConsoleGetAccessRequest_builder{
-				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-				ResourceId:   "ci-123",
-			}.Build())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.GetAvailable()).To(BeFalse())
-			Expect(resp.GetReason()).To(ContainSubstring("not found on hub"))
-		})
-
-		It("should return unavailable when CR is not running on hub", func() {
-			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
-				Object: privatev1.ComputeInstance_builder{
-					Id: "ci-123",
-					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
-						Hub:   "hub-1",
-					}.Build(),
-				}.Build(),
-			}.Build()
-
-			fakeK8s = setupHubMock("ci-123", "test-ns", osacv1alpha1.ComputeInstancePhaseStopped)
-			buildServer()
-
-			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
-			resp, err := server.GetAccess(ctx, publicv1.ConsoleGetAccessRequest_builder{
-				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-				ResourceId:   "ci-123",
-			}.Build())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.GetAvailable()).To(BeFalse())
-			Expect(resp.GetReason()).To(ContainSubstring("not running on hub"))
-			Expect(resp.GetReason()).NotTo(ContainSubstring("provisioning"))
-		})
-
-		It("should include provisioning hint when CR is starting on hub", func() {
-			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
-				Object: privatev1.ComputeInstance_builder{
-					Id: "ci-123",
-					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
-						Hub:   "hub-1",
-					}.Build(),
-				}.Build(),
-			}.Build()
-
-			fakeK8s = setupHubMock("ci-123", "test-ns", osacv1alpha1.ComputeInstancePhaseStarting)
-			buildServer()
-
-			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
-			resp, err := server.GetAccess(ctx, publicv1.ConsoleGetAccessRequest_builder{
-				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-				ResourceId:   "ci-123",
-			}.Build())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.GetAvailable()).To(BeFalse())
-			Expect(resp.GetReason()).To(ContainSubstring("not running on hub"))
-			Expect(resp.GetReason()).To(ContainSubstring("provisioning"))
-		})
-
-		It("should return unavailable when compute instance not found", func() {
-			ciServer.getError = status.Error(codes.NotFound, "not found")
-
-			fakeK8s = newFakeClient()
-			buildServer()
-
-			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
-			resp, err := server.GetAccess(ctx, publicv1.ConsoleGetAccessRequest_builder{
-				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-				ResourceId:   "ci-missing",
-			}.Build())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.GetAvailable()).To(BeFalse())
-			Expect(resp.GetReason()).To(ContainSubstring("not found"))
-		})
-
-		It("should return unavailable for unsupported resource type", func() {
-			fakeK8s = newFakeClient()
-			buildServer()
-
-			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
-			resp, err := server.GetAccess(ctx, publicv1.ConsoleGetAccessRequest_builder{
-				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_HOST,
-				ResourceId:   "host-1",
-			}.Build())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.GetAvailable()).To(BeFalse())
-			Expect(resp.GetReason()).To(ContainSubstring("unsupported"))
-		})
-	})
-
-	Describe("Connect", func() {
-		var (
-			server  publicv1.ConsoleServer
-			backend *mockBackendForServer
+			server  publicv1.ConsoleSessionsServer
+			sealer  *console.TicketSealer
+			tmpDir  string
 			fakeK8s clnt.Client
 		)
 
 		BeforeEach(func() {
-			backend = &mockBackendForServer{}
+			sealer, tmpDir = createTestSealer()
+			DeferCleanup(func() { os.RemoveAll(tmpDir) })
 		})
 
 		buildServer := func() {
-			mgr, err := console.NewManager().
+			resolver, err := NewConsoleTargetResolver().
 				SetLogger(logger).
-				AddBackend("compute_instance", backend).
+				SetComputeInstanceLookup(NewPrivateServerCILookup(ciServer)).
+				SetHubLookup(NewPrivateServerHubLookup(hubServer)).
+				SetHubClientFactory(newFakeHubClientFactory(fakeK8s)).
+				SetTxManager(&mockTxManager{}).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 
 			server, err = NewConsoleServer().
 				SetLogger(logger).
-				SetManager(mgr).
-				SetComputeInstancesServer(ciServer).
-				SetHubServer(hubServer).
-				SetHubClientFactory(newFakeHubClientFactory(fakeK8s)).
-				SetTxManager(&mockTxManager{}).
-				SetScheme(testScheme).
+				SetSealer(sealer).
+				SetResolver(resolver).
 				Build()
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		It("should reject when first message is not init", func() {
-			backend.conn = newMockConn("")
-			fakeK8s = newFakeClient()
+		It("should create a ticket for a running compute instance", func() {
+			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
+				Object: privatev1.ComputeInstance_builder{
+					Id: "ci-123",
+					Status: privatev1.ComputeInstanceStatus_builder{
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
+						Hub:   "hub-1",
+					}.Build(),
+				}.Build(),
+			}.Build()
+
+			fakeK8s = setupHubMock("ci-123", "test-ns", osacv1alpha1.ComputeInstancePhaseRunning)
 			buildServer()
 
-			stream := newMockStream(authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}))
-			// Send input without init first.
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Input: publicv1.ConsoleInput_builder{
-					Data: []byte("hello"),
-				}.Build(),
+			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{
+				User: "testuser",
+			})
+			resp, err := server.Create(ctx, publicv1.ConsoleSessionsCreateRequest_builder{
+				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
+				ResourceId:   "ci-123",
+				Type:         publicv1.ConsoleType_CONSOLE_TYPE_VNC,
+				ClientId:     "550e8400-e29b-41d4-a716-446655440000",
 			}.Build())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.GetTicket()).NotTo(BeEmpty())
+			Expect(resp.GetExpiresAt()).NotTo(BeNil())
+		})
 
-			err := server.Connect(stream)
+		It("should reject empty resource_id", func() {
+			buildServer()
+
+			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
+			_, err := server.Create(ctx, publicv1.ConsoleSessionsCreateRequest_builder{
+				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
+				ResourceId:   "",
+				Type:         publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
+			}.Build())
 			Expect(err).To(HaveOccurred())
 			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
-			Expect(err.Error()).To(ContainSubstring("ConsoleConnectInit"))
 		})
 
 		It("should reject when compute instance is not running", func() {
-			backend.conn = newMockConn("")
-			fakeK8s = newFakeClient()
-			buildServer()
-
 			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
 				Object: privatev1.ComputeInstance_builder{
 					Id: "ci-123",
@@ -551,201 +434,32 @@ var _ = Describe("Console Server", func() {
 					}.Build(),
 				}.Build(),
 			}.Build()
+			buildServer()
 
-			stream := newMockStream(authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}))
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Init: publicv1.ConsoleConnectInit_builder{
-					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-					ResourceId:   "ci-123",
-					Type:         publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
-				}.Build(),
+			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
+			_, err := server.Create(ctx, publicv1.ConsoleSessionsCreateRequest_builder{
+				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
+				ResourceId:   "ci-123",
+				Type:         publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
 			}.Build())
-
-			err := server.Connect(stream)
 			Expect(err).To(HaveOccurred())
 			Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
 		})
 
-		It("should return error for unsupported resource type", func() {
-			backend.conn = newMockConn("")
-			fakeK8s = newFakeClient()
+		It("should reject unsupported resource type", func() {
 			buildServer()
 
-			stream := newMockStream(authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}))
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Init: publicv1.ConsoleConnectInit_builder{
-					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_HOST,
-					ResourceId:   "host-1",
-					Type:         publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
-				}.Build(),
+			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
+			_, err := server.Create(ctx, publicv1.ConsoleSessionsCreateRequest_builder{
+				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_HOST,
+				ResourceId:   "host-1",
+				Type:         publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
 			}.Build())
-
-			err := server.Connect(stream)
 			Expect(err).To(HaveOccurred())
 			Expect(status.Code(err)).To(Equal(codes.Unimplemented))
 		})
 
-		It("should connect and relay data bidirectionally", func() {
-			mockConnection := newMockConn("hello from vm\n")
-			backend.conn = mockConnection
-
-			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
-				Object: privatev1.ComputeInstance_builder{
-					Id: "ci-123",
-					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
-						Hub:   "hub-1",
-					}.Build(),
-				}.Build(),
-			}.Build()
-
-			fakeK8s = setupHubMock("ci-123", "test-ns", osacv1alpha1.ComputeInstancePhaseRunning)
-			buildServer()
-
-			ctx, cancel := context.WithCancel(
-				authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}),
-			)
-
-			stream := newMockStream(ctx)
-			// Init message.
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Init: publicv1.ConsoleConnectInit_builder{
-					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-					ResourceId:   "ci-123",
-					Type:         publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
-				}.Build(),
-			}.Build())
-			// Input data.
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Input: publicv1.ConsoleInput_builder{
-					Data: []byte("ls -la\n"),
-				}.Build(),
-			}.Build())
-			// Then EOF to terminate the client side.
-			stream.addRecvErr(io.EOF)
-
-			// Run Connect in a goroutine since it blocks.
-			var connectErr error
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				connectErr = server.Connect(stream)
-			}()
-
-			// Wait for Connect to finish.
-			wg.Wait()
-			cancel()
-
-			// Verify we got status messages (CONNECTING, CONNECTED).
-			sent := stream.getSent()
-			Expect(len(sent)).To(BeNumerically(">=", 2))
-
-			// First should be CONNECTING.
-			Expect(sent[0].GetStatus()).NotTo(BeNil())
-			Expect(sent[0].GetStatus().GetState()).To(Equal(
-				publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTING))
-
-			// Second should be CONNECTED.
-			Expect(sent[1].GetStatus()).NotTo(BeNil())
-			Expect(sent[1].GetStatus().GetState()).To(Equal(
-				publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED))
-
-			// Verify the input was relayed to the backend.
-			Expect(mockConnection.writeBuf.String()).To(Equal("ls -la\n"))
-
-			// Connect should return nil (clean termination via EOF).
-			Expect(connectErr).NotTo(HaveOccurred())
-		})
-
-		It("should propagate VNC console type to the backend", func() {
-			mockConnection := newMockConn("vnc data")
-			backend.conn = mockConnection
-
-			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
-				Object: privatev1.ComputeInstance_builder{
-					Id: "ci-123",
-					Status: privatev1.ComputeInstanceStatus_builder{
-						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING,
-						Hub:   "hub-1",
-					}.Build(),
-				}.Build(),
-			}.Build()
-
-			fakeK8s = setupHubMock("ci-123", "test-ns", osacv1alpha1.ComputeInstancePhaseRunning)
-			buildServer()
-
-			ctx, cancel := context.WithCancel(
-				authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}),
-			)
-
-			stream := newMockStream(ctx)
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Init: publicv1.ConsoleConnectInit_builder{
-					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-					ResourceId:   "ci-123",
-					Type:         publicv1.ConsoleType_CONSOLE_TYPE_VNC,
-				}.Build(),
-			}.Build())
-			stream.addRecvErr(io.EOF)
-
-			var connectErr error
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				connectErr = server.Connect(stream)
-			}()
-
-			wg.Wait()
-			cancel()
-
-			Expect(connectErr).NotTo(HaveOccurred())
-			Expect(backend.getLastTarget().ConsoleType).To(Equal(console.ConsoleTypeVNC))
-		})
-
-		It("should reject unspecified console type", func() {
-			backend.conn = newMockConn("")
-			fakeK8s = newFakeClient()
-			buildServer()
-
-			stream := newMockStream(authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}))
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Init: publicv1.ConsoleConnectInit_builder{
-					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-					ResourceId:   "ci-123",
-				}.Build(),
-			}.Build())
-
-			err := server.Connect(stream)
-			Expect(err).To(HaveOccurred())
-			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
-			Expect(err.Error()).To(ContainSubstring("unsupported console type"))
-		})
-
 		It("should reject unsupported console type", func() {
-			backend.conn = newMockConn("")
-			fakeK8s = newFakeClient()
-			buildServer()
-
-			stream := newMockStream(authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}))
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Init: publicv1.ConsoleConnectInit_builder{
-					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-					ResourceId:   "ci-123",
-					Type:         publicv1.ConsoleType(99),
-				}.Build(),
-			}.Build())
-
-			err := server.Connect(stream)
-			Expect(err).To(HaveOccurred())
-			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
-			Expect(err.Error()).To(ContainSubstring("unsupported console type"))
-		})
-
-		It("should return error when backend connection fails", func() {
-			backend.connErr = fmt.Errorf("connection refused")
-
 			ciServer.getResponse = privatev1.ComputeInstancesGetResponse_builder{
 				Object: privatev1.ComputeInstance_builder{
 					Id: "ci-123",
@@ -755,85 +469,16 @@ var _ = Describe("Console Server", func() {
 					}.Build(),
 				}.Build(),
 			}.Build()
-
-			fakeK8s = setupHubMock("ci-123", "test-ns", osacv1alpha1.ComputeInstancePhaseRunning)
 			buildServer()
 
-			stream := newMockStream(authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"}))
-			stream.addRecv(publicv1.ConsoleConnectRequest_builder{
-				Init: publicv1.ConsoleConnectInit_builder{
-					ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
-					ResourceId:   "ci-123",
-					Type:         publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
-				}.Build(),
+			ctx := authpkg.ContextWithSubject(context.Background(), &authpkg.Subject{User: "testuser"})
+			_, err := server.Create(ctx, publicv1.ConsoleSessionsCreateRequest_builder{
+				ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
+				ResourceId:   "ci-123",
+				Type:         publicv1.ConsoleType(99),
 			}.Build())
-
-			err := server.Connect(stream)
 			Expect(err).To(HaveOccurred())
-			Expect(status.Code(err)).To(Equal(codes.Internal))
-			Expect(err.Error()).To(ContainSubstring("connect"))
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 		})
 	})
 })
-
-// mockStream implements publicv1.Console_ConnectServer for testing.
-type mockStream struct {
-	ctx    context.Context
-	recvCh chan recvItem
-	sent   []*publicv1.ConsoleConnectResponse
-	sentMu sync.Mutex
-}
-
-type recvItem struct {
-	req *publicv1.ConsoleConnectRequest
-	err error
-}
-
-func newMockStream(ctx context.Context) *mockStream {
-	return &mockStream{
-		ctx:    ctx,
-		recvCh: make(chan recvItem, 100),
-	}
-}
-
-func (s *mockStream) addRecv(req *publicv1.ConsoleConnectRequest) {
-	s.recvCh <- recvItem{req: req}
-}
-
-func (s *mockStream) addRecvErr(err error) {
-	s.recvCh <- recvItem{err: err}
-}
-
-func (s *mockStream) getSent() []*publicv1.ConsoleConnectResponse {
-	s.sentMu.Lock()
-	defer s.sentMu.Unlock()
-	result := make([]*publicv1.ConsoleConnectResponse, len(s.sent))
-	copy(result, s.sent)
-	return result
-}
-
-func (s *mockStream) Recv() (*publicv1.ConsoleConnectRequest, error) {
-	select {
-	case item := <-s.recvCh:
-		return item.req, item.err
-	case <-s.ctx.Done():
-		return nil, s.ctx.Err()
-	}
-}
-
-func (s *mockStream) Send(resp *publicv1.ConsoleConnectResponse) error {
-	s.sentMu.Lock()
-	defer s.sentMu.Unlock()
-	s.sent = append(s.sent, resp)
-	return nil
-}
-
-func (s *mockStream) Context() context.Context {
-	return s.ctx
-}
-
-func (s *mockStream) SetHeader(metadata.MD) error  { return nil }
-func (s *mockStream) SendHeader(metadata.MD) error { return nil }
-func (s *mockStream) SetTrailer(metadata.MD)       {}
-func (s *mockStream) SendMsg(interface{}) error    { return nil }
-func (s *mockStream) RecvMsg(interface{}) error    { return nil }

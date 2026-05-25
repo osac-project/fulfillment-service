@@ -117,6 +117,12 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	defer c.conn.Close()
 
+	proxyConn, err := cfg.ConnectPlain(ctx, cmd.Flags())
+	if err != nil {
+		return fmt.Errorf("failed to create proxy connection: %w", err)
+	}
+	defer proxyConn.Close()
+
 	instanceID, err := connect.ResolveInstance(ctx, c.conn, key)
 	if err != nil {
 		return err
@@ -155,6 +161,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		Logger:      c.logger,
 		Console:     c.console,
 		Conn:        c.conn,
+		ProxyConn:   proxyConn,
 		ClientID:    uuid.New(),
 		InstanceID:  instanceID,
 		ConsoleType: publicv1.ConsoleType_CONSOLE_TYPE_VNC,
@@ -185,7 +192,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 func (c *runnerContext) proxyVNC(
 	ctx context.Context,
 	cancel context.CancelFunc,
-	stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse],
+	stream grpc.BidiStreamingClient[publicv1.ConsoleProxyConnectRequest, publicv1.ConsoleProxyConnectResponse],
 ) error {
 	// Recycle: close previous viewer + TCP (no-op on first call).
 	if c.session != nil {

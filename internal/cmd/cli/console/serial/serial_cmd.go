@@ -94,6 +94,12 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	defer c.conn.Close()
 
+	proxyConn, err := cfg.ConnectPlain(ctx, cmd.Flags())
+	if err != nil {
+		return fmt.Errorf("failed to create proxy connection: %w", err)
+	}
+	defer proxyConn.Close()
+
 	instanceID, err := connect.ResolveInstance(ctx, c.conn, key)
 	if err != nil {
 		return err
@@ -109,6 +115,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		Logger:      c.logger,
 		Console:     c.console,
 		Conn:        c.conn,
+		ProxyConn:   proxyConn,
 		ClientID:    uuid.New(),
 		InstanceID:  instanceID,
 		ConsoleType: publicv1.ConsoleType_CONSOLE_TYPE_SERIAL,
@@ -126,7 +133,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 }
 
 // proxyIO handles bidirectional I/O between the terminal and the gRPC stream.
-func (c *runnerContext) proxyIO(ctx context.Context, cancel context.CancelFunc, stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse]) error {
+func (c *runnerContext) proxyIO(ctx context.Context, cancel context.CancelFunc, stream grpc.BidiStreamingClient[publicv1.ConsoleProxyConnectRequest, publicv1.ConsoleProxyConnectResponse]) error {
 	// Set terminal to raw mode.
 	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {

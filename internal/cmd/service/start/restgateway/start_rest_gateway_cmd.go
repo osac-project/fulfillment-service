@@ -147,7 +147,9 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		},
 	}
 	gatewayMux := runtime.NewServeMux(
-		runtime.WithMarshalerOption(runtime.MIMEWildcard, gatewayMarshaller),
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.HTTPBodyMarshaler{
+			Marshaler: gatewayMarshaller,
+		}),
 	)
 
 	// Register the public API service handlers:
@@ -215,7 +217,11 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	if err != nil {
 		return err
 	}
-	err = publicv1.RegisterConsoleHandler(ctx, gatewayMux, c.grpcClient)
+	err = publicv1.RegisterConsoleSessionsHandler(ctx, gatewayMux, c.grpcClient)
+	if err != nil {
+		return err
+	}
+	err = publicv1.RegisterSigningKeysHandler(ctx, gatewayMux, c.grpcClient)
 	if err != nil {
 		return err
 	}

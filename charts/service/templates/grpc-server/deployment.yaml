@@ -37,6 +37,15 @@ spec:
       - name: tls
         secret:
           secretName: fulfillment-grpc-server-tls
+      - name: token-signer
+        secret:
+          secretName: fulfillment-token-signer-tls
+      - name: token-encryption-cert
+        secret:
+          secretName: fulfillment-token-encryption-tls
+          items:
+          - key: tls.crt
+            path: tls.crt
       - name: database
         projected:
           sources:
@@ -64,9 +73,20 @@ spec:
           {{ else }}
           []
           {{ end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: grpc-server
         image: {{ .Values.images.service }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         volumeMounts:
         - name: cas
           mountPath: /etc/fulfillment-grpc-server/tls/cas
@@ -75,6 +95,12 @@ spec:
           readOnly: true
         - name: tls
           mountPath: /etc/fulfillment-grpc-server/tls
+        - name: token-signer
+          mountPath: /etc/fulfillment-token-signer/tls
+          readOnly: true
+        - name: token-encryption-cert
+          mountPath: /etc/fulfillment-token-encryption/tls
+          readOnly: true
         command:
         {{ if .Values.debug }}
         - dlv
@@ -103,6 +129,10 @@ spec:
         - --grpc-authn-type=external
         - --grpc-authn-external-address=authorino-authorino-authorization:50051
         - --tenancy-logic=default
+        - --token-signer-crt=/etc/fulfillment-token-signer/tls/tls.crt
+        - --token-signer-key=/etc/fulfillment-token-signer/tls/tls.key
+        - --token-encryption-crt=/etc/fulfillment-token-encryption/tls/tls.crt
+        - --token-issuer=https://fulfillment-rest-gateway:8000
         - --metrics-listener-address=0.0.0.0:8002
         ports:
         - name: grpc

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 	"google.golang.org/grpc"
 )
@@ -30,6 +31,7 @@ type Options struct {
 	Logger      *slog.Logger
 	Console     *terminal.Console
 	Conn        *grpc.ClientConn
+	ProxyConn   *grpc.ClientConn
 	ClientID    string
 	InstanceID  string
 	ConsoleType publicv1.ConsoleType
@@ -42,12 +44,12 @@ type Options struct {
 // The handler owns the stream for bidirectional I/O proxying and receives
 // a cancel function to tear down the stream context when it is done.
 // Returning nil means clean disconnect; returning an error triggers retry logic.
-type StreamHandler func(ctx context.Context, cancel context.CancelFunc, stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse]) error
+type StreamHandler func(ctx context.Context, cancel context.CancelFunc, stream grpc.BidiStreamingClient[publicv1.ConsoleProxyConnectRequest, publicv1.ConsoleProxyConnectResponse]) error
 
-// WithRetry runs the connection loop: connect, wait for CONNECTED status,
-// then delegate to the handler. On transient errors or connection loss, it
-// retries with exponential backoff up to 5 times. On permanent errors, it
-// returns immediately.
+// WithRetry runs the connection loop: create ticket, connect via proxy,
+// wait for CONNECTED status, then delegate to the handler. On transient
+// errors or connection loss, it retries with exponential backoff up to 5
+// times. On permanent errors, it returns immediately.
 func WithRetry(ctx context.Context, opts Options, handler StreamHandler) error {
 	const maxConsecutiveRetries = 5
 	consecutiveFailures := 0
@@ -81,7 +83,7 @@ func WithRetry(ctx context.Context, opts Options, handler StreamHandler) error {
 		}
 
 		// If we were connected and then lost the connection, reset the
-		// retry counter — the server was reachable, this is a new failure
+		// retry counter -- the server was reachable, this is a new failure
 		// sequence.
 		if errors.Is(err, ErrConnectionLost) {
 			opts.Logger.Debug("Connection lost, resetting retry counter", "error", err)
@@ -127,36 +129,47 @@ func retryMessage(wasConnected bool, instanceID string, attempt, max int, backof
 	}
 }
 
-// connectOnce opens a single gRPC stream, sends the init message, waits for
-// CONNECTED status, then delegates to the handler. Each attempt gets its own
-// context so that when it returns, the gRPC stream is explicitly cancelled
-// and its resources are released. For an active HTTP/2 gRPC stream, this
-// normally aborts the stream on the wire, instead of leaving the server-side
-// session alive until the parent context is cancelled — which would block
-// reconnection because the server enforces one session per resource.
-func connectOnce(ctx context.Context, opts Options, handler StreamHandler) error {
-	streamCtx, streamCancel := context.WithCancel(ctx)
-	defer streamCancel()
-
-	client := publicv1.NewConsoleClient(opts.Conn)
-
-	// Open bidirectional stream.
-	stream, err := client.Connect(streamCtx)
-	if err != nil {
-		return fmt.Errorf("failed to open console stream: %w", err)
-	}
-
-	// Send init message.
-	err = stream.Send(publicv1.ConsoleConnectRequest_builder{
-		Init: publicv1.ConsoleConnectInit_builder{
+// getTicket requests a single-use console session ticket from the
+// fulfillment-service. The ticket is a short-lived JWT that authorises
+// a connection to the console proxy.
+func getTicket(ctx context.Context, conn *grpc.ClientConn, opts Options) (string, error) {
+	consoleClient := publicv1.NewConsoleSessionsClient(conn)
+	sessionResp, err := consoleClient.Create(ctx,
+		publicv1.ConsoleSessionsCreateRequest_builder{
 			ResourceType: publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE,
 			ResourceId:   opts.InstanceID,
 			Type:         opts.ConsoleType,
 			ClientId:     opts.ClientID,
-		}.Build(),
-	}.Build())
+		}.Build())
 	if err != nil {
-		return fmt.Errorf("failed to send init: %w", err)
+		return "", fmt.Errorf("failed to create console session: %w", err)
+	}
+	return sessionResp.GetTicket(), nil
+}
+
+// connectOnce obtains a fresh ticket, then opens a single gRPC proxy stream
+// with the ticket as a per-call credential, waits for CONNECTED status, then delegates to
+// the handler. Each attempt gets its own context so that when it returns, the
+// gRPC stream is explicitly cancelled.
+func connectOnce(ctx context.Context, opts Options, handler StreamHandler) error {
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+
+	ticket, err := getTicket(streamCtx, opts.Conn, opts)
+	if err != nil {
+		return err
+	}
+
+	// Connect to the console proxy with the ticket as a per-call credential.
+	proxyConn := opts.ProxyConn
+	if proxyConn == nil {
+		proxyConn = opts.Conn
+	}
+	proxyClient := publicv1.NewConsoleProxyClient(proxyConn)
+
+	stream, err := proxyClient.Connect(streamCtx, grpc.PerRPCCredentials(auth.NewTicketCredentials(ticket)))
+	if err != nil {
+		return fmt.Errorf("failed to open console proxy stream: %w", err)
 	}
 
 	// Wait for connected status.
@@ -189,7 +202,7 @@ func withSpinnerStop(spinner *terminal.Spinner, fn func(context.Context)) func(c
 
 // waitForConnected receives status messages until the server reports CONNECTED.
 func waitForConnected(ctx context.Context,
-	stream grpc.BidiStreamingClient[publicv1.ConsoleConnectRequest, publicv1.ConsoleConnectResponse]) error {
+	stream grpc.BidiStreamingClient[publicv1.ConsoleProxyConnectRequest, publicv1.ConsoleProxyConnectResponse]) error {
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
