@@ -32,9 +32,10 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/masks"
+	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
@@ -43,7 +44,7 @@ type GenericServerBuilder[O dao.Object] struct {
 	logger            *slog.Logger
 	service           string
 	ignoredFields     []any
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -72,7 +73,7 @@ type GenericServer[O dao.Object] struct {
 	deleteResponse   proto.Message
 	signalRequest    proto.Message
 	signalResponse   proto.Message
-	notifier         *database.Notifier
+	notifier         events.Notifier
 	pathCompiler     *masks.PathCompiler[O]
 	pathCache        map[string]*masks.Path[O]
 	pathCacheLock    *sync.Mutex
@@ -124,8 +125,8 @@ func (b *GenericServerBuilder[O]) AddIgnoredFields(values ...any) *GenericServer
 }
 
 // SetNotifier sets the notifier that the server will use to send change notifications. This is optional.
-func (b *GenericServerBuilder[O]) SetNotifier(value *database.Notifier) *GenericServerBuilder[O] {
-	b.notifier = value
+func (b *GenericServerBuilder[O]) SetNotifier(value events.Notifier) *GenericServerBuilder[O] {
+	b.notifier = reflection.NormalizeNil(value)
 	return b
 }
 
@@ -840,8 +841,6 @@ func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Messa
 		event.SetSubnet(object)
 	case *privatev1.SecurityGroup:
 		event.SetSecurityGroup(object)
-	case *privatev1.Lease:
-		event.SetLease(object)
 	case *privatev1.PublicIPPool:
 		event.SetPublicIpPool(object)
 	case *privatev1.PublicIP:

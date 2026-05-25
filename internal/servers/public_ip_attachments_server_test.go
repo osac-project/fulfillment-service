@@ -28,6 +28,54 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
+func createPublicIPInState(
+	ctx context.Context,
+	publicIPDao *dao.GenericDAO[*privatev1.PublicIP],
+	poolID string,
+	state privatev1.PublicIPState,
+	attached bool,
+) *privatev1.PublicIP {
+	resp, err := publicIPDao.Create().SetObject(
+		privatev1.PublicIP_builder{
+			Metadata: privatev1.Metadata_builder{
+				Tenant: "shared",
+			}.Build(),
+			Spec: privatev1.PublicIPSpec_builder{
+				Pool: poolID,
+			}.Build(),
+			Status: privatev1.PublicIPStatus_builder{
+				State:    state,
+				Address:  "10.0.0.1",
+				Attached: attached,
+			}.Build(),
+		}.Build(),
+	).Do(ctx)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	return resp.GetObject()
+}
+
+func createComputeInstanceInState(
+	ctx context.Context,
+	computeInstanceDao *dao.GenericDAO[*privatev1.ComputeInstance],
+	state privatev1.ComputeInstanceState,
+) *privatev1.ComputeInstance {
+	resp, err := computeInstanceDao.Create().SetObject(
+		privatev1.ComputeInstance_builder{
+			Metadata: privatev1.Metadata_builder{
+				Tenant: "shared",
+			}.Build(),
+			Spec: privatev1.ComputeInstanceSpec_builder{
+				Template: "general.small",
+			}.Build(),
+			Status: privatev1.ComputeInstanceStatus_builder{
+				State: state,
+			}.Build(),
+		}.Build(),
+	).Do(ctx)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	return resp.GetObject()
+}
+
 var _ = Describe("Public IP attachments server", func() {
 	var (
 		ctx context.Context
@@ -64,6 +112,12 @@ var _ = Describe("Public IP attachments server", func() {
 
 		// Create the tables:
 		err = dao.CreateTables[*privatev1.PublicIPAttachment](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.PublicIP](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.PublicIPPool](ctx)
+		Expect(err).ToNot(HaveOccurred())
+		err = dao.CreateTables[*privatev1.ComputeInstance](ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -107,10 +161,52 @@ var _ = Describe("Public IP attachments server", func() {
 	})
 
 	Describe("Behaviour", func() {
-		var publicIPAttachmentsServer *PublicIPAttachmentsServer
+		var (
+			publicIPAttachmentsServer *PublicIPAttachmentsServer
+			publicIPDao               *dao.GenericDAO[*privatev1.PublicIP]
+			computeInstanceDao        *dao.GenericDAO[*privatev1.ComputeInstance]
+			sharedPoolID              string
+		)
 
 		BeforeEach(func() {
 			var err error
+
+			publicIPDao, err = dao.NewGenericDAO[*privatev1.PublicIP]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			computeInstanceDao, err = dao.NewGenericDAO[*privatev1.ComputeInstance]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			publicIPPoolDao, err := dao.NewGenericDAO[*privatev1.PublicIPPool]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			poolResp, err := publicIPPoolDao.Create().SetObject(
+				privatev1.PublicIPPool_builder{
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "shared",
+					}.Build(),
+					Spec: privatev1.PublicIPPoolSpec_builder{
+						Cidrs: []string{"10.0.0.0/24"},
+					}.Build(),
+					Status: privatev1.PublicIPPoolStatus_builder{
+						State:     privatev1.PublicIPPoolState_PUBLIC_IP_POOL_STATE_READY,
+						Total:     100,
+						Allocated: 0,
+						Available: 100,
+					}.Build(),
+				}.Build(),
+			).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			sharedPoolID = poolResp.GetObject().GetId()
 
 			publicIPAttachmentsServer, err = NewPublicIPAttachmentsServer().
 				SetLogger(logger).
@@ -121,11 +217,14 @@ var _ = Describe("Public IP attachments server", func() {
 		})
 
 		createAttachment := func() *publicv1.PublicIPAttachment {
+			pip := createPublicIPInState(ctx, publicIPDao, sharedPoolID, privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED, false)
+			ci := createComputeInstanceInState(ctx, computeInstanceDao, privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING)
+
 			response, err := publicIPAttachmentsServer.Create(ctx, publicv1.PublicIPAttachmentsCreateRequest_builder{
 				Object: publicv1.PublicIPAttachment_builder{
 					Spec: publicv1.PublicIPAttachmentSpec_builder{
-						PublicIp:        "test-public-ip-id",
-						ComputeInstance: proto.String("test-compute-instance-id"),
+						PublicIp:        pip.GetId(),
+						ComputeInstance: proto.String(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -138,8 +237,8 @@ var _ = Describe("Public IP attachments server", func() {
 			object := createAttachment()
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetId()).ToNot(BeEmpty())
-			Expect(object.GetSpec().GetPublicIp()).To(Equal("test-public-ip-id"))
-			Expect(object.GetSpec().GetComputeInstance()).To(Equal("test-compute-instance-id"))
+			Expect(object.GetSpec().GetPublicIp()).ToNot(BeEmpty())
+			Expect(object.GetSpec().GetComputeInstance()).ToNot(BeEmpty())
 		})
 
 		It("List objects", func() {

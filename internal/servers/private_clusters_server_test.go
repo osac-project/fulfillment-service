@@ -1182,34 +1182,51 @@ var _ = Describe("Private clusters server", func() {
 			})
 
 			It("Overrides user value for non-editable field", func() {
-				spec := privatev1.ClusterSpec_builder{
-					PullSecret: proto.String("user-secret"),
-				}.Build()
-
-				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+				createCatalogItem("cat-noneditable", true, []*privatev1.FieldDefinition{
 					privatev1.FieldDefinition_builder{
 						Path:     "pull_secret",
 						Editable: false,
 						Default:  structpb.NewStringValue("forced-secret"),
 					}.Build(),
 				})
+
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-noneditable",
+							PullSecret:  proto.String("user-secret"),
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
 				Expect(err).ToNot(HaveOccurred())
-				Expect(spec.GetPullSecret()).To(Equal("forced-secret"))
+				object := response.GetObject()
+				Expect(object.GetSpec().GetPullSecret()).To(Equal("forced-secret"))
 			})
 
 			DescribeTable("validates editable field against JSON Schema",
-				func(value string, expectError bool) {
-					spec := privatev1.ClusterSpec_builder{
-						PullSecret: proto.String(value),
-					}.Build()
-
-					err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+				func(catID string, value string, expectError bool) {
+					createCatalogItem(catID, true, []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
 							Path:             "pull_secret",
 							Editable:         true,
 							ValidationSchema: `{"type":"string","minLength":10}`,
 						}.Build(),
 					})
+
+					response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+						Object: privatev1.Cluster_builder{
+							Spec: privatev1.ClusterSpec_builder{
+								CatalogItem: catID,
+								PullSecret:  proto.String(value),
+							}.Build(),
+							Status: privatev1.ClusterStatus_builder{
+								Hub: "my-hub-id",
+							}.Build(),
+						}.Build(),
+					}.Build())
 					if expectError {
 						Expect(err).To(HaveOccurred())
 						status, ok := grpcstatus.FromError(err)
@@ -1218,25 +1235,35 @@ var _ = Describe("Private clusters server", func() {
 						Expect(status.Message()).To(ContainSubstring("validation failed for field 'pull_secret'"))
 					} else {
 						Expect(err).ToNot(HaveOccurred())
-						Expect(spec.GetPullSecret()).To(Equal(value))
+						Expect(response.GetObject().GetSpec().GetPullSecret()).To(Equal(value))
 					}
 				},
-				Entry("rejects value below minLength", "short", true),
-				Entry("accepts value meeting minLength", "long-enough-value", false),
+				Entry("rejects value below minLength", "cat-schema-reject", "short-val", true),
+				Entry("accepts value meeting minLength", "cat-schema-accept", "long-enough-value", false),
 			)
 
 			It("Applies default for editable field when not provided", func() {
-				spec := privatev1.ClusterSpec_builder{}.Build()
-
-				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+				createCatalogItem("cat-default", true, []*privatev1.FieldDefinition{
 					privatev1.FieldDefinition_builder{
 						Path:     "pull_secret",
 						Editable: true,
 						Default:  structpb.NewStringValue("default-secret"),
 					}.Build(),
 				})
+
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-default",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
 				Expect(err).ToNot(HaveOccurred())
-				Expect(spec.GetPullSecret()).To(Equal("default-secret"))
+				object := response.GetObject()
+				Expect(object.GetSpec().GetPullSecret()).To(Equal("default-secret"))
 			})
 
 			It("Rejects changing catalog_item on update", func() {

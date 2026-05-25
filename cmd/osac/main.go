@@ -27,8 +27,7 @@ func main() {
 	ctx := context.Background()
 
 	// Execute the main command:
-	root := cli.Root()
-	err := root.ExecuteContext(ctx)
+	err := run(ctx)
 	if err != nil {
 		exitErr, ok := err.(exit.Error)
 		if ok {
@@ -38,4 +37,12 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func run(ctx context.Context) error {
+	root, err := cli.Root()
+	if err != nil {
+		return err
+	}
+	return root.ExecuteContext(ctx)
 }

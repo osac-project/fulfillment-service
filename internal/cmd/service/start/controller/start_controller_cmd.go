@@ -355,10 +355,30 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		return fmt.Errorf("failed to create hub cache: %w", err)
 	}
 
-	// Create the IDP manager:
-	idpManager, err := r.createIDPManager(ctx, caPool)
+	// Create the IDP client:
+	idpClient, err := r.createIDPClient(ctx, caPool)
 	if err != nil {
 		return err
+	}
+
+	// Create the IDP organization manager:
+	r.logger.InfoContext(ctx, "Creating IDP organization manager")
+	idpManager, err := idp.NewOrganizationManager().
+		SetLogger(r.logger).
+		SetClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create IDP organization manager: %w", err)
+	}
+
+	// Create the IDP resource manager:
+	r.logger.InfoContext(ctx, "Creating IDP resource manager")
+	resourceManager, err := idp.NewResourceManager().
+		SetLogger(r.logger).
+		SetClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create IDP resource manager: %w", err)
 	}
 
 	// Create the cluster reconciler:
@@ -734,6 +754,7 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	projectReconcilerFunction, err := project.NewFunction().
 		SetLogger(r.logger).
 		SetConnection(r.client).
+		SetResourceManager(resourceManager).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create project reconciler function: %w", err)
@@ -902,8 +923,8 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 	return
 }
 
-// createIDPManager creates the IDP client and organization manager. The IDP URL and credentials are mandatory.
-func (r *runnerContext) createIDPManager(ctx context.Context, caPool *x509.CertPool) (*idp.OrganizationManager, error) {
+// createIDPClient creates the IDP client. The IDP URL and credentials are mandatory.
+func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPool) (idp.Client, error) {
 	if r.args.idpURL == "" {
 		return nil, fmt.Errorf("flag '--idp-url' is required")
 	}
@@ -1005,18 +1026,8 @@ func (r *runnerContext) createIDPManager(ctx context.Context, caPool *x509.CertP
 		return nil, fmt.Errorf("unsupported IDP provider: %s (supported: %s)", r.args.idpProvider, strings.Join(idp.ValidProviders, ", "))
 	}
 
-	// Create organization manager
-	r.logger.InfoContext(ctx, "Creating IDP Organization manager")
-	idpManager, err := idp.NewOrganizationManager().
-		SetLogger(r.logger).
-		SetClient(idpClient).
-		Build()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create IDP Organization manager: %w", err)
-	}
-
-	r.logger.InfoContext(ctx, "IDP Organization manager created successfully")
-	return idpManager, nil
+	r.logger.InfoContext(ctx, "IDP client created successfully")
+	return idpClient, nil
 }
 
 // readTrimmedFile reads the content of the given file and returns it with all leading and trailing whitespace removed.

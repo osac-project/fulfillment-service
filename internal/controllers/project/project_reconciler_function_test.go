@@ -25,6 +25,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
+	"github.com/osac-project/fulfillment-service/internal/idp"
 )
 
 var _ = Describe("Finalizer Management", func() {
@@ -156,19 +157,31 @@ var _ = Describe("Finalizer Removal", func() {
 
 var _ = Describe("Validation and Activation", func() {
 	var (
-		ctrl        *gomock.Controller
-		mockClient  *MockProjectsClient
-		ctx         context.Context
-		functionObj *function
+		ctrl            *gomock.Controller
+		mockClient      *MockProjectsClient
+		mockIdpClient   *idp.MockClient
+		resourceManager *idp.ResourceManager
+		ctx             context.Context
+		functionObj     *function
 	)
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = NewMockProjectsClient(ctrl)
+		mockIdpClient = idp.NewMockClient(ctrl)
 		ctx = context.Background()
+
+		var err error
+		resourceManager, err = idp.NewResourceManager().
+			SetLogger(slog.Default()).
+			SetClient(mockIdpClient).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
 		functionObj = &function{
-			logger:         slog.Default(),
-			projectsClient: mockClient,
+			logger:          slog.Default(),
+			projectsClient:  mockClient,
+			resourceManager: resourceManager,
 		}
 	})
 
@@ -181,7 +194,8 @@ var _ = Describe("Validation and Activation", func() {
 			project := privatev1.Project_builder{
 				Id: "project-1",
 				Metadata: privatev1.Metadata_builder{
-					Name: "test-project",
+					Name:   "test-project",
+					Tenant: "acme",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "Test Project",
@@ -190,6 +204,14 @@ var _ = Describe("Validation and Activation", func() {
 					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
 				}.Build(),
 			}.Build()
+
+			// Expect authorization resource creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationResource(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationResource{
+					ID:   "resource-123",
+					Name: "PROJECT-acme-test-project",
+				}, nil)
 
 			task := &task{
 				r:       functionObj,
@@ -217,6 +239,10 @@ var _ = Describe("Validation and Activation", func() {
 
 			project := privatev1.Project_builder{
 				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:   "child-project",
+					Tenant: "acme",
+				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Parent: strPtr("parent-1"),
 					Title:  "Child Project",
@@ -230,6 +256,14 @@ var _ = Describe("Validation and Activation", func() {
 			mockClient.EXPECT().
 				Get(gomock.Any(), gomock.Any()).
 				Return(&privatev1.ProjectsGetResponse{Object: parentProject}, nil)
+
+			// Expect authorization resource creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationResource(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationResource{
+					ID:   "resource-456",
+					Name: "PROJECT-acme-child-project",
+				}, nil)
 
 			task := &task{
 				r:       functionObj,
@@ -265,6 +299,10 @@ var _ = Describe("Validation and Activation", func() {
 
 			project := privatev1.Project_builder{
 				Id: "child",
+				Metadata: privatev1.Metadata_builder{
+					Name:   "child-project",
+					Tenant: "acme",
+				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Parent: strPtr("parent"),
 					Title:  "Child",
@@ -283,6 +321,14 @@ var _ = Describe("Validation and Activation", func() {
 			mockClient.EXPECT().
 				Get(gomock.Any(), gomock.Any()).
 				Return(&privatev1.ProjectsGetResponse{Object: rootProject}, nil)
+
+			// Expect authorization resource creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationResource(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationResource{
+					ID:   "resource-789",
+					Name: "PROJECT-acme-child-project",
+				}, nil)
 
 			task := &task{
 				r:       functionObj,

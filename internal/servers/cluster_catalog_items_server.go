@@ -25,12 +25,12 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 type ClusterCatalogItemsServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -56,7 +56,7 @@ func (b *ClusterCatalogItemsServerBuilder) SetLogger(value *slog.Logger) *Cluste
 	return b
 }
 
-func (b *ClusterCatalogItemsServerBuilder) SetNotifier(value *database.Notifier) *ClusterCatalogItemsServerBuilder {
+func (b *ClusterCatalogItemsServerBuilder) SetNotifier(value events.Notifier) *ClusterCatalogItemsServerBuilder {
 	b.notifier = value
 	return b
 }

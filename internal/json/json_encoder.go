@@ -27,6 +27,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -44,6 +45,8 @@ type Encoder struct {
 	anyDesc               protoreflect.MessageDescriptor
 	durationDesc          protoreflect.MessageDescriptor
 	timestampDesc         protoreflect.MessageDescriptor
+	valueDesc             protoreflect.MessageDescriptor
+	structDesc            protoreflect.MessageDescriptor
 	jsonApi               jsoniter.API
 }
 
@@ -86,10 +89,14 @@ func (b *EncoderBuilder) Build() (result *Encoder, err error) {
 		anyValue       *anypb.Any
 		durationValue  *durationpb.Duration
 		timestampValue *timestamppb.Timestamp
+		valueValue     *structpb.Value
+		structValue    *structpb.Struct
 	)
 	anyDesc := anyValue.ProtoReflect().Descriptor()
 	durationDesc := durationValue.ProtoReflect().Descriptor()
 	timestampDesc := timestampValue.ProtoReflect().Descriptor()
+	valueDesc := valueValue.ProtoReflect().Descriptor()
+	structDesc := structValue.ProtoReflect().Descriptor()
 
 	// Create the JSON API:
 	jsonApi := jsoniter.Config{}.Froze()
@@ -127,6 +134,8 @@ func (b *EncoderBuilder) Build() (result *Encoder, err error) {
 		anyDesc:               anyDesc,
 		durationDesc:          durationDesc,
 		timestampDesc:         timestampDesc,
+		valueDesc:             valueDesc,
+		structDesc:            structDesc,
 		jsonApi:               jsonApi,
 	}
 	return
@@ -153,7 +162,8 @@ func (e *Encoder) Marshal(object proto.Message) (result []byte, err error) {
 
 func (e *Encoder) marshalMessage(stream *jsoniter.Stream, message protoreflect.Message) (err error) {
 	descriptor := message.Descriptor()
-	if descriptor == e.anyDesc || descriptor == e.durationDesc || descriptor == e.timestampDesc {
+	if descriptor == e.anyDesc || descriptor == e.durationDesc || descriptor == e.timestampDesc ||
+		descriptor == e.valueDesc || descriptor == e.structDesc {
 		err = e.marshalWellKnown(stream, message.Interface())
 		return
 	}

@@ -29,13 +29,15 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
+	"github.com/osac-project/fulfillment-service/internal/idp"
 	"github.com/osac-project/fulfillment-service/internal/masks"
 )
 
 // FunctionBuilder contains the data needed to build instances of the reconciler function.
 type FunctionBuilder struct {
-	logger     *slog.Logger
-	connection *grpc.ClientConn
+	logger          *slog.Logger
+	connection      *grpc.ClientConn
+	resourceManager *idp.ResourceManager
 }
 
 // NewFunction creates a builder that can be used to configure and create reconciler functions.
@@ -55,6 +57,12 @@ func (b *FunctionBuilder) SetConnection(value *grpc.ClientConn) *FunctionBuilder
 	return b
 }
 
+// SetResourceManager sets the resource manager that the reconciler will use to manage authorization resources.
+func (b *FunctionBuilder) SetResourceManager(value *idp.ResourceManager) *FunctionBuilder {
+	b.resourceManager = value
+	return b
+}
+
 // Build uses the data stored in the builder to create and configure a new reconciler function.
 func (b *FunctionBuilder) Build() (result *function, err error) {
 	if b.logger == nil {
@@ -65,20 +73,26 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 		err = errors.New("connection is mandatory")
 		return
 	}
+	if b.resourceManager == nil {
+		err = errors.New("resource manager is mandatory")
+		return
+	}
 
 	result = &function{
-		logger:         b.logger,
-		projectsClient: privatev1.NewProjectsClient(b.connection),
-		maskCalculator: masks.NewCalculator().Build(),
+		logger:          b.logger,
+		projectsClient:  privatev1.NewProjectsClient(b.connection),
+		resourceManager: b.resourceManager,
+		maskCalculator:  masks.NewCalculator().Build(),
 	}
 	return
 }
 
 // function is the implementation of the reconciler function.
 type function struct {
-	logger         *slog.Logger
-	projectsClient privatev1.ProjectsClient
-	maskCalculator *masks.Calculator
+	logger          *slog.Logger
+	projectsClient  privatev1.ProjectsClient
+	resourceManager *idp.ResourceManager
+	maskCalculator  *masks.Calculator
 }
 
 // Run executes the reconciliation logic for the given project.
@@ -191,7 +205,17 @@ func (t *task) validateAndActivate(ctx context.Context) error {
 	}
 
 	//TODO: Sync project to Openshift Cluster(s)
-	//TODO: Create Keycloak Authorization Resource
+
+	// Create Keycloak Authorization Resource
+	if err := t.createKeycloakAuthorizationResource(ctx); err != nil {
+		// Transient error - return it to retry later
+		return fmt.Errorf("failed to create Keycloak authorization resource: %w", err)
+	}
+
+	// Check if Keycloak resource creation set the state to FAILED
+	if t.project.GetStatus().GetState() == privatev1.ProjectState_PROJECT_STATE_FAILED {
+		return nil
+	}
 
 	// All validations passed
 	t.project.GetStatus().SetState(privatev1.ProjectState_PROJECT_STATE_ACTIVE)
@@ -251,6 +275,43 @@ func (t *task) checkCircularDependency(ctx context.Context, parent *privatev1.Pr
 // delete performs the deletion cleanup for a project.
 func (t *task) delete(ctx context.Context) error {
 	t.removeFinalizer()
+	return nil
+}
+
+// createKeycloakAuthorizationResource creates a Keycloak Authorization Resource for the project.
+// This resource enables fine-grained permission management for project operations.
+func (t *task) createKeycloakAuthorizationResource(ctx context.Context) error {
+	// Create the resource via ResourceManager
+	resourceID, err := t.r.resourceManager.CreateProjectAuthorizationResource(
+		ctx,
+		t.project.GetId(),
+		t.project.GetMetadata().GetTenant(),
+		t.project.GetMetadata().GetName(),
+		[]string{
+			idp.ScopeViewProject,
+			idp.ScopeManageProject,
+		},
+	)
+	if err != nil {
+		// Update condition with failure
+		t.updateCondition(
+			privatev1.ProjectConditionType_PROJECT_CONDITION_TYPE_KEYCLOAK_SYNC,
+			privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+			"CreationFailed",
+			fmt.Sprintf("Failed to create Keycloak authorization resource: %v", err),
+		)
+		// Return error to trigger retry (could be transient)
+		return fmt.Errorf("failed to create Keycloak authorization resource: %w", err)
+	}
+
+	// Update condition with success
+	t.updateCondition(
+		privatev1.ProjectConditionType_PROJECT_CONDITION_TYPE_KEYCLOAK_SYNC,
+		privatev1.ConditionStatus_CONDITION_STATUS_TRUE,
+		"Created",
+		fmt.Sprintf("Keycloak authorization resource created: %s", resourceID),
+	)
+
 	return nil
 }
 

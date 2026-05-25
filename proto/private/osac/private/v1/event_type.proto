@@ -23,7 +23,6 @@ import "osac/private/v1/compute_instance_template_type.proto";
 import "osac/private/v1/compute_instance_type.proto";
 import "osac/private/v1/host_type_type.proto";
 import "osac/private/v1/hub_type.proto";
-import "osac/private/v1/lease_type.proto";
 import "osac/private/v1/network_class_type.proto";
 import "osac/private/v1/organization_type.proto";
 import "osac/private/v1/project_type.proto";
@@ -57,7 +56,6 @@ message Event {
     Subnet subnet = 12;
     VirtualNetwork virtual_network = 13;
     SecurityGroup security_group = 14;
-    Lease lease = 15;
     PublicIPPool public_ip_pool = 16;
     PublicIP public_ip = 17;
     Organization organization = 18;

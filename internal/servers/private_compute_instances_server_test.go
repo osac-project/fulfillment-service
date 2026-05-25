@@ -1038,34 +1038,45 @@ var _ = Describe("Private compute instances server", func() {
 			})
 
 			It("Overrides user value for non-editable field", func() {
-				spec := privatev1.ComputeInstanceSpec_builder{
-					SshKey: proto.String("user-key"),
-				}.Build()
-
-				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+				createCICatalogItem("ci-cat-nonedit", true, []*privatev1.FieldDefinition{
 					privatev1.FieldDefinition_builder{
 						Path:     "ssh_key",
 						Editable: false,
 						Default:  structpb.NewStringValue("forced-key"),
 					}.Build(),
 				})
+
+				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-nonedit",
+							SshKey:      proto.String("user-key"),
+						}.Build(),
+					}.Build(),
+				}.Build())
 				Expect(err).ToNot(HaveOccurred())
-				Expect(spec.GetSshKey()).To(Equal("forced-key"))
+				object := response.GetObject()
+				Expect(object.GetSpec().GetSshKey()).To(Equal("forced-key"))
 			})
 
 			DescribeTable("validates editable field against JSON Schema",
-				func(value string, expectError bool) {
-					spec := privatev1.ComputeInstanceSpec_builder{
-						SshKey: proto.String(value),
-					}.Build()
-
-					err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+				func(catID string, value string, expectError bool) {
+					createCICatalogItem(catID, true, []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
 							Path:             "ssh_key",
 							Editable:         true,
 							ValidationSchema: `{"type":"string","minLength":10}`,
 						}.Build(),
 					})
+
+					response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+						Object: privatev1.ComputeInstance_builder{
+							Spec: privatev1.ComputeInstanceSpec_builder{
+								CatalogItem: catID,
+								SshKey:      proto.String(value),
+							}.Build(),
+						}.Build(),
+					}.Build())
 					if expectError {
 						Expect(err).To(HaveOccurred())
 						status, ok := grpcstatus.FromError(err)
@@ -1074,25 +1085,32 @@ var _ = Describe("Private compute instances server", func() {
 						Expect(status.Message()).To(ContainSubstring("validation failed for field 'ssh_key'"))
 					} else {
 						Expect(err).ToNot(HaveOccurred())
-						Expect(spec.GetSshKey()).To(Equal(value))
+						Expect(response.GetObject().GetSpec().GetSshKey()).To(Equal(value))
 					}
 				},
-				Entry("rejects value below minLength", "short", true),
-				Entry("accepts value meeting minLength", "long-enough-key", false),
+				Entry("rejects value below minLength", "ci-cat-schema-reject", "short-val", true),
+				Entry("accepts value meeting minLength", "ci-cat-schema-accept", "long-enough-key", false),
 			)
 
 			It("Applies default for editable field when not provided", func() {
-				spec := privatev1.ComputeInstanceSpec_builder{}.Build()
-
-				err := applyFieldDefinitions(spec, []*privatev1.FieldDefinition{
+				createCICatalogItem("ci-cat-dflt", true, []*privatev1.FieldDefinition{
 					privatev1.FieldDefinition_builder{
 						Path:     "ssh_key",
 						Editable: true,
 						Default:  structpb.NewStringValue("default-key"),
 					}.Build(),
 				})
+
+				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-dflt",
+						}.Build(),
+					}.Build(),
+				}.Build())
 				Expect(err).ToNot(HaveOccurred())
-				Expect(spec.GetSshKey()).To(Equal("default-key"))
+				object := response.GetObject()
+				Expect(object.GetSpec().GetSshKey()).To(Equal("default-key"))
 			})
 
 			It("Rejects changing catalog_item on update", func() {

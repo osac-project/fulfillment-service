@@ -25,8 +25,8 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 // validPublicIPTransitions defines the allowed state transitions for PublicIP resources.
@@ -40,7 +40,7 @@ var validPublicIPTransitions = map[privatev1.PublicIPState][]privatev1.PublicIPS
 // PrivatePublicIPsServerBuilder contains the data and logic needed to create a PrivatePublicIPsServer.
 type PrivatePublicIPsServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -71,7 +71,7 @@ func (b *PrivatePublicIPsServerBuilder) SetLogger(value *slog.Logger) *PrivatePu
 }
 
 // SetNotifier sets the notifier that will be used to send change notifications.
-func (b *PrivatePublicIPsServerBuilder) SetNotifier(value *database.Notifier) *PrivatePublicIPsServerBuilder {
+func (b *PrivatePublicIPsServerBuilder) SetNotifier(value events.Notifier) *PrivatePublicIPsServerBuilder {
 	b.notifier = value
 	return b
 }
