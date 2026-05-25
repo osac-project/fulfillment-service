@@ -29,7 +29,7 @@ var (
 
 func TestOrganizationReconciler(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Organization Reconciler Suite")
+	RunSpecs(t, "Organization controller")
 }
 
 var _ = BeforeSuite(func() {

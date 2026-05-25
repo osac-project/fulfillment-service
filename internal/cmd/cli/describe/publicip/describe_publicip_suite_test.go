@@ -22,5 +22,5 @@ import (
 
 func TestDescribePublicIP(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Describe PublicIP Suite")
+	RunSpecs(t, "Describe public IP command")
 }

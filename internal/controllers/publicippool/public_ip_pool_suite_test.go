@@ -24,7 +24,7 @@ import (
 
 func TestPublicIPPool(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "PublicIPPool controller")
+	RunSpecs(t, "Public IP pool controller")
 }
 
 var logger *slog.Logger

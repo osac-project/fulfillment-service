@@ -22,5 +22,5 @@ import (
 
 func TestNetutil(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Netutil Suite")
+	RunSpecs(t, "Network utilities package")
 }
