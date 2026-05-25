@@ -27,14 +27,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
-	osacv1alpha1 "github.com/osac-project/osac-operator/api/v1alpha1"
-
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/console"
 	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
 )
 
 // HubClientFactory creates a Kubernetes client from raw kubeconfig bytes.
@@ -56,6 +53,7 @@ func NewDefaultHubClientFactory(scheme *runtime.Scheme) HubClientFactory {
 type ConsoleServerBuilder struct {
 	logger           *slog.Logger
 	manager          *console.Manager
+	resolver         *ConsoleTargetResolver
 	ciServer         privatev1.ComputeInstancesServer
 	hubServer        privatev1.HubsServer
 	txManager        database.TxManager
@@ -66,12 +64,9 @@ type ConsoleServerBuilder struct {
 // consoleServer implements the Console gRPC service.
 type consoleServer struct {
 	publicv1.UnimplementedConsoleServer
-	logger           *slog.Logger
-	manager          *console.Manager
-	ciServer         privatev1.ComputeInstancesServer
-	hubServer        privatev1.HubsServer
-	txManager        database.TxManager
-	hubClientFactory HubClientFactory
+	logger   *slog.Logger
+	manager  *console.Manager
+	resolver *ConsoleTargetResolver
 }
 
 // NewConsoleServer creates a new builder for the console server.
@@ -86,6 +81,11 @@ func (b *ConsoleServerBuilder) SetLogger(value *slog.Logger) *ConsoleServerBuild
 
 func (b *ConsoleServerBuilder) SetManager(value *console.Manager) *ConsoleServerBuilder {
 	b.manager = value
+	return b
+}
+
+func (b *ConsoleServerBuilder) SetResolver(value *ConsoleTargetResolver) *ConsoleServerBuilder {
+	b.resolver = value
 	return b
 }
 
@@ -121,29 +121,44 @@ func (b *ConsoleServerBuilder) Build() (publicv1.ConsoleServer, error) {
 	if b.manager == nil {
 		return nil, errors.New("manager is mandatory")
 	}
-	if b.ciServer == nil {
-		return nil, errors.New("compute instances server is mandatory")
+
+	// If a resolver is provided, use it directly. Otherwise, build one from the
+	// individual dependencies (backwards compatible with existing callers).
+	resolver := b.resolver
+	if resolver == nil {
+		if b.ciServer == nil {
+			return nil, errors.New("compute instances server is mandatory")
+		}
+		if b.hubServer == nil {
+			return nil, errors.New("hubs server is mandatory")
+		}
+		if b.txManager == nil {
+			return nil, errors.New("transaction manager is mandatory")
+		}
+		if b.scheme == nil {
+			return nil, errors.New("scheme is mandatory")
+		}
+		hubClientFactory := b.hubClientFactory
+		if hubClientFactory == nil {
+			hubClientFactory = NewDefaultHubClientFactory(b.scheme)
+		}
+		var err error
+		resolver, err = NewConsoleTargetResolver().
+			SetLogger(b.logger).
+			SetComputeInstanceLookup(NewPrivateServerCILookup(b.ciServer)).
+			SetHubLookup(NewPrivateServerHubLookup(b.hubServer)).
+			SetHubClientFactory(hubClientFactory).
+			SetTxManager(b.txManager).
+			Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build console target resolver: %w", err)
+		}
 	}
-	if b.hubServer == nil {
-		return nil, errors.New("hubs server is mandatory")
-	}
-	if b.txManager == nil {
-		return nil, errors.New("transaction manager is mandatory")
-	}
-	if b.scheme == nil {
-		return nil, errors.New("scheme is mandatory")
-	}
-	hubClientFactory := b.hubClientFactory
-	if hubClientFactory == nil {
-		hubClientFactory = NewDefaultHubClientFactory(b.scheme)
-	}
+
 	return &consoleServer{
-		logger:           b.logger,
-		manager:          b.manager,
-		ciServer:         b.ciServer,
-		hubServer:        b.hubServer,
-		txManager:        b.txManager,
-		hubClientFactory: hubClientFactory,
+		logger:   b.logger,
+		manager:  b.manager,
+		resolver: resolver,
 	}, nil
 }
 
@@ -348,136 +363,10 @@ func (s *consoleServer) proxy(ctx context.Context, stream publicv1.Console_Conne
 func (s *consoleServer) resolveTarget(ctx context.Context, resourceType publicv1.ConsoleResourceType, resourceID string) (*console.Target, error) {
 	switch resourceType {
 	case publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE:
-		return s.resolveComputeInstance(ctx, resourceID)
+		return s.resolver.ResolveComputeInstance(ctx, resourceID)
 	default:
 		return nil, status.Errorf(codes.Unimplemented, "unsupported resource type %q", resourceType.String())
 	}
-}
-
-// resolveComputeInstance fetches a ComputeInstance from the private server,
-// then queries the hub cluster directly for the VM reference.
-func (s *consoleServer) resolveComputeInstance(ctx context.Context, id string) (*console.Target, error) {
-	// The private server requires a database transaction in the context.
-	// Streaming RPCs don't get one from the interceptor, so we create one here.
-	tx, err := s.txManager.Begin(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to begin transaction: %v", err)
-	}
-	defer s.txManager.End(ctx, tx)
-
-	txCtx := database.TxIntoContext(ctx, tx)
-	resp, err := s.ciServer.Get(txCtx, privatev1.ComputeInstancesGetRequest_builder{
-		Id: id,
-	}.Build())
-	if err != nil {
-		// Preserve the original gRPC status code if available (e.g., Internal for DB
-		// errors, Unavailable for transient failures) so clients can retry appropriately.
-		if st, ok := status.FromError(err); ok {
-			return nil, status.Errorf(st.Code(), "failed to get compute instance %q: %v", id, st.Message())
-		}
-		return nil, status.Errorf(codes.Internal, "failed to get compute instance %q: %v", id, err)
-	}
-
-	ci := resp.GetObject()
-	ciStatus := ci.GetStatus()
-
-	// Verify running state.
-	if ciStatus.GetState() != privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"compute instance %q is not running (state: %s)", id, ciStatus.GetState().String())
-	}
-
-	// Read the hub ID from the compute instance status.
-	hubID := ciStatus.GetHub()
-	if hubID == "" {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"compute instance %q has no hub assigned", id)
-	}
-
-	// Query the hub cluster for the ComputeInstance CR.
-	namespace, crName, err := s.getComputeInstanceFromHub(txCtx, hubID, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return &console.Target{
-		ResourceType: "compute_instance",
-		ResourceID:   id,
-		HubID:        hubID,
-		Namespace:    namespace,
-		CRName:       crName,
-	}, nil
-}
-
-// getComputeInstanceFromHub queries the hub cluster for the ComputeInstance CR
-// matching the given instance ID, and returns its namespace and name.
-func (s *consoleServer) getComputeInstanceFromHub(ctx context.Context, hubID, instanceID string) (namespace, crName string, err error) {
-	// Get the hub's kubeconfig.
-	hubResp, err := s.hubServer.Get(ctx, privatev1.HubsGetRequest_builder{
-		Id: hubID,
-	}.Build())
-	if err != nil {
-		err = status.Errorf(codes.Internal, "failed to get hub %q: %v", hubID, err)
-		return
-	}
-	hub := hubResp.GetObject()
-
-	// Create a Kubernetes client for the hub cluster.
-	hubClient, err := s.hubClientFactory(hub.GetSpec().GetKubeconfig())
-	if err != nil {
-		err = status.Errorf(codes.Internal, "failed to create client for hub %q: %v", hubID, err)
-		return
-	}
-
-	// Query for the ComputeInstance CR by UUID label.
-	list := &osacv1alpha1.ComputeInstanceList{}
-	err = hubClient.List(
-		ctx, list,
-		clnt.InNamespace(hub.GetSpec().GetNamespace()),
-		clnt.MatchingLabels{
-			labels.ComputeInstanceUuid: instanceID,
-		},
-	)
-	if err != nil {
-		err = status.Errorf(codes.Internal, "failed to list compute instances on hub %q: %v", hubID, err)
-		return
-	}
-
-	items := list.Items
-	if len(items) == 0 {
-		s.logger.WarnContext(ctx, "Running compute instance not found on hub",
-			slog.String("instance_id", instanceID),
-			slog.String("hub_id", hubID),
-		)
-		err = status.Errorf(codes.FailedPrecondition,
-			"compute instance %q not found on hub %q; it may still be provisioning", instanceID, hubID)
-		return
-	}
-	if len(items) > 1 {
-		err = status.Errorf(codes.Internal,
-			"expected one compute instance with ID %q on hub %q but found %d", instanceID, hubID, len(items))
-		return
-	}
-
-	obj := items[0]
-	if obj.Status.Phase != osacv1alpha1.ComputeInstancePhaseRunning {
-		phase := string(obj.Status.Phase)
-		s.logger.WarnContext(ctx, "Compute instance is not running on hub",
-			slog.String("instance_id", instanceID),
-			slog.String("hub_id", hubID),
-			slog.String("cr_name", obj.GetName()),
-			slog.String("phase", phase),
-		)
-		msg := fmt.Sprintf(
-			"compute instance %q is not running on hub %q (phase: %s)",
-			instanceID, hubID, phase)
-		if obj.Status.Phase == osacv1alpha1.ComputeInstancePhaseStarting {
-			msg += "; it may still be provisioning"
-		}
-		err = status.Errorf(codes.FailedPrecondition, "%s", msg)
-		return
-	}
-	return obj.GetNamespace(), obj.GetName(), nil
 }
 
 // GetAccess checks console availability for a resource.
@@ -487,7 +376,7 @@ func (s *consoleServer) GetAccess(ctx context.Context, req *publicv1.ConsoleGetA
 
 	switch resourceType {
 	case publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE:
-		_, err := s.resolveComputeInstance(ctx, resourceID)
+		_, err := s.resolver.ResolveComputeInstance(ctx, resourceID)
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok {

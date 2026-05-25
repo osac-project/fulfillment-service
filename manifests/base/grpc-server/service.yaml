@@ -28,3 +28,6 @@ spec:
   - name: metrics
     port: 8002
     targetPort: metrics
+  - name: console
+    port: 8090
+    targetPort: console

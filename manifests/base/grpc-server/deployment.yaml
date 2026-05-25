@@ -67,12 +67,18 @@ spec:
         - --grpc-authn-external-address=authorino-authorino-authorization:50051
         - --tenancy-logic=default
         - --metrics-listener-address=0.0.0.0:8002
+        - --console-listener-address=0.0.0.0:8090
+        - --console-listener-tls-crt=/etc/fulfillment-grpc-server/tls/tls.crt
+        - --console-listener-tls-key=/etc/fulfillment-grpc-server/tls/tls.key
         ports:
         - name: grpc
           containerPort: 8000
           protocol: TCP
         - name: metrics
           containerPort: 8002
+          protocol: TCP
+        - name: console
+          containerPort: 8090
           protocol: TCP
         livenessProbe:
           exec:

@@ -215,6 +215,10 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	if err != nil {
 		return err
 	}
+	err = publicv1.RegisterConsoleHandler(ctx, gatewayMux, c.grpcClient)
+	if err != nil {
+		return err
+	}
 
 	// Register the private API service handlers:
 	err = privatev1.RegisterCapabilitiesHandler(ctx, gatewayMux, c.grpcClient)

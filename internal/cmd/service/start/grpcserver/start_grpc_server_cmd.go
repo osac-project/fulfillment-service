@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	envoyauthv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -66,6 +67,7 @@ func Cmd() *cobra.Command {
 	flags := command.Flags()
 	network.AddListenerFlags(flags, network.GrpcListenerName, network.DefaultGrpcAddress)
 	network.AddListenerFlags(flags, network.MetricsListenerName, network.DefaultMetricsAddress)
+	network.AddListenerFlags(flags, consoleListenerName, defaultConsoleAddress)
 	database.AddFlags(flags)
 	flags.StringVar(
 		&runner.args.authType,
@@ -994,6 +996,106 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 	publicv1.RegisterConsoleServer(grpcServer, consoleServer)
 
+	// Create the WebSocket console handler:
+	c.logger.InfoContext(ctx, "Creating console WebSocket handler")
+
+	// Build the shared console target resolver:
+	consoleResolver, err := servers.NewConsoleTargetResolver().
+		SetLogger(c.logger).
+		SetComputeInstanceLookup(servers.NewPrivateServerCILookup(privateComputeInstancesServer)).
+		SetHubLookup(servers.NewPrivateServerHubLookup(privateHubsServer)).
+		SetHubClientFactory(servers.NewDefaultHubClientFactory(hubScheme)).
+		SetTxManager(txManager).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create console target resolver: %w", err)
+	}
+
+	// Create the WebSocket authenticator (mirrors the guest/external switch for gRPC auth):
+	var wsAuth auth.WebSocketAuthenticator
+	switch strings.ToLower(c.args.authType) {
+	case auth.GrpcGuestAuthType:
+		wsAuth, err = auth.NewGuestWebSocketAuth().
+			SetLogger(c.logger).
+			Build()
+		if err != nil {
+			return fmt.Errorf("failed to create guest websocket auth: %w", err)
+		}
+	case auth.GrpcExternalAuthType:
+		// Build a shared ExternalAuthChecker for the WebSocket path.
+		// The external auth gRPC client was already created above for the interceptor.
+		externalAuthClientForWS, err := network.NewGrpcClient().
+			SetLogger(c.logger).
+			SetAddress(c.args.externalAuthAddress).
+			SetCaPool(caPool).
+			SetUserAgent(userAgent).
+			SetMetricsSubsystem("outbound_console").
+			SetMetricsRegisterer(metricsRegisterer).
+			Build()
+		if err != nil {
+			return fmt.Errorf("failed to create external auth client for console: %w", err)
+		}
+		wsChecker, err := auth.NewExternalAuthChecker().
+			SetLogger(c.logger).
+			SetAuthClient(envoyauthv3.NewAuthorizationClient(externalAuthClientForWS)).
+			Build()
+		if err != nil {
+			return fmt.Errorf("failed to create external auth checker for console: %w", err)
+		}
+		wsAuth, err = auth.NewExternalWebSocketAuth().
+			SetLogger(c.logger).
+			SetChecker(wsChecker).
+			Build()
+		if err != nil {
+			return fmt.Errorf("failed to create external websocket auth: %w", err)
+		}
+	}
+
+	wsHandler, err := servers.NewConsoleWebSocketHandler().
+		SetLogger(c.logger).
+		SetAuthenticator(wsAuth).
+		SetResolver(consoleResolver).
+		SetManager(consoleManager).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create console websocket handler: %w", err)
+	}
+
+	// Create the console HTTP mux and middleware chain:
+	consoleMux := http.NewServeMux()
+	consoleMux.Handle(
+		"GET /api/osac/public/v1/console/compute_instance/{resource_id}/connect/{console_type}",
+		wsHandler,
+	)
+	consoleHandler := servers.ConsolePanicRecovery(c.logger,
+		servers.ConsoleMetrics(metricsRegisterer,
+			servers.ConsoleLogging(c.logger, consoleMux)))
+
+	// Create and start the console HTTP listener:
+	c.logger.InfoContext(ctx, "Creating console listener")
+	consoleListener, err := network.NewListener().
+		SetLogger(c.logger).
+		SetFlags(c.flags, consoleListenerName).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create console listener: %w", err)
+	}
+	c.logger.InfoContext(ctx, "Starting console server",
+		slog.String("address", consoleListener.Addr().String()),
+	)
+	consoleHTTPServer := &http.Server{
+		Handler: consoleHandler,
+	}
+	go func() {
+		err := consoleHTTPServer.Serve(consoleListener)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			c.logger.ErrorContext(ctx, "Console server failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+	shutdown.AddHttpServer(consoleListenerName, 0, consoleHTTPServer)
+
 	// Create the events server:
 	c.logger.InfoContext(ctx, "Creating events server")
 	eventsListener, err := database.NewListener().
@@ -1149,3 +1251,9 @@ const tenancyLogicFlagHelp = `
 _LOGIC_ - Type of tenancy logic to use. Valid values are
 {{ bt }}default{{ bt }} and {{ bt }}guest{{ bt }}.
 `
+
+// consoleListenerName is the name used for the console HTTP listener flags.
+const consoleListenerName = "console"
+
+// defaultConsoleAddress is the default address for the console HTTP listener.
+const defaultConsoleAddress = ":8090"

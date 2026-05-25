@@ -15,20 +15,14 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
-	"strings"
 
-	envoycorev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyauthv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"google.golang.org/grpc"
-	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -41,6 +35,7 @@ type GrpcExternalAuthInterceptorBuilder struct {
 	logger        *slog.Logger
 	grpcClient    *grpc.ClientConn
 	publicMethods []string
+	checker       *ExternalAuthChecker
 }
 
 // GrpcExternalAuthInterceptor is an interceptor that performs authentication and authorization by calling an external
@@ -51,7 +46,7 @@ type GrpcExternalAuthInterceptorBuilder struct {
 // details (like identifiers and tenants) in the authorization request.
 type GrpcExternalAuthInterceptor struct {
 	logger        *slog.Logger
-	authClient    envoyauthv3.AuthorizationClient
+	checker       *ExternalAuthChecker
 	publicMethods []*regexp.Regexp
 }
 
@@ -74,6 +69,14 @@ func (b *GrpcExternalAuthInterceptorBuilder) SetGrpcClient(value *grpc.ClientCon
 	return b
 }
 
+// SetChecker sets a pre-built ExternalAuthChecker. When set, the interceptor will use it instead of creating one
+// from the gRPC client. This allows sharing a single checker instance between the gRPC interceptor and other
+// authentication paths (e.g. WebSocket).
+func (b *GrpcExternalAuthInterceptorBuilder) SetChecker(value *ExternalAuthChecker) *GrpcExternalAuthInterceptorBuilder {
+	b.checker = value
+	return b
+}
+
 // AddPublicMethodRegex adds a regular expression that describes a set of methods that are considered public, and
 // therefore require no authentication or authorization. The regular expression will be matched against the full gRPC
 // method name, including the leading slash. For example, to consider public all the methods of the
@@ -93,7 +96,7 @@ func (b *GrpcExternalAuthInterceptorBuilder) Build() (result *GrpcExternalAuthIn
 		err = errors.New("logger is mandatory")
 		return
 	}
-	if b.grpcClient == nil {
+	if b.grpcClient == nil && b.checker == nil {
 		err = errors.New("gRPC client is mandatory")
 		return
 	}
@@ -107,13 +110,22 @@ func (b *GrpcExternalAuthInterceptorBuilder) Build() (result *GrpcExternalAuthIn
 		}
 	}
 
-	// Create the auth authClient:
-	authClient := envoyauthv3.NewAuthorizationClient(b.grpcClient)
+	// Create or reuse the external auth checker:
+	checker := b.checker
+	if checker == nil {
+		checker, err = NewExternalAuthChecker().
+			SetLogger(b.logger).
+			SetAuthClient(envoyauthv3.NewAuthorizationClient(b.grpcClient)).
+			Build()
+		if err != nil {
+			return
+		}
+	}
 
 	// Create and populate the object:
 	result = &GrpcExternalAuthInterceptor{
 		logger:        b.logger,
-		authClient:    authClient,
+		checker:       checker,
 		publicMethods: publicMethods,
 	}
 	return
@@ -199,58 +211,8 @@ func (s *grpcExternalAuthInterceptorStream) SetTrailer(md metadata.MD) {
 // returns a new context containing the subject details extracted from the response. The grpcRequest parameter is the
 // incoming gRPC request message, which may be nil for streaming RPCs.
 func (i *GrpcExternalAuthInterceptor) check(ctx context.Context, method string,
-	grpcRequest any) (result context.Context, err error) {
-	// Add some details to the logger:
-	logger := i.logger.With(
-		slog.String("method", method),
-	)
-
-	// Build the check request:
-	request, err := i.buildCheckRequest(ctx, method, grpcRequest)
-	if err != nil {
-		logger.ErrorContext(
-			ctx,
-			"Failed to build check request",
-			slog.Any("error", err),
-		)
-		err = grpcstatus.Errorf(grpccodes.Internal, "failed to build check request")
-		return
-	}
-	logger = logger.With(
-		slog.Any("request", request),
-	)
-
-	// Call the external service:
-	logger.DebugContext(
-		ctx,
-		"Sending check request to external service",
-	)
-	response, err := i.authClient.Check(ctx, request)
-	if err != nil {
-		logger.ErrorContext(
-			ctx,
-			"Failed sending check request to external service",
-			slog.Any("error", err),
-		)
-		err = grpcExternalAuthInternalError
-		return
-	}
-	logger = logger.With(
-		slog.Any("response", response),
-	)
-	logger.DebugContext(
-		ctx,
-		"Received check response from external service",
-	)
-
-	// Check the response and extract subject details:
-	result, err = i.handleCheckResponse(ctx, method, response)
-	return
-}
-
-func (i *GrpcExternalAuthInterceptor) buildCheckRequest(ctx context.Context, method string,
-	request any) (result *envoyauthv3.CheckRequest, err error) {
-	// Extract headers from the incoming context:
+	grpcRequest any) (context.Context, error) {
+	// Extract headers from the incoming gRPC metadata:
 	headers := map[string]string{}
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok {
@@ -265,131 +227,20 @@ func (i *GrpcExternalAuthInterceptor) buildCheckRequest(ctx context.Context, met
 	// it to make fine grained authorization decisions. The identifier is sent in the context extensions of the
 	// check request. For example, Authorino exposes it to OPA policies as `input.context.context_extensions.id`.
 	extensions := map[string]string{}
-	if request != nil {
-		id := i.extractId(ctx, request)
+	if grpcRequest != nil {
+		id := i.extractId(ctx, grpcRequest)
 		if id != "" {
 			extensions["id"] = id
 		}
 	}
 
-	// Build the check request:
-	result = &envoyauthv3.CheckRequest{
-		Attributes: &envoyauthv3.AttributeContext{
-			Request: &envoyauthv3.AttributeContext_Request{
-				Http: &envoyauthv3.AttributeContext_HttpRequest{
-					Method:  http.MethodPost,
-					Path:    method,
-					Headers: headers,
-				},
-			},
-			ContextExtensions: extensions,
-		},
-	}
-	return
-}
-
-// handleCheckResponse processes the response from the external auth service. If granted, it extracts subject details
-// from the response headers and returns a new context containing the subject.
-func (i *GrpcExternalAuthInterceptor) handleCheckResponse(ctx context.Context, method string,
-	response *envoyauthv3.CheckResponse) (result context.Context, err error) {
-	// Add some details to the logger:
-	logger := i.logger.With(
-		slog.String("method", method),
-	)
-
-	// Deny access if there is no response or no status:
-	if response == nil {
-		logger.ErrorContext(
-			ctx,
-			"Permission denied because the response is nil",
-		)
-		err = grpcExternalAuthInternalError
-		return
-	}
-	status := response.GetStatus()
-	if status == nil {
-		logger.ErrorContext(
-			ctx,
-			"Permission denined because there is no status in the response",
-		)
-		err = grpcExternalAuthInternalError
-		return
-	}
-
-	// Deny access if the external service denied it:
-	code := grpccodes.Code(status.GetCode())
-	logger = logger.With(
-		slog.String("code", code.String()),
-		slog.String("message", status.GetMessage()),
-		slog.Any("details", status.GetDetails()),
-	)
-	if code != grpccodes.OK {
-		logger.DebugContext(ctx, "Permission denied by external service")
-		err = grpcstatus.Errorf(code, "permission denied")
-		return
-	}
-
-	// Try to extract the subject from the resonse. If this fails then deny access.
-	subject, err := i.subjectFromResponse(response)
-	if err != nil {
-		logger.ErrorContext(
-			ctx,
-			"Failed to extract subject from response",
-			slog.Any("error", err),
-		)
-		err = grpcExternalAuthInternalError
-		return
-	}
-
-	// If we are here, then the external server granted access:
-	logger.DebugContext(ctx, "Permission granted by external service")
-	result = ContextWithSubject(ctx, subject)
-	return
-}
-
-func (i *GrpcExternalAuthInterceptor) subjectFromResponse(response *envoyauthv3.CheckResponse) (result *Subject,
-	err error) {
-	accepted := response.GetOkResponse()
-	if accepted == nil {
-		err = errors.New("response doesn't contain headers")
-		return
-	}
-	var subject *Subject
-	for _, header := range accepted.GetHeaders() {
-		entry := header.GetHeader()
-		if entry == nil {
-			continue
-		}
-		if strings.EqualFold(entry.GetKey(), SubjectHeader) {
-			subject, err = i.subjectFromHeader(entry)
-			if err != nil {
-				return
-			}
-		}
-	}
-	if subject == nil {
-		err = fmt.Errorf("response doesn't contain the '%s' header", SubjectHeader)
-		return
-	}
-	result = subject
-	return
-}
-
-func (i *GrpcExternalAuthInterceptor) subjectFromHeader(header *envoycorev3.HeaderValue) (result *Subject, err error) {
-	key := header.GetKey()
-	value := header.GetValue()
-	subject := &Subject{}
-	err = json.Unmarshal([]byte(value), subject)
-	if err != nil {
-		err = fmt.Errorf("failed to unmarshal subject from header '%s' with value '%s': %w", key, value, err)
-		return
-	}
-	if subject.User == "" {
-		err = fmt.Errorf("header '%s' is missing the 'user' field", key)
-		return
-	}
-	result = subject
-	return
+	// Delegate the actual ext-auth check to the shared checker:
+	return i.checker.Check(ctx, CheckParams{
+		Method:            http.MethodPost,
+		Path:              method,
+		Headers:           headers,
+		ContextExtensions: extensions,
+	})
 }
 
 // extractId tries to extract the identifier of the object from the incoming request message. For get and delete
@@ -437,8 +288,3 @@ func (i *GrpcExternalAuthInterceptor) isPublicMethod(method string) bool {
 	}
 	return false
 }
-
-// grpcExternalAuthInternalError is the error returned an internal error is detected that pevents completing the
-// authenentication and authorization process. Note that this intentially hides the details of the error to avoid
-// pontentially sesnsitive information. The details will be written to the log.
-var grpcExternalAuthInternalError = grpcstatus.Errorf(grpccodes.Internal, "failed to check permissions")

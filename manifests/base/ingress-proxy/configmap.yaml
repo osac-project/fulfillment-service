@@ -89,11 +89,15 @@ data:
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
                   path: /dev/stdout
+                  log_format:
+                    text_format: "[%START_TIME%] \"%REQ(:METHOD)% %DYNAMIC_METADATA(envoy.lua:clean_path)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION%ms\n"
               stat_prefix: external-api
               http2_protocol_options:
                 connection_keepalive:
                   interval: 15s
                   timeout: 10s
+              upgrade_configs:
+              - upgrade_type: websocket
               route_config:
                 name: backend
                 virtual_hosts:
@@ -113,12 +117,24 @@ data:
                       max_age: "86400"
                   routes:
 
+                  # This route is for the WebSocket console proxy. Console sessions are long-lived
+                  # and require HTTP/1.1 for the WebSocket upgrade. This route must be matched
+                  # before the rest-gateway route which catches all /api/... paths.
+                  - name: console-ws
+                    match:
+                      safe_regex:
+                        regex: /api/osac/public/v1/console/compute_instance/[^/]+/connect/.*
+                    route:
+                      cluster: console
+                      timeout: 0s
+                      idle_timeout: 0s
+
                   # This route is for the REST gateway. The public API endpoints use path prefixes
-                  # like /api/fulfillment/ and /api/events/.
+                  # like /api/fulfillment/, /api/events/, and /api/osac/.
                   - name: rest-gateway
                     match:
                       safe_regex:
-                        regex: /api/(fulfillment|events)(/.*)?
+                        regex: /api/(fulfillment|events|osac)(/.*)?
                     route:
                       cluster: rest-gateway
                       timeout: 300s
@@ -157,6 +173,18 @@ data:
                       timeout: 300s
 
               http_filters:
+              # Lua filter to strip query parameters from the request path before logging.
+              # This prevents tokens passed via ?token=<jwt> from appearing in access logs.
+              - name: envoy.filters.http.lua
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                  inline_code: |
+                    function envoy_on_request(handle)
+                      local path = handle:headers():get(":path")
+                      if path then
+                        handle:streamInfo():dynamicMetadata():set("envoy.lua", "clean_path", path:match("^([^?]*)") or path)
+                      end
+                    end
               - name: envoy.filters.http.cors
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
@@ -340,6 +368,31 @@ data:
                   socket_address:
                     address: fulfillment-rest-gateway
                     port_value: 8000
+        transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+            common_tls_context:
+              validation_context:
+                trusted_ca:
+                  filename: /etc/envoy/tls/ca.crt
+
+      # This cluster connects to the console WebSocket listener on the gRPC server pod.
+      # It must use HTTP/1.1 (no http2_protocol_options) because WebSocket requires an
+      # HTTP/1.1 upgrade handshake.
+      - name: console
+        connect_timeout: 1s
+        type: STRICT_DNS
+        lb_policy: ROUND_ROBIN
+        load_assignment:
+          cluster_name: console
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: fulfillment-grpc-server
+                    port_value: 8090
         transport_socket:
           name: envoy.transport_sockets.tls
           typed_config:
