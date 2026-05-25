@@ -16,13 +16,11 @@ package servers
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Users Server", func() {
@@ -42,7 +40,7 @@ var _ = Describe("Users Server", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.Url())
+		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
 
@@ -61,10 +59,6 @@ var _ = Describe("Users Server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create DAO tables:
-		err = dao.CreateTables[*privatev1.User](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create server (without notifier for testing):
 		privateServer, err = NewPrivateUsersServer().

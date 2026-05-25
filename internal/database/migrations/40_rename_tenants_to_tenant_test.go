@@ -23,7 +23,7 @@ var _ = DescribeMigration("Rename tenants to tenant", func() {
 		"Migrates the tenants array to a single tenant value",
 		func(tenants []string, expectedTenant string) {
 			// Insert a row with the old tenants array column:
-			_, err := pool.Exec(
+			_, err := conn.Exec(
 				ctx,
 				`insert into clusters (id, tenants, data) values ('123', $1, '{}')`,
 				tenants,
@@ -36,7 +36,7 @@ var _ = DescribeMigration("Rename tenants to tenant", func() {
 
 			// Verify the tenant column has the expected value:
 			var actual string
-			row := pool.QueryRow(
+			row := conn.QueryRow(
 				ctx,
 				`select tenant from clusters where id = '123'`,
 			)

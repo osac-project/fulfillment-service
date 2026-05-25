@@ -16,10 +16,8 @@ package servers
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
@@ -48,7 +46,7 @@ var _ = Describe("Network classes server", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.Url())
+		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
 
@@ -67,10 +65,6 @@ var _ = Describe("Network classes server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*publicv1.NetworkClass](ctx)
-		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Describe("Creation", func() {
@@ -503,50 +497,49 @@ var _ = Describe("Network classes server", func() {
 			})
 
 			It("Multiple defaults fallback: newest by creation_timestamp wins", func() {
-				// Create two NCs with is_default=true via DAO directly (bypasses swap logic
-				// to simulate a race condition where two concurrent Creates both succeed):
+				// Drop the unique index to simulate a race condition where creation of two default
+				// network classes succeed.
+				_, err := tx.Exec(ctx, "drop index if exists network_classes_single_default")
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create two default network classes:
 				ncDao, ncErr := dao.NewGenericDAO[*privatev1.NetworkClass]().
 					SetLogger(logger).
 					SetTenancyLogic(tenancy).
 					Build()
 				Expect(ncErr).ToNot(HaveOccurred())
 
-				ncA := privatev1.NetworkClass_builder{
-					Title:                  "NC-A",
-					ImplementationStrategy: "ovn-kubernetes",
-					IsDefault:              proto.Bool(true),
-					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
-					}.Build(),
-					Status: privatev1.NetworkClassStatus_builder{
-						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
-					}.Build(),
-				}.Build()
-				createResponseA, ncErr := ncDao.Create().SetObject(ncA).Do(ctx)
+				createResponseA, ncErr := ncDao.Create().
+					SetObject(privatev1.NetworkClass_builder{
+						Title:                  "NC-A",
+						ImplementationStrategy: "ovn-kubernetes",
+						IsDefault:              proto.Bool(true),
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Status: privatev1.NetworkClassStatus_builder{
+							State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
+						}.Build(),
+					}.Build()).
+					Do(ctx)
 				Expect(ncErr).ToNot(HaveOccurred())
 				ncAId := createResponseA.GetObject().GetId()
 
-				ncB := privatev1.NetworkClass_builder{
-					Title:                  "NC-B",
-					ImplementationStrategy: "ovn-kubernetes",
-					IsDefault:              proto.Bool(true),
-					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
-					}.Build(),
-					Status: privatev1.NetworkClassStatus_builder{
-						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
-					}.Build(),
-				}.Build()
-				createResponseB, ncErr := ncDao.Create().SetObject(ncB).Do(ctx)
+				createResponseB, ncErr := ncDao.Create().SetObject(
+					privatev1.NetworkClass_builder{
+						Title:                  "NC-B",
+						ImplementationStrategy: "ovn-kubernetes",
+						IsDefault:              proto.Bool(true),
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Status: privatev1.NetworkClassStatus_builder{
+							State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
+						}.Build(),
+					}.Build()).
+					Do(ctx)
 				Expect(ncErr).ToNot(HaveOccurred())
 				ncBId := createResponseB.GetObject().GetId()
-
-				// Backdate NC-A so NC-B is seen as newer by findDefaultNetworkClass.
-				_, ncErr = tx.Exec(ctx,
-					"UPDATE network_classes SET creation_timestamp = $1 WHERE id = $2",
-					time.Now().Add(-1*time.Minute), ncAId,
-				)
-				Expect(ncErr).ToNot(HaveOccurred())
 
 				// Verify: both NCs have is_default=true (invariant violation):
 				listResponse, err := privateServer.List(ctx, privatev1.NetworkClassesListRequest_builder{
@@ -695,16 +688,6 @@ var _ = Describe("Network classes server", func() {
 			})
 
 			It("Unique partial index prevents second default NC via DAO", func() {
-				// Apply the unique partial index from migration 28 (CreateTables does
-				// not include migration-specific indexes):
-				_, sqlErr := tx.Exec(ctx, `
-					create unique index if not exists network_classes_single_default
-					  on network_classes ((cast(data->>'is_default' as bool)))
-					  where cast(data->>'is_default' as bool) = true
-					    and deletion_timestamp = 'epoch'
-				`)
-				Expect(sqlErr).ToNot(HaveOccurred())
-
 				// Create first default NC via DAO (bypassing server swap logic):
 				ncDao, ncErr := dao.NewGenericDAO[*privatev1.NetworkClass]().
 					SetLogger(logger).
@@ -745,54 +728,58 @@ var _ = Describe("Network classes server", func() {
 
 			It("findDefaultNetworkClass excludes soft-deleted records", func() {
 				// Create a DAO for direct data setup:
-				ncDao, ncErr := dao.NewGenericDAO[*privatev1.NetworkClass]().
+				ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 					SetLogger(logger).
 					SetTenancyLogic(tenancy).
 					Build()
-				Expect(ncErr).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred())
 
-				// Create two NCs with is_default=true via DAO:
-				ncActive := privatev1.NetworkClass_builder{
-					Title:                  "Active Default",
-					ImplementationStrategy: "ovn-kubernetes",
-					IsDefault:              proto.Bool(true),
-					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
-					}.Build(),
-					Status: privatev1.NetworkClassStatus_builder{
-						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
-					}.Build(),
-				}.Build()
-				activeResponse, ncErr := ncDao.Create().SetObject(ncActive).Do(ctx)
-				Expect(ncErr).ToNot(HaveOccurred())
-				activeID := activeResponse.GetObject().GetId()
+				// Create a network default network class, and then delete it. It has finalizer to
+				// to ensure that it stays in the table, so that we can verify that the partial index
+				/// works correctly.
+				ncDeletedResponse, err := ncDao.Create().
+					SetObject(privatev1.NetworkClass_builder{
+						Title:                  "Deleted Default",
+						ImplementationStrategy: "ovn-kubernetes",
+						IsDefault:              proto.Bool(true),
+						Metadata: privatev1.Metadata_builder{
+							Finalizers: []string{"a"},
+							Tenant:     auth.SharedTenant,
+						}.Build(),
+						Status: privatev1.NetworkClassStatus_builder{
+							State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
+						}.Build(),
+					}.Build()).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				ncDeleted := ncDeletedResponse.GetObject()
+				ncDeletedID := ncDeleted.GetId()
+				_, err = ncDao.Delete().SetId(ncDeletedID).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
 
-				ncDeleted := privatev1.NetworkClass_builder{
-					Title:                  "Deleted Default",
-					ImplementationStrategy: "ovn-kubernetes",
-					IsDefault:              proto.Bool(true),
-					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
-					}.Build(),
-					Status: privatev1.NetworkClassStatus_builder{
-						State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
-					}.Build(),
-				}.Build()
-				deletedResponse, ncErr := ncDao.Create().SetObject(ncDeleted).Do(ctx)
-				Expect(ncErr).ToNot(HaveOccurred())
-
-				// Soft-delete one of them:
-				_, sqlErr := tx.Exec(ctx,
-					"UPDATE network_classes SET deletion_timestamp = now() WHERE id = $1",
-					deletedResponse.GetObject().GetId(),
-				)
-				Expect(sqlErr).ToNot(HaveOccurred())
+				// Create another default network class:
+				ncActiveResponse, err := ncDao.Create().
+					SetObject(privatev1.NetworkClass_builder{
+						Title:                  "Active Default",
+						ImplementationStrategy: "ovn-kubernetes",
+						IsDefault:              proto.Bool(true),
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Status: privatev1.NetworkClassStatus_builder{
+							State: privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY,
+						}.Build(),
+					}.Build()).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				ncActive := ncActiveResponse.GetObject()
+				ncActiveID := ncActive.GetId()
 
 				// Call findDefaultNetworkClass directly — should return only the active one:
 				result, err := findDefaultNetworkClass(ctx, logger, ncDao)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result).ToNot(BeNil())
-				Expect(result.GetId()).To(Equal(activeID))
+				Expect(result.GetId()).To(Equal(ncActiveID))
 			})
 
 			It("Delete the default NC: no defaults remain in List", func() {

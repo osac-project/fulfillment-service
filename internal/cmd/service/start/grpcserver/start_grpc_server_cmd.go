@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"syscall"
@@ -170,7 +171,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 
 	// Run the migrations:
 	c.logger.InfoContext(ctx, "Running database migrations")
-	err = dbTool.Migrate(ctx, 0)
+	err = dbTool.Migrate(ctx, math.MaxUint)
 	if err != nil {
 		return err
 	}

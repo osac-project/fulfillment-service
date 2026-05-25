@@ -16,14 +16,13 @@ package servers
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Private roles server", func() {
@@ -41,7 +40,7 @@ var _ = Describe("Private roles server", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.Url())
+		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
 
@@ -58,9 +57,6 @@ var _ = Describe("Private roles server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
-
-		err = dao.CreateTables[*privatev1.Role](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		rolesServer, err = NewPrivateRolesServer().
 			SetLogger(logger).
@@ -135,7 +131,9 @@ var _ = Describe("Private roles server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
-			listResponse, err := rolesServer.List(ctx, privatev1.RolesListRequest_builder{}.Build())
+			listResponse, err := rolesServer.List(ctx, privatev1.RolesListRequest_builder{
+				Filter: proto.String("this.metadata.name in ['role-a', 'role-b']"),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResponse.GetSize()).To(Equal(int32(2)))
 			Expect(listResponse.GetItems()).To(HaveLen(2))

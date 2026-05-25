@@ -16,17 +16,22 @@ package database
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"math"
 	"net"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
 // ContainerBuilder contains the data and logic needed to create a database server container. Don't create instances of
@@ -40,15 +45,23 @@ type ContainerBuilder struct {
 // intended for use in unit tests where an ephemeral PostgreSQL instance is needed. It lives in the database package
 // because it is closely related to the database infrastructure, and to avoid dependency cycles between test utilities
 // and the database package. It should not be used to create databases for production environments.
+//
+// When started, the container creates a shared user and a template database with all migrations applied. New database
+// instances created without a specific version are cloned from this template, which is significantly faster than
+// running all migrations from scratch each time.
 type Container struct {
-	logger    *slog.Logger
-	tool      string
-	id        string
-	host      string
-	port      string
-	handle    *sql.DB
-	count     int
-	instances []*Instance
+	logger         *slog.Logger
+	tool           string
+	id             string
+	host           string
+	port           string
+	adminPassword  string
+	sharedPassword string
+	adminConn      *pgx.Conn
+	outWriter      *logging.Writer
+	errWriter      *logging.Writer
+	count          int
+	instances      []*Instance
 }
 
 // NewContainer creates a builder that can then be used to configure and create a database server. The resulting server
@@ -94,10 +107,44 @@ func (b *ContainerBuilder) Build() (result *Container, err error) {
 		slog.String("tool", tool),
 	)
 
+	// Generate random passwords for the database administrator and the shared user:
+	adminPassword := uuid.NewString()
+	sharedPassword := uuid.NewString()
+
+	// Prepare writers to write the output of the commands to the log, redacting the passwords:
+	outLogger := b.logger.With(
+		slog.String("stream", "stdout"),
+	)
+	outWriter, err := logging.NewWriter().
+		SetLogger(outLogger).
+		SetLevel(slog.LevelDebug).
+		AddSecrets(adminPassword, sharedPassword).
+		Build()
+	if err != nil {
+		err = fmt.Errorf("failed to create writer for command output: %w", err)
+		return
+	}
+	errLogger := b.logger.With(
+		slog.String("stream", "stderr"),
+	)
+	errWriter, err := logging.NewWriter().
+		SetLogger(errLogger).
+		SetLevel(slog.LevelDebug).
+		AddSecrets(adminPassword, sharedPassword).
+		Build()
+	if err != nil {
+		err = fmt.Errorf("failed to create writer for command errors: %w", err)
+		return
+	}
+
 	// Create the server object:
 	result = &Container{
-		logger: b.logger,
-		tool:   tool,
+		logger:         b.logger,
+		tool:           tool,
+		adminPassword:  adminPassword,
+		sharedPassword: sharedPassword,
+		outWriter:      outWriter,
+		errWriter:      errWriter,
 	}
 	return
 }
@@ -125,16 +172,11 @@ func (b *ContainerBuilder) selectTool() (result string, err error) {
 // Start starts the database server inside a container and waits until it is ready to accept connections. Cleaning when
 // something fails, or when the container is no longer needed, is the responsibility of the caller.
 func (s *Container) Start(ctx context.Context) error {
-	// Generate a random password for the database administrator:
-	password := uuid.NewString()
-
 	// Start the database server:
-	runOut := &bytes.Buffer{}
-	runErr := &bytes.Buffer{}
 	runCmd := exec.Command(
 		s.tool,
 		"run",
-		"--env", "POSTGRES_PASSWORD="+password,
+		"--env", "POSTGRES_PASSWORD="+s.adminPassword,
 		"--publish", "5432",
 		"--detach",
 		"--rm",
@@ -144,28 +186,28 @@ func (s *Container) Start(ctx context.Context) error {
 		"-c", "logging_collector=off",
 		"-c", "fsync=off",
 	)
-	runCmd.Stdout = runOut
-	runCmd.Stderr = runErr
+	runOut := &bytes.Buffer{}
+	runCmd.Stdout = io.MultiWriter(runOut, s.outWriter)
+	runCmd.Stderr = s.errWriter
 	err := runCmd.Run()
 	if err != nil {
-		return fmt.Errorf("failed to start database container: %s: %w", runErr.String(), err)
+		return fmt.Errorf("failed to start database container: %w", err)
 	}
 	s.id = strings.TrimSpace(runOut.String())
 
 	// Find out the port number assigned to the database server:
-	portOut := &bytes.Buffer{}
-	portErr := &bytes.Buffer{}
 	portCmd := exec.Command(
 		s.tool,
 		"port",
 		s.id,
 		"5432/tcp",
 	)
-	portCmd.Stdout = portOut
-	portCmd.Stderr = portErr
+	portOut := &bytes.Buffer{}
+	portCmd.Stdout = io.MultiWriter(portOut, s.outWriter)
+	portCmd.Stderr = s.errWriter
 	err = portCmd.Run()
 	if err != nil {
-		return fmt.Errorf("failed to get port for database container: %s: %w", portErr.String(), err)
+		return fmt.Errorf("failed to get port for database container: %w", err)
 	}
 	portLines := strings.Split(portOut.String(), "\n")
 	if len(portLines) < 1 || strings.TrimSpace(portLines[0]) == "" {
@@ -183,40 +225,87 @@ func (s *Container) Start(ctx context.Context) error {
 	s.port = port
 
 	// Wait till the database server is responding:
-	url := fmt.Sprintf(
-		"postgres://postgres:%s@%s:%s/postgres?sslmode=disable",
-		password, host, port,
+	adminUrl := fmt.Sprintf(
+		"postgres://postgres:%s@%s:%s/postgres?sslmode=disable&connect_timeout=1",
+		s.adminPassword, host, port,
 	)
-	handle, err := sql.Open("pgx", url)
-	if err != nil {
-		return fmt.Errorf("failed to open database connection: %w", err)
-	}
+	var adminConn *pgx.Conn
 	for {
-		err = handle.PingContext(ctx)
+		adminConn, err = pgx.Connect(ctx, adminUrl)
 		if err == nil {
 			break
 		}
-		if ctx.Err() != nil {
-			handle.Close()
-			return fmt.Errorf("timed out waiting for database server to respond: %w", err)
-		}
+		s.logger.DebugContext(
+			ctx,
+			"Database server isn't responding yet",
+			slog.Any("error", err),
+		)
 		select {
 		case <-time.After(1 * time.Second):
 		case <-ctx.Done():
-			handle.Close()
 			return fmt.Errorf("timed out waiting for database server to respond: %w", ctx.Err())
 		}
 	}
-	s.handle = handle
+	s.adminConn = adminConn
+
+	// Create the shared user that will own all databases:
+	_, err = s.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			"create user %s with password '%s'",
+			containerTemplateUser, s.sharedPassword,
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create shared user: %w", err)
+	}
+
+	// Create the template database with all migrations applied. New instances that don't request a specific
+	// migration version will be cloned from this template instead of running migrations from scratch.
+	_, err = s.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			"create database %s owner %s",
+			containerTemplateDatabase, containerTemplateUser,
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create template database: %w", err)
+	}
+	templateUrl := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		containerTemplateUser, s.sharedPassword, s.host, s.port, containerTemplateDatabase,
+	)
+	templateTool, err := NewTool().
+		SetLogger(s.logger).
+		SetURL(templateUrl).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create database tool for template: %w", err)
+	}
+	err = templateTool.Migrate(ctx, math.MaxUint)
+	if err != nil {
+		return fmt.Errorf("failed to run migrations on template database: %w", err)
+	}
+	_, err = s.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			"alter database %s is_template true",
+			containerTemplateDatabase,
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to mark template database: %w", err)
+	}
 
 	return nil
 }
 
 // Stop stops the database server and removes all databases that were created.
 func (s *Container) Stop(ctx context.Context) error {
-	// Delete all databases:
+	// Delete all instance databases:
 	for _, instance := range s.instances {
-		err := instance.Close()
+		err := instance.Close(ctx)
 		if err != nil {
 			s.logger.ErrorContext(
 				ctx,
@@ -226,8 +315,52 @@ func (s *Container) Stop(ctx context.Context) error {
 		}
 	}
 
+	// Drop the template database and the shared user:
+	_, err := s.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			"alter database %s is_template false",
+			containerTemplateDatabase,
+		),
+	)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to unmark template database",
+			slog.Any("error", err),
+		)
+	}
+	_, err = s.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			"drop database if exists %s with (force)",
+			containerTemplateDatabase,
+		),
+	)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to drop template database",
+			slog.Any("error", err),
+		)
+	}
+	_, err = s.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			"drop user if exists %s",
+			containerTemplateUser,
+		),
+	)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to drop shared user",
+			slog.Any("error", err),
+		)
+	}
+
 	// Close the database handle:
-	err := s.handle.Close()
+	err = s.adminConn.Close(ctx)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,
@@ -237,37 +370,27 @@ func (s *Container) Stop(ctx context.Context) error {
 	}
 
 	// Get the logs of the database server:
-	logsOut := &bytes.Buffer{}
-	logsErr := &bytes.Buffer{}
 	logsCmd := exec.Command(s.tool, "logs", s.id)
-	logsCmd.Stdout = logsOut
-	logsCmd.Stderr = logsErr
+	logsOut := &bytes.Buffer{}
+	logsCmd.Stdout = io.MultiWriter(logsOut, s.outWriter)
+	logsCmd.Stderr = s.errWriter
 	err = logsCmd.Run()
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to get container logs",
-			slog.String("stdout", logsOut.String()),
-			slog.String("stderr", logsErr.String()),
 			slog.Any("error", err),
-		)
-	} else {
-		s.logger.Info(
-			"Database server container logs",
-			slog.String("stdout", logsOut.String()),
-			slog.String("stderr", logsErr.String()),
 		)
 	}
 
 	// Stop the database server:
-	killOut := &bytes.Buffer{}
-	killErr := &bytes.Buffer{}
 	killCmd := exec.Command(s.tool, "kill", s.id)
-	killCmd.Stdout = killOut
-	killCmd.Stderr = killErr
+	killOut := &bytes.Buffer{}
+	killCmd.Stdout = io.MultiWriter(killOut, s.outWriter)
+	killCmd.Stderr = s.errWriter
 	err = killCmd.Run()
 	if err != nil {
-		return fmt.Errorf("failed to kill database container: %s: %w", killErr.String(), err)
+		return fmt.Errorf("failed to kill database container: %w", err)
 	}
 
 	return nil
@@ -276,113 +399,173 @@ func (s *Container) Stop(ctx context.Context) error {
 // InstanceBuilder contains the data and logic needed to create a database instance. Don't create instances of this
 // type directly, use the NewInstance method of the Server type instead.
 type InstanceBuilder struct {
-	server *Container
+	container *Container
+	version   *uint
 }
 
-// Instance is a PostgreSQL database created inside a Server.
+// Instance is a PostgreSQL database created inside a Container. It delegates user credentials to the container's
+// shared user.
 type Instance struct {
-	server   *Container
-	name     string
-	user     string
-	password string
+	container *Container
+	name      string
+	version   *uint
+	url       string
+	lock      *sync.Mutex
 }
 
 // NewInstance creates a builder that can then be used to configure and create a new database instance inside this
 // server.
 func (s *Container) NewInstance() *InstanceBuilder {
 	return &InstanceBuilder{
-		server: s,
+		container: s,
 	}
 }
 
-// Build uses the information stored in the builder to create the database instance.
+// SetVersion sets the migration version to apply after creating the database. By default all available migrations
+// are applied. Pass a specific version to migrate only up to that version.
+func (b *InstanceBuilder) SetVersion(value uint) *InstanceBuilder {
+	b.version = &value
+	return b
+}
+
+// Build uses the information stored in the builder to create the database instance. When no version has been set
+// the database is cloned from the pre-migrated template, which is significantly faster than running all migrations.
+// When a specific version has been set the database is created from scratch and only the requested migrations are
+// applied.
 func (b *InstanceBuilder) Build() (result *Instance, err error) {
-	s := b.server
-
-	// Generate the database name and password:
-	name := fmt.Sprintf("test_%d", s.count)
-	user := fmt.Sprintf("test_%d", s.count)
-	password := uuid.NewString()
-	s.count++
-
-	// Create the user:
-	_, execErr := s.handle.Exec(fmt.Sprintf(
-		"create user %s with password '%s'",
-		user, password,
-	))
-	if execErr != nil {
-		err = fmt.Errorf("failed to create user '%s': %w", user, execErr)
-		return
-	}
-
-	// Create the database:
-	_, execErr = s.handle.Exec(fmt.Sprintf(
-		"create database %s owner %s;",
-		name, user,
-	))
-	if execErr != nil {
-		err = fmt.Errorf("failed to create database '%s': %w", name, execErr)
-		return
-	}
-
-	// Create and populate the object:
 	result = &Instance{
-		server:   s,
-		name:     name,
-		user:     user,
-		password: password,
+		container: b.container,
+		version:   b.version,
+		lock:      &sync.Mutex{},
 	}
-
-	// Remember to remove it:
-	s.instances = append(s.instances, result)
-
+	b.container.instances = append(b.container.instances, result)
 	return
+}
+
+func (i *Instance) initIfNeeded(ctx context.Context) error {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	if i.name != "" {
+		return nil
+	}
+	return i.init(ctx)
+}
+
+func (i *Instance) init(ctx context.Context) error {
+	// Calculate the name:
+	i.container.count++
+	i.name = fmt.Sprintf("%s%d", containerTemplateDatabase, i.container.count)
+
+	// Calculate the URL:
+	i.url = fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		containerTemplateUser, i.container.sharedPassword, i.container.host, i.container.port, i.name,
+	)
+
+	// If a version has been set, we need to create a blank database and run migrations up to the requested version,
+	// otherwise we can clone the template database, which already has all migrations applied.
+	if i.version != nil {
+		return i.initFromScratch(ctx)
+	}
+	return i.initFromTemplate(ctx)
+}
+
+func (i *Instance) initFromTemplate(ctx context.Context) error {
+	_, err := i.container.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			"create database %s template %s owner %s",
+			i.name, containerTemplateDatabase, containerTemplateUser,
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create database '%s' from template: %w", i.name, err)
+	}
+	return nil
+}
+
+func (i *Instance) initFromScratch(ctx context.Context) error {
+	_, err := i.container.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			"create database %s owner %s",
+			i.name, containerTemplateUser,
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create database '%s' from scratch: %w", i.name, err)
+	}
+	tool, err := NewTool().
+		SetLogger(i.container.logger).
+		SetURL(i.url).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create database tool: %w", err)
+	}
+	err = tool.Migrate(ctx, *i.version)
+	if err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	return nil
 }
 
 // Url returns the connection URL for this database instance.
-func (i *Instance) Url() string {
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		i.user, i.password, i.server.host, i.server.port, i.name,
-	)
-}
-
-// Handle creates and returns a new database handle for this instance. The caller is responsible for closing the handle
-// when it is no longer needed.
-func (i *Instance) Handle() (result *sql.DB, err error) {
-	url := i.Url()
-	handle, err := sql.Open("pgx", url)
+func (i *Instance) Url(ctx context.Context) (result string, err error) {
+	err = i.initIfNeeded(ctx)
 	if err != nil {
-		err = fmt.Errorf("failed to open database handle: %w", err)
 		return
 	}
-	result = handle
+	result = i.url
 	return
 }
 
-// Close deletes the database and the user that were created for this instance.
-func (i *Instance) Close() error {
-	var errs []error
-
-	// Drop the database:
-	_, err := i.server.handle.Exec(fmt.Sprintf(
-		`drop database if exists %s with (force)`,
-		i.name,
-	))
+// Pool creates and returns a new connection pool for this instance. The caller is responsible for closing the pool
+// when it is no longer needed.
+func (i *Instance) Pool(ctx context.Context) (result *pgxpool.Pool, err error) {
+	err = i.initIfNeeded(ctx)
 	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to drop database '%s': %w", i.name, err))
+		return
 	}
-
-	// Drop the user:
-	_, err = i.server.handle.Exec(fmt.Sprintf(
-		`drop user if exists %s`,
-		i.user,
-	))
+	result, err = pgxpool.New(ctx, i.url)
 	if err != nil {
-		errs = append(errs, fmt.Errorf("failed to drop user '%s': %w", i.user, err))
+		err = fmt.Errorf("failed to create connection pool: %w", err)
 	}
+	return
+}
 
-	return errors.Join(errs...)
+// Connnection returns a new database connection for this instance. The caller is responsible for closing the connection
+// when it is no longer needed.
+func (i *Instance) Connection(ctx context.Context) (result *pgx.Conn, err error) {
+	err = i.initIfNeeded(ctx)
+	if err != nil {
+		return
+	}
+	conn, err := pgx.Connect(ctx, i.url)
+	if err != nil {
+		err = fmt.Errorf("failed to create database connection: %w", err)
+		return
+	}
+	result = conn
+	return
+}
+
+// Close deletes the database that was created for this instance.
+func (i *Instance) Close(ctx context.Context) error {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	if i.name == "" {
+		return nil
+	}
+	_, err := i.container.adminConn.Exec(
+		ctx,
+		fmt.Sprintf(
+			`drop database if exists %s with (force)`,
+			i.name,
+		))
+	if err != nil {
+		return fmt.Errorf("failed to drop database '%s': %w", i.name, err)
+	}
+	return nil
 }
 
 // containerTools is the list of container tools that we will try to use to start the database server container, in
@@ -391,3 +574,9 @@ var containerTools = []string{
 	"podman",
 	"docker",
 }
+
+// containerTemplateDatabase is the name of the template database that is created when the container is started.
+const containerTemplateDatabase = "d"
+
+// containerTemplateUser is the name of the user that is created when the container is started.
+const containerTemplateUser = "u"

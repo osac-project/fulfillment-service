@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -44,9 +45,13 @@ type Tool interface {
 	// Wait waits till the database is available.
 	Wait(ctx context.Context) error
 
-	// Migrate runs the database migrations up to the given version. If the version is zero then all migrations are
-	// run.
+	// Migrate runs the database migrations up to and including the given version. Pass math.MaxUint to apply all
+	// available migrations.
 	Migrate(ctx context.Context, version uint) error
+
+	// CheckSchema checks that the database schema is consistent. Writes errors to the logger and returns an error if any
+	// consistency check fails.
+	CheckSchema(ctx context.Context) error
 
 	// Pool returns the pool of database connections.
 	Pool(ctx context.Context) (result *pgxpool.Pool, err error)
@@ -343,8 +348,8 @@ func (t *tool) Wait(ctx context.Context) error {
 	}
 }
 
-// Migrate runs the database migrations up to and including the given desired version. If the desired version is zero
-// then all migrations are run.
+// Migrate runs the database migrations up to and including the given desired version. Pass math.MaxUint to apply all
+// available migrations.
 func (t *tool) Migrate(ctx context.Context, desiredVersion uint) error {
 	// The database connection URL given by the user will probably start with 'postgres', and that works fine for
 	// regular connections, but for the migration library it needs to be 'pgx5'.
@@ -400,10 +405,10 @@ func (t *tool) Migrate(ctx context.Context, desiredVersion uint) error {
 	}
 
 	// Run the migrations:
-	if desiredVersion > 0 {
-		err = migrations.Migrate(desiredVersion)
-	} else {
+	if desiredVersion == math.MaxUint {
 		err = migrations.Up()
+	} else {
+		err = migrations.Migrate(desiredVersion)
 	}
 	switch err {
 	case nil:
@@ -446,6 +451,195 @@ func (t *tool) Pool(ctx context.Context) (result *pgxpool.Pool, err error) {
 	return
 }
 
+// CheckSchema checks that the database schema is consistent. Writes errors to the logger and returns an error if any
+// consistency check fails.
+func (t *tool) CheckSchema(ctx context.Context) error {
+	issues := 0
+
+	// Get a database pool and remember to close it:
+	pool, err := t.Pool(ctx)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	// Check that all the object tables have the expected columns:
+	rows, err := pool.Query(
+		ctx,
+		`
+		select
+			table_name
+		from
+			information_schema.tables
+		where
+			table_schema = 'public' and
+			table_type = 'BASE TABLE' and
+			table_name not like 'archived_%' and
+			table_name != 'notifications' and
+			table_name != 'schema_migrations'
+		order by
+			table_name
+		`,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to get list of object tables: %w", err)
+	}
+	defer rows.Close()
+	var objectTables []string
+	for rows.Next() {
+		var tableName string
+		err = rows.Scan(&tableName)
+		if err != nil {
+			return fmt.Errorf("failed to scan table name: %w", err)
+		}
+		objectTables = append(objectTables, tableName)
+	}
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("failed to get list of object tables: %w", err)
+	}
+	for _, objectTable := range objectTables {
+		columns, err := t.fetchColumns(ctx, pool, objectTable)
+		if err != nil {
+			return err
+		}
+		for _, column := range toolObjectColumns {
+			if !slices.Contains(columns, column) {
+				t.logger.ErrorContext(
+					ctx,
+					"Object table doesn't have the expected column",
+					slog.String("table", objectTable),
+					slog.String("column", column),
+				)
+				issues++
+			}
+		}
+	}
+
+	// Check that all the archive tables have the expected columns:
+	rows, err = pool.Query(
+		ctx,
+		`
+		select
+			table_name
+		from
+			information_schema.tables
+		where
+			table_schema = 'public' and
+			table_type = 'BASE TABLE' and
+			table_name like 'archived_%'
+		order by
+			table_name
+		`,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to get list of archive tables: %w", err)
+	}
+	defer rows.Close()
+	var archiveTables []string
+	for rows.Next() {
+		var tableName string
+		err = rows.Scan(&tableName)
+		if err != nil {
+			return fmt.Errorf("failed to scan archive table name: %w", err)
+		}
+		archiveTables = append(archiveTables, tableName)
+	}
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("failed to get list of archive tables: %w", err)
+	}
+	for _, archiveTable := range archiveTables {
+		columns, err := t.fetchColumns(ctx, pool, archiveTable)
+		if err != nil {
+			return err
+		}
+		for _, column := range toolArchivedColumns {
+			if !slices.Contains(columns, column) {
+				t.logger.ErrorContext(
+					ctx,
+					"Archive table doesn't have the expected column",
+					slog.String("table", archiveTable),
+					slog.String("column", column),
+				)
+				issues++
+			}
+		}
+	}
+
+	// Check that there is an archive table for each object table:
+	for _, objectTable := range objectTables {
+		archiveTable := "archived_" + objectTable
+		if !slices.Contains(archiveTables, archiveTable) {
+			t.logger.ErrorContext(
+				ctx,
+				"Object table doesn't have an archive table",
+				slog.String("table", objectTable),
+			)
+			issues++
+		}
+	}
+
+	// Check that there are no archive tables that don't have a corresponding object table:
+	for _, archiveTable := range archiveTables {
+		objectTable := strings.TrimPrefix(archiveTable, "archived_")
+		if !slices.Contains(objectTables, objectTable) {
+			t.logger.ErrorContext(
+				ctx,
+				"Archive table doesn't have a corresponding object table",
+				slog.String("table", archiveTable),
+			)
+			issues++
+		}
+	}
+
+	// Check the number of issues:
+	if issues > 0 {
+		return fmt.Errorf("found %d issues in the database schema", issues)
+	}
+	return nil
+}
+
+// fetchColumns returns the sorted list of column names for the given table.
+func (t *tool) fetchColumns(ctx context.Context, pool *pgxpool.Pool, table string) (result []string, err error) {
+	rows, err := pool.Query(
+		ctx,
+		`
+		select
+			column_name
+		from
+			information_schema.columns
+		where
+			table_schema = 'public' and
+			table_name = $1
+		order by
+			column_name`,
+		table,
+	)
+	if err != nil {
+		err = fmt.Errorf("failed to get list of columns for table '%s': %w", table, err)
+		return
+	}
+	defer rows.Close()
+	var columns []string
+	for rows.Next() {
+		var column string
+		err = rows.Scan(&column)
+		if err != nil {
+			err = fmt.Errorf("failed to scan column name for table '%s': %w", table, err)
+			return
+		}
+		columns = append(columns, column)
+	}
+	err = rows.Err()
+	if err != nil {
+		err = fmt.Errorf("failed to get list of columns for table '%s': %w", table, err)
+		return
+	}
+	result = columns
+	return
+}
+
 // migrationsLogger is an adapter to implement the logging interface of the underlying migrations library using our
 // logging library.
 type migrationsLogger struct {
@@ -473,4 +667,34 @@ var toolFilePathParameters = []string{
 	"sslrootcert",
 	"sslcrl",
 	"sslcrldir",
+}
+
+// toolObjectColumns is the list of columns that the DAO expects in every object table.
+var toolObjectColumns = []string{
+	"annotations",
+	"creation_timestamp",
+	"creator",
+	"data",
+	"deletion_timestamp",
+	"finalizers",
+	"id",
+	"labels",
+	"name",
+	"tenant",
+	"version",
+}
+
+// toolArchivedColumns is the list of columns that the DAO expects in every archived object table.
+var toolArchivedColumns = []string{
+	"annotations",
+	"archival_timestamp",
+	"creation_timestamp",
+	"creator",
+	"data",
+	"deletion_timestamp",
+	"id",
+	"labels",
+	"name",
+	"tenant",
+	"version",
 }

@@ -23,7 +23,7 @@ var _ = DescribeMigration("Replace tenants array with single tenant in public ip
 		"Migrates the tenants array to a single tenant value in public ip attachments tables",
 		func(tenants []string, expectedTenant string) {
 			// Insert a row with the old creators array column:
-			_, err := pool.Exec(
+			_, err := conn.Exec(
 				ctx,
 				`insert into public_ip_attachments (id, tenants, data) values ('123', $1, '{}')`,
 				tenants,
@@ -36,7 +36,7 @@ var _ = DescribeMigration("Replace tenants array with single tenant in public ip
 
 			// Verify the tenant column has the expected value:
 			var actual string
-			row := pool.QueryRow(
+			row := conn.QueryRow(
 				ctx,
 				`select tenant from public_ip_attachments where id = '123'`,
 			)
@@ -67,7 +67,7 @@ var _ = DescribeMigration("Replace creators array with single creator in public 
 		"Migrates the creators array to a single creator value in public ip attachments tables",
 		func(creators []string, expectedCreator string) {
 			// Insert a row with the old creators array column:
-			_, err := pool.Exec(
+			_, err := conn.Exec(
 				ctx,
 				`insert into public_ip_attachments (id, creators, data) values ('123', $1, '{}')`,
 				creators,
@@ -80,7 +80,7 @@ var _ = DescribeMigration("Replace creators array with single creator in public 
 
 			// Verify the creator column has the expected value:
 			var actual string
-			row := pool.QueryRow(
+			row := conn.QueryRow(
 				ctx,
 				`select creator from public_ip_attachments where id = '123'`,
 			)

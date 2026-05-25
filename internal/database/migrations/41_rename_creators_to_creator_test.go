@@ -23,7 +23,7 @@ var _ = DescribeMigration("Rename creators to creator", func() {
 		"Migrates the creators array to a single creator value",
 		func(creators []string, expectedCreator string) {
 			// Insert a row with the old creators array column:
-			_, err := pool.Exec(
+			_, err := conn.Exec(
 				ctx,
 				`insert into clusters (id, creators, tenant, data) values ('123', $1, 'my-tenant', '{}')`,
 				creators,
@@ -36,7 +36,7 @@ var _ = DescribeMigration("Rename creators to creator", func() {
 
 			// Verify the creator column has the expected value:
 			var actual string
-			row := pool.QueryRow(
+			row := conn.QueryRow(
 				ctx,
 				`select creator from clusters where id = '123'`,
 			)

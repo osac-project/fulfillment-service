@@ -52,25 +52,17 @@ var _ = Describe("Lock", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err = pgxpool.New(ctx, db.Url())
+		pool, err = db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
+		_, err = pool.Exec(ctx, createObjectsTableSQL)
+		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err = database.NewTxManager().
 			SetLogger(logger).
 			SetPool(pool).
 			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Create the tables in a separate transaction and commit it so that they are visible
-		// to all the transactions used by the tests:
-		setupTx, err := tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		setupCtx := database.TxIntoContext(ctx, setupTx)
-		err = CreateTables[*testsv1.Object](setupCtx)
-		Expect(err).ToNot(HaveOccurred())
-		err = tm.End(ctx, setupTx)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenancy logic without restrictions:

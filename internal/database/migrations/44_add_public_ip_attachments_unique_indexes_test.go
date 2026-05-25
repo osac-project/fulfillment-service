@@ -20,7 +20,7 @@ import (
 
 var _ = DescribeMigration("Add unique indexes for public IP attachments", func() {
 	insert := func(id, publicIP, computeInstance string) error {
-		_, err := pool.Exec(
+		_, err := conn.Exec(
 			ctx,
 			`insert into public_ip_attachments (id, data) values ($1, $2)`,
 			id,
@@ -30,7 +30,7 @@ var _ = DescribeMigration("Add unique indexes for public IP attachments", func()
 	}
 
 	softDelete := func(id string) {
-		_, err := pool.Exec(
+		_, err := conn.Exec(
 			ctx,
 			`update public_ip_attachments set deletion_timestamp = now() where id = $1`,
 			id,

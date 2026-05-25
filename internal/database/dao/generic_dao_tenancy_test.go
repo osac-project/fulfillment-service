@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -45,9 +44,11 @@ var _ = Describe("Tenancy logic", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.Url())
+		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
+		_, err = pool.Exec(ctx, createObjectsTableSQL)
+		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err := database.NewTxManager().
@@ -64,10 +65,6 @@ var _ = Describe("Tenancy logic", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the objects table:
-		err = CreateTables[*testsv1.Object](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create the mock controller:
 		ctrl = gomock.NewController(GinkgoT())

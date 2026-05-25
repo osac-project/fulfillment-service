@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 )
 
 // WriterBuilder contains the data and logic needed to create a writer that writes messages to a logger. Don't create
@@ -25,6 +26,7 @@ type WriterBuilder struct {
 	logger  *slog.Logger
 	level   slog.Level
 	context context.Context
+	secrets []string
 }
 
 // Writer is an implementation of an io.Writer that writes messages to a slog.Logger. Don't create instances of this
@@ -33,6 +35,7 @@ type Writer struct {
 	logger  *slog.Logger
 	level   slog.Level
 	context context.Context
+	secrets []string
 }
 
 // NewWriter creates a builder that can then be used to configure and create a new logging writer.
@@ -61,6 +64,18 @@ func (b *WriterBuilder) SetContext(value context.Context) *WriterBuilder {
 	return b
 }
 
+// AddSecret adds a secret that will be redacted from the log messages.
+func (b *WriterBuilder) AddSecret(value string) *WriterBuilder {
+	b.secrets = append(b.secrets, value)
+	return b
+}
+
+// AddSecrets adds a set of secrets that will be redacted from the log messages.
+func (b *WriterBuilder) AddSecrets(values ...string) *WriterBuilder {
+	b.secrets = append(b.secrets, values...)
+	return b
+}
+
 // Build uses the configuration stored in the builder to create a new logging writer.
 func (b *WriterBuilder) Build() (result *Writer, err error) {
 	// Check arguments:
@@ -69,24 +84,42 @@ func (b *WriterBuilder) Build() (result *Writer, err error) {
 		return
 	}
 
+	// Remove empty secrets to prevent log amplification attacks:
+	secrets := make([]string, 0, len(b.secrets))
+	for _, secret := range b.secrets {
+		if strings.TrimSpace(secret) != "" {
+			secrets = append(secrets, secret)
+		}
+	}
+
 	// Create and populate the object:
 	result = &Writer{
 		logger:  b.logger,
 		level:   b.level,
 		context: b.context,
+		secrets: secrets,
 	}
 	return
 }
 
 // Write implements the io.Writer interface.
 func (w *Writer) Write(p []byte) (n int, err error) {
+	// Redact the message if needed:
+	text := string(p)
+	if len(w.secrets) > 0 {
+		for _, secret := range w.secrets {
+			text = strings.ReplaceAll(text, secret, redactMark)
+		}
+	}
+
+	// Write the message to the logger:
 	n = len(p)
 	w.logger.LogAttrs(
 		w.context,
 		w.level,
 		"Write",
 		slog.Int("size", n),
-		slog.String("data", string(p)),
+		slog.String("data", text),
 	)
 	return
 }

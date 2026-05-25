@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"slices"
 
+	"github.com/gobuffalo/flect"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -279,7 +280,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 	// Create and populate the object:
 	result = &GenericDAO[O]{
 		logger:           b.logger,
-		table:            TableName[O](),
+		table:            b.tableName(),
 		defaultLimit:     b.defaultLimit,
 		maxLimit:         b.maxLimit,
 		timestampDesc:    timestampDesc,
@@ -295,6 +296,14 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 		opDurationMetric: opDurationMetric,
 	}
 	return
+}
+
+// tableName calculates the table name from the protobuf message type name. It converts the CamelCase type
+// name to snake_case and pluralizes it. For example, `Cluster` becomes `clusters` and `ComputeInstance` becomes
+// `compute_instances`.
+func (b *GenericDAOBuilder[O]) tableName() string {
+	var object O
+	return flect.Pluralize(flect.Underscore(string(object.ProtoReflect().Descriptor().Name())))
 }
 
 func (b *GenericDAOBuilder[O]) registerOpDurationMetric() (result *prometheus.HistogramVec, err error) {

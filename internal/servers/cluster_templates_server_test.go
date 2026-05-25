@@ -17,14 +17,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Cluster templates server", func() {
@@ -43,7 +41,7 @@ var _ = Describe("Cluster templates server", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.Url())
+		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
 
@@ -62,10 +60,6 @@ var _ = Describe("Cluster templates server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*publicv1.ClusterTemplate](ctx)
-		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Describe("Creation", func() {
@@ -153,7 +147,9 @@ var _ = Describe("Cluster templates server", func() {
 			}
 
 			// List the objects:
-			response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{}.Build())
+			response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
+				Filter: proto.String("this.id.startsWith('my_template_')"),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
 			items := response.GetItems()
@@ -198,6 +194,7 @@ var _ = Describe("Cluster templates server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
+				Filter: proto.String("this.id.startsWith('my_template_')"),
 				Offset: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())

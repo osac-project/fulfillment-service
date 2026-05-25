@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -69,9 +68,11 @@ var _ = Describe("Generic DAO", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.Url())
+		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
+		_, err = pool.Exec(ctx, createObjectsTableSQL)
+		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err := database.NewTxManager().
@@ -181,11 +182,8 @@ var _ = Describe("Generic DAO", func() {
 		var generic *GenericDAO[*testsv1.Object]
 
 		BeforeEach(func() {
-			// Create the tables:
-			err := CreateTables[*testsv1.Object](ctx)
-			Expect(err).ToNot(HaveOccurred())
-
 			// Create the DAO:
+			var err error
 			generic, err = NewGenericDAO[*testsv1.Object]().
 				SetLogger(logger).
 				SetTenancyLogic(tenancy).

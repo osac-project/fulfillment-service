@@ -17,7 +17,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
@@ -112,28 +111,17 @@ var _ = Describe("Listener", func() {
 			db, err := server.NewInstance().Build()
 			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(db.Close)
-			pool, err := pgxpool.New(ctx, db.Url())
+			pool, err := db.Pool(ctx)
 			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(pool.Close)
 
-			// Create the notifications table:
-			_, err = pool.Exec(
-				ctx,
-				`
-				create table notifications (
-					id text not null primary key,
-					creation_timestamp timestamp with time zone default now(),
-					payload bytea
-				);
-				`,
-			)
+			// Create a listener that writes the paylaods to a channel:
+			url, err := db.Url(ctx)
 			Expect(err).ToNot(HaveOccurred())
-
-			// Create a listener that writes the paylaods to a channe:
 			payloads = make(chan proto.Message)
 			listener, err = NewListener().
 				SetLogger(logger).
-				SetUrl(db.Url()).
+				SetUrl(url).
 				SetChannel(channel).
 				SetWaitTimeout(100 * time.Millisecond).
 				SetRetryInterval(10 * time.Millisecond).

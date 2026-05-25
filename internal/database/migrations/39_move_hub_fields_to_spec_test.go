@@ -22,7 +22,7 @@ var _ = DescribeMigration("Add 'spec' and 'status' fields to hubs", func() {
 		"Data migration",
 		func(original, expected string) {
 			// Create a row with the original data:
-			_, err := pool.Exec(
+			_, err := conn.Exec(
 				ctx,
 				`insert into hubs (id, data) values ('123', $1)`,
 				[]byte(original),
@@ -35,7 +35,7 @@ var _ = DescribeMigration("Add 'spec' and 'status' fields to hubs", func() {
 
 			// Fetch the migraded data:
 			var actual []byte
-			row := pool.QueryRow(
+			row := conn.QueryRow(
 				ctx,
 				`select data from hubs where id = '123'`,
 			)

@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package database
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -26,26 +28,34 @@ var _ = Describe("Builder", func() {
 })
 
 var _ = Describe("Instance", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
 	It("Should create an instance and return a valid URL", func() {
 		instance, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(instance.Close)
 
-		url := instance.Url()
+		url, err := instance.Url(ctx)
+		Expect(err).ToNot(HaveOccurred())
+
 		Expect(url).To(ContainSubstring("postgres://"))
 		Expect(url).To(ContainSubstring("sslmode=disable"))
 	})
 
-	It("Should create a working database handle", func() {
+	It("Should create a working database connection", func() {
 		instance, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(instance.Close)
 
-		handle, err := instance.Handle()
+		conn, err := instance.Connection(ctx)
 		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(handle.Close)
+		DeferCleanup(conn.Close)
 
-		err = handle.Ping()
+		err = conn.Ping(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -53,7 +63,7 @@ var _ = Describe("Instance", func() {
 		instance, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		err = instance.Close()
+		err = instance.Close(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 })

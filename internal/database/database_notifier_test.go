@@ -42,22 +42,9 @@ var _ = Describe("Notifier", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err = pgxpool.New(ctx, db.Url())
+		pool, err = db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
-
-		// Create the notifications table:
-		_, err = pool.Exec(
-			ctx,
-			`
-				create table notifications (
-					id text not null primary key,
-					creation_timestamp timestamp with time zone default now(),
-					payload bytea
-				);
-				`,
-		)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Prepare the transaction manager:
 		tm, err = NewTxManager().

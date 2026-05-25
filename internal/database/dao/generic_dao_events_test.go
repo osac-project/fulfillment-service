@@ -51,24 +51,17 @@ var _ = Describe("Generic DAO events", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err = pgxpool.New(ctx, db.Url())
+		pool, err = db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
+		_, err = pool.Exec(ctx, createObjectsTableSQL)
+		Expect(err).ToNot(HaveOccurred())
 
 		// Prepare the transaction manager:
 		tm, err = database.NewTxManager().
 			SetLogger(logger).
 			SetPool(pool).
 			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Create the tables:
-		tx, err := tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		txCtx := database.TxIntoContext(ctx, tx)
-		err = CreateTables[*privatev1.Cluster](txCtx)
-		Expect(err).ToNot(HaveOccurred())
-		err = tm.End(ctx, tx)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenancy logic without restrictions:

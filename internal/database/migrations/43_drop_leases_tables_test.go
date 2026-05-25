@@ -22,7 +22,7 @@ var _ = DescribeMigration("Drop leases tables", func() {
 	It("Drops the leases table", func() {
 		// Verify the table exists before the migration:
 		var exists bool
-		err := pool.QueryRow(ctx,
+		err := conn.QueryRow(ctx,
 			`select exists (select 1 from information_schema.tables where table_name = 'leases')`,
 		).Scan(&exists)
 		Expect(err).ToNot(HaveOccurred())
@@ -33,7 +33,7 @@ var _ = DescribeMigration("Drop leases tables", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the table no longer exists:
-		err = pool.QueryRow(ctx,
+		err = conn.QueryRow(ctx,
 			`select exists (select 1 from information_schema.tables where table_name = 'leases')`,
 		).Scan(&exists)
 		Expect(err).ToNot(HaveOccurred())
@@ -43,7 +43,7 @@ var _ = DescribeMigration("Drop leases tables", func() {
 	It("Drops the archived_leases table", func() {
 		// Verify the table exists before the migration:
 		var exists bool
-		err := pool.QueryRow(ctx,
+		err := conn.QueryRow(ctx,
 			`select exists (select 1 from information_schema.tables where table_name = 'archived_leases')`,
 		).Scan(&exists)
 		Expect(err).ToNot(HaveOccurred())
@@ -54,7 +54,7 @@ var _ = DescribeMigration("Drop leases tables", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the table no longer exists:
-		err = pool.QueryRow(ctx,
+		err = conn.QueryRow(ctx,
 			`select exists (select 1 from information_schema.tables where table_name = 'archived_leases')`,
 		).Scan(&exists)
 		Expect(err).ToNot(HaveOccurred())

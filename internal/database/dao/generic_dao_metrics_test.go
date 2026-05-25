@@ -16,7 +16,6 @@ package dao
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -51,9 +50,11 @@ var _ = Describe("Metrics", func() {
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.Url())
+		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
+		_, err = pool.Exec(ctx, createObjectsTableSQL)
+		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err := database.NewTxManager().
@@ -70,10 +71,6 @@ var _ = Describe("Metrics", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = CreateTables[*testsv1.Object](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create the metrics server:
 		metricsServer = NewMetricsServer()

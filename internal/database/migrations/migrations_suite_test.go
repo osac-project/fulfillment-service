@@ -26,7 +26,7 @@ import (
 	gotesting "testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
@@ -47,7 +47,7 @@ var (
 	server *database.Container
 	db     *database.Instance
 	tool   database.Tool
-	pool   *pgxpool.Pool
+	conn   *pgx.Conn
 )
 
 var _ = BeforeSuite(func() {
@@ -149,26 +149,26 @@ func DescribeMigration(description string, body func()) bool {
 			// Create a context:
 			ctx = context.Background()
 
-			// Create the database:
-			db, err = server.NewInstance().Build()
+			// Create the database migrated up to the previous migration:
+			db, err = server.NewInstance().
+				SetVersion(previousNumber).
+				Build()
 			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(db.Close)
 
 			// Create the database tool:
+			url, err := db.Url(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			tool, err = database.NewTool().
 				SetLogger(logger).
-				SetURL(db.Url()).
+				SetURL(url).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get the database pool:
-			pool, err = tool.Pool(ctx)
+			conn, err = db.Connection(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			DeferCleanup(pool.Close)
-
-			// Run the migrations up to the previous one:
-			err = tool.Migrate(context.Background(), uint(previousNumber))
-			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(conn.Close)
 		})
 
 		// Describe the tests.
