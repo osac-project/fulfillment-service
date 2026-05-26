@@ -30,6 +30,8 @@ spec:
       labels:
         app: fulfillment-rest-gateway
     spec:
+      securityContext:
+        runAsNonRoot: true
       volumes:
       - name: cas
         configMap:
@@ -39,6 +41,15 @@ spec:
           secretName: fulfillment-rest-gateway-tls
       containers:
       - name: rest-gateway
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
         image: {{ .Values.images.service }}
         volumeMounts:
         - name: cas
