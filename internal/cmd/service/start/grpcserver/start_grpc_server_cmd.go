@@ -892,6 +892,34 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 	privatev1.RegisterOrganizationsServer(grpcServer, privateOrganizationsServer)
 
+	// Create the public projects server:
+	c.logger.InfoContext(ctx, "Creating public projects server")
+	publicProjectsServer, err := servers.NewProjectsServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(publicAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create public projects server: %w", err)
+	}
+	publicv1.RegisterProjectsServer(grpcServer, publicProjectsServer)
+
+	// Create the private projects server:
+	c.logger.InfoContext(ctx, "Creating private projects server")
+	privateProjectsServer, err := servers.NewPrivateProjectsServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private projects server: %w", err)
+	}
+	privatev1.RegisterProjectsServer(grpcServer, privateProjectsServer)
+
 	// Create the public users server:
 	c.logger.InfoContext(ctx, "Creating public users server")
 	publicUsersServer, err := servers.NewUsersServer().
