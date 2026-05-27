@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -63,6 +64,27 @@ var _ = Describe("Private virtual networks server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
+
+		// Create the tenants used in the tests:
+		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		createTenant := func(name string) {
+			_, err = tenantsDao.Create().
+				SetObject(privatev1.Organization_builder{
+					Id: name,
+					Metadata: privatev1.Metadata_builder{
+						Name:   name,
+						Tenant: name,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("tenant-a")
+		createTenant("tenant-b")
 	})
 
 	// Helper function to create a NetworkClass for validation tests
@@ -77,7 +99,7 @@ var _ = Describe("Private virtual networks server", func() {
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
 			Metadata: privatev1.Metadata_builder{
-				Tenant: "shared",
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -109,7 +131,7 @@ var _ = Describe("Private virtual networks server", func() {
 			ImplementationStrategy: "test-strategy",
 			IsDefault:              new(true),
 			Metadata: privatev1.Metadata_builder{
-				Tenant: "shared",
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -475,7 +497,7 @@ var _ = Describe("Private virtual networks server", func() {
 				nc := privatev1.NetworkClass_builder{
 					ImplementationStrategy: "no-ipv4-class",
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "shared",
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Capabilities: privatev1.NetworkClassCapabilities_builder{
 						SupportsIpv4: false,
@@ -493,7 +515,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "shared",
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     new("10.0.0.0/16"),
@@ -879,7 +901,7 @@ var _ = Describe("Private virtual networks server", func() {
 				createResponse, err := server.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 					Object: privatev1.VirtualNetwork_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "shared",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Spec: privatev1.VirtualNetworkSpec_builder{
 							Ipv4Cidr:     new("10.0.0.0/16"),
@@ -930,7 +952,7 @@ var _ = Describe("Private virtual networks server", func() {
 		It("creates VirtualNetwork and generates ID", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: "shared",
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					Ipv4Cidr:     new("10.0.0.0/16"),
@@ -952,7 +974,7 @@ var _ = Describe("Private virtual networks server", func() {
 		It("retrieves VirtualNetwork by ID", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: "shared",
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					Ipv4Cidr:     new("10.0.0.0/16"),
@@ -982,7 +1004,7 @@ var _ = Describe("Private virtual networks server", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name:   fmt.Sprintf("vn-%d", i),
-						Tenant: "shared",
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     new(fmt.Sprintf("10.%d.0.0/16", i)),
@@ -1012,7 +1034,7 @@ var _ = Describe("Private virtual networks server", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name:   fmt.Sprintf("vn-%d", i),
-						Tenant: "shared",
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     new(fmt.Sprintf("10.%d.0.0/16", i)),
@@ -1040,7 +1062,7 @@ var _ = Describe("Private virtual networks server", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "original-name",
-					Tenant: "shared",
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					Ipv4Cidr:     new("10.0.0.0/16"),
@@ -1076,7 +1098,7 @@ var _ = Describe("Private virtual networks server", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
 					Finalizers: []string{"test-finalizer"},
-					Tenant:     "shared",
+					Tenant:     auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					Ipv4Cidr:     new("10.0.0.0/16"),
@@ -1250,7 +1272,7 @@ var _ = Describe("Private virtual networks server", func() {
 				ImplementationStrategy: "test-strategy",
 				IsDefault:              new(true),
 				Metadata: privatev1.Metadata_builder{
-					Tenant: "shared",
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Capabilities: privatev1.NetworkClassCapabilities_builder{
 					SupportsIpv4: true,

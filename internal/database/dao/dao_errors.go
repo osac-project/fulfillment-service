@@ -110,6 +110,21 @@ func (e *ErrImmutable) Error() string {
 	return fmt.Sprintf("fields %s are immutable", english.WordSeries(quoted, "and"))
 }
 
+// ErrReference indicates that an operation failed because it references an entity that doesn't exist, for example a
+// tenant or a project.
+type ErrReference struct {
+	// Reason is a human-friendly description of what reference is invalid.
+	Reason string
+}
+
+// Error returns the error message.
+func (e *ErrReference) Error() string {
+	if e.Reason == "" {
+		return "some reference is invalid"
+	}
+	return e.Reason
+}
+
 // Custom PostgreSQL SQLSTATE error codes used by database triggers. These codes use the 'Z' class, which is reserved
 // for user-defined conditions and will not collide with any standard PostgreSQL error code.
 const (

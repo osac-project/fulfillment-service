@@ -22,6 +22,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Private projects server", func() {
@@ -61,6 +62,27 @@ var _ = Describe("Private projects server", func() {
 		})
 		ctx = database.TxIntoContext(ctx, tx)
 
+		// Create the tenants used in the tests:
+		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		createTenant := func(name string) {
+			_, err = tenantsDao.Create().
+				SetObject(privatev1.Organization_builder{
+					Id: name,
+					Metadata: privatev1.Metadata_builder{
+						Name:   name,
+						Tenant: name,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("my-tenant")
+		createTenant("your-tenant")
+
 		// Create server (without notifier for testing):
 		privateServer, err = NewPrivateProjectsServer().
 			SetLogger(logger).
@@ -76,7 +98,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "my-project",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title:       "My Project",
@@ -102,7 +124,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "parent-project",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "Parent Project",
@@ -117,7 +139,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "child-project",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title:  "Child Project",
@@ -136,7 +158,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "my-project",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "My Project",
@@ -158,7 +180,7 @@ var _ = Describe("Private projects server", func() {
 
 	It("Lists projects by tenant", func() {
 		// Create projects in different tenants:
-		for _, tenant := range []string{"org-1", "org-2"} {
+		for _, tenant := range []string{"my-tenant", "your-tenant"} {
 			createReq := privatev1.ProjectsCreateRequest_builder{
 				Object: privatev1.Project_builder{
 					Metadata: privatev1.Metadata_builder{
@@ -174,13 +196,13 @@ var _ = Describe("Private projects server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		}
 
-		// List projects for org-1:
+		// List projects for one of the tenants:
 		listResp, err := privateServer.List(ctx, &privatev1.ProjectsListRequest{
-			Filter: new("this.metadata.tenant == 'org-1'"),
+			Filter: new("this.metadata.tenant == 'my-tenant'"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.Size).To(Equal(int32(1)))
-		Expect(listResp.Items[0].Metadata.Tenant).To(Equal("org-1"))
+		Expect(listResp.Items[0].Metadata.Tenant).To(Equal("my-tenant"))
 	})
 
 	It("Lists top-level projects (no parent)", func() {
@@ -189,7 +211,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "parent",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "Parent",
@@ -203,7 +225,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "child",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title:  "Child",
@@ -216,7 +238,7 @@ var _ = Describe("Private projects server", func() {
 
 		// List only top-level projects:
 		listResp, err := privateServer.List(ctx, &privatev1.ProjectsListRequest{
-			Filter: new("this.metadata.tenant == 'my-org' && !has(this.spec.parent)"),
+			Filter: new("this.metadata.tenant == 'my-tenant' && !has(this.spec.parent)"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.Size).To(Equal(int32(1)))
@@ -229,7 +251,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "my-project",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "My Project",
@@ -254,7 +276,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "my-project",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "My Project",
@@ -277,7 +299,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "my-project",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "My Project",
@@ -312,7 +334,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "my-project",
-					Tenant: "my-org",
+					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "My Project",

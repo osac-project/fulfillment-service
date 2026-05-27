@@ -66,6 +66,27 @@ var _ = Describe("Private subnets server", func() {
 		})
 		ctx = database.TxIntoContext(ctx, tx)
 
+		// Create the tenants used in the tests:
+		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		createTenant := func(name string) {
+			_, err = tenantsDao.Create().
+				SetObject(privatev1.Organization_builder{
+					Id: name,
+					Metadata: privatev1.Metadata_builder{
+						Name:   name,
+						Tenant: name,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("tenant-a")
+		createTenant("tenant-b")
+
 		// Create the subnet DAO:
 		subnetDao, err = dao.NewGenericDAO[*privatev1.Subnet]().
 			SetLogger(logger).

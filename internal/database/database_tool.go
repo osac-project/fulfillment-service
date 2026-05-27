@@ -593,6 +593,58 @@ func (t *tool) CheckSchema(ctx context.Context) error {
 		}
 	}
 
+	// Check that every object table has a foreign key constraint on the 'tenant' column referencing the
+	// 'id' column of the 'organizations' table:
+	for _, objectTable := range objectTables {
+		constraintName := objectTable + "_tenant_fk"
+		var count int
+		row := pool.QueryRow(
+			ctx,
+			`
+			select
+				count(*)
+			from
+				information_schema.table_constraints tc
+			join
+				information_schema.key_column_usage kcu
+			on
+				kcu.constraint_schema = tc.constraint_schema and
+				kcu.constraint_name = tc.constraint_name
+			join
+				information_schema.constraint_column_usage ccu
+			on
+				ccu.constraint_schema = tc.constraint_schema and
+				ccu.constraint_name = tc.constraint_name
+			where
+				tc.table_schema = 'public' and
+				tc.table_name = $1 and
+				tc.constraint_name = $2 and
+				tc.constraint_type = 'FOREIGN KEY' and
+				kcu.column_name = 'tenant' and
+				ccu.table_schema = 'public' and
+				ccu.table_name = 'organizations' and
+				ccu.column_name = 'id'`,
+			objectTable,
+			constraintName,
+		)
+		err = row.Scan(&count)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to check tenant foreign key for table '%s': %w",
+				objectTable, err,
+			)
+		}
+		if count != 1 {
+			t.logger.ErrorContext(
+				ctx,
+				"Object table is missing the tenant foreign key constraint",
+				slog.String("table", objectTable),
+				slog.String("constraint", constraintName),
+			)
+			issues++
+		}
+	}
+
 	// Check the number of issues:
 	if issues > 0 {
 		return fmt.Errorf("found %d issues in the database schema", issues)

@@ -2,6 +2,7 @@ package it
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -14,18 +15,13 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Multitenancy authentication error handling", Label("multitenancy", "autherrors"), func() {
-	var ctx context.Context
-
-	BeforeEach(func() {
-		ctx = context.Background()
-	})
-
 	DescribeTable(
 		"Returns error when authenticating with invalid token",
-		func(endpoint string) {
+		func(ctx context.Context, endpoint string) {
 			Eventually(func(g Gomega) {
 				// Prepare a request with an invalid token:
 				request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -54,7 +50,7 @@ var _ = Describe("Multitenancy authentication error handling", Label("multitenan
 
 	DescribeTable(
 		"Returns error when user is not authenticated",
-		func(endpoint string) {
+		func(ctx context.Context, endpoint string) {
 			Eventually(func(g Gomega) {
 				// Prepare a request without a token:
 				req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -83,13 +79,9 @@ var _ = Describe("Multitenancy authentication error handling", Label("multitenan
 
 var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multitenancy", "isolation"), func() {
 	Describe("serviceaccount tenants", func() {
-		var (
-			tenantUserMapping map[string][]string
-			ctx               context.Context
-		)
+		var tenantUserMapping map[string][]string
 
 		BeforeAll(func() {
-			ctx = context.Background()
 
 			// Create map to track which users belong to which tenants
 			tenantUserMapping = make(map[string][]string)
@@ -103,32 +95,47 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 		})
 
 		Describe("cluster resources", func() {
-			var (
-				tenantClusterMapping map[string][]string
-			)
+			var tenantClusterMapping map[string][]string
 
-			BeforeAll(func() {
+			BeforeAll(func(ctx context.Context) {
 				// Create map to track which clusters belong to which tenants
 				tenantClusterMapping = make(map[string][]string)
 
 				// Create host type for testing
 				hostTypesClient := privatev1.NewHostTypesClient(tool.InternalView().AdminConn())
-				hostTypeId := "basic-sa-isolation-hosttype"
+				hostTypeId := fmt.Sprintf("sa-isolation-hosttype-%s", uuid.New())
 				_, err := hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 					Object: privatev1.HostType_builder{
 						Id: hostTypeId,
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
-				DeferCleanup(func() {
+				DeferCleanup(func(ctx context.Context) {
 					_, err := hostTypesClient.Delete(ctx, privatev1.HostTypesDeleteRequest_builder{
 						Id: hostTypeId,
 					}.Build())
 					Expect(err).ToNot(HaveOccurred())
 				})
 
+				// Create the tenants used by the tests:
+				tenantsClient := privatev1.NewOrganizationsClient(tool.InternalView().AdminConn())
+				for _, tenant := range ServiceAccountTenants {
+					_, err := tenantsClient.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+						Object: privatev1.Organization_builder{
+							Metadata: privatev1.Metadata_builder{
+								Name: tenant,
+							}.Build(),
+						}.Build(),
+					}.Build())
+					status, ok := grpcstatus.FromError(err)
+					if ok && status.Code() == grpccodes.AlreadyExists {
+						err = nil
+					}
+					Expect(err).ToNot(HaveOccurred())
+				}
+
 				// Create cluster template for testing
-				templateId := "basic-sa-isolation-template"
+				templateId := fmt.Sprintf("sa-isolation-template-%s", uuid.New())
 				templatesClient := privatev1.NewClusterTemplatesClient(tool.InternalView().AdminConn())
 				_, err = templatesClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 					Object: privatev1.ClusterTemplate_builder{
@@ -142,7 +149,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
-				DeferCleanup(func() {
+				DeferCleanup(func(ctx context.Context) {
 					_, err := templatesClient.Delete(ctx, privatev1.ClusterTemplatesDeleteRequest_builder{
 						Id: templateId,
 					}.Build())
@@ -167,14 +174,17 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					Expect(err).ToNot(HaveOccurred())
 					clusterObject := createResponse.GetObject()
 
-					DeferCleanup(func() { deleteCluster(ctx, clusterObject.GetId()) })
+					DeferCleanup(func(ctx context.Context) {
+						err := deleteCluster(ctx, clusterObject.GetId())
+						Expect(err).ToNot(HaveOccurred())
+					})
 
 					// Populate map to track which clusters belong to which tenants
 					tenantClusterMapping[tenant] = append(tenantClusterMapping[tenant], clusterObject.GetId())
 				}
 			})
 
-			It("shared within the same tenant", func() {
+			It("shared within the same tenant", func(ctx context.Context) {
 				// List clusters for each user
 				for user, tenant := range ServiceAccountTenants {
 					tokenSource, err := tool.makeKubernetesTokenSource(ctx, user, tenant)
@@ -193,7 +203,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				}
 			})
 
-			It("isolated between tenants", func() {
+			It("isolated between tenants", func(ctx context.Context) {
 				// List clusters for each user
 				for user, tenant := range ServiceAccountTenants {
 					tokenSource, err := tool.makeKubernetesTokenSource(ctx, user, tenant)
@@ -216,7 +226,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				}
 			})
 
-			It("assigned the correct tenant after creation", func() {
+			It("assigned the correct tenant after creation", func(ctx context.Context) {
 				for tenant, clusters := range tenantClusterMapping {
 					for _, cluster := range clusters {
 						clustersClient := privatev1.NewClustersClient(tool.InternalView().AdminConn())
@@ -232,7 +242,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 			DescribeTable(
 				"cross-tenant",
-				func(operation func(client publicv1.ClustersClient, clusterID string) error) {
+				func(ctx context.Context, operation func(ctx context.Context, client publicv1.ClustersClient, clusterID string) error) {
 					for clusterTenant, clusters := range tenantClusterMapping {
 						for user, userTenant := range ServiceAccountTenants {
 							// Skip if cluster is owned by the same tenant
@@ -248,7 +258,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 							clustersClient := publicv1.NewClustersClient(conn)
 
 							for _, cluster := range clusters {
-								err := operation(clustersClient, cluster)
+								err := operation(ctx, clustersClient, cluster)
 								Expect(err).To(HaveOccurred())
 								status, ok := grpcstatus.FromError(err)
 								Expect(ok).To(BeTrue())
@@ -258,39 +268,40 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					}
 
 				},
-				Entry("deletion is not allowed", func(client publicv1.ClustersClient, clusterID string) error {
-					_, err := client.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
-						Id: clusterID,
-					}.Build())
-
-					return err
-				}),
-				Entry("update is not allowed", func(client publicv1.ClustersClient, clusterID string) error {
-					_, err := client.Update(ctx, publicv1.ClustersUpdateRequest_builder{
-						Object: publicv1.Cluster_builder{
+				Entry(
+					"Deletion is not allowed",
+					func(ctx context.Context, client publicv1.ClustersClient, clusterID string) error {
+						_, err := client.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
 							Id: clusterID,
-							Spec: publicv1.ClusterSpec_builder{
-								Template: "cross-tenant-update-template",
-							}.Build(),
-						}.Build(),
-					}.Build())
+						}.Build())
 
-					return err
-				}),
+						return err
+					},
+				),
+				Entry(
+					"Update is not allowed",
+					func(ctx context.Context, client publicv1.ClustersClient, clusterID string) error {
+						_, err := client.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+							Object: publicv1.Cluster_builder{
+								Id: clusterID,
+								Spec: publicv1.ClusterSpec_builder{
+									Template: "cross-tenant-update-template",
+								}.Build(),
+							}.Build(),
+						}.Build())
+
+						return err
+					},
+				),
 			)
 		})
 
 	})
 
 	Describe("OIDC tenants", func() {
-		var (
-			tenantUserMapping map[string][]string
-			ctx               context.Context
-		)
+		var tenantUserMapping map[string][]string
 
-		BeforeAll(func() {
-			ctx = context.Background()
-
+		BeforeAll(func(ctx context.Context) {
 			// Create map to track which users belong to which tenants
 			tenantUserMapping = make(map[string][]string)
 
@@ -302,6 +313,23 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					tenantUserMapping[tenant] = append(tenantUserMapping[tenant], user)
 				}
 			}
+
+			// Create the tenants used by the tests:
+			tenantsClient := privatev1.NewOrganizationsClient(tool.InternalView().AdminConn())
+			for tenant := range tenantUserMapping {
+				_, err := tenantsClient.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+					Object: privatev1.Organization_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: tenant,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				status, ok := grpcstatus.FromError(err)
+				if ok && status.Code() == grpccodes.AlreadyExists {
+					err = nil
+				}
+				Expect(err).ToNot(HaveOccurred())
+			}
 		})
 
 		Describe("cluster resources", func() {
@@ -310,7 +338,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				clusterTenantMapping map[string][]string
 			)
 
-			BeforeAll(func() {
+			BeforeAll(func(ctx context.Context) {
 				// Create map to track which clusters belong to which tenants
 				tenantClusterMapping = make(map[string][]string)
 
@@ -318,7 +346,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				clusterTenantMapping = make(map[string][]string)
 
 				// Create host type for testing
-				hostTypeId := "basic-oidc-isolation-hosttype"
+				hostTypeId := fmt.Sprintf("oidc-isolation-hosttype-%s", uuid.New())
 				hostTypesClient := privatev1.NewHostTypesClient(tool.InternalView().AdminConn())
 				_, err := hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 					Object: privatev1.HostType_builder{
@@ -326,7 +354,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
-				DeferCleanup(func() {
+				DeferCleanup(func(ctx context.Context) {
 					_, err := hostTypesClient.Delete(ctx, privatev1.HostTypesDeleteRequest_builder{
 						Id: hostTypeId,
 					}.Build())
@@ -334,7 +362,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				})
 
 				// Create cluster template for testing
-				templateId := "basic-oidc-isolation-template"
+				templateId := fmt.Sprintf("oidc-isolation-template-%s", uuid.New())
 				templatesClient := privatev1.NewClusterTemplatesClient(tool.InternalView().AdminConn())
 				_, err = templatesClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 					Object: privatev1.ClusterTemplate_builder{
@@ -348,7 +376,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
-				DeferCleanup(func() {
+				DeferCleanup(func(ctx context.Context) {
 					_, err := templatesClient.Delete(ctx, privatev1.ClusterTemplatesDeleteRequest_builder{
 						Id: templateId,
 					}.Build())
@@ -373,7 +401,10 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					Expect(err).ToNot(HaveOccurred())
 					clusterObject := createResponse.GetObject()
 
-					DeferCleanup(func() { deleteCluster(ctx, clusterObject.GetId()) })
+					DeferCleanup(func(ctx context.Context) {
+						err := deleteCluster(ctx, clusterObject.GetId())
+						Expect(err).ToNot(HaveOccurred())
+					})
 
 					// Each object now has a single tenant; record the actual assigned tenant:
 					tenant := clusterObject.GetMetadata().GetTenant()
@@ -383,7 +414,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				}
 			})
 
-			It("shared within the same tenant", func() {
+			It("shared within the same tenant", func(ctx context.Context) {
 				// List clusters for each user
 				for user, tenants := range OIDCTenants {
 					tokenSource, err := tool.makeKeycloakTokenSource(ctx, user, usersPassword)
@@ -403,7 +434,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				}
 			})
 
-			It("isolated between tenants", func() {
+			It("isolated between tenants", func(ctx context.Context) {
 				// List clusters for each user
 				for user, tenants := range OIDCTenants {
 					tokenSource, err := tool.makeKeycloakTokenSource(ctx, user, usersPassword)

@@ -37,6 +37,18 @@ var _ = Describe("Generic DAO events", func() {
 		tenancy *auth.MockTenancyLogic
 	)
 
+	// runWithTx starts a transaction, runs the given function using it, and ends the transaction when it finishes.
+	runWithTx := func(task func(ctx context.Context)) {
+		tx, err := tm.Begin(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() {
+			err := tm.End(ctx, tx)
+			Expect(err).ToNot(HaveOccurred())
+		}()
+		taskCtx := database.TxIntoContext(ctx, tx)
+		task(taskCtx)
+	}
+
 	BeforeEach(func() {
 		var err error
 
@@ -69,17 +81,25 @@ var _ = Describe("Generic DAO events", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		// Create the tenant used in the tests:
+		tenantsDao, err := NewGenericDAO[*privatev1.Organization]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		runWithTx(func(ctx context.Context) {
+			_, err = tenantsDao.Create().
+				SetObject(&privatev1.Organization{
+					Id: "my-tenant",
+					Metadata: privatev1.Metadata_builder{
+						Name:   "my-tenant",
+						Tenant: "my-tenant",
+					}.Build(),
+				}).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		})
 	})
-
-	// runWithTx starts a transaction, runs the given function using it, and ends the transaction when it finishes.
-	runWithTx := func(task func(ctx context.Context)) {
-		tx, err := tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		taskCtx := database.TxIntoContext(ctx, tx)
-		task(taskCtx)
-		err = tm.End(ctx, tx)
-		Expect(err).ToNot(HaveOccurred())
-	}
 
 	It("Runs callback for create event", func() {
 		var event *Event

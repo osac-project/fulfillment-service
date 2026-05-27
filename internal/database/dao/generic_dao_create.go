@@ -17,7 +17,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -161,12 +163,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		)
 	}()
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-			err = &ErrAlreadyExists{
-				ID: id,
-			}
-		}
+		err = r.translateError(ctx, id, tenant, err)
 		return
 	}
 	created := r.cloneObject(r.object)
@@ -198,6 +195,35 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		object: created,
 	}
 	return
+}
+
+// translateError translates raw PostgreSQL errors into domain-specific error types.
+func (r *CreateRequest[O]) translateError(ctx context.Context, id, tenant string, err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	switch pgErr.Code {
+	case pgerrcode.UniqueViolation:
+		return &ErrAlreadyExists{
+			ID: id,
+		}
+	case pgerrcode.ForeignKeyViolation:
+		switch {
+		case strings.HasSuffix(pgErr.ConstraintName, "_tenant_fk"):
+			return &ErrReference{
+				Reason: fmt.Sprintf("tenant '%s' doesn't exist", tenant),
+			}
+		default:
+			r.dao.logger.WarnContext(
+				ctx,
+				"Unknown foreign key violation",
+				slog.String("constraint", pgErr.ConstraintName),
+			)
+			return &ErrReference{}
+		}
+	}
+	return err
 }
 
 // CreateResponse represents the result of a create operation.

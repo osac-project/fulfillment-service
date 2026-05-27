@@ -67,6 +67,26 @@ var _ = Describe("Private public IP attachments server", func() {
 		})
 		ctx = database.TxIntoContext(ctx, tx)
 
+		// Create the tenants used in the tests:
+		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		createTenant := func(name string) {
+			_, err = tenantsDao.Create().
+				SetObject(privatev1.Organization_builder{
+					Id: name,
+					Metadata: privatev1.Metadata_builder{
+						Name:   name,
+						Tenant: name,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("other-tenant")
+
 		publicIPPoolDao, err = dao.NewGenericDAO[*privatev1.PublicIPPool]().
 			SetLogger(logger).
 			SetTenancyLogic(tenancy).
@@ -88,7 +108,7 @@ var _ = Describe("Private public IP attachments server", func() {
 		poolResp, err := publicIPPoolDao.Create().SetObject(
 			privatev1.PublicIPPool_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: "shared",
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.PublicIPPoolSpec_builder{
 					Cidrs: []string{"10.0.0.0/24"},

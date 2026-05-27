@@ -417,6 +417,12 @@ func (t *Tool) Setup(ctx context.Context) error {
 		return err
 	}
 
+	// Create the test tenants:
+	err = t.createTenants(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Create the test user service accounts:
 	err = t.createUserServiceAccounts(ctx)
 	if err != nil {
@@ -1746,6 +1752,29 @@ func (t *Tool) createClients(ctx context.Context) error {
 	return nil
 }
 
+// createTenants creates the tenants that are used by the tests.
+func (t *Tool) createTenants(ctx context.Context) error {
+	// Currently we map Keycloak groups to tenants, so we need to have a tenant for each group. In the tests we only
+	// have two tenants, one for regular users and one for system administrators. System administrators belong to
+	// the 'system' tenant, which is built-in and doesn't need to be explicitly created, so we only need to create
+	// the tenant for regular users. Tests may create additional tenants as needed.
+	tenantsClient := privatev1.NewOrganizationsClient(t.internalView.adminConn)
+	_, err := tenantsClient.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		Object: privatev1.Organization_builder{
+			Id: usersGroup,
+			Metadata: privatev1.Metadata_builder{
+				Name:   usersGroup,
+				Tenant: usersGroup,
+			}.Build(),
+		}.Build(),
+	}.Build())
+	status, ok := grpcstatus.FromError(err)
+	if ok && status.Code() == grpccodes.AlreadyExists {
+		err = nil
+	}
+	return err
+}
+
 func (t *Tool) createUserServiceAccounts(ctx context.Context) error {
 	var tenantNamespaces []string
 	for user, group := range ServiceAccountTenants {
@@ -2211,7 +2240,6 @@ const emergencyServiceAccount = "admin"
 const (
 	adminUsername  = "admin"
 	adminsPassword = "password"
-	adminsGroup    = "admins"
 )
 
 // Details of the Keycloak regular user:
@@ -2219,6 +2247,7 @@ const (
 	userUsername  = "user"
 	usersPassword = "password"
 	usersGroup    = "users"
+	adminsGroup   = "admins"
 )
 
 // Details of the Keycloak service accounts:

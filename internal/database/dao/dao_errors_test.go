@@ -130,4 +130,25 @@ var _ = Describe("Errors", func() {
 			Expect(err.Error()).To(BeEmpty())
 		})
 	})
+
+	Describe("ErrReference", func() {
+		It("Implements the error interface", func() {
+			var err error = &ErrReference{
+				Reason: "tenant 'my-tenant' doesn't exist",
+			}
+			Expect(err).ToNot(BeNil())
+		})
+
+		It("Returns the reason field as the error message", func() {
+			err := &ErrReference{
+				Reason: "tenant 'my-tenant' doesn't exist",
+			}
+			Expect(err.Error()).To(Equal("tenant 'my-tenant' doesn't exist"))
+		})
+
+		It("Returns general message when reason is empty", func() {
+			err := &ErrReference{}
+			Expect(err.Error()).To(Equal("some reference is invalid"))
+		})
+	})
 })

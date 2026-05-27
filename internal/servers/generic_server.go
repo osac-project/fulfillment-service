@@ -461,6 +461,10 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 		if errors.As(err, &deniedErr) {
 			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
 		}
+		var referenceErr *dao.ErrReference
+		if errors.As(err, &referenceErr) {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument, "%s", referenceErr.Error())
+		}
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to create",
@@ -610,6 +614,10 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 			var alreadyExistsErr *dao.ErrAlreadyExists
 			if errors.As(err, &alreadyExistsErr) {
 				return grpcstatus.Errorf(grpccodes.AlreadyExists, "%s", alreadyExistsErr.Error())
+			}
+			var referenceErr *dao.ErrReference
+			if errors.As(err, &referenceErr) {
+				return grpcstatus.Errorf(grpccodes.FailedPrecondition, "%s", referenceErr.Error())
 			}
 			var deniedErr *dao.ErrDenied
 			if errors.As(err, &deniedErr) {

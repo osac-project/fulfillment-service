@@ -152,7 +152,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		return
 	}
 	if err != nil {
-		err = r.translateError(ctx, id, err)
+		err = r.translateError(ctx, id, tenant, err)
 		return
 	}
 
@@ -216,7 +216,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 }
 
 // translateError translates raw PostgreSQL errors into domain-specific error types.
-func (r *UpdateRequest[O]) translateError(ctx context.Context, id string, err error) error {
+func (r *UpdateRequest[O]) translateError(ctx context.Context, id, tenant string, err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		return err
@@ -225,6 +225,21 @@ func (r *UpdateRequest[O]) translateError(ctx context.Context, id string, err er
 	case pgerrcode.UniqueViolation:
 		return &ErrAlreadyExists{
 			ID: id,
+		}
+	case pgerrcode.ForeignKeyViolation:
+		switch {
+		case strings.HasSuffix(pgErr.ConstraintName, "_tenant_fk"):
+			return &ErrReference{
+				Reason: fmt.Sprintf("tenant '%s' doesn't exist", tenant),
+			}
+		default:
+			r.dao.logger.WarnContext(
+				ctx,
+				"Unknown foreign key violation",
+				slog.String("constraint", pgErr.ConstraintName),
+				slog.Any("error", err),
+			)
+			return &ErrReference{}
 		}
 	case errImmutableCode:
 		if pgErr.Detail == "" {

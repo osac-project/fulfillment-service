@@ -20,8 +20,10 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Public projects server", func() {
@@ -60,6 +62,26 @@ var _ = Describe("Public projects server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
+
+		// Create the tenants used in the tests:
+		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		createTenant := func(name string) {
+			_, err = tenantsDao.Create().
+				SetObject(privatev1.Organization_builder{
+					Id: name,
+					Metadata: privatev1.Metadata_builder{
+						Name:   name,
+						Tenant: name,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("my-tenant")
 
 		// Create public server:
 		publicServer, err = NewProjectsServer().
@@ -107,7 +129,7 @@ var _ = Describe("Public projects server", func() {
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
 						Name:   "my-project",
-						Tenant: "my-org",
+						Tenant: "my-tenant",
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title: "My Project",
@@ -132,7 +154,7 @@ var _ = Describe("Public projects server", func() {
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
 						Name:   "my-project",
-						Tenant: "my-org",
+						Tenant: "my-tenant",
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title: "My Project",
@@ -157,7 +179,7 @@ var _ = Describe("Public projects server", func() {
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
 						Name:   "new-project",
-						Tenant: "my-org",
+						Tenant: "my-tenant",
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title:       "New Project",
@@ -180,7 +202,7 @@ var _ = Describe("Public projects server", func() {
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
 						Name:   "my-project",
-						Tenant: "my-org",
+						Tenant: "my-tenant",
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title: "My Project",
@@ -213,7 +235,7 @@ var _ = Describe("Public projects server", func() {
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
 						Name:   "my-project",
-						Tenant: "my-org",
+						Tenant: "my-tenant",
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title: "My Project",
@@ -235,7 +257,7 @@ var _ = Describe("Public projects server", func() {
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
 						Name:   "parent",
-						Tenant: "my-org",
+						Tenant: "my-tenant",
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title: "Parent",
@@ -249,7 +271,7 @@ var _ = Describe("Public projects server", func() {
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
 						Name:   "child",
-						Tenant: "my-org",
+						Tenant: "my-tenant",
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title:  "Child",

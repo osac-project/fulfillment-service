@@ -70,6 +70,26 @@ var _ = Describe("Tenancy logic", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
+
+		// Create the tenants used in the tests:
+		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		createTenant := func(name string) {
+			_, err = tenantsDao.Create().
+				SetObject(privatev1.Organization_builder{
+					Id: name,
+					Metadata: privatev1.Metadata_builder{
+						Name:   name,
+						Tenant: name,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("my-tenant")
 	})
 
 	It("Returns tenant in metadata when object is created", func() {
@@ -318,5 +338,67 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
 		Expect(status.Message()).To(Equal("tenant 'your-tenant' doesn't exist"))
+	})
+
+	It("Rejects object creation when tenant is visible to the user, but doesn't exist in the database", func() {
+		// Create a tenancy logic that returns visible tenants:
+		tenancy := auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
+			Return(auth.AllTenants, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return(auth.SharedTenant, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(auth.AllTenants, nil).
+			AnyTimes()
+
+		// Create the server:
+		server, err := NewClustersServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetScheme(testScheme).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create the template using the DAO:
+		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		_, err = templatesDao.Create().
+			SetObject(
+				privatev1.ClusterTemplate_builder{
+					Id:          "my-template",
+					Title:       "My template",
+					Description: "My template",
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
+				}.Build(),
+			).
+			Do(ctx)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Attempt to create an object and verify that it fails:
+		response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Metadata: publicv1.Metadata_builder{
+					Name:   "my-cluster",
+					Tenant: "does-not-exist",
+				}.Build(),
+				Spec: publicv1.ClusterSpec_builder{
+					Template: "my-template",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(response).To(BeNil())
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		Expect(status.Message()).To(Equal("tenant 'does-not-exist' doesn't exist"))
 	})
 })
