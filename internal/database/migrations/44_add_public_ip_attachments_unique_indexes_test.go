@@ -14,12 +14,14 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 )
 
 var _ = DescribeMigration("Add unique indexes for public IP attachments", func() {
-	insert := func(id, publicIP, computeInstance string) error {
+	insert := func(ctx context.Context, id, publicIP, computeInstance string) error {
 		_, err := conn.Exec(
 			ctx,
 			`insert into public_ip_attachments (id, data) values ($1, $2)`,
@@ -29,7 +31,7 @@ var _ = DescribeMigration("Add unique indexes for public IP attachments", func()
 		return err
 	}
 
-	softDelete := func(id string) {
+	softDelete := func(ctx context.Context, id string) {
 		_, err := conn.Exec(
 			ctx,
 			`update public_ip_attachments set deletion_timestamp = now() where id = $1`,
@@ -38,62 +40,62 @@ var _ = DescribeMigration("Add unique indexes for public IP attachments", func()
 		Expect(err).ToNot(HaveOccurred())
 	}
 
-	It("Rejects duplicate active public IP", func() {
-		err := insert("a1", "pip-1", "ci-1")
+	It("Rejects duplicate active public IP", func(ctx context.Context) {
+		err := insert(ctx, "a1", "pip-1", "ci-1")
 		Expect(err).ToNot(HaveOccurred())
 
 		err = tool.Migrate(ctx, 44)
 		Expect(err).ToNot(HaveOccurred())
 
-		err = insert("a2", "pip-1", "ci-2")
+		err = insert(ctx, "a2", "pip-1", "ci-2")
 		Expect(err).To(HaveOccurred())
 	})
 
-	It("Rejects duplicate active compute instance", func() {
-		err := insert("a1", "pip-1", "ci-1")
+	It("Rejects duplicate active compute instance", func(ctx context.Context) {
+		err := insert(ctx, "a1", "pip-1", "ci-1")
 		Expect(err).ToNot(HaveOccurred())
 
 		err = tool.Migrate(ctx, 44)
 		Expect(err).ToNot(HaveOccurred())
 
-		err = insert("a2", "pip-2", "ci-1")
+		err = insert(ctx, "a2", "pip-2", "ci-1")
 		Expect(err).To(HaveOccurred())
 	})
 
-	It("Allows same public IP after soft delete", func() {
-		err := insert("a1", "pip-1", "ci-1")
+	It("Allows same public IP after soft delete", func(ctx context.Context) {
+		err := insert(ctx, "a1", "pip-1", "ci-1")
 		Expect(err).ToNot(HaveOccurred())
 
 		err = tool.Migrate(ctx, 44)
 		Expect(err).ToNot(HaveOccurred())
 
-		softDelete("a1")
+		softDelete(ctx, "a1")
 
-		err = insert("a2", "pip-1", "ci-2")
+		err = insert(ctx, "a2", "pip-1", "ci-2")
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("Allows same compute instance after soft delete", func() {
-		err := insert("a1", "pip-1", "ci-1")
+	It("Allows same compute instance after soft delete", func(ctx context.Context) {
+		err := insert(ctx, "a1", "pip-1", "ci-1")
 		Expect(err).ToNot(HaveOccurred())
 
 		err = tool.Migrate(ctx, 44)
 		Expect(err).ToNot(HaveOccurred())
 
-		softDelete("a1")
+		softDelete(ctx, "a1")
 
-		err = insert("a2", "pip-2", "ci-1")
+		err = insert(ctx, "a2", "pip-2", "ci-1")
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("Allows different public IPs and compute instances", func() {
-		err := insert("a1", "pip-1", "ci-1")
+	It("Allows different public IPs and compute instances", func(ctx context.Context) {
+		err := insert(ctx, "a1", "pip-1", "ci-1")
 		Expect(err).ToNot(HaveOccurred())
 
 		err = tool.Migrate(ctx, 44)
 		Expect(err).ToNot(HaveOccurred())
 
-		err = insert("a2", "pip-2", "ci-2")
+		err = insert(ctx, "a2", "pip-2", "ci-2")
 		Expect(err).ToNot(HaveOccurred())
 	})
 })

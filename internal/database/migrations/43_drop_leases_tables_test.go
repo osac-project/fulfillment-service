@@ -14,12 +14,14 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 )
 
 var _ = DescribeMigration("Drop leases tables", func() {
-	It("Drops the leases table", func() {
+	It("Drops the leases table", func(ctx context.Context) {
 		// Verify the table exists before the migration:
 		var exists bool
 		err := conn.QueryRow(ctx,
@@ -40,7 +42,7 @@ var _ = DescribeMigration("Drop leases tables", func() {
 		Expect(exists).To(BeFalse())
 	})
 
-	It("Drops the archived_leases table", func() {
+	It("Drops the archived_leases table", func(ctx context.Context) {
 		// Verify the table exists before the migration:
 		var exists bool
 		err := conn.QueryRow(ctx,

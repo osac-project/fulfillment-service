@@ -14,12 +14,14 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 )
 
 var _ = DescribeMigration("Fix tables", func() {
-	It("Renames creators to creator in archived_public_ip_attachments", func() {
+	It("Renames creators to creator in archived_public_ip_attachments", func(ctx context.Context) {
 		// Insert using the old plural column names that exist before this migration:
 		_, err := conn.Exec(
 			ctx,
@@ -39,7 +41,7 @@ var _ = DescribeMigration("Fix tables", func() {
 		Expect(creator).To(Equal("user-a"))
 	})
 
-	It("Renames tenants to tenant in archived_public_ip_attachments", func() {
+	It("Renames tenants to tenant in archived_public_ip_attachments", func(ctx context.Context) {
 		// Insert using the old plural column names that exist before this migration:
 		_, err := conn.Exec(
 			ctx,
@@ -59,7 +61,7 @@ var _ = DescribeMigration("Fix tables", func() {
 		Expect(tenant).To(Equal("my-tenant"))
 	})
 
-	It("Drops finalizers from archived_organizations", func() {
+	It("Drops finalizers from archived_organizations", func(ctx context.Context) {
 		err := tool.Migrate(ctx, 45)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -73,7 +75,7 @@ var _ = DescribeMigration("Fix tables", func() {
 		Expect(count).To(Equal(0))
 	})
 
-	It("Drops finalizers from archived_users", func() {
+	It("Drops finalizers from archived_users", func(ctx context.Context) {
 		err := tool.Migrate(ctx, 45)
 		Expect(err).ToNot(HaveOccurred())
 

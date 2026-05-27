@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +23,7 @@ import (
 var _ = DescribeMigration("Rename tenants to tenant", func() {
 	DescribeTable(
 		"Migrates the tenants array to a single tenant value",
-		func(tenants []string, expectedTenant string) {
+		func(ctx context.Context, tenants []string, expectedTenant string) {
 			// Insert a row with the old tenants array column:
 			_, err := conn.Exec(
 				ctx,

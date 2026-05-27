@@ -14,12 +14,14 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 )
 
 var _ = DescribeMigration("Add immutable column trigger", func() {
-	It("Creates the 'check_immutable_columns' function", func() {
+	It("Creates the 'check_immutable_columns' function", func(ctx context.Context) {
 		err := tool.Migrate(ctx, 46)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -37,7 +39,7 @@ var _ = DescribeMigration("Add immutable column trigger", func() {
 		Expect(count).To(Equal(1))
 	})
 
-	It("Adds a trigger to the organizations table", func() {
+	It("Adds a trigger to the organizations table", func(ctx context.Context) {
 		err := tool.Migrate(ctx, 46)
 		Expect(err).ToNot(HaveOccurred())
 

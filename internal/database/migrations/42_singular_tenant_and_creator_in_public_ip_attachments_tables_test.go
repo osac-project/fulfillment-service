@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +23,7 @@ import (
 var _ = DescribeMigration("Replace tenants array with single tenant in public ip attachments tables", func() {
 	DescribeTable(
 		"Migrates the tenants array to a single tenant value in public ip attachments tables",
-		func(tenants []string, expectedTenant string) {
+		func(ctx context.Context, tenants []string, expectedTenant string) {
 			// Insert a row with the old creators array column:
 			_, err := conn.Exec(
 				ctx,
@@ -65,7 +67,7 @@ var _ = DescribeMigration("Replace tenants array with single tenant in public ip
 var _ = DescribeMigration("Replace creators array with single creator in public ip attachments tables", func() {
 	DescribeTable(
 		"Migrates the creators array to a single creator value in public ip attachments tables",
-		func(creators []string, expectedCreator string) {
+		func(ctx context.Context, creators []string, expectedCreator string) {
 			// Insert a row with the old creators array column:
 			_, err := conn.Exec(
 				ctx,

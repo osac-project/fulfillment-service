@@ -13,6 +13,8 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 )
@@ -20,7 +22,7 @@ import (
 var _ = DescribeMigration("Add 'spec' and 'status' fields to hubs", func() {
 	DescribeTable(
 		"Data migration",
-		func(original, expected string) {
+		func(ctx context.Context, original, expected string) {
 			// Create a row with the original data:
 			_, err := conn.Exec(
 				ctx,

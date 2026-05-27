@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +23,7 @@ import (
 var _ = DescribeMigration("Rename creators to creator", func() {
 	DescribeTable(
 		"Migrates the creators array to a single creator value",
-		func(creators []string, expectedCreator string) {
+		func(ctx context.Context, creators []string, expectedCreator string) {
 			// Insert a row with the old creators array column:
 			_, err := conn.Exec(
 				ctx,

@@ -14,12 +14,14 @@ language governing permissions and limitations under the License.
 package migrations
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 )
 
 var _ = DescribeMigration("Create projects tables", func() {
-	It("Creates the projects table", func() {
+	It("Creates the projects table", func(ctx context.Context) {
 		// Run the migration:
 		err := tool.Migrate(ctx, 47)
 		Expect(err).ToNot(HaveOccurred())
@@ -50,7 +52,7 @@ var _ = DescribeMigration("Create projects tables", func() {
 		Expect(exists).To(BeTrue())
 	})
 
-	It("Can insert and query a project", func() {
+	It("Can insert and query a project", func(ctx context.Context) {
 		// Run the migration:
 		err := tool.Migrate(ctx, 47)
 		Expect(err).ToNot(HaveOccurred())

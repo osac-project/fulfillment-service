@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"strings"
 	gotesting "testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
@@ -42,7 +41,6 @@ func TestMigrations(t *gotesting.T) {
 
 // Logger and database objects used by the tests:
 var (
-	ctx    context.Context
 	logger *slog.Logger
 	server *database.Container
 	db     *database.Instance
@@ -50,7 +48,7 @@ var (
 	conn   *pgx.Conn
 )
 
-var _ = BeforeSuite(func() {
+var _ = BeforeSuite(func(ctx context.Context) {
 	var err error
 
 	// Create the logger:
@@ -61,8 +59,6 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	// Create the database server:
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	DeferCleanup(cancel)
 	server, err = database.NewContainer().
 		SetLogger(logger).
 		Build()
@@ -70,8 +66,6 @@ var _ = BeforeSuite(func() {
 	err = server.Start(ctx)
 	Expect(err).ToNot(HaveOccurred())
 	DeferCleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
 		err = server.Stop(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
@@ -143,11 +137,8 @@ func DescribeMigration(description string, body func()) bool {
 			previousNumber = migrationNumber(previousFile)
 		})
 
-		BeforeEach(func() {
+		BeforeEach(func(ctx context.Context) {
 			var err error
-
-			// Create a context:
-			ctx = context.Background()
 
 			// Create the database migrated up to the previous migration:
 			db, err = server.NewInstance().
