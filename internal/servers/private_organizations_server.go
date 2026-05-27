@@ -19,9 +19,12 @@ import (
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
@@ -39,6 +42,7 @@ type PrivateOrganizationsServer struct {
 	privatev1.UnimplementedOrganizationsServer
 	logger  *slog.Logger
 	generic *GenericServer[*privatev1.Organization]
+	dao     *dao.GenericDAO[*privatev1.Organization]
 }
 
 func NewPrivateOrganizationsServer() *PrivateOrganizationsServerBuilder {
@@ -96,10 +100,21 @@ func (b *PrivateOrganizationsServerBuilder) Build() (result *PrivateOrganization
 		return
 	}
 
+	// Create the DAO:
+	dao, err := dao.NewGenericDAO[*privatev1.Organization]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	// Create and populate the object:
 	result = &PrivateOrganizationsServer{
 		logger:  b.logger,
 		generic: generic,
+		dao:     dao,
 	}
 	return
 }
@@ -118,6 +133,45 @@ func (s *PrivateOrganizationsServer) Get(ctx context.Context,
 
 func (s *PrivateOrganizationsServer) Create(ctx context.Context,
 	request *privatev1.OrganizationsCreateRequest) (response *privatev1.OrganizationsCreateResponse, err error) {
+	// For tenants the name is mandatory:
+	object := request.GetObject()
+	metadata := object.GetMetadata()
+	name := metadata.GetName()
+	if name == "" {
+		err = grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'metadata.name' is mandatory",
+		)
+		return
+	}
+
+	// For tenants the identifier must be empty or equal to the name. If it is empty it will be set to the name.
+	id := object.GetId()
+	if id != "" && id != name {
+		err = grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'id' must be empty or equal to field 'metadata.name'",
+		)
+		return
+	}
+	if id == "" {
+		object.SetId(name)
+	}
+
+	// The tenant of a tenant must be itself, so either empty or equal to the name. If it is empty it will be set to
+	// the name.
+	tenant := metadata.GetTenant()
+	if tenant != "" && tenant != name {
+		err = grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'metadata.tenant' must be empty or equal to field 'metadata.name'",
+		)
+		return
+	}
+	if tenant == "" {
+		metadata.SetTenant(name)
+	}
+
 	err = s.generic.Create(ctx, request, &response)
 	return
 }

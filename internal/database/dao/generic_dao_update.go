@@ -15,8 +15,10 @@ package dao
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -150,12 +152,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		return
 	}
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-			err = &ErrAlreadyExists{
-				ID: id,
-			}
-		}
+		err = r.translateError(ctx, id, err)
 		return
 	}
 
@@ -216,6 +213,68 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		object: object,
 	}
 	return
+}
+
+// translateError translates raw PostgreSQL errors into domain-specific error types.
+func (r *UpdateRequest[O]) translateError(ctx context.Context, id string, err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	switch pgErr.Code {
+	case pgerrcode.UniqueViolation:
+		return &ErrAlreadyExists{
+			ID: id,
+		}
+	case errImmutableCode:
+		if pgErr.Detail == "" {
+			r.dao.logger.WarnContext(
+				ctx,
+				"Empty detail in immutable column trigger error",
+				slog.Any("error", err),
+			)
+			return &ErrImmutable{}
+		}
+		var columns []string
+		jsonErr := json.Unmarshal([]byte(pgErr.Detail), &columns)
+		if jsonErr != nil {
+			r.dao.logger.WarnContext(
+				ctx,
+				"Failed to parse immutable column names from trigger detail",
+				slog.Any("error", err),
+			)
+			return &ErrImmutable{}
+		}
+		if len(columns) == 0 {
+			r.dao.logger.WarnContext(
+				ctx,
+				"Empty columns in immutable column trigger error",
+				slog.Any("error", err),
+			)
+			return &ErrImmutable{}
+		}
+		var fields []string
+		for _, column := range columns {
+			switch column {
+			case "name":
+				fields = append(fields, "metadata.name")
+			case "tenant":
+				fields = append(fields, "metadata.tenant")
+			default:
+				r.dao.logger.WarnContext(
+					ctx,
+					"Unknown immutable column in trigger detail",
+					slog.String("column", column),
+					slog.Any("error", err),
+				)
+			}
+		}
+		return &ErrImmutable{
+			Fields: fields,
+		}
+	default:
+		return err
+	}
 }
 
 // UpdateResponse represents the result of an update operation.

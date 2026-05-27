@@ -18,16 +18,21 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
-var _ = Describe("Organizations Server (Public)", func() {
+var _ = Describe("Public organizations server", func() {
 	var (
-		ctx          context.Context
-		tx           database.Tx
-		publicServer *OrganizationsServer
+		ctx           context.Context
+		tx            database.Tx
+		privateServer *PrivateOrganizationsServer
+		publicServer  *OrganizationsServer
 	)
 
 	BeforeEach(func() {
@@ -60,7 +65,15 @@ var _ = Describe("Organizations Server (Public)", func() {
 		})
 		ctx = database.TxIntoContext(ctx, tx)
 
-		// Create public server (without notifier for testing):
+		// Create the private server:
+		privateServer, err = NewPrivateOrganizationsServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create public server:
 		publicServer, err = NewOrganizationsServer().
 			SetLogger(logger).
 			SetAttributionLogic(attribution).
@@ -100,137 +113,114 @@ var _ = Describe("Organizations Server (Public)", func() {
 	})
 
 	Describe("Behaviour", func() {
-		It("Creates an organization", func() {
-			// Create request:
-			request := &publicv1.OrganizationsCreateRequest{
-				Object: &publicv1.Organization{
-					Metadata: &publicv1.Metadata{
-						Name: "test-org",
-					},
-				},
-			}
-
-			// Create organization:
-			response, err := publicServer.Create(ctx, request)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response).ToNot(BeNil())
-			Expect(response.Object).ToNot(BeNil())
-			Expect(response.Object.Id).ToNot(BeEmpty())
-			Expect(response.Object.Metadata.Name).To(Equal("test-org"))
-		})
-
 		It("Lists organizations", func() {
-			// Create an organization first:
-			createReq := &publicv1.OrganizationsCreateRequest{
-				Object: &publicv1.Organization{
-					Metadata: &publicv1.Metadata{
-						Name: "test-org",
+			// Create the tenant using the private server, as that isn't implemented for the public server:
+			_, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+				Object: privatev1.Organization_builder{
+					Metadata: &privatev1.Metadata{
+						Name: "my-tenant",
 					},
-				},
-			}
-			_, err := publicServer.Create(ctx, createReq)
+				}.Build(),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
-			// List organizations:
-			listResp, err := publicServer.List(ctx, &publicv1.OrganizationsListRequest{})
+			// List tenants via the public server. It is important to use a filter to skip the builtin
+			// tenants.
+			listResponse, err := publicServer.List(ctx, publicv1.OrganizationsListRequest_builder{
+				Filter: proto.String("this.metadata.name == 'my-tenant'"),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(listResp.Size).To(Equal(int32(1)))
-			Expect(listResp.Items).To(HaveLen(1))
-			Expect(listResp.Items[0].Metadata.Name).To(Equal("test-org"))
+			Expect(listResponse.Size).To(Equal(int32(1)))
+			Expect(listResponse.Items).To(HaveLen(1))
+			Expect(listResponse.Items[0].Metadata.Name).To(Equal("my-tenant"))
 		})
 
-		It("Gets an organization by ID", func() {
-			// Create an organization:
-			createReq := &publicv1.OrganizationsCreateRequest{
-				Object: &publicv1.Organization{
-					Metadata: &publicv1.Metadata{
-						Name: "test-org",
+		It("Gets an organization by identifier", func() {
+			// Create the tenant using the private server, as that isn't implemented for the public server:
+			createResponse, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+				Object: privatev1.Organization_builder{
+					Metadata: &privatev1.Metadata{
+						Name: "my-tenant",
 					},
-				},
-			}
-			createResp, err := publicServer.Create(ctx, createReq)
+				}.Build(),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			id := object.GetId()
 
-			// Get the organization:
-			getResp, err := publicServer.Get(ctx, &publicv1.OrganizationsGetRequest{
-				Id: createResp.Object.Id,
-			})
+			// Get the organization via the public server:
+			getResponse, err := publicServer.Get(ctx, publicv1.OrganizationsGetRequest_builder{
+				Id: id,
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(getResp.Object.Id).To(Equal(createResp.Object.Id))
-			Expect(getResp.Object.Metadata.Name).To(Equal("test-org"))
+			Expect(getResponse.GetObject().GetId()).To(Equal(id))
+			Expect(getResponse.GetObject().GetMetadata().GetName()).To(Equal("my-tenant"))
 		})
 
-		It("Updates an organization", func() {
-			// Create an organization:
-			createReq := &publicv1.OrganizationsCreateRequest{
-				Object: &publicv1.Organization{
-					Metadata: &publicv1.Metadata{
-						Name: "test-org",
-					},
-				},
-			}
-			createResp, err := publicServer.Create(ctx, createReq)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Update the organization:
-			updateReq := &publicv1.OrganizationsUpdateRequest{
-				Object: &publicv1.Organization{
-					Id: createResp.Object.Id,
-					Metadata: &publicv1.Metadata{
-						Name: "updated-org",
-					},
-				},
-			}
-			updateResp, err := publicServer.Update(ctx, updateReq)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(updateResp.Object.Metadata.Name).To(Equal("updated-org"))
+		It("Can't create an organization, not implemented", func() {
+			// Try to create the organization via the public server. It should fail with an Unimplemented error.
+			_, err := publicServer.Create(ctx, publicv1.OrganizationsCreateRequest_builder{
+				Object: publicv1.Organization_builder{
+					Metadata: publicv1.Metadata_builder{
+						Name: "my-tenant",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.Unimplemented))
 		})
 
-		It("Deletes an organization", func() {
-			// Create an organization:
-			createReq := &publicv1.OrganizationsCreateRequest{
-				Object: &publicv1.Organization{
-					Metadata: &publicv1.Metadata{
-						Name: "test-org",
+		It("Can't update an organization, not implemented", func() {
+			// Create the tenant using the private server, as that isn't implemented for the public server:
+			createResponse, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+				Object: privatev1.Organization_builder{
+					Metadata: &privatev1.Metadata{
+						Name: "my-tenant",
 					},
-				},
-			}
-			createResp, err := publicServer.Create(ctx, createReq)
+				}.Build(),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			id := object.GetId()
 
-			// Delete the organization:
-			_, err = publicServer.Delete(ctx, &publicv1.OrganizationsDeleteRequest{
-				Id: createResp.Object.Id,
-			})
-			Expect(err).ToNot(HaveOccurred())
+			// Try to update the organization via the public server. It should fail with an Unimplemented error.
+			_, err = publicServer.Update(ctx, publicv1.OrganizationsUpdateRequest_builder{
+				Object: publicv1.Organization_builder{
+					Id: id,
+					Metadata: publicv1.Metadata_builder{
+						Name: "my-tenant",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.Unimplemented))
 		})
 
-		It("Properly maps public to private and back", func() {
-			// Create with public API:
-			createReq := &publicv1.OrganizationsCreateRequest{
-				Object: &publicv1.Organization{
-					Metadata: &publicv1.Metadata{
-						Name: "test-org",
-						Labels: map[string]string{
-							"env": "test",
-						},
-					},
-				},
-			}
-			createResp, err := publicServer.Create(ctx, createReq)
+		It("Can't delete an organization, not implemented", func() {
+			// Create the tenant using the private server, as that isn't implemented for the public server:
+			createResponse, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+				Object: privatev1.Organization_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-tenant",
+					}.Build(),
+				}.Build(),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			id := object.GetId()
 
-			// Verify response has public type:
-			Expect(createResp.Object).To(BeAssignableToTypeOf(&publicv1.Organization{}))
-			Expect(createResp.Object.Metadata.Labels).To(HaveKeyWithValue("env", "test"))
-
-			// Get and verify mapping:
-			getResp, err := publicServer.Get(ctx, &publicv1.OrganizationsGetRequest{
-				Id: createResp.Object.Id,
-			})
-			Expect(err).ToNot(HaveOccurred())
-			Expect(getResp.Object).To(BeAssignableToTypeOf(&publicv1.Organization{}))
-			Expect(getResp.Object.Metadata.Name).To(Equal("test-org"))
+			// Try to delete the organization via the public server. It should fail with an Unimplemented error.
+			_, err = publicServer.Delete(ctx, publicv1.OrganizationsDeleteRequest_builder{
+				Id: id,
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.Unimplemented))
 		})
 	})
 })

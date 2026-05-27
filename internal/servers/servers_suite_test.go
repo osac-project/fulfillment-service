@@ -66,13 +66,13 @@ var _ = BeforeSuite(func() {
 	// Create the tenancy logic:
 	tenancy = auth.NewMockTenancyLogic(ctrl)
 	tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-		Return(collections.NewUniversalSet[string](), nil).
+		Return(auth.AllTenants, nil).
 		AnyTimes()
 	tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
-		Return("system", nil).
+		Return(auth.SystemTenant, nil).
 		AnyTimes()
 	tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-		Return(collections.NewUniversalSet[string](), nil).
+		Return(auth.AllTenants, nil).
 		AnyTimes()
 
 	// Create the set of visible tenants:

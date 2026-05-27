@@ -15,6 +15,7 @@ package dao
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/dustin/go-humanize/english"
 )
@@ -84,3 +85,36 @@ type ErrDenied struct {
 func (e *ErrDenied) Error() string {
 	return e.Reason
 }
+
+// ErrImmutable is an error type that indicates that an update was rejected because it attempted to modify one or more
+// immutable fields.
+type ErrImmutable struct {
+	// Fields contains the names of the fields that the caller tried to modify. For example, if the called tried
+	// to modify the name of an object that is immutable, then it will contain 'metadata.name'.
+	Fields []string
+}
+
+// Error returns the error message.
+func (e *ErrImmutable) Error() string {
+	if len(e.Fields) == 0 {
+		return "some fields are immutable"
+	}
+	quoted := slices.Clone(e.Fields)
+	slices.Sort(quoted)
+	for i, field := range quoted {
+		quoted[i] = fmt.Sprintf("'%s'", field)
+	}
+	if len(quoted) == 1 {
+		return fmt.Sprintf("field %s is immutable", quoted[0])
+	}
+	return fmt.Sprintf("fields %s are immutable", english.WordSeries(quoted, "and"))
+}
+
+// Custom PostgreSQL SQLSTATE error codes used by database triggers. These codes use the 'Z' class, which is reserved
+// for user-defined conditions and will not collide with any standard PostgreSQL error code.
+const (
+	// errImmutableCode is the SQLSTATE error code returned by the 'check_immutable_columns' trigger when
+	// an update attempts to modify one or more immutable columns. When this error is received the detail field of
+	// the PostgreSQL error contains a JSON array with the names of the columns that the caller tried to modify.
+	errImmutableCode = "Z0001"
+)

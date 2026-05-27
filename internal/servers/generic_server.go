@@ -615,6 +615,10 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 			if errors.As(err, &deniedErr) {
 				return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
 			}
+			var immutableErr *dao.ErrImmutable
+			if errors.As(err, &immutableErr) {
+				return grpcstatus.Errorf(grpccodes.InvalidArgument, "%s", immutableErr.Error())
+			}
 			s.logger.ErrorContext(
 				ctx,
 				"Failed to update object",

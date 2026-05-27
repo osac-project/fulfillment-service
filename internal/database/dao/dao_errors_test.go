@@ -58,6 +58,62 @@ var _ = Describe("Errors", func() {
 		})
 	})
 
+	Describe("ErrImmutable", func() {
+		It("Implements the error interface", func() {
+			var err error = &ErrImmutable{
+				Fields: []string{
+					"metadata.name",
+				},
+			}
+			Expect(err).ToNot(BeNil())
+		})
+
+		It("Returns expected message for a zero fields", func() {
+			err := &ErrImmutable{
+				Fields: nil,
+			}
+			Expect(err.Error()).To(Equal(
+				"some fields are immutable",
+			))
+		})
+
+		It("Returns expected message for a single column", func() {
+			err := &ErrImmutable{
+				Fields: []string{
+					"metadata.name",
+				},
+			}
+			Expect(err.Error()).To(Equal(
+				"field 'metadata.name' is immutable",
+			))
+		})
+
+		It("Returns expected message for two columns", func() {
+			err := &ErrImmutable{
+				Fields: []string{
+					"metadata.name",
+					"metadata.tenant",
+				},
+			}
+			Expect(err.Error()).To(Equal(
+				"fields 'metadata.name' and 'metadata.tenant' are immutable",
+			))
+		})
+
+		It("Returns expected message for three columns", func() {
+			err := &ErrImmutable{
+				Fields: []string{
+					"metadata.name",
+					"metadata.tenant",
+					"metadata.creator",
+				},
+			}
+			Expect(err.Error()).To(Equal(
+				"fields 'metadata.creator', 'metadata.name' and 'metadata.tenant' are immutable",
+			))
+		})
+	})
+
 	Describe("ErrDenied", func() {
 		It("Implements the error interface", func() {
 			var err error = &ErrDenied{Reason: "not allowed"}
