@@ -2223,6 +2223,56 @@ var _ = Describe("Generic DAO", func() {
 				Expect(items).To(HaveLen(1))
 				Expect(items[0].GetId()).To(Equal("object_without_label"))
 			})
+
+			It("Filters by boolean field", func() {
+				// Create two objects, one with the boolean set to 'true' and one with the boolean set to 'false':
+				_, err := generic.Create().
+					SetObject(
+						testsv1.Object_builder{
+							Metadata: testsv1.Metadata_builder{
+								Name:   "my-true",
+								Tenant: "my-tenant",
+							}.Build(),
+							Spec: testsv1.Spec_builder{
+								SpecBool: true,
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = generic.Create().
+					SetObject(
+						testsv1.Object_builder{
+							Metadata: testsv1.Metadata_builder{
+								Name:   "my-false",
+								Tenant: "my-tenant",
+							}.Build(),
+							Spec: testsv1.Spec_builder{
+								SpecBool: false,
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Check that we can get only the object with the boolean set to 'true':
+				response, err := generic.List().
+					SetFilter("this.spec.spec_bool").
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				items := response.GetItems()
+				Expect(items).To(HaveLen(1))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("my-true"))
+
+				// Check that we can get only the object with the boolean set to 'false':
+				response, err = generic.List().
+					SetFilter("!this.spec.spec_bool").
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				items = response.GetItems()
+				Expect(items).To(HaveLen(1))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("my-false"))
+			})
 		})
 	})
 })

@@ -871,7 +871,7 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 	fieldKind := fieldDesc.Kind()
 	switch fieldKind {
 	case protoreflect.BoolKind:
-		result.sql = fmt.Sprintf("cast(%s->>'%s' as bool)", operandSql, fieldName)
+		result.sql = fmt.Sprintf("coalesce(cast(%s->>'%s' as bool), false)", operandSql, fieldName)
 		result.kind = filterTranslatorBooleanKind
 	case protoreflect.Int32Kind:
 		result.sql = fmt.Sprintf("cast(%s->>'%s' as integer)", operandSql, fieldName)

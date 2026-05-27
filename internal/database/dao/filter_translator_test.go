@@ -158,14 +158,24 @@ var _ = Describe("Filter translator", func() {
 			`deletion_timestamp != '1970-01-01 00:00:00Z'`,
 		),
 		Entry(
+			"Boolean true check",
+			`this.my_bool`,
+			`coalesce(cast(data->>'my_bool' as bool), false)`,
+		),
+		Entry(
+			"Boolean false check",
+			`!this.my_bool`,
+			`not coalesce(cast(data->>'my_bool' as bool), false)`,
+		),
+		Entry(
 			"Boolean equality true",
 			`this.my_bool == true`,
-			`cast(data->>'my_bool' as bool) = true`,
+			`coalesce(cast(data->>'my_bool' as bool), false) = true`,
 		),
 		Entry(
 			"Boolean equality false",
 			`this.my_bool == false`,
-			`cast(data->>'my_bool' as bool) = false`,
+			`coalesce(cast(data->>'my_bool' as bool), false) = false`,
 		),
 		Entry(
 			"Check presence of boolean field",
