@@ -326,30 +326,33 @@ spec:
           }
           required_scope := scope_map[input.context.request.http.path]
 
-          # Extract tenant and project name from request body or path
-          # For Create: metadata.tenant and metadata.name from request body
-          # For Get/Update/Delete: could extract from path or require body
-          # For List: use tenant from user's token
-          request_body := object.get(input.context.request.http, "body", "")
-
-          # Decode base64 body if present (gRPC-Web sends base64-encoded protobuf)
-          # For simplicity, we use a fallback approach:
-          # - For Create/Update: check tenant from auth context (user can only create in their tenant)
-          # - For specific operations: use Default Resource as catch-all
-          # - Individual project resources are created after project creation
+          # Extract project metadata from context extensions (injected by gRPC interceptor)
+          # For Create/Update: project_tenant and project_name are available
+          # For Get/Delete: only project_id is available (need to use wildcard or Default Resource)
+          # For List: no specific project (use Default Resource)
+          project_tenant := object.get(input.context.context_extensions, "project_tenant", "")
+          project_name := object.get(input.context.context_extensions, "project_name", "")
 
           # Get user's tenant from auth context
           user_tenant := object.get(input.auth.authorization.rbac, "subject_tenants", [""])[0]
 
           access_token := trim_prefix(object.get(input.context.request.http.headers, "authorization", ""), "Bearer ")
 
-          # For Create operations, request permission against Default Resource
-          # Individual project resources don't exist yet at creation time
-          # For other operations, in production you'd extract project name from the request
-          # and check against PROJECT-{tenant}-{projectName}
+          # Build UMA permission string based on available metadata
+          # For Create/Update with tenant and name: check specific resource "PROJECT-{tenant}-{name}#scope"
+          # For Get/Delete/List or missing metadata: check any resource with scope "#scope"
+          uma_permission := concat("", ["PROJECT-", project_tenant, "-", project_name, "#", required_scope]) if {
+            project_tenant != ""
+            project_name != ""
+          }
+          uma_permission := concat("", ["#", required_scope]) if {
+            project_tenant == ""
+          }
+          uma_permission := concat("", ["#", required_scope]) if {
+            project_name == ""
+          }
 
-          # Request UMA ticket for the scope
-          # UMA permission format: resource#scope or just scope for any matching resource
+          # Request UMA ticket for the permission
           ticket_response := http.send({
             "url": concat("", [keycloak_base, "/protocol/openid-connect/token"]),
             "method": "post",
@@ -360,17 +363,40 @@ spec:
             "raw_body": concat("", [
               "grant_type=urn:ietf:params:oauth:grant-type:uma-ticket",
               "&audience=", uma_client_id,
-              "&permission=#", required_scope
+              "&permission=", uma_permission
             ])
           })
 
           # Check if we got an RPT with permissions for the required scope
+          # For specific resources, also verify the resource name matches
           allow if {
             ticket_response.status_code == 200
             rpt := ticket_response.body.access_token
             permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
             some permission in permissions
             required_scope in permission.scopes
+            # For specific project resources, verify resource name matches
+            project_tenant != ""
+            project_name != ""
+            permission.rsname == concat("", ["PROJECT-", project_tenant, "-", project_name])
+          }
+
+          # For wildcard requests (Get/Delete/List), accept any resource with the required scope
+          allow if {
+            ticket_response.status_code == 200
+            rpt := ticket_response.body.access_token
+            permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
+            some permission in permissions
+            required_scope in permission.scopes
+            project_tenant == ""
+          }
+          allow if {
+            ticket_response.status_code == 200
+            rpt := ticket_response.body.access_token
+            permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
+            some permission in permissions
+            required_scope in permission.scopes
+            project_name == ""
           }
   response:
     success:

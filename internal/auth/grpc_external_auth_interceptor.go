@@ -270,6 +270,17 @@ func (i *GrpcExternalAuthInterceptor) buildCheckRequest(ctx context.Context, met
 		if id != "" {
 			extensions["id"] = id
 		}
+
+		// For Project requests, also extract tenant and name for resource-specific authorization
+		if strings.Contains(method, "/Projects/") {
+			tenant, name := i.extractProjectMetadata(ctx, request)
+			if tenant != "" {
+				extensions["project_tenant"] = tenant
+			}
+			if name != "" {
+				extensions["project_name"] = name
+			}
+		}
 	}
 
 	// Build the check request:
@@ -427,6 +438,57 @@ func (i *GrpcExternalAuthInterceptor) extractId(ctx context.Context, request any
 		return ""
 	}
 	return getter.GetId()
+}
+
+// extractProjectMetadata extracts tenant and name from Project requests for fine-grained authorization.
+// This enables Keycloak UMA to check permissions against specific project resources (PROJECT-{tenant}-{name}).
+func (i *GrpcExternalAuthInterceptor) extractProjectMetadata(ctx context.Context, request any) (tenant, name string) {
+	// Use protobuf reflection to extract metadata
+	message, ok := request.(proto.Message)
+	if !ok {
+		return "", ""
+	}
+
+	reflect := message.ProtoReflect()
+
+	// Try to find 'object' field first (for Update requests)
+	objectField := reflect.Descriptor().Fields().ByName("object")
+	var metadataMessage proto.Message
+
+	if objectField != nil && reflect.Has(objectField) {
+		// Get object.metadata
+		objectValue := reflect.Get(objectField)
+		objectReflect := objectValue.Message()
+		metadataField := objectReflect.Descriptor().Fields().ByName("metadata")
+		if metadataField != nil && objectReflect.Has(metadataField) {
+			metadataValue := objectReflect.Get(metadataField)
+			metadataMessage = metadataValue.Message().Interface()
+		}
+	} else {
+		// Try direct metadata field (for Create requests)
+		metadataField := reflect.Descriptor().Fields().ByName("metadata")
+		if metadataField != nil && reflect.Has(metadataField) {
+			metadataValue := reflect.Get(metadataField)
+			metadataMessage = metadataValue.Message().Interface()
+		}
+	}
+
+	// Extract tenant and name from metadata
+	if metadataMessage != nil {
+		metadataReflect := metadataMessage.ProtoReflect()
+
+		tenantField := metadataReflect.Descriptor().Fields().ByName("tenant")
+		if tenantField != nil && metadataReflect.Has(tenantField) {
+			tenant = metadataReflect.Get(tenantField).String()
+		}
+
+		nameField := metadataReflect.Descriptor().Fields().ByName("name")
+		if nameField != nil && metadataReflect.Has(nameField) {
+			name = metadataReflect.Get(nameField).String()
+		}
+	}
+
+	return tenant, name
 }
 
 func (i *GrpcExternalAuthInterceptor) isPublicMethod(method string) bool {
