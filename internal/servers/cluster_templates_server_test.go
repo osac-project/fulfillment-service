@@ -148,7 +148,7 @@ var _ = Describe("Cluster templates server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
-				Filter: proto.String("this.id.startsWith('my_template_')"),
+				Filter: new("this.id.startsWith('my_template_')"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -194,7 +194,7 @@ var _ = Describe("Cluster templates server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
-				Filter: proto.String("this.id.startsWith('my_template_')"),
+				Filter: new("this.id.startsWith('my_template_')"),
 				Offset: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -220,7 +220,7 @@ var _ = Describe("Cluster templates server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))

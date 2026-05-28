@@ -108,7 +108,7 @@ var _ = Describe("SecurityGroups server", func() {
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Region:       "us-east-1",
 				NetworkClass: "default",
-				Ipv4Cidr:     proto.String("10.0.0.0/16"),
+				Ipv4Cidr:     new("10.0.0.0/16"),
 				Capabilities: privatev1.VirtualNetworkCapabilities_builder{
 					EnableIpv4: true,
 				}.Build(),
@@ -181,13 +181,13 @@ var _ = Describe("SecurityGroups server", func() {
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
 								PortFrom: proto.Int32(80),
 								PortTo:   proto.Int32(80),
-								Ipv4Cidr: proto.String("0.0.0.0/0"),
+								Ipv4Cidr: new("0.0.0.0/0"),
 							},
 						},
 						Egress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_ALL,
-								Ipv4Cidr: proto.String("0.0.0.0/0"),
+								Ipv4Cidr: new("0.0.0.0/0"),
 							},
 						},
 					}.Build(),
@@ -218,7 +218,7 @@ var _ = Describe("SecurityGroups server", func() {
 									Protocol: publicv1.Protocol_PROTOCOL_TCP,
 									PortFrom: proto.Int32(443),
 									PortTo:   proto.Int32(443),
-									Ipv4Cidr: proto.String("0.0.0.0/0"),
+									Ipv4Cidr: new("0.0.0.0/0"),
 								},
 							},
 						}.Build(),
@@ -298,7 +298,7 @@ var _ = Describe("SecurityGroups server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, publicv1.SecurityGroupsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -317,7 +317,7 @@ var _ = Describe("SecurityGroups server", func() {
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
 								PortFrom: proto.Int32(22),
 								PortTo:   proto.Int32(22),
-								Ipv4Cidr: proto.String("10.0.0.0/8"),
+								Ipv4Cidr: new("10.0.0.0/8"),
 							},
 						},
 					}.Build(),
@@ -362,7 +362,7 @@ var _ = Describe("SecurityGroups server", func() {
 								Protocol: publicv1.Protocol_PROTOCOL_UDP,
 								PortFrom: proto.Int32(53),
 								PortTo:   proto.Int32(53),
-								Ipv4Cidr: proto.String("0.0.0.0/0"),
+								Ipv4Cidr: new("0.0.0.0/0"),
 							},
 						},
 					}.Build(),

@@ -275,7 +275,7 @@ func (t *task) delete(ctx context.Context) error {
 	// Check for child projects before deletion
 	listResp, err := t.r.projectsClient.List(ctx, &privatev1.ProjectsListRequest{
 		//TODO: Update to use metadata.project once OSAC-1064 is implemented
-		Filter: proto.String(fmt.Sprintf("this.spec.parent == '%s'", t.project.GetId())),
+		Filter: new(fmt.Sprintf("this.spec.parent == '%s'", t.project.GetId())),
 		Limit:  proto.Int32(1), // We only need to know if any exist
 	})
 	if err != nil {

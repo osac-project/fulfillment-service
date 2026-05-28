@@ -52,7 +52,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/utils/ptr"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -1761,7 +1760,7 @@ func (t *Tool) makeKubernetesTokenSource(ctx context.Context, sa, namespace stri
 		sa,
 		&authenticationv1.TokenRequest{
 			Spec: authenticationv1.TokenRequestSpec{
-				ExpirationSeconds: ptr.To(int64(3600)),
+				ExpirationSeconds: new(int64(3600)),
 			},
 		},
 		metav1.CreateOptions{},

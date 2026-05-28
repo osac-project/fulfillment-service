@@ -255,7 +255,7 @@ var _ = Describe("Public IPs server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := publicIPsServer.List(ctx, publicv1.PublicIPsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))

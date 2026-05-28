@@ -153,7 +153,7 @@ var _ = Describe("Network classes server", func() {
 				Object: privatev1.NetworkClass_builder{
 					Title:                  "Default Network Class",
 					ImplementationStrategy: "ovn-kubernetes",
-					IsDefault:              proto.Bool(true),
+					IsDefault:              new(true),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -217,7 +217,7 @@ var _ = Describe("Network classes server", func() {
 			// List the objects via public server:
 			for _, id := range ids {
 				response, err := publicServer.List(ctx, publicv1.NetworkClassesListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", id)),
+					Filter: new(fmt.Sprintf("this.id == '%s'", id)),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -359,7 +359,7 @@ var _ = Describe("Network classes server", func() {
 				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
 					Object: privatev1.NetworkClass_builder{
 						Id:        ncB.GetId(),
-						IsDefault: proto.Bool(true),
+						IsDefault: new(true),
 					}.Build(),
 					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"is_default"}},
 				}.Build())
@@ -388,7 +388,7 @@ var _ = Describe("Network classes server", func() {
 				_, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
 					Object: privatev1.NetworkClass_builder{
 						Id:        ncB.GetId(),
-						IsDefault: proto.Bool(false),
+						IsDefault: new(false),
 					}.Build(),
 					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"is_default"}},
 				}.Build())
@@ -411,7 +411,7 @@ var _ = Describe("Network classes server", func() {
 				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
 					Object: privatev1.NetworkClass_builder{
 						Id:        ncA.GetId(),
-						IsDefault: proto.Bool(false),
+						IsDefault: new(false),
 					}.Build(),
 					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"is_default"}},
 				}.Build())
@@ -420,7 +420,7 @@ var _ = Describe("Network classes server", func() {
 
 				// Verify no defaults remain by listing:
 				listResponse, err := privateServer.List(ctx, privatev1.NetworkClassesListRequest_builder{
-					Filter: proto.String("this.is_default == true"),
+					Filter: new("this.is_default == true"),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(listResponse.GetItems()).To(BeEmpty())
@@ -435,7 +435,7 @@ var _ = Describe("Network classes server", func() {
 				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
 					Object: privatev1.NetworkClass_builder{
 						Id:        ncA.GetId(),
-						IsDefault: proto.Bool(true),
+						IsDefault: new(true),
 					}.Build(),
 					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"is_default"}},
 				}.Build())
@@ -483,7 +483,7 @@ var _ = Describe("Network classes server", func() {
 					Object: publicv1.NetworkClass_builder{
 						Id:        ncA.GetId(),
 						Title:     ncA.GetTitle(),
-						IsDefault: proto.Bool(false),
+						IsDefault: new(false),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -513,7 +513,7 @@ var _ = Describe("Network classes server", func() {
 					SetObject(privatev1.NetworkClass_builder{
 						Title:                  "NC-A",
 						ImplementationStrategy: "ovn-kubernetes",
-						IsDefault:              proto.Bool(true),
+						IsDefault:              new(true),
 						Metadata: privatev1.Metadata_builder{
 							Tenant: auth.SharedTenant,
 						}.Build(),
@@ -529,7 +529,7 @@ var _ = Describe("Network classes server", func() {
 					privatev1.NetworkClass_builder{
 						Title:                  "NC-B",
 						ImplementationStrategy: "ovn-kubernetes",
-						IsDefault:              proto.Bool(true),
+						IsDefault:              new(true),
 						Metadata: privatev1.Metadata_builder{
 							Tenant: auth.SharedTenant,
 						}.Build(),
@@ -543,7 +543,7 @@ var _ = Describe("Network classes server", func() {
 
 				// Verify: both NCs have is_default=true (invariant violation):
 				listResponse, err := privateServer.List(ctx, privatev1.NetworkClassesListRequest_builder{
-					Filter: proto.String("this.is_default == true"),
+					Filter: new("this.is_default == true"),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(listResponse.GetItems()).To(HaveLen(2))
@@ -584,7 +584,7 @@ var _ = Describe("Network classes server", func() {
 					Object: privatev1.NetworkClass_builder{
 						Id:        ncA.GetId(),
 						Title:     ncA.GetTitle(),
-						IsDefault: proto.Bool(true),
+						IsDefault: new(true),
 					}.Build(),
 					// No UpdateMask — triggers proto.Merge branch in applyNetworkClassUpdate
 				}.Build())
@@ -654,7 +654,7 @@ var _ = Describe("Network classes server", func() {
 				ncA := privatev1.NetworkClass_builder{
 					Title:                  "NC-A",
 					ImplementationStrategy: "ovn-kubernetes",
-					IsDefault:              proto.Bool(true),
+					IsDefault:              new(true),
 					Metadata: privatev1.Metadata_builder{
 						Tenant: auth.SharedTenant,
 					}.Build(),
@@ -698,7 +698,7 @@ var _ = Describe("Network classes server", func() {
 				ncA := privatev1.NetworkClass_builder{
 					Title:                  "NC-A",
 					ImplementationStrategy: "ovn-kubernetes",
-					IsDefault:              proto.Bool(true),
+					IsDefault:              new(true),
 					Metadata: privatev1.Metadata_builder{
 						Tenant: auth.SharedTenant,
 					}.Build(),
@@ -713,7 +713,7 @@ var _ = Describe("Network classes server", func() {
 				ncB := privatev1.NetworkClass_builder{
 					Title:                  "NC-B",
 					ImplementationStrategy: "ovn-kubernetes",
-					IsDefault:              proto.Bool(true),
+					IsDefault:              new(true),
 					Metadata: privatev1.Metadata_builder{
 						Tenant: auth.SharedTenant,
 					}.Build(),
@@ -741,7 +741,7 @@ var _ = Describe("Network classes server", func() {
 					SetObject(privatev1.NetworkClass_builder{
 						Title:                  "Deleted Default",
 						ImplementationStrategy: "ovn-kubernetes",
-						IsDefault:              proto.Bool(true),
+						IsDefault:              new(true),
 						Metadata: privatev1.Metadata_builder{
 							Finalizers: []string{"a"},
 							Tenant:     auth.SharedTenant,
@@ -762,7 +762,7 @@ var _ = Describe("Network classes server", func() {
 					SetObject(privatev1.NetworkClass_builder{
 						Title:                  "Active Default",
 						ImplementationStrategy: "ovn-kubernetes",
-						IsDefault:              proto.Bool(true),
+						IsDefault:              new(true),
 						Metadata: privatev1.Metadata_builder{
 							Tenant: auth.SharedTenant,
 						}.Build(),
@@ -795,7 +795,7 @@ var _ = Describe("Network classes server", func() {
 
 				// Verify no defaults remain in List:
 				listResponse, err := privateServer.List(ctx, privatev1.NetworkClassesListRequest_builder{
-					Filter: proto.String("this.is_default == true"),
+					Filter: new("this.is_default == true"),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(listResponse.GetItems()).To(BeEmpty())

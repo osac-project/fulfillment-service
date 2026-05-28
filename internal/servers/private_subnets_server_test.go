@@ -133,12 +133,12 @@ var _ = Describe("Private subnets server", func() {
 
 		// Add IPv4 CIDR if provided
 		if ipv4Cidr != "" {
-			builder.Spec.Ipv4Cidr = proto.String(ipv4Cidr)
+			builder.Spec.Ipv4Cidr = new(ipv4Cidr)
 		}
 
 		// Add IPv6 CIDR if provided
 		if ipv6Cidr != "" {
-			builder.Spec.Ipv6Cidr = proto.String(ipv6Cidr)
+			builder.Spec.Ipv6Cidr = new(ipv6Cidr)
 		}
 
 		vn := builder.Build()
@@ -202,7 +202,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -216,7 +216,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("not-a-cidr"),
+						Ipv4Cidr:       new("not-a-cidr"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -231,7 +231,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/33"),
+						Ipv4Cidr:       new("10.0.1.0/33"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -246,7 +246,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("2001:db8::/32"),
+						Ipv4Cidr:       new("2001:db8::/32"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -263,7 +263,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8:1::/64"),
+						Ipv6Cidr:       new("2001:db8:1::/64"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -277,7 +277,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("not-ipv6"),
+						Ipv6Cidr:       new("not-ipv6"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -292,7 +292,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8::/129"),
+						Ipv6Cidr:       new("2001:db8::/129"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -307,7 +307,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("10.0.1.0/24"),
+						Ipv6Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -338,7 +338,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -352,7 +352,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8:1::/64"),
+						Ipv6Cidr:       new("2001:db8:1::/64"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -366,8 +366,8 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
-						Ipv6Cidr:       proto.String("2001:db8:1::/64"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
+						Ipv6Cidr:       new("2001:db8:1::/64"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -383,7 +383,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -395,7 +395,7 @@ var _ = Describe("Private subnets server", func() {
 			It("rejects non-existent parent VirtualNetwork", func() {
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: "non-existent-id",
 					}.Build(),
 				}.Build()
@@ -412,7 +412,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -436,7 +436,7 @@ var _ = Describe("Private subnets server", func() {
 						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetImplementationStrategy(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -453,7 +453,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -481,7 +481,7 @@ var _ = Describe("Private subnets server", func() {
 						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetImplementationStrategy(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -498,7 +498,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -518,7 +518,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -532,7 +532,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("192.168.1.0/24"),
+						Ipv4Cidr:       new("192.168.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -547,7 +547,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.0.0/16"),
+						Ipv4Cidr:       new("10.0.0.0/16"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -562,7 +562,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -578,7 +578,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -592,7 +592,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -609,7 +609,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8:1::/64"),
+						Ipv6Cidr:       new("2001:db8:1::/64"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -623,7 +623,7 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8:1::/64"),
+						Ipv6Cidr:       new("2001:db8:1::/64"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -650,7 +650,7 @@ var _ = Describe("Private subnets server", func() {
 						Tenant: "tenant-a",
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetImplementationStrategy(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -670,7 +670,7 @@ var _ = Describe("Private subnets server", func() {
 						Tenant: "tenant-a",
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -696,7 +696,7 @@ var _ = Describe("Private subnets server", func() {
 						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -734,14 +734,14 @@ var _ = Describe("Private subnets server", func() {
 
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn1.GetId(),
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("192.168.1.0/24"),
+						Ipv4Cidr:       new("192.168.1.0/24"),
 						VirtualNetwork: vn2.GetId(),
 					}.Build(),
 				}.Build()
@@ -760,14 +760,14 @@ var _ = Describe("Private subnets server", func() {
 
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -785,14 +785,14 @@ var _ = Describe("Private subnets server", func() {
 				// skips the VN reference lookup entirely. Rejection tests don't need a real VN.
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.2.0/24"),
+						Ipv4Cidr:       new("10.0.2.0/24"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -810,14 +810,14 @@ var _ = Describe("Private subnets server", func() {
 				// Same VN ID, same CIDR: immutability passes, VN lookup skipped.
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -832,15 +832,15 @@ var _ = Describe("Private subnets server", func() {
 				// existing.GetIpv4Cidr() == "" != new value → reject.
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -859,15 +859,15 @@ var _ = Describe("Private subnets server", func() {
 				// Immutability fires first: HasIpv4Cidr() true and "" != existing → rejected.
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String(""),
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv4Cidr:       new(""),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -888,14 +888,14 @@ var _ = Describe("Private subnets server", func() {
 			It("prevents ipv6_cidr field modification", func() {
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("fd00:1234::/64"),
+						Ipv6Cidr:       new("fd00:1234::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -912,14 +912,14 @@ var _ = Describe("Private subnets server", func() {
 			It("allows ipv6_cidr to stay same on Update", func() {
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -935,15 +935,15 @@ var _ = Describe("Private subnets server", func() {
 				// ipv4_cidr is identical so the ipv4 check does not fire first.
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -963,16 +963,16 @@ var _ = Describe("Private subnets server", func() {
 				// (so SUB-VAL-14 doesn't fire), sets ipv6_cidr to "" explicitly.
 				existing := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
 
 				updated := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
-						Ipv6Cidr:       proto.String(""),
+						Ipv4Cidr:       new("10.0.1.0/24"),
+						Ipv6Cidr:       new(""),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -995,8 +995,8 @@ var _ = Describe("Private subnets server", func() {
 						Name: "original-name",
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -1006,8 +1006,8 @@ var _ = Describe("Private subnets server", func() {
 						Name: "renamed-subnet",
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
-						Ipv6Cidr:       proto.String("2001:db8::/64"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
+						Ipv6Cidr:       new("2001:db8::/64"),
 						VirtualNetwork: fakeVNID,
 					}.Build(),
 				}.Build()
@@ -1028,7 +1028,7 @@ var _ = Describe("Private subnets server", func() {
 							Tenant: auth.SharedTenant,
 						}.Build(),
 						Spec: privatev1.SubnetSpec_builder{
-							Ipv4Cidr:       proto.String("10.0.1.0/24"),
+							Ipv4Cidr:       new("10.0.1.0/24"),
 							VirtualNetwork: vn.GetId(),
 						}.Build(),
 					}.Build(),
@@ -1063,10 +1063,10 @@ var _ = Describe("Private subnets server", func() {
 					VirtualNetwork: virtualNetworkID,
 				}
 				if ipv4Cidr != "" {
-					builder.Ipv4Cidr = proto.String(ipv4Cidr)
+					builder.Ipv4Cidr = new(ipv4Cidr)
 				}
 				if ipv6Cidr != "" {
-					builder.Ipv6Cidr = proto.String(ipv6Cidr)
+					builder.Ipv6Cidr = new(ipv6Cidr)
 				}
 
 				subnet := privatev1.Subnet_builder{
@@ -1089,7 +1089,7 @@ var _ = Describe("Private subnets server", func() {
 
 				newSubnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -1109,7 +1109,7 @@ var _ = Describe("Private subnets server", func() {
 
 				newSubnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -1127,7 +1127,7 @@ var _ = Describe("Private subnets server", func() {
 
 				newSubnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.0.0/20"),
+						Ipv4Cidr:       new("10.0.0.0/20"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -1145,7 +1145,7 @@ var _ = Describe("Private subnets server", func() {
 
 				newSubnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.2.0/24"),
+						Ipv4Cidr:       new("10.0.2.0/24"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -1161,7 +1161,7 @@ var _ = Describe("Private subnets server", func() {
 
 				newSubnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 						VirtualNetwork: vn2.GetId(),
 					}.Build(),
 				}.Build()
@@ -1176,7 +1176,7 @@ var _ = Describe("Private subnets server", func() {
 
 				newSubnet := privatev1.Subnet_builder{
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv6Cidr:       proto.String("2001:db8:1::/48"),
+						Ipv6Cidr:       new("2001:db8:1::/48"),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -1215,7 +1215,7 @@ var _ = Describe("Private subnets server", func() {
 					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
-					Ipv4Cidr:       proto.String("10.0.1.0/24"),
+					Ipv4Cidr:       new("10.0.1.0/24"),
 					VirtualNetwork: vn.GetId(),
 				}.Build(),
 			}.Build()
@@ -1238,7 +1238,7 @@ var _ = Describe("Private subnets server", func() {
 					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
-					Ipv4Cidr:       proto.String("10.0.1.0/24"),
+					Ipv4Cidr:       new("10.0.1.0/24"),
 					VirtualNetwork: vn.GetId(),
 				}.Build(),
 			}.Build()
@@ -1269,7 +1269,7 @@ var _ = Describe("Private subnets server", func() {
 						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String(fmt.Sprintf("10.%d.0.0/16", i)),
+						Ipv4Cidr:       new(fmt.Sprintf("10.%d.0.0/16", i)),
 						VirtualNetwork: vn.GetId(),
 					}.Build(),
 				}.Build()
@@ -1301,7 +1301,7 @@ var _ = Describe("Private subnets server", func() {
 						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String(fmt.Sprintf("10.0.%d.0/24", i)),
+						Ipv4Cidr:       new(fmt.Sprintf("10.0.%d.0/24", i)),
 						VirtualNetwork: vn1.GetId(),
 					}.Build(),
 				}.Build()
@@ -1320,7 +1320,7 @@ var _ = Describe("Private subnets server", func() {
 						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
-						Ipv4Cidr:       proto.String(fmt.Sprintf("192.168.%d.0/24", i)),
+						Ipv4Cidr:       new(fmt.Sprintf("192.168.%d.0/24", i)),
 						VirtualNetwork: vn2.GetId(),
 					}.Build(),
 				}.Build()
@@ -1351,7 +1351,7 @@ var _ = Describe("Private subnets server", func() {
 					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
-					Ipv4Cidr:       proto.String("10.0.1.0/24"),
+					Ipv4Cidr:       new("10.0.1.0/24"),
 					VirtualNetwork: vn.GetId(),
 				}.Build(),
 			}.Build()
@@ -1388,7 +1388,7 @@ var _ = Describe("Private subnets server", func() {
 					Tenant:     auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
-					Ipv4Cidr:       proto.String("10.0.1.0/24"),
+					Ipv4Cidr:       new("10.0.1.0/24"),
 					VirtualNetwork: vn.GetId(),
 				}.Build(),
 			}.Build()
@@ -1425,7 +1425,7 @@ var _ = Describe("Private subnets server", func() {
 					Tenant: "tenant-a",
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
-					Ipv4Cidr:       proto.String("10.0.1.0/24"),
+					Ipv4Cidr:       new("10.0.1.0/24"),
 					VirtualNetwork: vn1.GetId(),
 				}.Build(),
 			}.Build()
@@ -1442,7 +1442,7 @@ var _ = Describe("Private subnets server", func() {
 					Tenant: "tenant-b",
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
-					Ipv4Cidr:       proto.String("192.168.1.0/24"),
+					Ipv4Cidr:       new("192.168.1.0/24"),
 					VirtualNetwork: vn2.GetId(),
 				}.Build(),
 			}.Build()

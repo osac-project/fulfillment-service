@@ -82,7 +82,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					NetworkClass: networkClassId,
 					Region:       "us-east-1",
-					Ipv4Cidr:     proto.String("10.100.0.0/16"),
+					Ipv4Cidr:     new("10.100.0.0/16"),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -111,7 +111,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 				Id: subnetId,
 				Spec: privatev1.SubnetSpec_builder{
 					VirtualNetwork: virtualNetworkId,
-					Ipv4Cidr:       proto.String("10.100.1.0/24"),
+					Ipv4Cidr:       new("10.100.1.0/24"),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -180,7 +180,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 					Template:    computeInstanceTemplateId,
 					Cores:       proto.Int32(2),
 					MemoryGib:   proto.Int32(4),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 					BootDisk: publicv1.ComputeInstanceDisk_builder{
 						SizeGib: 20,
 					}.Build(),
@@ -188,7 +188,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
 					}.Build(),
-					Subnet: proto.String(subnetId),
+					Subnet: new(subnetId),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -213,7 +213,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 					Template:    computeInstanceTemplateId,
 					Cores:       proto.Int32(2),
 					MemoryGib:   proto.Int32(4),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 					BootDisk: publicv1.ComputeInstanceDisk_builder{
 						SizeGib: 20,
 					}.Build(),
@@ -221,7 +221,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
 					}.Build(),
-					Subnet: proto.String("non-existent-subnet"),
+					Subnet: new("non-existent-subnet"),
 				}.Build(),
 			}.Build(),
 		}.Build())

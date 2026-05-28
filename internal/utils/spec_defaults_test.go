@@ -58,7 +58,7 @@ var _ = Describe("ApplySpecDefaults", func() {
 			BootDisk: privatev1.ComputeInstanceDisk_builder{
 				SizeGib: 10,
 			}.Build(),
-			RunStrategy: proto.String("Always"),
+			RunStrategy: new("Always"),
 		}.Build()
 
 		ApplySpecDefaults(spec, defaults)
@@ -76,7 +76,7 @@ var _ = Describe("ApplySpecDefaults", func() {
 			Template:    "test.template",
 			Cores:       proto.Int32(8),
 			MemoryGib:   proto.Int32(16),
-			RunStrategy: proto.String("Halted"),
+			RunStrategy: new("Halted"),
 		}.Build()
 
 		defaults := privatev1.ComputeInstanceTemplateSpecDefaults_builder{
@@ -89,7 +89,7 @@ var _ = Describe("ApplySpecDefaults", func() {
 			BootDisk: privatev1.ComputeInstanceDisk_builder{
 				SizeGib: 10,
 			}.Build(),
-			RunStrategy: proto.String("Always"),
+			RunStrategy: new("Always"),
 		}.Build()
 
 		ApplySpecDefaults(spec, defaults)
@@ -110,7 +110,7 @@ var _ = Describe("ApplySpecDefaults", func() {
 
 		defaults := privatev1.ComputeInstanceTemplateSpecDefaults_builder{
 			Cores:       proto.Int32(2),
-			RunStrategy: proto.String("Always"),
+			RunStrategy: new("Always"),
 		}.Build()
 
 		ApplySpecDefaults(spec, defaults)
@@ -252,7 +252,7 @@ var _ = Describe("ValidateRequiredSpecFields", func() {
 			Template:    "test.template",
 			Cores:       proto.Int32(4),
 			MemoryGib:   proto.Int32(8),
-			RunStrategy: proto.String("Always"),
+			RunStrategy: new("Always"),
 		}.Build()
 
 		err := ValidateRequiredSpecFields(spec)
@@ -277,7 +277,7 @@ var _ = Describe("ValidateRequiredSpecFields", func() {
 			BootDisk: privatev1.ComputeInstanceDisk_builder{
 				SizeGib: 20,
 			}.Build(),
-			RunStrategy: proto.String("Always"),
+			RunStrategy: new("Always"),
 		}.Build()
 
 		err := ValidateRequiredSpecFields(spec)
@@ -296,7 +296,7 @@ var _ = Describe("ValidateRequiredSpecFields", func() {
 			BootDisk: privatev1.ComputeInstanceDisk_builder{
 				SizeGib: 20,
 			}.Build(),
-			RunStrategy: proto.String("always"),
+			RunStrategy: new("always"),
 		}.Build()
 
 		err := ValidateRequiredSpecFields(spec)
@@ -316,7 +316,7 @@ var _ = Describe("ValidateRequiredSpecFields", func() {
 			BootDisk: privatev1.ComputeInstanceDisk_builder{
 				SizeGib: 20,
 			}.Build(),
-			RunStrategy: proto.String("Always"),
+			RunStrategy: new("Always"),
 		}.Build()
 
 		err := ValidateRequiredSpecFields(spec)
@@ -337,7 +337,7 @@ var _ = Describe("ValidateRequiredSpecFields", func() {
 			BootDisk: privatev1.ComputeInstanceDisk_builder{
 				SizeGib: 20,
 			}.Build(),
-			RunStrategy: proto.String("Always"),
+			RunStrategy: new("Always"),
 		}.Build()
 
 		err := ValidateRequiredSpecFields(spec)
@@ -357,7 +357,7 @@ var _ = Describe("ValidateRequiredSpecFields", func() {
 				SourceRef:  "quay.io/containerdisks/fedora:latest",
 			}.Build(),
 			BootDisk:    privatev1.ComputeInstanceDisk_builder{}.Build(),
-			RunStrategy: proto.String("Always"),
+			RunStrategy: new("Always"),
 		}.Build()
 
 		err := ValidateRequiredSpecFields(spec)

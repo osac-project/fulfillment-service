@@ -119,7 +119,7 @@ var _ = Describe("Subnets server", func() {
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Region:       "us-east-1",
 				NetworkClass: "default",
-				Ipv4Cidr:     proto.String("10.0.0.0/16"),
+				Ipv4Cidr:     new("10.0.0.0/16"),
 				Capabilities: privatev1.VirtualNetworkCapabilities_builder{
 					EnableIpv4: true,
 				}.Build(),
@@ -197,7 +197,7 @@ var _ = Describe("Subnets server", func() {
 				Object: publicv1.Subnet_builder{
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -216,7 +216,7 @@ var _ = Describe("Subnets server", func() {
 					Object: publicv1.Subnet_builder{
 						Spec: publicv1.SubnetSpec_builder{
 							VirtualNetwork: virtualNetworkID,
-							Ipv4Cidr:       proto.String(fmt.Sprintf("10.0.%d.0/24", i+1)),
+							Ipv4Cidr:       new(fmt.Sprintf("10.0.%d.0/24", i+1)),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -239,7 +239,7 @@ var _ = Describe("Subnets server", func() {
 					Object: publicv1.Subnet_builder{
 						Spec: publicv1.SubnetSpec_builder{
 							VirtualNetwork: virtualNetworkID,
-							Ipv4Cidr:       proto.String(fmt.Sprintf("10.0.%d.0/24", i+1)),
+							Ipv4Cidr:       new(fmt.Sprintf("10.0.%d.0/24", i+1)),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -262,7 +262,7 @@ var _ = Describe("Subnets server", func() {
 					Object: publicv1.Subnet_builder{
 						Spec: publicv1.SubnetSpec_builder{
 							VirtualNetwork: virtualNetworkID,
-							Ipv4Cidr:       proto.String(fmt.Sprintf("10.0.%d.0/24", i+1)),
+							Ipv4Cidr:       new(fmt.Sprintf("10.0.%d.0/24", i+1)),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -286,7 +286,7 @@ var _ = Describe("Subnets server", func() {
 					Object: publicv1.Subnet_builder{
 						Spec: publicv1.SubnetSpec_builder{
 							VirtualNetwork: virtualNetworkID,
-							Ipv4Cidr:       proto.String(fmt.Sprintf("10.0.%d.0/24", i+1)),
+							Ipv4Cidr:       new(fmt.Sprintf("10.0.%d.0/24", i+1)),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -297,7 +297,7 @@ var _ = Describe("Subnets server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, publicv1.SubnetsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -311,7 +311,7 @@ var _ = Describe("Subnets server", func() {
 				Object: publicv1.Subnet_builder{
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -334,7 +334,7 @@ var _ = Describe("Subnets server", func() {
 					}.Build(),
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -350,7 +350,7 @@ var _ = Describe("Subnets server", func() {
 					}.Build(),
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -371,7 +371,7 @@ var _ = Describe("Subnets server", func() {
 				Object: publicv1.Subnet_builder{
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -387,7 +387,7 @@ var _ = Describe("Subnets server", func() {
 					}.Build(),
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -401,7 +401,7 @@ var _ = Describe("Subnets server", func() {
 				Object: publicv1.Subnet_builder{
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.2.0/24"),
+						Ipv4Cidr:       new("10.0.2.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -431,7 +431,7 @@ var _ = Describe("Subnets server", func() {
 				Object: publicv1.Subnet_builder{
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.3.0/24"),
+						Ipv4Cidr:       new("10.0.3.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -444,7 +444,7 @@ var _ = Describe("Subnets server", func() {
 					Id: object.GetId(),
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.4.0/24"),
+						Ipv4Cidr:       new("10.0.4.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -461,7 +461,7 @@ var _ = Describe("Subnets server", func() {
 				Object: publicv1.Subnet_builder{
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.5.0/24"),
+						Ipv4Cidr:       new("10.0.5.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -478,7 +478,7 @@ var _ = Describe("Subnets server", func() {
 					}.Build(),
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.5.0/24"),
+						Ipv4Cidr:       new("10.0.5.0/24"),
 					}.Build(),
 				}.Build(),
 				Lock: true,
@@ -495,7 +495,7 @@ var _ = Describe("Subnets server", func() {
 				Object: publicv1.Subnet_builder{
 					Spec: publicv1.SubnetSpec_builder{
 						VirtualNetwork: virtualNetworkID,
-						Ipv4Cidr:       proto.String("10.0.1.0/24"),
+						Ipv4Cidr:       new("10.0.1.0/24"),
 					}.Build(),
 				}.Build(),
 			}.Build())

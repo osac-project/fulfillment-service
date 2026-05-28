@@ -18,7 +18,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -132,7 +131,7 @@ var _ = Describe("Private roles server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			listResponse, err := rolesServer.List(ctx, privatev1.RolesListRequest_builder{
-				Filter: proto.String("this.metadata.name in ['role-a', 'role-b']"),
+				Filter: new("this.metadata.name in ['role-a', 'role-b']"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResponse.GetSize()).To(Equal(int32(2)))

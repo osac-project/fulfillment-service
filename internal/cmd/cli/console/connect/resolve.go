@@ -30,7 +30,7 @@ func ResolveInstance(ctx context.Context, conn *grpc.ClientConn, key string) (st
 		key,
 	)
 	resp, err := client.List(ctx, publicv1.ComputeInstancesListRequest_builder{
-		Filter: proto.String(listFilter),
+		Filter: new(listFilter),
 		Limit:  proto.Int32(2),
 	}.Build())
 	if err != nil {

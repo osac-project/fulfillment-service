@@ -205,7 +205,7 @@ var _ = Describe("Private public IP pools server", func() {
 			id := createResponse.GetObject().GetId()
 
 			response, err := poolsServer.List(ctx, privatev1.PublicIPPoolsListRequest_builder{
-				Filter: proto.String(fmt.Sprintf("this.id == '%s'", id)),
+				Filter: new(fmt.Sprintf("this.id == '%s'", id)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", 1))

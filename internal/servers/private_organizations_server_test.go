@@ -20,7 +20,6 @@ import (
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -106,7 +105,7 @@ var _ = Describe("Private tenants server", func() {
 
 		// List tenants:
 		listResp, err := privateServer.List(ctx, &privatev1.OrganizationsListRequest{
-			Filter: proto.String("this.metadata.name == 'my-tenant'"),
+			Filter: new("this.metadata.name == 'my-tenant'"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.Size).To(Equal(int32(1)))

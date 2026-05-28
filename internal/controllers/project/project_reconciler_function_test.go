@@ -21,7 +21,6 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
@@ -279,7 +278,7 @@ var _ = Describe("Validation and Activation", func() {
 					Tenant: "acme",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("parent-1"),
+					Parent: new("parent-1"),
 					Title:  "Child Project",
 				}.Build(),
 				Status: privatev1.ProjectStatus_builder{
@@ -327,7 +326,7 @@ var _ = Describe("Validation and Activation", func() {
 					State: privatev1.ProjectState_PROJECT_STATE_ACTIVE,
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("root"),
+					Parent: new("root"),
 					Title:  "Parent",
 				}.Build(),
 			}.Build()
@@ -339,7 +338,7 @@ var _ = Describe("Validation and Activation", func() {
 					Tenant: "acme",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("parent"),
+					Parent: new("parent"),
 					Title:  "Child",
 				}.Build(),
 				Status: privatev1.ProjectStatus_builder{
@@ -381,7 +380,7 @@ var _ = Describe("Validation and Activation", func() {
 			project := privatev1.Project_builder{
 				Id: "project-1",
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("project-1"),
+					Parent: new("project-1"),
 					Title:  "Self-referencing",
 				}.Build(),
 				Status: privatev1.ProjectStatus_builder{
@@ -406,7 +405,7 @@ var _ = Describe("Validation and Activation", func() {
 			project := privatev1.Project_builder{
 				Id: "project-1",
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("nonexistent-parent"),
+					Parent: new("nonexistent-parent"),
 					Title:  "Orphaned Project",
 				}.Build(),
 				Status: privatev1.ProjectStatus_builder{
@@ -445,7 +444,7 @@ var _ = Describe("Validation and Activation", func() {
 			project := privatev1.Project_builder{
 				Id: "project-1",
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("parent-1"),
+					Parent: new("parent-1"),
 					Title:  "Child",
 				}.Build(),
 				Status: privatev1.ProjectStatus_builder{
@@ -482,7 +481,7 @@ var _ = Describe("Validation and Activation", func() {
 			project := privatev1.Project_builder{
 				Id: "project-1",
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("parent-1"),
+					Parent: new("parent-1"),
 					Title:  "Child",
 				}.Build(),
 				Status: privatev1.ProjectStatus_builder{
@@ -514,7 +513,7 @@ var _ = Describe("Validation and Activation", func() {
 					State: privatev1.ProjectState_PROJECT_STATE_ACTIVE,
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("project-b"),
+					Parent: new("project-b"),
 					Title:  "Project A",
 				}.Build(),
 			}.Build()
@@ -530,7 +529,7 @@ var _ = Describe("Validation and Activation", func() {
 				project: privatev1.Project_builder{
 					Id: "project-b",
 					Spec: privatev1.ProjectSpec_builder{
-						Parent: strPtr("project-a"),
+						Parent: new("project-a"),
 						Title:  "Project B",
 					}.Build(),
 					Status: privatev1.ProjectStatus_builder{
@@ -552,7 +551,7 @@ var _ = Describe("Validation and Activation", func() {
 					State: privatev1.ProjectState_PROJECT_STATE_ACTIVE,
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("project-c"),
+					Parent: new("project-c"),
 					Title:  "Project A",
 				}.Build(),
 			}.Build()
@@ -563,7 +562,7 @@ var _ = Describe("Validation and Activation", func() {
 					State: privatev1.ProjectState_PROJECT_STATE_ACTIVE,
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
-					Parent: strPtr("project-a"),
+					Parent: new("project-a"),
 					Title:  "Project B",
 				}.Build(),
 			}.Build()
@@ -583,7 +582,7 @@ var _ = Describe("Validation and Activation", func() {
 				project: privatev1.Project_builder{
 					Id: "project-c",
 					Spec: privatev1.ProjectSpec_builder{
-						Parent: strPtr("project-b"),
+						Parent: new("project-b"),
 						Title:  "Project C",
 					}.Build(),
 					Status: privatev1.ProjectStatus_builder{
@@ -633,7 +632,7 @@ var _ = Describe("Validation and Activation", func() {
 				}.Build(),
 				Status: privatev1.ProjectStatus_builder{
 					State:   privatev1.ProjectState_PROJECT_STATE_FAILED,
-					Message: strPtr("Some error"),
+					Message: new("Some error"),
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title: "Failed Project",
@@ -724,7 +723,7 @@ var _ = Describe("Deletion Cleanup", func() {
 				Finalizers: []string{finalizers.Controller},
 			}.Build(),
 			Status: privatev1.ProjectStatus_builder{
-				KeycloakResourceId: proto.String("resource-123"),
+				KeycloakResourceId: new("resource-123"),
 			}.Build(),
 		}.Build()
 
@@ -757,7 +756,7 @@ var _ = Describe("Deletion Cleanup", func() {
 				Finalizers: []string{finalizers.Controller},
 			}.Build(),
 			Status: privatev1.ProjectStatus_builder{
-				KeycloakResourceId: proto.String("resource-456"),
+				KeycloakResourceId: new("resource-456"),
 			}.Build(),
 		}.Build()
 
@@ -876,7 +875,3 @@ var _ = Describe("Deletion Cleanup", func() {
 		Expect(project.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
 	})
 })
-
-func strPtr(s string) *string {
-	return &s
-}

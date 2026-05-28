@@ -21,7 +21,6 @@ import (
 	"go.uber.org/mock/gomock"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -155,7 +154,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -181,7 +180,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip1.GetId(),
-						ComputeInstance: proto.String(ci1.GetId()),
+						ComputeInstance: new(ci1.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -194,7 +193,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip2.GetId(),
-						ComputeInstance: proto.String(ci2.GetId()),
+						ComputeInstance: new(ci2.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -217,7 +216,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -244,7 +243,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -280,7 +279,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -319,7 +318,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -331,7 +330,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					Id: createResponse.GetObject().GetId(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci2.GetId()),
+						ComputeInstance: new(ci2.GetId()),
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -359,7 +358,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -373,7 +372,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -401,7 +400,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -413,7 +412,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					Id: createResponse.GetObject().GetId(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip2.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -435,7 +434,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -458,7 +457,7 @@ var _ = Describe("Private public IP attachments server", func() {
 					}.Build(),
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -500,7 +499,7 @@ var _ = Describe("Private public IP attachments server", func() {
 			_, err := publicIPAttachmentsServer.Create(ctx, privatev1.PublicIPAttachmentsCreateRequest_builder{
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
-						ComputeInstance: proto.String("some-ci"),
+						ComputeInstance: new("some-ci"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -535,7 +534,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        "nonexistent-public-ip-id",
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -554,7 +553,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -575,7 +574,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String("nonexistent-ci-id"),
+						ComputeInstance: new("nonexistent-ci-id"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -594,7 +593,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -652,7 +651,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        otherTenantIP.GetObject().GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -706,7 +705,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(otherTenantCI.GetObject().GetId()),
+						ComputeInstance: new(otherTenantCI.GetObject().GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -728,7 +727,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci1.GetId()),
+						ComputeInstance: new(ci1.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -738,7 +737,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci2.GetId()),
+						ComputeInstance: new(ci2.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -758,7 +757,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip1.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -768,7 +767,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip2.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -789,7 +788,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -808,7 +807,7 @@ var _ = Describe("Private public IP attachments server", func() {
 				Object: privatev1.PublicIPAttachment_builder{
 					Spec: privatev1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())

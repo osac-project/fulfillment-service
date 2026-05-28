@@ -18,7 +18,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -81,7 +80,7 @@ var _ = Describe("Private projects server", func() {
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title:       "My Project",
-					Description: proto.String("Test project"),
+					Description: new("Test project"),
 				}.Build(),
 			}.Build(),
 		}.Build()
@@ -122,7 +121,7 @@ var _ = Describe("Private projects server", func() {
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title:  "Child Project",
-					Parent: proto.String(parentResp.Object.Id),
+					Parent: new(parentResp.Object.Id),
 				}.Build(),
 			}.Build(),
 		}.Build()
@@ -149,7 +148,7 @@ var _ = Describe("Private projects server", func() {
 
 		// List projects:
 		listResp, err := privateServer.List(ctx, &privatev1.ProjectsListRequest{
-			Filter: proto.String("this.metadata.name == 'my-project'"),
+			Filter: new("this.metadata.name == 'my-project'"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.Size).To(Equal(int32(1)))
@@ -177,7 +176,7 @@ var _ = Describe("Private projects server", func() {
 
 		// List projects for org-1:
 		listResp, err := privateServer.List(ctx, &privatev1.ProjectsListRequest{
-			Filter: proto.String("this.metadata.tenant == 'org-1'"),
+			Filter: new("this.metadata.tenant == 'org-1'"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.Size).To(Equal(int32(1)))
@@ -208,7 +207,7 @@ var _ = Describe("Private projects server", func() {
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
 					Title:  "Child",
-					Parent: proto.String(parentResp.Object.Id),
+					Parent: new(parentResp.Object.Id),
 				}.Build(),
 			}.Build(),
 		}.Build()
@@ -217,7 +216,7 @@ var _ = Describe("Private projects server", func() {
 
 		// List only top-level projects:
 		listResp, err := privateServer.List(ctx, &privatev1.ProjectsListRequest{
-			Filter: proto.String("this.metadata.tenant == 'my-org' && !has(this.spec.parent)"),
+			Filter: new("this.metadata.tenant == 'my-org' && !has(this.spec.parent)"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.Size).To(Equal(int32(1)))
@@ -328,7 +327,7 @@ var _ = Describe("Private projects server", func() {
 			Object: privatev1.Project_builder{
 				Id: createResp.Object.Id,
 				Spec: privatev1.ProjectSpec_builder{
-					Description: proto.String("Updated description"),
+					Description: new("Updated description"),
 				}.Build(),
 			}.Build(),
 			UpdateMask: &fieldmaskpb.FieldMask{

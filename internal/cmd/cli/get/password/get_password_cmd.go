@@ -117,7 +117,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		key,
 	)
 	listResponse, err := client.List(ctx, publicv1.ClustersListRequest_builder{
-		Filter: proto.String(listFilter),
+		Filter: new(listFilter),
 		Limit:  proto.Int32(10),
 	}.Build())
 	if err != nil {

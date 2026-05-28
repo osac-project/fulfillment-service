@@ -150,7 +150,7 @@ var _ = Describe("Private cluster templates server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, privatev1.ClusterTemplatesListRequest_builder{
-				Filter: proto.String("this.metadata.name.startsWith('my-template-')"),
+				Filter: new("this.metadata.name.startsWith('my-template-')"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -176,7 +176,7 @@ var _ = Describe("Private cluster templates server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, privatev1.ClusterTemplatesListRequest_builder{
-				Filter: proto.String("this.metadata.name.startsWith('my-template-')"),
+				Filter: new("this.metadata.name.startsWith('my-template-')"),
 				Limit:  proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -211,7 +211,7 @@ var _ = Describe("Private cluster templates server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, privatev1.ClusterTemplatesListRequest_builder{
-				Filter: proto.String("this.metadata.name.startsWith('my-template-')"),
+				Filter: new("this.metadata.name.startsWith('my-template-')"),
 				Offset: proto.Int32(1),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -244,7 +244,7 @@ var _ = Describe("Private cluster templates server", func() {
 			// List the objects:
 			for _, object := range objects {
 				getResponse, err := server.List(ctx, privatev1.ClusterTemplatesListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(getResponse.GetSize()).To(BeNumerically("==", 1))

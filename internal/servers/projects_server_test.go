@@ -18,7 +18,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
@@ -119,7 +118,7 @@ var _ = Describe("Public projects server", func() {
 
 			// List projects:
 			listResponse, err := publicServer.List(ctx, publicv1.ProjectsListRequest_builder{
-				Filter: proto.String("this.metadata.name == 'my-project'"),
+				Filter: new("this.metadata.name == 'my-project'"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResponse.Size).To(Equal(int32(1)))
@@ -162,7 +161,7 @@ var _ = Describe("Public projects server", func() {
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title:       "New Project",
-						Description: proto.String("Test project"),
+						Description: new("Test project"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -195,7 +194,7 @@ var _ = Describe("Public projects server", func() {
 				Object: publicv1.Project_builder{
 					Id: createResponse.Object.Id,
 					Spec: publicv1.ProjectSpec_builder{
-						Description: proto.String("Updated description"),
+						Description: new("Updated description"),
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -254,7 +253,7 @@ var _ = Describe("Public projects server", func() {
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
 						Title:  "Child",
-						Parent: proto.String(parentResp.Object.Id),
+						Parent: new(parentResp.Object.Id),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -262,7 +261,7 @@ var _ = Describe("Public projects server", func() {
 
 			// List child projects:
 			listResp, err := publicServer.List(ctx, publicv1.ProjectsListRequest_builder{
-				Filter: proto.String("this.spec.parent == '" + parentResp.Object.Id + "'"),
+				Filter: new("this.spec.parent == '" + parentResp.Object.Id + "'"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResp.Size).To(Equal(int32(1)))

@@ -88,7 +88,7 @@ var _ = Describe("Virtual networks server", func() {
 			Metadata: privatev1.Metadata_builder{
 				Tenant: auth.SharedTenant,
 			}.Build(),
-			IsDefault: proto.Bool(true),
+			IsDefault: new(true),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
 				SupportsIpv6:      true,
@@ -182,7 +182,7 @@ var _ = Describe("Virtual networks server", func() {
 						Region:                 "us-east-1",
 						NetworkClass:           "default",
 						ImplementationStrategy: "ovn-kubernetes",
-						Ipv4Cidr:               proto.String("10.0.0.0/16"),
+						Ipv4Cidr:               new("10.0.0.0/16"),
 						Capabilities: privatev1.VirtualNetworkCapabilities_builder{
 							EnableIpv4: true,
 						}.Build(),
@@ -250,7 +250,7 @@ var _ = Describe("Virtual networks server", func() {
 			// List the objects via public server:
 			for _, id := range ids {
 				response, err := publicServer.List(ctx, publicv1.VirtualNetworksListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", id)),
+					Filter: new(fmt.Sprintf("this.id == '%s'", id)),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -285,7 +285,7 @@ var _ = Describe("Virtual networks server", func() {
 					}.Build(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
 						NetworkClass: "default",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						Capabilities: publicv1.VirtualNetworkCapabilities_builder{
 							EnableIpv4: true,
 						}.Build(),
@@ -316,7 +316,7 @@ var _ = Describe("Virtual networks server", func() {
 					}.Build(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
 						NetworkClass: "default",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -355,7 +355,7 @@ var _ = Describe("Virtual networks server", func() {
 					Id: privateObj.GetId(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
 						NetworkClass: "default",
-						Ipv4Cidr:     proto.String("192.168.0.0/16"),
+						Ipv4Cidr:     new("192.168.0.0/16"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -380,7 +380,7 @@ var _ = Describe("Virtual networks server", func() {
 					}.Build(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
 						NetworkClass: "default",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 					}.Build(),
 				}.Build(),
 				Lock: true,
@@ -400,7 +400,7 @@ var _ = Describe("Virtual networks server", func() {
 					}.Build(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
 						NetworkClass: "default",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -452,7 +452,7 @@ var _ = Describe("Virtual networks server", func() {
 						Name: "default-nc-vn",
 					}.Build(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.2.0.0/16"),
+						Ipv4Cidr: new("10.2.0.0/16"),
 						Capabilities: publicv1.VirtualNetworkCapabilities_builder{
 							EnableIpv4: true,
 						}.Build(),
@@ -497,7 +497,7 @@ var _ = Describe("Virtual networks server", func() {
 					}.Build(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
 						NetworkClass: altNCId,
-						Ipv4Cidr:     proto.String("10.1.0.0/16"),
+						Ipv4Cidr:     new("10.1.0.0/16"),
 						Capabilities: publicv1.VirtualNetworkCapabilities_builder{
 							EnableIpv4: true,
 						}.Build(),
@@ -523,7 +523,7 @@ var _ = Describe("Virtual networks server", func() {
 						Name: "renamed-vn",
 					}.Build(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 						Capabilities: publicv1.VirtualNetworkCapabilities_builder{
 							EnableIpv4: true,
 						}.Build(),
@@ -547,7 +547,7 @@ var _ = Describe("Virtual networks server", func() {
 					Id: privateObj.GetId(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
 						NetworkClass: "different-nc",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						Capabilities: publicv1.VirtualNetworkCapabilities_builder{
 							EnableIpv4: true,
 						}.Build(),
@@ -579,7 +579,7 @@ var _ = Describe("Virtual networks server", func() {
 						Name: "no-default-nc-vn",
 					}.Build(),
 					Spec: publicv1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.3.0.0/16"),
+						Ipv4Cidr: new("10.3.0.0/16"),
 					}.Build(),
 				}.Build(),
 			}.Build())

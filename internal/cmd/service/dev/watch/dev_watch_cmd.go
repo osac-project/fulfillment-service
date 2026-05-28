@@ -24,7 +24,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -136,7 +135,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Start watching events:
 	eventsClient := publicv1.NewEventsClient(grpcClient)
 	eventsStream, err := eventsClient.Watch(ctx, &publicv1.EventsWatchRequest{
-		Filter: proto.String(c.args.filter),
+		Filter: new(c.args.filter),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start stream: %w", err)

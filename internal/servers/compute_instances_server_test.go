@@ -177,7 +177,7 @@ var _ = Describe("Compute instances server", func() {
 					BootDisk: privatev1.ComputeInstanceDisk_builder{
 						SizeGib: 10,
 					}.Build(),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 				}.Build(),
 			}.Build()
 
@@ -353,7 +353,7 @@ var _ = Describe("Compute instances server", func() {
 						Template:    "general.small",
 						Cores:       proto.Int32(4),
 						MemoryGib:   proto.Int32(8),
-						RunStrategy: proto.String("Always"),
+						RunStrategy: new("Always"),
 						Image: publicv1.ComputeInstanceImage_builder{
 							SourceType: "registry",
 							SourceRef:  "quay.io/test:latest",
@@ -498,7 +498,7 @@ var _ = Describe("Compute instances server", func() {
 						Template:    "mapping-template",
 						Cores:       proto.Int32(8),
 						MemoryGib:   proto.Int32(16),
-						RunStrategy: proto.String("Halted"),
+						RunStrategy: new("Halted"),
 					}.Build(),
 				}.Build(),
 			}.Build())

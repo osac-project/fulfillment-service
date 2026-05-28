@@ -83,7 +83,7 @@ var _ = Describe("buildSpec", func() {
 
 		want := publicv1.ComputeInstanceSpec_builder{
 			Template:       "tmpl",
-			Subnet:         proto.String("legacy-sub"),
+			Subnet:         new("legacy-sub"),
 			SecurityGroups: []string{"sg-a", "sg-b"},
 		}.Build()
 		Expect(proto.Equal(spec, want)).To(BeTrue(), "spec should equal expected spec")

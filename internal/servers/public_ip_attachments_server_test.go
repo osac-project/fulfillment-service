@@ -214,7 +214,7 @@ var _ = Describe("Public IP attachments server", func() {
 				Object: publicv1.PublicIPAttachment_builder{
 					Spec: publicv1.PublicIPAttachmentSpec_builder{
 						PublicIp:        pip.GetId(),
-						ComputeInstance: proto.String(ci.GetId()),
+						ComputeInstance: new(ci.GetId()),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -279,7 +279,7 @@ var _ = Describe("Public IP attachments server", func() {
 
 			for _, object := range objects {
 				response, err := publicIPAttachmentsServer.List(ctx, publicv1.PublicIPAttachmentsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))

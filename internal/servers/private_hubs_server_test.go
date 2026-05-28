@@ -231,7 +231,7 @@ var _ = Describe("Private hubs server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, privatev1.HubsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))

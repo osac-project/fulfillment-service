@@ -20,7 +20,6 @@ import (
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
@@ -127,7 +126,7 @@ var _ = Describe("Public organizations server", func() {
 			// List tenants via the public server. It is important to use a filter to skip the builtin
 			// tenants.
 			listResponse, err := publicServer.List(ctx, publicv1.OrganizationsListRequest_builder{
-				Filter: proto.String("this.metadata.name == 'my-tenant'"),
+				Filter: new("this.metadata.name == 'my-tenant'"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResponse.Size).To(Equal(int32(1)))

@@ -19,7 +19,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
@@ -343,7 +342,7 @@ var _ = Describe("Public Users Server", func() {
 
 		// List users filtering by organization "org-a":
 		listResp, err := publicServer.List(ctx, publicv1.UsersListRequest_builder{
-			Filter: proto.String("this.spec.organization == 'org-a'"),
+			Filter: new("this.spec.organization == 'org-a'"),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.GetSize()).To(Equal(int32(2)))
@@ -354,7 +353,7 @@ var _ = Describe("Public Users Server", func() {
 
 		// List users filtering by organization "org-b":
 		listResp, err = publicServer.List(ctx, publicv1.UsersListRequest_builder{
-			Filter: proto.String("this.spec.organization == 'org-b'"),
+			Filter: new("this.spec.organization == 'org-b'"),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.GetSize()).To(Equal(int32(3)))

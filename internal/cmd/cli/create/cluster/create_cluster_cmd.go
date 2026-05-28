@@ -359,7 +359,7 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Clus
 		c.args.template,
 	)
 	response, err := c.templatesClient.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
-		Filter: proto.String(filter),
+		Filter: new(filter),
 		Limit:  proto.Int32(10),
 	}.Build())
 	if err != nil {

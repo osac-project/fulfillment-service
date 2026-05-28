@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -46,7 +45,7 @@ func TestEffectiveNetworkAttachments(t *testing.T) {
 		{
 			name: "legacy subnet empty string",
 			spec: privatev1.ComputeInstanceSpec_builder{
-				Subnet: proto.String(""),
+				Subnet: new(""),
 			}.Build(),
 			want:    nil,
 			wantErr: false, // treat as no networking specified
@@ -54,7 +53,7 @@ func TestEffectiveNetworkAttachments(t *testing.T) {
 		{
 			name: "legacy subnet only",
 			spec: privatev1.ComputeInstanceSpec_builder{
-				Subnet: proto.String("sn-1"),
+				Subnet: new("sn-1"),
 			}.Build(),
 			want: []*privatev1.NetworkAttachment{
 				privatev1.NetworkAttachment_builder{Subnet: "sn-1"}.Build(),
@@ -64,7 +63,7 @@ func TestEffectiveNetworkAttachments(t *testing.T) {
 		{
 			name: "legacy subnet and security groups",
 			spec: privatev1.ComputeInstanceSpec_builder{
-				Subnet:         proto.String("sn-1"),
+				Subnet:         new("sn-1"),
 				SecurityGroups: []string{"sg-1", "sg-2"},
 			}.Build(),
 			want: []*privatev1.NetworkAttachment{
@@ -100,7 +99,7 @@ func TestEffectiveNetworkAttachments(t *testing.T) {
 		{
 			name: "conflict legacy subnet with network_attachments",
 			spec: privatev1.ComputeInstanceSpec_builder{
-				Subnet: proto.String("sn-1"),
+				Subnet: new("sn-1"),
 				NetworkAttachments: []*privatev1.NetworkAttachment{
 					privatev1.NetworkAttachment_builder{Subnet: "a"}.Build(),
 				},
@@ -122,7 +121,7 @@ func TestEffectiveNetworkAttachments(t *testing.T) {
 		{
 			name: "conflict deprecated subnet present but empty string with network_attachments",
 			spec: privatev1.ComputeInstanceSpec_builder{
-				Subnet: proto.String(""),
+				Subnet: new(""),
 				NetworkAttachments: []*privatev1.NetworkAttachment{
 					privatev1.NetworkAttachment_builder{Subnet: "a"}.Build(),
 				},

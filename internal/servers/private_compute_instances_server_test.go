@@ -112,7 +112,7 @@ var _ = Describe("Private compute instances server", func() {
 				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
-				Ipv4Cidr:     proto.String("10.0.0.0/16"),
+				Ipv4Cidr:     new("10.0.0.0/16"),
 				NetworkClass: networkClassID,
 			}.Build(),
 			Status: privatev1.VirtualNetworkStatus_builder{
@@ -139,7 +139,7 @@ var _ = Describe("Private compute instances server", func() {
 			}.Build(),
 			Spec: privatev1.SubnetSpec_builder{
 				VirtualNetwork: vnID,
-				Ipv4Cidr:       proto.String("10.0.1.0/24"),
+				Ipv4Cidr:       new("10.0.1.0/24"),
 			}.Build(),
 			Status: privatev1.SubnetStatus_builder{
 				State: state,
@@ -280,7 +280,7 @@ var _ = Describe("Private compute instances server", func() {
 					BootDisk: privatev1.ComputeInstanceDisk_builder{
 						SizeGib: 10,
 					}.Build(),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 				}.Build(),
 			}.Build()
 
@@ -752,7 +752,7 @@ var _ = Describe("Private compute instances server", func() {
 						Template:    "override-template",
 						Cores:       proto.Int32(8),
 						MemoryGib:   proto.Int32(16),
-						RunStrategy: proto.String("Halted"),
+						RunStrategy: new("Halted"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -843,7 +843,7 @@ var _ = Describe("Private compute instances server", func() {
 						BootDisk: privatev1.ComputeInstanceDisk_builder{
 							SizeGib: 20,
 						}.Build(),
-						RunStrategy: proto.String("Always"),
+						RunStrategy: new("Always"),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -870,7 +870,7 @@ var _ = Describe("Private compute instances server", func() {
 				SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
 					Cores:       proto.Int32(2),
 					MemoryGib:   proto.Int32(4),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 				}.Build(),
 			}.Build()
 			_, err = templatesDao.Create().SetObject(template).Do(ctx)
@@ -1034,7 +1034,7 @@ var _ = Describe("Private compute instances server", func() {
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							CatalogItem: "ci-cat-nonedit",
-							SshKey:      proto.String("user-key"),
+							SshKey:      new("user-key"),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -1057,7 +1057,7 @@ var _ = Describe("Private compute instances server", func() {
 						Object: privatev1.ComputeInstance_builder{
 							Spec: privatev1.ComputeInstanceSpec_builder{
 								CatalogItem: catID,
-								SshKey:      proto.String(value),
+								SshKey:      new(value),
 							}.Build(),
 						}.Build(),
 					}.Build())
@@ -1194,7 +1194,7 @@ var _ = Describe("Private compute instances server", func() {
 					BootDisk: privatev1.ComputeInstanceDisk_builder{
 						SizeGib: 10,
 					}.Build(),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 				}.Build(),
 			}.Build()
 
@@ -1217,7 +1217,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String(subnet.GetId()),
+						Subnet:   new(subnet.GetId()),
 					}.Build(),
 				}.Build()
 
@@ -1234,7 +1234,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String("non-existent-subnet-id"),
+						Subnet:   new("non-existent-subnet-id"),
 					}.Build(),
 				}.Build()
 
@@ -1258,7 +1258,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String(subnet.GetId()),
+						Subnet:   new(subnet.GetId()),
 					}.Build(),
 				}.Build()
 
@@ -1290,7 +1290,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
+						Subnet:         new(subnet.GetId()),
 						SecurityGroups: []string{sg1.GetId(), sg2.GetId()},
 					}.Build(),
 				}.Build()
@@ -1308,7 +1308,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
+						Subnet:         new(subnet.GetId()),
 						SecurityGroups: []string{"non-existent-sg-id"},
 					}.Build(),
 				}.Build()
@@ -1333,7 +1333,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
+						Subnet:         new(subnet.GetId()),
 						SecurityGroups: []string{sg.GetId()},
 					}.Build(),
 				}.Build()
@@ -1360,7 +1360,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
+						Subnet:         new(subnet.GetId()),
 						SecurityGroups: []string{sgFromOtherVN.GetId()},
 					}.Build(),
 				}.Build()
@@ -1387,7 +1387,7 @@ var _ = Describe("Private compute instances server", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String(subnet.GetId()),
+						Subnet:   new(subnet.GetId()),
 						NetworkAttachments: []*privatev1.NetworkAttachment{
 							privatev1.NetworkAttachment_builder{Subnet: subnet.GetId()}.Build(),
 						},

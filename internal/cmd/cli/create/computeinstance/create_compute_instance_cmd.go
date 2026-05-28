@@ -343,7 +343,7 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Comp
 		c.args.template,
 	)
 	response, err := c.templatesClient.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{
-		Filter: proto.String(filter),
+		Filter: new(filter),
 		Limit:  proto.Int32(10),
 	}.Build())
 	if err != nil {
@@ -714,13 +714,13 @@ func (c *runnerContext) buildSpec(templateID string,
 		}.Build()
 	}
 	if c.args.cores > 0 {
-		spec.Cores = proto.Int32(c.args.cores)
+		spec.Cores = new(c.args.cores)
 	}
 	if c.args.memoryGiB > 0 {
-		spec.MemoryGib = proto.Int32(c.args.memoryGiB)
+		spec.MemoryGib = new(c.args.memoryGiB)
 	}
 	if c.args.sshKey != "" {
-		spec.SshKey = proto.String(c.args.sshKey)
+		spec.SshKey = new(c.args.sshKey)
 	}
 	if c.args.bootDiskSizeGiB > 0 {
 		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
@@ -735,10 +735,10 @@ func (c *runnerContext) buildSpec(templateID string,
 		spec.AdditionalDisks = disks
 	}
 	if c.args.runStrategy != "" {
-		spec.RunStrategy = proto.String(c.args.runStrategy)
+		spec.RunStrategy = new(c.args.runStrategy)
 	}
 	if c.args.userData != "" {
-		spec.UserData = proto.String(c.args.userData)
+		spec.UserData = new(c.args.userData)
 	}
 	if err := c.applyNetworkingFlags(&spec); err != nil {
 		return nil, err
@@ -766,7 +766,7 @@ func (c *runnerContext) applyNetworkingFlags(spec *publicv1.ComputeInstanceSpec_
 		return nil
 	}
 	if c.args.subnet != "" {
-		spec.Subnet = proto.String(c.args.subnet)
+		spec.Subnet = new(c.args.subnet)
 	}
 	if len(c.args.securityGroups) > 0 {
 		spec.SecurityGroups = append([]string(nil), c.args.securityGroups...)
@@ -870,13 +870,13 @@ func (c *runnerContext) buildSpecFromCatalogItem(catalogItemID string) (*publicv
 		}.Build()
 	}
 	if c.args.cores > 0 {
-		spec.Cores = proto.Int32(c.args.cores)
+		spec.Cores = new(c.args.cores)
 	}
 	if c.args.memoryGiB > 0 {
-		spec.MemoryGib = proto.Int32(c.args.memoryGiB)
+		spec.MemoryGib = new(c.args.memoryGiB)
 	}
 	if c.args.sshKey != "" {
-		spec.SshKey = proto.String(c.args.sshKey)
+		spec.SshKey = new(c.args.sshKey)
 	}
 	if c.args.bootDiskSizeGiB > 0 {
 		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
@@ -891,10 +891,10 @@ func (c *runnerContext) buildSpecFromCatalogItem(catalogItemID string) (*publicv
 		spec.AdditionalDisks = disks
 	}
 	if c.args.runStrategy != "" {
-		spec.RunStrategy = proto.String(c.args.runStrategy)
+		spec.RunStrategy = new(c.args.runStrategy)
 	}
 	if c.args.userData != "" {
-		spec.UserData = proto.String(c.args.userData)
+		spec.UserData = new(c.args.userData)
 	}
 	return spec.Build(), nil
 }

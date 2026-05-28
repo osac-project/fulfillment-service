@@ -92,8 +92,8 @@ var _ = Describe("buildSpec", func() {
 						Template:    template,
 						Cores:       proto.Int32(4),
 						MemoryGib:   proto.Int32(8),
-						RunStrategy: proto.String("Always"),
-						SshKey:      proto.String("ssh-rsa AAAA..."),
+						RunStrategy: new("Always"),
+						SshKey:      new("ssh-rsa AAAA..."),
 						Image: privatev1.ComputeInstanceImage_builder{
 							SourceType: "registry",
 							SourceRef:  "quay.io/fedora/fedora:latest",
@@ -1099,7 +1099,7 @@ var _ = Describe("ensureUserDataSecret", func() {
 			computeInstance: privatev1.ComputeInstance_builder{
 				Id: ciID,
 				Spec: privatev1.ComputeInstanceSpec_builder{
-					UserData: proto.String("#cloud-config\npackages:\n  - vim"),
+					UserData: new("#cloud-config\npackages:\n  - vim"),
 				}.Build(),
 			}.Build(),
 			hubNamespace:       hubNamespace,
@@ -1149,7 +1149,7 @@ var _ = Describe("ensureUserDataSecret", func() {
 			computeInstance: privatev1.ComputeInstance_builder{
 				Id: ciID,
 				Spec: privatev1.ComputeInstanceSpec_builder{
-					UserData: proto.String("some-data"),
+					UserData: new("some-data"),
 				}.Build(),
 			}.Build(),
 			hubNamespace:       hubNamespace,
@@ -1179,7 +1179,7 @@ var _ = Describe("ensureUserDataSecret", func() {
 			computeInstance: privatev1.ComputeInstance_builder{
 				Id: ciID,
 				Spec: privatev1.ComputeInstanceSpec_builder{
-					UserData: proto.String("some-data"),
+					UserData: new("some-data"),
 				}.Build(),
 			}.Build(),
 			hubNamespace:       hubNamespace,

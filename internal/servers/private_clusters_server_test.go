@@ -584,7 +584,7 @@ var _ = Describe("Private clusters server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, privatev1.ClustersListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -1184,7 +1184,7 @@ var _ = Describe("Private clusters server", func() {
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
 							CatalogItem: "cat-noneditable",
-							PullSecret:  proto.String("user-secret"),
+							PullSecret:  new("user-secret"),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1210,7 +1210,7 @@ var _ = Describe("Private clusters server", func() {
 						Object: privatev1.Cluster_builder{
 							Spec: privatev1.ClusterSpec_builder{
 								CatalogItem: catID,
-								PullSecret:  proto.String(value),
+								PullSecret:  new(value),
 							}.Build(),
 							Status: privatev1.ClusterStatus_builder{
 								Hub: "my-hub-id",
@@ -1329,7 +1329,7 @@ var _ = Describe("Private clusters server", func() {
 				object := createCluster()
 				id := object.GetId()
 				listResponse, err := server.List(ctx, privatev1.ClustersListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == %q", id)),
+					Filter: new(fmt.Sprintf("this.id == %q", id)),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				items := listResponse.GetItems()

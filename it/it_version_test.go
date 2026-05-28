@@ -23,7 +23,6 @@ import (
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
@@ -123,7 +122,7 @@ var _ = Describe("Version", func() {
 		object := createCluster()
 		id := object.GetId()
 		listResponse, err := clustersClient.List(ctx, publicv1.ClustersListRequest_builder{
-			Filter: proto.String(fmt.Sprintf("this.id == %q", id)),
+			Filter: new(fmt.Sprintf("this.id == %q", id)),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		items := listResponse.GetItems()

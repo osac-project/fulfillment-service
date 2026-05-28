@@ -174,7 +174,7 @@ var _ = Describe("Cluster catalog items server", func() {
 
 			for _, object := range objects {
 				response, err := server.List(ctx, publicv1.ClusterCatalogItemsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
