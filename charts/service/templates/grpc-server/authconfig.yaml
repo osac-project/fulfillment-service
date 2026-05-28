@@ -23,37 +23,6 @@ spec:
     "fulfillment-api":
       kubernetesTokenReview:
         audiences:
-        # TODO: This is the default audience for the Kubernetes API server. We should probably create a custom audience,
-        # for example `fulfillment-api`, but then the users will need to create tokens for that audience. For example:
-        #
-        # $ kubectl create token -n osac --audience=fulfillment-api client
-        #
-        # It is not clear to me if we can also use that audience for the tokens generated automatically for the service
-        # accounts of other pods, for example for the `controller` pods. It may be possible using a projected service
-        # account token, something like this:
-        #
-        # apiVersion: v1
-        # kind: Pod
-        # metadata:
-        #   name: my
-        # spec:
-        #   containers:
-        #   - volumeMounts:
-        #     - mountPath: /var/run/secrets/tokens
-        #       name: api-token
-        #   volumes:
-        #   - name: api-token
-        #     projected:
-        #       sources:
-        #       - serviceAccountToken:
-        #           path: api-token
-        #           audience: fulfillment-api
-        #
-        # But that needs to be tested.
-        #
-        # Note also that different flavours of Kubernetes use different audicences for the service account tokens. Kind
-        # uses the full DNS name `kubernetes.default.svc.cluster.local`, but OpenShift uses the `kubernetes.default.svc`
-        # abbreviation.
         - https://kubernetes.default.svc
         - https://kubernetes.default.svc.cluster.local
       overrides:

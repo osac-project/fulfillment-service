@@ -853,17 +853,6 @@ kubectl get authconfig fulfillment-service -n osac -o yaml | grep issuerUrl
      https://${SERVICE_URL}/api/fulfillment/v1/cluster_templates
    ```
 
-#### Test with Kubernetes Service Account Token
-
-```bash
-# Get a service account token
-TOKEN=$(kubectl create token -n osac client)
-
-# Test the API
-curl -k -H "Authorization: Bearer ${TOKEN}" \
-  https://${SERVICE_URL}/api/fulfillment/v1/cluster_templates
-```
-
 ### 5. Verify Authorization
 
 Test that authorization rules are working:

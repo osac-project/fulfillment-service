@@ -25,7 +25,6 @@ resources:
 - grpc-server
 - ingress-proxy
 - rest-gateway
-- client
 - admin
 - controller
 
