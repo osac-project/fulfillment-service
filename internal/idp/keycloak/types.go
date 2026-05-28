@@ -212,33 +212,46 @@ func fromKeycloakOrganization(kcOrg *keycloakOrganization) *idp.Organization {
 // See: https://www.keycloak.org/docs/latest/authorization_services/
 
 // keycloakAuthorizationResource represents a protected resource in Keycloak Authorization Services.
+type keycloakAuthorizationScope struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
 type keycloakAuthorizationResource struct {
-	ID         string              `json:"_id,omitempty"`
-	Name       string              `json:"name,omitempty"`
-	Type       string              `json:"type,omitempty"`
-	Scopes     []string            `json:"scopes,omitempty"`
-	URIs       []string            `json:"uris,omitempty"`
-	Attributes map[string][]string `json:"attributes,omitempty"`
+	ID         string                       `json:"_id,omitempty"`
+	Name       string                       `json:"name,omitempty"`
+	Type       string                       `json:"type,omitempty"`
+	Scopes     []keycloakAuthorizationScope `json:"scopes,omitempty"`
+	URIs       []string                     `json:"uris,omitempty"`
+	Attributes map[string][]string          `json:"attributes,omitempty"`
 }
 
 // Conversion functions for authorization resources
 func toKeycloakAuthorizationResource(resource *idp.AuthorizationResource) *keycloakAuthorizationResource {
+	scopes := make([]keycloakAuthorizationScope, len(resource.Scopes))
+	for i, scopeName := range resource.Scopes {
+		scopes[i] = keycloakAuthorizationScope{Name: scopeName}
+	}
 	return &keycloakAuthorizationResource{
 		ID:         resource.ID,
 		Name:       resource.Name,
 		Type:       resource.Type,
-		Scopes:     resource.Scopes,
+		Scopes:     scopes,
 		URIs:       resource.URIs,
 		Attributes: resource.Attributes,
 	}
 }
 
 func fromKeycloakAuthorizationResource(kcResource *keycloakAuthorizationResource) *idp.AuthorizationResource {
+	scopeNames := make([]string, len(kcResource.Scopes))
+	for i, scope := range kcResource.Scopes {
+		scopeNames[i] = scope.Name
+	}
 	return &idp.AuthorizationResource{
 		ID:         kcResource.ID,
 		Name:       kcResource.Name,
 		Type:       kcResource.Type,
-		Scopes:     kcResource.Scopes,
+		Scopes:     scopeNames,
 		URIs:       kcResource.URIs,
 		Attributes: kcResource.Attributes,
 	}

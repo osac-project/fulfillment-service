@@ -1066,10 +1066,10 @@ var _ = Describe("Keycloak Client", func() {
 			var receivedResource *keycloakAuthorizationResource
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// First call: lookup authorization client UUID
-				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/clients" && r.URL.Query().Get("clientId") == "osac-authorization" {
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/clients" && r.URL.Query().Get("clientId") == "authorino-uma" {
 					response := []keycloakClient{{
 						ID:       "auth-client-uuid-123",
-						ClientID: "osac-authorization",
+						ClientID: "authorino-uma",
 					}}
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(response)
@@ -1205,9 +1205,9 @@ var _ = Describe("Keycloak Client", func() {
 					response := keycloakAuthorizationResource{
 						ID:   "resource-456",
 						Name: "PROJECT-acme-web-app",
-						Scopes: []string{
-							idp.ScopeViewProject,
-							idp.ScopeManageProject,
+						Scopes: []keycloakAuthorizationScope{
+							{Name: idp.ScopeViewProject},
+							{Name: idp.ScopeManageProject},
 						},
 					}
 					w.Header().Set("Content-Type", "application/json")
