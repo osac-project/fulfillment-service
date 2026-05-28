@@ -51,6 +51,7 @@ type Config struct {
 	// - gRPC server: 30001
 	// - REST gateway: 30002
 	// - Controller: 30003
+	// - Policy server: 30004
 	Debug bool `json:"debug" envconfig:"debug" default:"false"`
 
 	// Secret is the secret used in all places where passwords or secrets are needed, such as service account

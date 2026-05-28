@@ -1,0 +1,263 @@
+# Copyright (c) 2026 Red Hat, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+# an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+
+import rego.v1
+
+# Calculate the value for the 'x-subject' header that will be sent to the caller:
+default subject_user = ""
+default subject_tenants = []
+subject_json := json.marshal({
+  "user": subject_user,
+  "tenants": subject_tenants,
+})
+
+# Determine the authentication method from the identity structure. Kubernetes token review responses always contain a
+# nested 'user' object, while decoded JSON web tokens have their claims at the top level.
+authn_method := "serviceaccount" if {
+  input.auth.identity.user
+}
+authn_method := "jwt" if {
+  not input.auth.identity.user
+}
+
+# Emergency service accounts are Kubernetes service accounts that are allowed to act as administrators in case
+# of emergency situations where it isn't possible to get a valid JWT token from the identity provider.
+emergency_service_accounts := {
+  "system:serviceaccount:{{ .namespace }}:admin",
+  "system:serviceaccount:{{ .namespace }}:controller",
+}
+
+# Admin service accounts are service accounts that are allowed to act as administrators.
+admin_service_accounts := {
+  "service-account-osac-admin",
+  "service-account-osac-controller",
+}
+
+# Admin groups are groups that are allowed to act as administrators.
+admin_groups := {
+  "admins",
+}
+
+# Tenant admin roles - users with these roles can manage users in their tenant
+tenant_admin_roles := {
+  "tenant-admin",
+  "tenant-user-manager",
+}
+
+# Tenant IdP manager roles - users with these roles can manage IdP config and assign roles
+tenant_idp_manager_roles := {
+  "tenant-admin",
+  "tenant-idp-manager",
+}
+
+# Get the gRPC method:
+grpc_method := input.context.request.http.path
+
+# Get the subject user. For service accounts this is the short name extracted from the full
+# Kubernetes username (e.g. "admin" from "system:serviceaccount:osac:admin"). For JWT users
+# it is the username claim.
+subject_user = split(input.auth.identity.user.username, ":")[3] if {
+  authn_method == "serviceaccount"
+}
+subject_user = input.auth.identity.username if {
+  authn_method == "jwt"
+}
+
+# Get the subject groups:
+subject_groups = input.auth.identity.user.groups if {
+  authn_method == "serviceaccount"
+}
+subject_groups = input.auth.identity.groups if {
+  authn_method == "jwt"
+}
+
+# Get the subject's tenant(s). This is the canonical value used by Authorino to populate the
+# x-subject header, so it must account for all authentication methods and admin status.
+subject_tenants = ["*"] if {
+  is_admin
+}
+
+# For JWT users, this comes from the "organization" scope which is in defaultClientScopes.
+# The organization claim is required for tenant admins and IdP managers.
+subject_tenants = input.auth.identity.organization if {
+  not is_admin
+  authn_method == "jwt"
+  input.auth.identity.organization
+}
+subject_tenants = input.auth.identity.organizations if {
+  not is_admin
+  authn_method == "jwt"
+  input.auth.identity.organizations
+}
+
+# Fallback to groups for JWT users without organization claim
+subject_tenants = subject_groups if {
+  not is_admin
+  authn_method == "jwt"
+  not input.auth.identity.organization
+  not input.auth.identity.organizations
+}
+
+# For service accounts, extract the namespace from the username
+subject_tenants = [split(input.auth.identity.user.username, ":")[2]] if {
+  not is_admin
+  authn_method == "serviceaccount"
+}
+
+# Get the subject's realm roles from JWT
+default subject_realm_roles = []
+subject_realm_roles = input.auth.identity.realm_access.roles if {
+  authn_method == "jwt"
+  input.auth.identity.realm_access
+  input.auth.identity.realm_access.roles
+}
+
+# Check if an account is an admin account:
+default is_admin = false
+is_admin if {
+  input.auth.identity.user.username in emergency_service_accounts
+}
+is_admin if {
+  subject_user in admin_service_accounts
+}
+is_admin if {
+  some group in subject_groups
+  group in admin_groups
+}
+
+# Check if an account is a tenant admin (can manage users AND IdP in their tenant):
+default is_tenant_admin = false
+is_tenant_admin if {
+  some role in subject_realm_roles
+  role in tenant_admin_roles
+}
+
+# Check if an account is a tenant IdP manager (can ONLY manage IdP, NOT users):
+default is_tenant_idp_manager = false
+is_tenant_idp_manager if {
+  some role in subject_realm_roles
+  role in tenant_idp_manager_roles
+}
+
+# Check if an account is a regular client (no admin or tenant management roles):
+default is_client = false
+is_client if {
+  not is_admin
+  not is_tenant_admin
+  not is_tenant_idp_manager
+}
+
+# Check if account has client-level permissions (clients, tenant admins, or IdP managers):
+default has_client_permissions = false
+has_client_permissions if {
+  is_client
+}
+has_client_permissions if {
+  is_tenant_admin
+}
+has_client_permissions if {
+  is_tenant_idp_manager
+}
+
+# Allow metadata, reflection and health to everyone:
+allow if {
+  startswith(grpc_method, "/metadata.")
+}
+allow if {
+  startswith(grpc_method, "/grpc.reflection.")
+}
+allow if {
+  startswith(grpc_method, "/grpc.health.")
+}
+
+# Allow specific methods to clients (and tenant admins/IdP managers who inherit client permissions):
+allow if {
+  has_client_permissions
+  grpc_method in {
+    "/osac.public.v1.ClusterTemplates/Get",
+    "/osac.public.v1.ClusterTemplates/List",
+    "/osac.public.v1.Clusters/Create",
+    "/osac.public.v1.Clusters/Delete",
+    "/osac.public.v1.Clusters/Get",
+    "/osac.public.v1.Clusters/GetKubeconfig",
+    "/osac.public.v1.Clusters/GetKubeconfigViaHttp",
+    "/osac.public.v1.Clusters/GetPassword",
+    "/osac.public.v1.Clusters/GetPasswordViaHttp",
+    "/osac.public.v1.Clusters/List",
+    "/osac.public.v1.Clusters/Update",
+    "/osac.public.v1.ComputeInstanceTemplates/Get",
+    "/osac.public.v1.ComputeInstanceTemplates/List",
+    "/osac.public.v1.ComputeInstances/Create",
+    "/osac.public.v1.ComputeInstances/Delete",
+    "/osac.public.v1.ComputeInstances/Get",
+    "/osac.public.v1.ComputeInstances/List",
+    "/osac.public.v1.ComputeInstances/Update",
+    "/osac.public.v1.Console/Connect",
+    "/osac.public.v1.Console/GetAccess",
+    "/osac.public.v1.Events/Watch",
+    "/osac.public.v1.HostTypes/Get",
+    "/osac.public.v1.HostTypes/List",
+    "/osac.public.v1.NetworkClasses/Create",
+    "/osac.public.v1.NetworkClasses/Delete",
+    "/osac.public.v1.NetworkClasses/Get",
+    "/osac.public.v1.NetworkClasses/List",
+    "/osac.public.v1.NetworkClasses/Update",
+    "/osac.public.v1.Subnets/Create",
+    "/osac.public.v1.Subnets/Delete",
+    "/osac.public.v1.Subnets/Get",
+    "/osac.public.v1.Subnets/List",
+    "/osac.public.v1.Subnets/Update",
+    "/osac.public.v1.VirtualNetworks/Create",
+    "/osac.public.v1.VirtualNetworks/Delete",
+    "/osac.public.v1.VirtualNetworks/Get",
+    "/osac.public.v1.VirtualNetworks/List",
+    "/osac.public.v1.VirtualNetworks/Update",
+    "/osac.public.v1.SecurityGroups/Create",
+    "/osac.public.v1.SecurityGroups/Delete",
+    "/osac.public.v1.SecurityGroups/Get",
+    "/osac.public.v1.SecurityGroups/List",
+    "/osac.public.v1.SecurityGroups/Update",
+    "/osac.public.v1.PublicIPs/Create",
+    "/osac.public.v1.PublicIPs/Delete",
+    "/osac.public.v1.PublicIPs/Get",
+    "/osac.public.v1.PublicIPs/List",
+    "/osac.public.v1.Roles/Get",
+    "/osac.public.v1.Roles/List",
+    "/osac.public.v1.RoleBindings/Get",
+    "/osac.public.v1.RoleBindings/List",
+  }
+}
+
+# Tenant-scoped user management for tenant admins
+# Note: Tenant admins can manage users. IdP managers cannot (they only manage IdP config).
+# OPA performs method-level authorization (can this user call this method?).
+# The application layer enforces resource-level authorization via the generic server's
+# determineAssignedTenants validation, which ensures users can only assign tenants they have visibility to.
+allow if {
+  is_tenant_admin
+  grpc_method in {
+    "/osac.public.v1.Users/Create",
+    "/osac.public.v1.Users/Get",
+    "/osac.public.v1.Users/List",
+    "/osac.public.v1.Users/Update",
+    "/osac.public.v1.Users/Delete",
+  }
+}
+
+# Tenant-scoped IdP management (when APIs are added, e.g., IdentityProviders/*, RoleBindings/*)
+# For now, no IdP management APIs exist, so no rules needed yet
+# TODO: Add allow rules for (is_tenant_admin or is_tenant_idp_manager) when IdP APIs are implemented
+# Both tenant admins (full permissions) and tenant IdP managers (IdP-only) should be allowed
+
+# Allow everything to admins:
+allow if {
+  is_admin
+}
