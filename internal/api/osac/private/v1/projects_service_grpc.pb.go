@@ -32,12 +32,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Projects_List_FullMethodName   = "/osac.private.v1.Projects/List"
-	Projects_Get_FullMethodName    = "/osac.private.v1.Projects/Get"
-	Projects_Create_FullMethodName = "/osac.private.v1.Projects/Create"
-	Projects_Update_FullMethodName = "/osac.private.v1.Projects/Update"
-	Projects_Delete_FullMethodName = "/osac.private.v1.Projects/Delete"
-	Projects_Signal_FullMethodName = "/osac.private.v1.Projects/Signal"
+	Projects_List_FullMethodName         = "/osac.private.v1.Projects/List"
+	Projects_Get_FullMethodName          = "/osac.private.v1.Projects/Get"
+	Projects_Create_FullMethodName       = "/osac.private.v1.Projects/Create"
+	Projects_Update_FullMethodName       = "/osac.private.v1.Projects/Update"
+	Projects_Delete_FullMethodName       = "/osac.private.v1.Projects/Delete"
+	Projects_Signal_FullMethodName       = "/osac.private.v1.Projects/Signal"
+	Projects_GrantAccess_FullMethodName  = "/osac.private.v1.Projects/GrantAccess"
+	Projects_RevokeAccess_FullMethodName = "/osac.private.v1.Projects/RevokeAccess"
 )
 
 // ProjectsClient is the client API for Projects service.
@@ -60,6 +62,10 @@ type ProjectsClient interface {
 	// It does not modify the project directly but notifies the system to re-evaluate
 	// the project's status based on its current spec and external dependencies.
 	Signal(ctx context.Context, in *ProjectsSignalRequest, opts ...grpc.CallOption) (*ProjectsSignalResponse, error)
+	// Grants a user access to a project with a specific scope (VIEW_PROJECT or MANAGE_PROJECT).
+	GrantAccess(ctx context.Context, in *ProjectsGrantAccessRequest, opts ...grpc.CallOption) (*ProjectsGrantAccessResponse, error)
+	// Revokes a user's access to a project for a specific scope.
+	RevokeAccess(ctx context.Context, in *ProjectsRevokeAccessRequest, opts ...grpc.CallOption) (*ProjectsRevokeAccessResponse, error)
 }
 
 type projectsClient struct {
@@ -130,6 +136,26 @@ func (c *projectsClient) Signal(ctx context.Context, in *ProjectsSignalRequest, 
 	return out, nil
 }
 
+func (c *projectsClient) GrantAccess(ctx context.Context, in *ProjectsGrantAccessRequest, opts ...grpc.CallOption) (*ProjectsGrantAccessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProjectsGrantAccessResponse)
+	err := c.cc.Invoke(ctx, Projects_GrantAccess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *projectsClient) RevokeAccess(ctx context.Context, in *ProjectsRevokeAccessRequest, opts ...grpc.CallOption) (*ProjectsRevokeAccessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProjectsRevokeAccessResponse)
+	err := c.cc.Invoke(ctx, Projects_RevokeAccess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProjectsServer is the server API for Projects service.
 // All implementations must embed UnimplementedProjectsServer
 // for forward compatibility.
@@ -150,6 +176,10 @@ type ProjectsServer interface {
 	// It does not modify the project directly but notifies the system to re-evaluate
 	// the project's status based on its current spec and external dependencies.
 	Signal(context.Context, *ProjectsSignalRequest) (*ProjectsSignalResponse, error)
+	// Grants a user access to a project with a specific scope (VIEW_PROJECT or MANAGE_PROJECT).
+	GrantAccess(context.Context, *ProjectsGrantAccessRequest) (*ProjectsGrantAccessResponse, error)
+	// Revokes a user's access to a project for a specific scope.
+	RevokeAccess(context.Context, *ProjectsRevokeAccessRequest) (*ProjectsRevokeAccessResponse, error)
 	mustEmbedUnimplementedProjectsServer()
 }
 
@@ -177,6 +207,12 @@ func (UnimplementedProjectsServer) Delete(context.Context, *ProjectsDeleteReques
 }
 func (UnimplementedProjectsServer) Signal(context.Context, *ProjectsSignalRequest) (*ProjectsSignalResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Signal not implemented")
+}
+func (UnimplementedProjectsServer) GrantAccess(context.Context, *ProjectsGrantAccessRequest) (*ProjectsGrantAccessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GrantAccess not implemented")
+}
+func (UnimplementedProjectsServer) RevokeAccess(context.Context, *ProjectsRevokeAccessRequest) (*ProjectsRevokeAccessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokeAccess not implemented")
 }
 func (UnimplementedProjectsServer) mustEmbedUnimplementedProjectsServer() {}
 func (UnimplementedProjectsServer) testEmbeddedByValue()                  {}
@@ -307,6 +343,42 @@ func _Projects_Signal_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Projects_GrantAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProjectsGrantAccessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectsServer).GrantAccess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Projects_GrantAccess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectsServer).GrantAccess(ctx, req.(*ProjectsGrantAccessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Projects_RevokeAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProjectsRevokeAccessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectsServer).RevokeAccess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Projects_RevokeAccess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectsServer).RevokeAccess(ctx, req.(*ProjectsRevokeAccessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Projects_ServiceDesc is the grpc.ServiceDesc for Projects service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -337,6 +409,14 @@ var Projects_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Signal",
 			Handler:    _Projects_Signal_Handler,
+		},
+		{
+			MethodName: "GrantAccess",
+			Handler:    _Projects_GrantAccess_Handler,
+		},
+		{
+			MethodName: "RevokeAccess",
+			Handler:    _Projects_RevokeAccess_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -101,6 +101,32 @@ message ProjectsDeleteRequest {
 
 message ProjectsDeleteResponse {}
 
+message ProjectsGrantAccessRequest {
+  // ID of the project to grant access to.
+  string project_id = 1;
+
+  // Username of the user to grant access to.
+  string username = 2;
+
+  // Scope to grant (VIEW_PROJECT or MANAGE_PROJECT).
+  string scope = 3;
+}
+
+message ProjectsGrantAccessResponse {}
+
+message ProjectsRevokeAccessRequest {
+  // ID of the project to revoke access from.
+  string project_id = 1;
+
+  // Username of the user to revoke access from.
+  string username = 2;
+
+  // Scope to revoke (VIEW_PROJECT or MANAGE_PROJECT).
+  string scope = 3;
+}
+
+message ProjectsRevokeAccessResponse {}
+
 service Projects {
   // Retrieves the list of projects.
   rpc List(ProjectsListRequest) returns (ProjectsListResponse) {
@@ -136,5 +162,20 @@ service Projects {
   // Deletes a project.
   rpc Delete(ProjectsDeleteRequest) returns (ProjectsDeleteResponse) {
     option (google.api.http) = {delete: "/api/fulfillment/v1/projects/{id}"};
+  }
+
+  // Grants a user access to a project with a specific scope (VIEW_PROJECT or MANAGE_PROJECT).
+  rpc GrantAccess(ProjectsGrantAccessRequest) returns (ProjectsGrantAccessResponse) {
+    option (google.api.http) = {
+      post: "/api/fulfillment/v1/projects/{project_id}/access"
+      body: "*"
+    };
+  }
+
+  // Revokes a user's access to a project for a specific scope.
+  rpc RevokeAccess(ProjectsRevokeAccessRequest) returns (ProjectsRevokeAccessResponse) {
+    option (google.api.http) = {
+      delete: "/api/fulfillment/v1/projects/{project_id}/access/{username}/{scope}"
+    };
   }
 }
