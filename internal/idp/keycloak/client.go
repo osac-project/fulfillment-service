@@ -884,3 +884,265 @@ func (c *Client) ListIdentityProviders(ctx context.Context, organizationName str
 
 	return idps, nil
 }
+
+// GrantUserResourceAccess creates a user policy and scope-based permission to grant a user access to a resource.
+func (c *Client) GrantUserResourceAccess(ctx context.Context, userID, resourceID, scopeName string) error {
+	c.logger.InfoContext(ctx, "Granting user resource access",
+		slog.String("userID", userID),
+		slog.String("resourceID", resourceID),
+		slog.String("scope", scopeName),
+	)
+
+	// Get the authorization client UUID
+	clientUUID, err := c.getAuthorizationClientUUID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get authorization client UUID: %w", err)
+	}
+
+	// Get the resource details to include in policy/permission names
+	resource, err := c.GetAuthorizationResource(ctx, resourceID)
+	if err != nil {
+		return fmt.Errorf("failed to get resource: %w", err)
+	}
+
+	// Get the scope ID
+	scopeID, err := c.getScopeID(ctx, clientUUID, scopeName)
+	if err != nil {
+		return fmt.Errorf("failed to get scope ID: %w", err)
+	}
+
+	// Create user policy
+	policyName := fmt.Sprintf("User policy for %s - %s", userID, resource.Name)
+	policyID, err := c.createOrGetUserPolicy(ctx, clientUUID, userID, policyName)
+	if err != nil {
+		return fmt.Errorf("failed to create user policy: %w", err)
+	}
+
+	// Create scope-based permission
+	permissionName := fmt.Sprintf("Permission for %s - %s - %s", userID, resource.Name, scopeName)
+	err = c.createScopePermission(ctx, clientUUID, permissionName, resourceID, scopeID, policyID)
+	if err != nil {
+		return fmt.Errorf("failed to create permission: %w", err)
+	}
+
+	c.logger.InfoContext(ctx, "Granted user resource access",
+		slog.String("userID", userID),
+		slog.String("resourceID", resourceID),
+		slog.String("scope", scopeName),
+	)
+
+	return nil
+}
+
+// RevokeUserResourceAccess removes a user's permission to a resource for a specific scope.
+func (c *Client) RevokeUserResourceAccess(ctx context.Context, userID, resourceID, scopeName string) error {
+	c.logger.InfoContext(ctx, "Revoking user resource access",
+		slog.String("userID", userID),
+		slog.String("resourceID", resourceID),
+		slog.String("scope", scopeName),
+	)
+
+	// Get the authorization client UUID
+	clientUUID, err := c.getAuthorizationClientUUID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get authorization client UUID: %w", err)
+	}
+
+	// Get the resource details to construct permission name
+	resource, err := c.GetAuthorizationResource(ctx, resourceID)
+	if err != nil {
+		return fmt.Errorf("failed to get resource: %w", err)
+	}
+
+	// Find and delete the permission
+	permissionName := fmt.Sprintf("Permission for %s - %s - %s", userID, resource.Name, scopeName)
+	err = c.deletePermissionByName(ctx, clientUUID, permissionName)
+	if err != nil {
+		return fmt.Errorf("failed to delete permission: %w", err)
+	}
+
+	// Note: We don't delete the user policy here because it might be used by other permissions
+
+	c.logger.InfoContext(ctx, "Revoked user resource access",
+		slog.String("userID", userID),
+		slog.String("resourceID", resourceID),
+		slog.String("scope", scopeName),
+	)
+
+	return nil
+}
+
+// Helper methods for authorization policy and permission management
+
+func (c *Client) getScopeID(ctx context.Context, clientUUID, scopeName string) (string, error) {
+	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/scope?name=%s",
+		url.PathEscape(c.realmName),
+		url.PathEscape(clientUUID),
+		url.QueryEscape(scopeName),
+	)
+
+	response, err := c.httpClient.DoRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get scope: %w", err)
+	}
+	defer response.Body.Close()
+
+	var scopes []keycloakAuthorizationScope
+	if err := json.NewDecoder(response.Body).Decode(&scopes); err != nil {
+		return "", fmt.Errorf("failed to decode scopes: %w", err)
+	}
+
+	if len(scopes) == 0 {
+		return "", fmt.Errorf("scope %s not found", scopeName)
+	}
+
+	return scopes[0].ID, nil
+}
+
+func (c *Client) createOrGetUserPolicy(ctx context.Context, clientUUID, userID, policyName string) (string, error) {
+	// Check if policy already exists
+	existingPolicyID, err := c.getPolicyByName(ctx, clientUUID, policyName)
+	if err == nil && existingPolicyID != "" {
+		c.logger.DebugContext(ctx, "User policy already exists",
+			slog.String("policyID", existingPolicyID),
+		)
+		return existingPolicyID, nil
+	}
+
+	// Create new user policy
+	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/policy/user",
+		url.PathEscape(c.realmName),
+		url.PathEscape(clientUUID),
+	)
+
+	policyPayload := map[string]interface{}{
+		"name":        policyName,
+		"description": fmt.Sprintf("Grants user %s access to resource", userID),
+		"users":       []string{userID},
+		"logic":       "POSITIVE",
+	}
+
+	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, path, policyPayload)
+	if err != nil {
+		return "", fmt.Errorf("failed to create user policy: %w", err)
+	}
+	defer response.Body.Close()
+
+	var policy struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&policy); err != nil {
+		return "", fmt.Errorf("failed to decode policy response: %w", err)
+	}
+
+	return policy.ID, nil
+}
+
+func (c *Client) createScopePermission(ctx context.Context, clientUUID, permissionName, resourceID, scopeID, policyID string) error {
+	// Check if permission already exists
+	existingPermissionID, err := c.getPermissionByName(ctx, clientUUID, permissionName)
+	if err == nil && existingPermissionID != "" {
+		c.logger.DebugContext(ctx, "Permission already exists",
+			slog.String("permissionID", existingPermissionID),
+		)
+		return nil
+	}
+
+	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/permission/scope",
+		url.PathEscape(c.realmName),
+		url.PathEscape(clientUUID),
+	)
+
+	permissionPayload := map[string]interface{}{
+		"name":             permissionName,
+		"description":      "User permission for resource access",
+		"scopes":           []string{scopeID},
+		"resources":        []string{resourceID},
+		"policies":         []string{policyID},
+		"decisionStrategy": "UNANIMOUS",
+	}
+
+	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, path, permissionPayload)
+	if err != nil {
+		return fmt.Errorf("failed to create permission: %w", err)
+	}
+	defer response.Body.Close()
+
+	return nil
+}
+
+func (c *Client) getPolicyByName(ctx context.Context, clientUUID, policyName string) (string, error) {
+	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/policy?name=%s",
+		url.PathEscape(c.realmName),
+		url.PathEscape(clientUUID),
+		url.QueryEscape(policyName),
+	)
+
+	response, err := c.httpClient.DoRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get policy: %w", err)
+	}
+	defer response.Body.Close()
+
+	var policies []struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&policies); err != nil {
+		return "", fmt.Errorf("failed to decode policies: %w", err)
+	}
+
+	if len(policies) == 0 {
+		return "", fmt.Errorf("policy not found")
+	}
+
+	return policies[0].ID, nil
+}
+
+func (c *Client) getPermissionByName(ctx context.Context, clientUUID, permissionName string) (string, error) {
+	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/permission?name=%s",
+		url.PathEscape(c.realmName),
+		url.PathEscape(clientUUID),
+		url.QueryEscape(permissionName),
+	)
+
+	response, err := c.httpClient.DoRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get permission: %w", err)
+	}
+	defer response.Body.Close()
+
+	var permissions []struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&permissions); err != nil {
+		return "", fmt.Errorf("failed to decode permissions: %w", err)
+	}
+
+	if len(permissions) == 0 {
+		return "", fmt.Errorf("permission not found")
+	}
+
+	return permissions[0].ID, nil
+}
+
+func (c *Client) deletePermissionByName(ctx context.Context, clientUUID, permissionName string) error {
+	// Get the permission ID first
+	permissionID, err := c.getPermissionByName(ctx, clientUUID, permissionName)
+	if err != nil {
+		return fmt.Errorf("permission not found: %w", err)
+	}
+
+	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/permission/%s",
+		url.PathEscape(c.realmName),
+		url.PathEscape(clientUUID),
+		url.PathEscape(permissionID),
+	)
+
+	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete permission: %w", err)
+	}
+	defer response.Body.Close()
+
+	return nil
+}

@@ -78,6 +78,22 @@ type Client interface {
 	GetAuthorizationResource(ctx context.Context, resourceID string) (*AuthorizationResource, error)
 	DeleteAuthorizationResource(ctx context.Context, resourceID string) error
 
+	// Authorization policy and permission operations
+	// These methods control who can access which resources with what scopes.
+	// CreateAuthorizationGroupPolicy creates a group-based policy and scope permission for a resource.
+	// This is typically called when a resource (e.g., project) is created.
+	CreateAuthorizationGroupPolicy(ctx context.Context, resourceID, resourceName, groupPath, scopeName string) error
+	// DeleteAuthorizationGroupPolicy deletes a group-based policy and its permission.
+	DeleteAuthorizationGroupPolicy(ctx context.Context, resourceID, scopeName string) error
+	// AddUserToAuthorizationGroup adds a user to a Keycloak group used for authorization.
+	AddUserToAuthorizationGroup(ctx context.Context, userID, groupPath string) error
+	// RemoveUserFromAuthorizationGroup removes a user from a Keycloak group.
+	RemoveUserFromAuthorizationGroup(ctx context.Context, userID, groupPath string) error
+	// CreateAuthorizationGroup creates a Keycloak group for authorization purposes.
+	CreateAuthorizationGroup(ctx context.Context, groupName, groupPath string) error
+	// DeleteAuthorizationGroup deletes a Keycloak group.
+	DeleteAuthorizationGroup(ctx context.Context, groupPath string) error
+
 	// Identity Provider operations
 	// GetIdentityProvider retrieves an external identity provider configuration by alias at the realm level.
 	// This returns the IdP without verifying organization assignment.
