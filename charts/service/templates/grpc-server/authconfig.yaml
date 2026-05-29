@@ -211,6 +211,7 @@ spec:
           }
 
           # Allow specific methods to clients (and tenant admins/IdP managers who inherit client permissions):
+          # Note: Projects methods are handled separately below due to resource-level authorization
           allow if {
             has_client_permissions
             grpc_method in {
@@ -265,6 +266,14 @@ spec:
               "/osac.public.v1.Roles/List",
               "/osac.public.v1.RoleBindings/Get",
               "/osac.public.v1.RoleBindings/List",
+            }
+          }
+
+          # Projects methods - allow JWT users through RBAC so resource-authz policy can evaluate
+          # Admins and tenant-admins pass RBAC, regular users pass to resource-authz for UMA check
+          allow if {
+            input.auth.identity.authnMethod == "jwt"
+            grpc_method in {
               "/osac.public.v1.Projects/Get",
               "/osac.public.v1.Projects/List",
             }
@@ -286,6 +295,8 @@ spec:
               "/osac.public.v1.Projects/Create",
               "/osac.public.v1.Projects/Delete",
               "/osac.public.v1.Projects/Update",
+              "/osac.public.v1.Projects/GrantAccess",
+              "/osac.public.v1.Projects/RevokeAccess",
             }
           }
 
@@ -300,6 +311,8 @@ spec:
           }
 
     # Resource-level authorization with Keycloak Authorization Services (only for JWT users on Project operations)
+    # For List: checks if user has VIEW_PROJECT on any resource (wildcard permission check)
+    # Application layer will filter results to show only projects user can actually access
     "resource-authz":
       when:
       - selector: auth.identity.authnMethod
@@ -327,28 +340,63 @@ spec:
           required_scope := scope_map[input.context.request.http.path]
 
           # Extract project metadata from context extensions (injected by gRPC interceptor)
-          # For Create/Update: project_tenant and project_name are available
+          # For Update: project_tenant and project_name are available from request
+          # For Create: only project_name is in request, tenant comes from user's auth
           # For Get/Delete: only project_id is available (need to use wildcard or Default Resource)
-          # For List: no specific project (use Default Resource)
-          project_tenant := object.get(input.context.context_extensions, "project_tenant", "")
           project_name := object.get(input.context.context_extensions, "project_name", "")
 
-          # Get user's tenant from auth context
-          user_tenant := object.get(input.auth.authorization.rbac, "subject_tenants", [""])[0]
+          # Get user's tenant from JWT identity (organization claim)
+          # Handle both single organization string and array of organizations
+          default user_tenant = ""
+          user_tenant = input.auth.identity.organization[0] if {
+            input.auth.identity.organization
+            is_array(input.auth.identity.organization)
+          }
+          user_tenant = input.auth.identity.organization if {
+            input.auth.identity.organization
+            is_string(input.auth.identity.organization)
+          }
+
+          # For Create requests, use the user's tenant (since tenant is auto-assigned by application)
+          # For Update requests, use the tenant from the request metadata if available
+          project_tenant_from_request := object.get(input.context.context_extensions, "project_tenant", "")
+          project_tenant := project_tenant_from_request if {
+            project_tenant_from_request != ""
+          }
+          project_tenant := user_tenant if {
+            project_tenant_from_request == ""
+          }
 
           access_token := trim_prefix(object.get(input.context.request.http.headers, "authorization", ""), "Bearer ")
 
-          # Build UMA permission string based on available metadata
-          # For Create/Update with tenant and name: check specific resource "PROJECT-{tenant}-{name}#scope"
-          # For Get/Delete/List or missing metadata: check any resource with scope "#scope"
+          # Build UMA permission string based on available metadata and operation
+          # For Create: use wildcard since the resource doesn't exist in Keycloak yet
+          # For List: use wildcard - checks if user has VIEW_PROJECT on ANY resource
+          # For Update with tenant and name: check specific resource "PROJECT-{tenant}-{name}#scope"
+          # For Get/Delete with missing metadata: use wildcard (relies on Default Resource in Keycloak)
+          is_create := input.context.request.http.path == "/osac.public.v1.Projects/Create"
+          is_list := input.context.request.http.path == "/osac.public.v1.Projects/List"
+
+          uma_permission := concat("", ["#", required_scope]) if {
+            is_create
+          }
+          uma_permission := concat("", ["#", required_scope]) if {
+            is_list
+          }
           uma_permission := concat("", ["PROJECT-", project_tenant, "-", project_name, "#", required_scope]) if {
+            not is_create
+            not is_list
             project_tenant != ""
             project_name != ""
           }
           uma_permission := concat("", ["#", required_scope]) if {
+            not is_create
+            not is_list
             project_tenant == ""
           }
           uma_permission := concat("", ["#", required_scope]) if {
+            not is_create
+            not is_list
             project_name == ""
           }
 
@@ -368,21 +416,45 @@ spec:
           })
 
           # Check if we got an RPT with permissions for the required scope
-          # For specific resources, also verify the resource name matches
+
+          # For Create operations, check if UMA granted the wildcard permission
           allow if {
+            is_create
             ticket_response.status_code == 200
             rpt := ticket_response.body.access_token
             permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
             some permission in permissions
             required_scope in permission.scopes
-            # For specific project resources, verify resource name matches
+          }
+
+          # For List operations, check if user has VIEW_PROJECT on ANY resource (wildcard check)
+          # Application layer will filter results to only show accessible projects
+          allow if {
+            is_list
+            ticket_response.status_code == 200
+            rpt := ticket_response.body.access_token
+            permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
+            some permission in permissions
+            required_scope in permission.scopes
+          }
+
+          # For Update with specific resource, verify the resource name matches
+          allow if {
+            not is_create
             project_tenant != ""
             project_name != ""
+            ticket_response.status_code == 200
+            rpt := ticket_response.body.access_token
+            permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
+            some permission in permissions
+            required_scope in permission.scopes
             permission.rsname == concat("", ["PROJECT-", project_tenant, "-", project_name])
           }
 
-          # For wildcard requests (Get/Delete/List), accept any resource with the required scope
+          # For Get/Delete with missing metadata (project_tenant or project_name), use wildcard
+          # This relies on a Default Resource in Keycloak granting the required scope
           allow if {
+            not is_create
             ticket_response.status_code == 200
             rpt := ticket_response.body.access_token
             permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
@@ -391,6 +463,7 @@ spec:
             project_tenant == ""
           }
           allow if {
+            not is_create
             ticket_response.status_code == 200
             rpt := ticket_response.body.access_token
             permissions := object.get(io.jwt.decode(rpt)[1], "authorization", {"permissions": []}).permissions
