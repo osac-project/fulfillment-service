@@ -15,10 +15,12 @@ package grpcserver
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
+	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -42,10 +44,13 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/console"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/idp"
+	"github.com/osac-project/fulfillment-service/internal/idp/keycloak"
 	hubscheme "github.com/osac-project/fulfillment-service/internal/kubernetes/scheme"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/metrics"
 	"github.com/osac-project/fulfillment-service/internal/network"
+	"github.com/osac-project/fulfillment-service/internal/oauth"
 	"github.com/osac-project/fulfillment-service/internal/recovery"
 	"github.com/osac-project/fulfillment-service/internal/servers"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
@@ -97,6 +102,30 @@ func Cmd() *cobra.Command {
 		"default",
 		tenancyLogicFlagHelp,
 	)
+	flags.StringVar(
+		&runner.args.idpProvider,
+		"idp-provider",
+		"keycloak",
+		idpProviderFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.idpURL,
+		"idp-url",
+		"",
+		idpURLFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.idpClientID,
+		"idp-client-id",
+		"",
+		idpClientIDFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.idpClientSecretFile,
+		"idp-client-secret-file",
+		"",
+		idpClientSecretFileFlagHelp,
+	)
 	return command
 }
 
@@ -110,6 +139,10 @@ type runnerContext struct {
 		externalAuthAddress string
 		trustedTokenIssuers []string
 		tenancyLogic        string
+		idpProvider         string
+		idpURL              string
+		idpClientID         string
+		idpClientSecretFile string
 	}
 }
 
@@ -864,6 +897,18 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 	publicv1.RegisterPublicIPAttachmentsServer(grpcServer, publicIPAttachmentsServer)
 
+	// Create the IDP client (optional - only needed for GrantAccess/RevokeAccess):
+	var idpClient idp.Client
+	if c.args.idpURL != "" {
+		c.logger.InfoContext(ctx, "Creating IDP client")
+		idpClient, err = c.createIdpClient(ctx, caPool)
+		if err != nil {
+			return fmt.Errorf("failed to create IDP client: %w", err)
+		}
+	} else {
+		c.logger.WarnContext(ctx, "IDP client not configured - GrantAccess/RevokeAccess will not work")
+	}
+
 	// Create the public organizations server:
 	c.logger.InfoContext(ctx, "Creating public organizations server")
 	publicOrganizationsServer, err := servers.NewOrganizationsServer().
@@ -900,6 +945,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetAttributionLogic(publicAttributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
+		SetIdpClient(idpClient).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create public projects server: %w", err)
@@ -1111,6 +1157,85 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	return shutdown.Wait()
 }
 
+// createIdpClient creates the IDP client for managing authorization resources.
+// This should only be called after checking that c.args.idpURL is set.
+func (c *runnerContext) createIdpClient(ctx context.Context, caPool *x509.CertPool) (idp.Client, error) {
+	// Validate required IDP configuration
+	if c.args.idpClientID == "" {
+		return nil, errors.New("IDP client ID is required (--idp-client-id)")
+	}
+	if c.args.idpClientSecretFile == "" {
+		return nil, errors.New("IDP client secret file is required (--idp-client-secret-file)")
+	}
+
+	// Read the client secret
+	clientSecret, err := c.readTrimmedFile(c.args.idpClientSecretFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read IDP client secret: %w", err)
+	}
+
+	c.logger.InfoContext(ctx, "Creating IDP token source",
+		slog.String("url", c.args.idpURL),
+		slog.String("client_id", c.args.idpClientID),
+	)
+
+	// Create a token store that saves the token in memory
+	idpTokenStore, err := auth.NewMemoryTokenStore().
+		SetLogger(c.logger).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create IDP token store: %w", err)
+	}
+
+	// Create OAuth token source for IDP authentication
+	idpTokenSource, err := oauth.NewTokenSource().
+		SetLogger(c.logger).
+		SetStore(idpTokenStore).
+		SetCaPool(caPool).
+		SetIssuer(c.args.idpURL).
+		SetFlow(oauth.CredentialsFlow).
+		SetClientId(c.args.idpClientID).
+		SetClientSecret(clientSecret).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create IDP token source: %w", err)
+	}
+
+	// Create IDP client based on provider type
+	c.logger.InfoContext(ctx, "Creating IDP client",
+		slog.String("provider", c.args.idpProvider),
+	)
+
+	var idpClient idp.Client
+	switch c.args.idpProvider {
+	case idp.ProviderKeycloak:
+		idpClient, err = keycloak.NewClient().
+			SetLogger(c.logger).
+			SetBaseURL(c.args.idpURL).
+			SetTokenSource(idpTokenSource).
+			SetCaPool(caPool).
+			Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported IDP provider: %s (supported: %s)", c.args.idpProvider, strings.Join(idp.ValidProviders, ", "))
+	}
+
+	c.logger.InfoContext(ctx, "IDP client created successfully")
+	return idpClient, nil
+}
+
+// readTrimmedFile reads the content of the given file and returns it with all leading and trailing whitespace removed.
+func (c *runnerContext) readTrimmedFile(file string) (result string, err error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return
+	}
+	result = strings.TrimSpace(string(data))
+	return
+}
+
 // publicMethodRegex is regular expression for the methods that are considered public, including the capabilities, and
 // reflection, health methods. These will skip authentication and authorization.
 const publicMethodRegex = `^/(osac\.public\.v1\.Capabilities/|grpc\.(reflection|health)\.).*$`
@@ -1148,4 +1273,21 @@ are advertised as trusted by the gRPC server.
 const tenancyLogicFlagHelp = `
 _LOGIC_ - Type of tenancy logic to use. Valid values are
 {{ bt }}default{{ bt }} and {{ bt }}guest{{ bt }}.
+`
+
+const idpProviderFlagHelp = `
+_PROVIDER_ - Identity provider type. Valid values are
+{{ bt }}keycloak{{ bt }}.
+`
+
+const idpURLFlagHelp = `
+_URL_ - Base URL of the identity provider (e.g., https://keycloak.example.com/realms/osac).
+`
+
+const idpClientIDFlagHelp = `
+_CLIENT_ID_ - Client ID for authenticating to the identity provider.
+`
+
+const idpClientSecretFileFlagHelp = `
+_FILE_ - File containing the client secret for authenticating to the identity provider.
 `
