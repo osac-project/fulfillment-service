@@ -57,6 +57,14 @@ type Config struct {
 	// client secrets and user passwords. If the environment variable is set then that value will be used, otherwise
 	// a random one will be generated.
 	Secret string `json:"secret" envconfig:"secret" default:""`
+
+	// CaKey is the path to a PEM file containing a pre-generated CA private key. When both CaKey and CaCrt are
+	// set, the integration tests will use these files instead of generating a new CA each run.
+	CaKey string `json:"ca_key" envconfig:"ca_key" default:""`
+
+	// CaCrt is the path to a PEM file containing a pre-generated CA certificate. When both CaKey and CaCrt are
+	// set, the integration tests will use these files instead of generating a new CA each run.
+	CaCrt string `json:"ca_crt" envconfig:"ca_crt" default:""`
 }
 
 var (
@@ -99,6 +107,8 @@ var _ = BeforeSuite(func() {
 		slog.String("deploy_mode", config.DeployMode),
 		slog.Bool("debug", config.Debug),
 		slog.String("!secret", config.Secret),
+		slog.Bool("ca_key_set", config.CaKey != ""),
+		slog.Bool("ca_crt_set", config.CaCrt != ""),
 	)
 
 	// Debug mode isn't compatible with the Kustomize deployment mode:
@@ -117,6 +127,7 @@ var _ = BeforeSuite(func() {
 		SetDeployMode(config.DeployMode).
 		SetDebug(config.Debug).
 		SetSecret(config.Secret).
+		SetCaFiles(config.CaKey, config.CaCrt).
 		AddCrdFile(filepath.Join("crds", "clusterorders.osac.openshift.io.yaml")).
 		AddCrdFile(filepath.Join("crds", "hostedclusters.hypershift.openshift.io.yaml")).
 		Build()

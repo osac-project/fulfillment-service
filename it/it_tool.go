@@ -89,6 +89,8 @@ type ToolBuilder struct {
 	deployMode  string
 	debug       bool
 	secret      string
+	caKeyFile   string
+	caCrtFile   string
 }
 
 // Tool is an instance of the integration test tool that sets up the test environment. Don't create instances of this
@@ -101,6 +103,8 @@ type Tool struct {
 	keepService   bool
 	deployMode    string
 	debug         bool
+	caKeyFile     string
+	caCrtFile     string
 	tmpDir        string
 	cluster       *testing.Kind
 	kubeClient    crclient.Client
@@ -193,6 +197,14 @@ func (b *ToolBuilder) SetSecret(value string) *ToolBuilder {
 	return b
 }
 
+// SetCaFiles sets the paths to PEM files containing a pre-generated CA private key and certificate. When set, the
+// Kind cluster will use these files instead of generating a new CA each time. This is optional.
+func (b *ToolBuilder) SetCaFiles(keyFile, crtFile string) *ToolBuilder {
+	b.caKeyFile = keyFile
+	b.caCrtFile = crtFile
+	return b
+}
+
 // Build uses the data stored in the builder to create a new instance of the integration test tool.
 func (b *ToolBuilder) Build() (result *Tool, err error) {
 	// Check parameters:
@@ -205,6 +217,10 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 			"invalid deploy mode '%s'i must be '%s' or '%s'",
 			b.deployMode, deployModeHelm, deployModeKustomize,
 		)
+		return
+	}
+	if (b.caKeyFile == "") != (b.caCrtFile == "") {
+		err = errors.New("key file and certificate file must both be provided or both be omitted")
 		return
 	}
 
@@ -235,6 +251,8 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 		keepService: b.keepService,
 		deployMode:  b.deployMode,
 		debug:       b.debug,
+		caKeyFile:   b.caKeyFile,
+		caCrtFile:   b.caCrtFile,
 		secret:      b.secret,
 		jqTool:      jqTool,
 	}
@@ -538,6 +556,9 @@ func (t *Tool) startCluster(ctx context.Context) error {
 		builder.AddPortMapping("127.0.0.1", 30001, 30001) // gRPC server.
 		builder.AddPortMapping("127.0.0.1", 30002, 30002) // REST gateway.
 		builder.AddPortMapping("127.0.0.1", 30003, 30003) // Controller.
+	}
+	if t.caKeyFile != "" && t.caCrtFile != "" {
+		builder.SetCaFiles(t.caKeyFile, t.caCrtFile)
 	}
 	var err error
 	t.cluster, err = builder.Build()

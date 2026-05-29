@@ -269,13 +269,61 @@ want to use the secret. You can get it like this:
 $ kubectl get secret -n default random -o json | jq -r '.data["secret"] | @base64d'
 ```
 
+### Custom CA certificate
+
+By default, each integration test run generates a fresh CA private key and certificate. This means
+that the CA changes every time the cluster is recreated, which forces you to either re-extract the
+CA bundle and pass it to `osac login --ca-file`, or use `--insecure` to skip verification.
+
+To avoid this, you can provide your own pre-generated CA files via the `IT_CA_KEY` and `IT_CA_CRT`
+environment variables. Both must be set together and must point to PEM-encoded files. When provided,
+the integration tests will use them instead of generating a new CA. This allows you to configure the
+CA once in your browser or pass it to `osac login --ca-file` without having to update it after every
+run.
+
+To generate a CA key and certificate with `openssl`:
+
+```bash
+openssl req \
+-x509 \
+-newkey rsa:2048 \
+-nodes \
+-keyout ca.key \
+-out ca.crt \
+-days 365 \
+-subj "/CN=Default CA" \
+-addext "keyUsage=critical,keyCertSign,cRLSign" \
+-addext "basicConstraints=critical,CA:TRUE"
+```
+
+Then run the integration tests pointing to those files:
+
+```bash
+export IT_KEEP_KIND=true
+export IT_CA_KEY=ca.key
+export IT_CA_CRT=ca.crt
+ginkgo run -v it
+```
+
+Note that `-nodes` flag in the `openssl` command above means `ca.key` (referenced by `IT_CA_KEY`) is
+not passphrase-protected. This is fine for local development, but as a good habit consider setting
+restrictive permissions (`chmod 600 ca.key`) and avoiding committing it to version control. If the
+key is ever shared accidentally, simply regenerate both files and recreate the cluster.
+
+As long as you reuse the same files across runs, the CA will remain stable and you can use the
+certificate directly with the CLI:
+
+```bash
+osac login --ca-file ca.crt ...
+```
+
 ### Login to the integration tests environment
 
 Once the cluster is running, you can log in using the credentials flow:
 
 ```bash
-$ osac login \
---ca-file bundle.pem \
+osac login \
+--ca-file ca.crt \
 --flow credentials \
 --client-id osac-admin \
 --client-secret my-secret \
@@ -285,12 +333,12 @@ https://fulfillment-internal-api.osac.svc.cluster.local:8000
 
 The same secret is shared by all service accounts and users.
 
-The `--ca-file` flag should point to a file containing the trusted CA certificates. In the default
-installation, the CA bundle is stored in the `ca-bundle` ConfigMap created by _trust-manager_. You
-can extract it with:
+The `--ca-file` flag should point to a file containing the trusted CA certificates. If you used the
+`IT_CA_CRT` environment variable, you can point directly to that file. Otherwise, the CA bundle is
+stored in the `ca-bundle` ConfigMap created by _trust-manager_. You can extract it with:
 
 ```bash
-$ kubectl get configmap ca-bundle -n osac -o jsonpath='{.data.bundle\.pem}' > bundle.pem
+kubectl get configmap ca-bundle -n osac -o json | jq -r '.data["bundle.pem"]' > ca.crt
 ```
 
 ### Debugging in the integration tests environment

@@ -17,6 +17,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"embed"
@@ -55,6 +56,8 @@ type KindBuilder struct {
 	name         string
 	home         string
 	quiet        bool
+	caKeyFile    string
+	caCrtFile    string
 	crdFiles     []string
 	portMappings []kindPortMapping
 }
@@ -66,6 +69,8 @@ type Kind struct {
 	name            string
 	home            string
 	quiet           bool
+	caKeyFile       string
+	caCrtFile       string
 	crdFiles        []string
 	portMappings    []kindPortMapping
 	kubeconfigBytes []byte
@@ -133,6 +138,14 @@ func (b *KindBuilder) AddPortMapping(listenAddress string, hostPort int, contain
 	return b
 }
 
+// SetCaFiles sets the paths to PEM files containing a pre-generated CA private key and certificate. When set, the
+// cluster will use these files instead of generating a new CA. This is optional.
+func (b *KindBuilder) SetCaFiles(keyFile, crtFile string) *KindBuilder {
+	b.caKeyFile = keyFile
+	b.caCrtFile = crtFile
+	return b
+}
+
 // Build uses the configuration stored in the builder to create a new Kind cluster
 func (b *KindBuilder) Build() (result *Kind, err error) {
 	// Check parameters:
@@ -143,6 +156,30 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 	if b.name == "" {
 		err = fmt.Errorf("name is mandatory")
 		return
+	}
+	if (b.caKeyFile == "") != (b.caCrtFile == "") {
+		err = fmt.Errorf("key file and certificate file must both be provided or both be omitted")
+		return
+	}
+
+	// If a custom CA key pair is provided, verify that it is valid:
+	if b.caKeyFile != "" && b.caCrtFile != "" {
+		var caKeyData, caCrtData []byte
+		caKeyData, err = os.ReadFile(b.caKeyFile)
+		if err != nil {
+			err = fmt.Errorf("failed to load key file '%s': %w", b.caKeyFile, err)
+			return
+		}
+		caCrtData, err = os.ReadFile(b.caCrtFile)
+		if err != nil {
+			err = fmt.Errorf("failed to load certificate file '%s': %w", b.caCrtFile, err)
+			return
+		}
+		_, err = tls.X509KeyPair(caCrtData, caKeyData)
+		if err != nil {
+			err = fmt.Errorf("key and certificate files don't contain a valid key pair: %w", err)
+			return
+		}
 	}
 
 	// Add the name to the logger:
@@ -174,6 +211,8 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 		name:         b.name,
 		home:         b.home,
 		quiet:        b.quiet,
+		caKeyFile:    b.caKeyFile,
+		caCrtFile:    b.caCrtFile,
 		crdFiles:     slices.Clone(b.crdFiles),
 		portMappings: slices.Clone(b.portMappings),
 	}
@@ -740,42 +779,29 @@ func (k *Kind) installTrustManager(ctx context.Context) (err error) {
 }
 
 func (k *Kind) installCa(ctx context.Context) (err error) {
-	// Generate private key and certificate:
-	k.logger.DebugContext(ctx, "Generating CA private key and certificate")
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return err
+	var keyPem, crtPem []byte
+	if k.caKeyFile != "" && k.caCrtFile != "" {
+		k.logger.DebugContext(
+			ctx,
+			"Loading CA private key and certificate from files",
+			slog.Bool("ca_key_set", k.caKeyFile != ""),
+			slog.Bool("ca_crt_set", k.caCrtFile != ""),
+		)
+		keyPem, err = os.ReadFile(k.caKeyFile)
+		if err != nil {
+			return fmt.Errorf("failed to read CA key file '%s': %w", k.caKeyFile, err)
+		}
+		crtPem, err = os.ReadFile(k.caCrtFile)
+		if err != nil {
+			return fmt.Errorf("failed to read CA certificate file '%s': %w", k.caCrtFile, err)
+		}
+	} else {
+		k.logger.DebugContext(ctx, "Generating CA private key and certificate")
+		keyPem, crtPem, err = k.generateCa()
+		if err != nil {
+			return fmt.Errorf("failed to generate CA: %w", err)
+		}
 	}
-	now := time.Now()
-	crt := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			CommonName: defaultCaCommonName,
-		},
-		NotBefore:             now,
-		NotAfter:              now.AddDate(1, 0, 0),
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-
-	// Create the PEM encoding of the private key and the certificate:
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return err
-	}
-	keyPem := pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: keyBytes,
-	})
-	crtBytes, err := x509.CreateCertificate(rand.Reader, &crt, &crt, &key.PublicKey, key)
-	if err != nil {
-		return err
-	}
-	crtPem := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: crtBytes,
-	})
 
 	// Create or update the secret:
 	k.logger.DebugContext(ctx, "Creating or updating CA secret")
@@ -865,6 +891,43 @@ func (k *Kind) installCa(ctx context.Context) (err error) {
 		return err
 	}
 	return nil
+}
+
+// generateCa generates a new CA private key and self-signed certificate, returning them as PEM-encoded bytes.
+func (k *Kind) generateCa() (keyPem, crtPem []byte, err error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+	now := time.Now()
+	crt := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: defaultCaCommonName,
+		},
+		NotBefore:             now,
+		NotAfter:              now.AddDate(1, 0, 0),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	keyPem = pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyBytes,
+	})
+	crtBytes, err := x509.CreateCertificate(rand.Reader, &crt, &crt, &key.PublicKey, key)
+	if err != nil {
+		return nil, nil, err
+	}
+	crtPem = pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: crtBytes,
+	})
+	return keyPem, crtPem, nil
 }
 
 func (k *Kind) installAuthorino(ctx context.Context) (err error) {
