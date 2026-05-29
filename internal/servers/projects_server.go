@@ -24,6 +24,7 @@ import (
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/events"
+	"github.com/osac-project/fulfillment-service/internal/idp"
 )
 
 type ProjectsServerBuilder struct {
@@ -32,6 +33,7 @@ type ProjectsServerBuilder struct {
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
+	idpClient         idp.Client
 }
 
 var _ publicv1.ProjectsServer = (*ProjectsServer)(nil)
@@ -74,6 +76,11 @@ func (b *ProjectsServerBuilder) SetMetricsRegisterer(value prometheus.Registerer
 	return b
 }
 
+func (b *ProjectsServerBuilder) SetIdpClient(value idp.Client) *ProjectsServerBuilder {
+	b.idpClient = value
+	return b
+}
+
 func (b *ProjectsServerBuilder) Build() (result *ProjectsServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
@@ -108,6 +115,7 @@ func (b *ProjectsServerBuilder) Build() (result *ProjectsServer, err error) {
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetIdpClient(b.idpClient).
 		Build()
 	if err != nil {
 		return
@@ -292,5 +300,43 @@ func (s *ProjectsServer) Delete(ctx context.Context,
 
 	// Build and return the response:
 	response = &publicv1.ProjectsDeleteResponse{}
+	return
+}
+
+func (s *ProjectsServer) GrantAccess(ctx context.Context,
+	request *publicv1.ProjectsGrantAccessRequest) (response *publicv1.ProjectsGrantAccessResponse, err error) {
+	// Create private request:
+	privateRequest := &privatev1.ProjectsGrantAccessRequest{}
+	privateRequest.SetProjectId(request.GetProjectId())
+	privateRequest.SetUsername(request.GetUsername())
+	privateRequest.SetScope(request.GetScope())
+
+	// Delegate to private server:
+	_, err = s.private.GrantAccess(ctx, privateRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build and return the response:
+	response = &publicv1.ProjectsGrantAccessResponse{}
+	return
+}
+
+func (s *ProjectsServer) RevokeAccess(ctx context.Context,
+	request *publicv1.ProjectsRevokeAccessRequest) (response *publicv1.ProjectsRevokeAccessResponse, err error) {
+	// Create private request:
+	privateRequest := &privatev1.ProjectsRevokeAccessRequest{}
+	privateRequest.SetProjectId(request.GetProjectId())
+	privateRequest.SetUsername(request.GetUsername())
+	privateRequest.SetScope(request.GetScope())
+
+	// Delegate to private server:
+	_, err = s.private.RevokeAccess(ctx, privateRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build and return the response:
+	response = &publicv1.ProjectsRevokeAccessResponse{}
 	return
 }

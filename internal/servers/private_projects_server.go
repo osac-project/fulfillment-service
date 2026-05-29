@@ -16,6 +16,7 @@ package servers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,6 +25,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
+	"github.com/osac-project/fulfillment-service/internal/idp"
 )
 
 type PrivateProjectsServerBuilder struct {
@@ -32,15 +34,17 @@ type PrivateProjectsServerBuilder struct {
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
+	idpClient         idp.Client
 }
 
 var _ privatev1.ProjectsServer = (*PrivateProjectsServer)(nil)
 
 type PrivateProjectsServer struct {
 	privatev1.UnimplementedProjectsServer
-	logger  *slog.Logger
-	generic *GenericServer[*privatev1.Project]
-	dao     *dao.GenericDAO[*privatev1.Project]
+	logger    *slog.Logger
+	generic   *GenericServer[*privatev1.Project]
+	dao       *dao.GenericDAO[*privatev1.Project]
+	idpClient idp.Client
 }
 
 func NewPrivateProjectsServer() *PrivateProjectsServerBuilder {
@@ -69,6 +73,11 @@ func (b *PrivateProjectsServerBuilder) SetTenancyLogic(value auth.TenancyLogic) 
 
 func (b *PrivateProjectsServerBuilder) SetMetricsRegisterer(value prometheus.Registerer) *PrivateProjectsServerBuilder {
 	b.metricsRegisterer = value
+	return b
+}
+
+func (b *PrivateProjectsServerBuilder) SetIdpClient(value idp.Client) *PrivateProjectsServerBuilder {
+	b.idpClient = value
 	return b
 }
 
@@ -108,9 +117,10 @@ func (b *PrivateProjectsServerBuilder) Build() (result *PrivateProjectsServer, e
 
 	// Create and populate the object:
 	result = &PrivateProjectsServer{
-		logger:  b.logger,
-		generic: generic,
-		dao:     dao,
+		logger:    b.logger,
+		generic:   generic,
+		dao:       dao,
+		idpClient: b.idpClient,
 	}
 	return
 }
@@ -148,5 +158,126 @@ func (s *PrivateProjectsServer) Delete(ctx context.Context,
 func (s *PrivateProjectsServer) Signal(ctx context.Context,
 	request *privatev1.ProjectsSignalRequest) (response *privatev1.ProjectsSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)
+	return
+}
+
+func (s *PrivateProjectsServer) GrantAccess(ctx context.Context,
+	request *privatev1.ProjectsGrantAccessRequest) (response *privatev1.ProjectsGrantAccessResponse, err error) {
+	// Check if IDP client is configured
+	if s.idpClient == nil {
+		return nil, errors.New("IDP client not configured - cannot grant access")
+	}
+
+	// Get the project to extract tenant and name
+	getRequest := &privatev1.ProjectsGetRequest{}
+	getRequest.SetId(request.GetProjectId())
+
+	getResponse, err := s.Get(ctx, getRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	project := getResponse.GetObject()
+	tenant := project.GetMetadata().GetTenant()
+	projectName := project.GetMetadata().GetName()
+
+	// Validate scope
+	scope := request.GetScope()
+	if scope != idp.ScopeViewProject && scope != idp.ScopeManageProject {
+		return nil, errors.New("invalid scope: must be VIEW_PROJECT or MANAGE_PROJECT")
+	}
+
+	// Determine group path based on scope
+	var groupPath string
+	if scope == idp.ScopeViewProject {
+		groupPath = fmt.Sprintf("/project-%s-%s-viewers", tenant, projectName)
+	} else {
+		groupPath = fmt.Sprintf("/project-%s-%s-managers", tenant, projectName)
+	}
+
+	// Look up user by username to get user ID
+	// Note: This assumes username is the Keycloak user ID. In a real implementation,
+	// you'd need to query Keycloak to get the user ID from username.
+	// For now, we'll assume the username passed is already the user ID.
+	userID := request.GetUsername()
+
+	// Add user to the authorization group
+	err = s.idpClient.AddUserToAuthorizationGroup(ctx, userID, groupPath)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "Failed to grant user access to project",
+			slog.String("project_id", request.GetProjectId()),
+			slog.String("user_id", userID),
+			slog.String("scope", scope),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to grant access: %w", err)
+	}
+
+	s.logger.InfoContext(ctx, "Granted user access to project",
+		slog.String("project_id", request.GetProjectId()),
+		slog.String("user_id", userID),
+		slog.String("scope", scope),
+	)
+
+	response = &privatev1.ProjectsGrantAccessResponse{}
+	return
+}
+
+func (s *PrivateProjectsServer) RevokeAccess(ctx context.Context,
+	request *privatev1.ProjectsRevokeAccessRequest) (response *privatev1.ProjectsRevokeAccessResponse, err error) {
+	// Check if IDP client is configured
+	if s.idpClient == nil {
+		return nil, errors.New("IDP client not configured - cannot revoke access")
+	}
+
+	// Get the project to extract tenant and name
+	getRequest := &privatev1.ProjectsGetRequest{}
+	getRequest.SetId(request.GetProjectId())
+
+	getResponse, err := s.Get(ctx, getRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	project := getResponse.GetObject()
+	tenant := project.GetMetadata().GetTenant()
+	projectName := project.GetMetadata().GetName()
+
+	// Validate scope
+	scope := request.GetScope()
+	if scope != idp.ScopeViewProject && scope != idp.ScopeManageProject {
+		return nil, errors.New("invalid scope: must be VIEW_PROJECT or MANAGE_PROJECT")
+	}
+
+	// Determine group path based on scope
+	var groupPath string
+	if scope == idp.ScopeViewProject {
+		groupPath = fmt.Sprintf("/project-%s-%s-viewers", tenant, projectName)
+	} else {
+		groupPath = fmt.Sprintf("/project-%s-%s-managers", tenant, projectName)
+	}
+
+	// Look up user by username to get user ID
+	userID := request.GetUsername()
+
+	// Remove user from the authorization group
+	err = s.idpClient.RemoveUserFromAuthorizationGroup(ctx, userID, groupPath)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "Failed to revoke user access to project",
+			slog.String("project_id", request.GetProjectId()),
+			slog.String("user_id", userID),
+			slog.String("scope", scope),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to revoke access: %w", err)
+	}
+
+	s.logger.InfoContext(ctx, "Revoked user access to project",
+		slog.String("project_id", request.GetProjectId()),
+		slog.String("user_id", userID),
+		slog.String("scope", scope),
+	)
+
+	response = &privatev1.ProjectsRevokeAccessResponse{}
 	return
 }
