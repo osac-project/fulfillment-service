@@ -110,6 +110,7 @@ func (b *PrivateSecurityGroupsServerBuilder) Build() (result *PrivateSecurityGro
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetDisallowSharedTenant(true).
 		Build()
 	if err != nil {
 		return

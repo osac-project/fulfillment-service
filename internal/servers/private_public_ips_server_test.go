@@ -58,7 +58,7 @@ var _ = Describe("Private public IPs server", func() {
 		resp, err := publicIPPoolDao.Create().SetObject(
 			privatev1.PublicIPPool_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant: auth.SystemTenant,
 				}.Build(),
 				Spec: privatev1.PublicIPPoolSpec_builder{
 					Cidrs: []string{"10.0.0.0/24"},
@@ -86,7 +86,7 @@ var _ = Describe("Private public IPs server", func() {
 		resp, err := server.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 			Object: privatev1.PublicIP_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant: auth.SystemTenant,
 				}.Build(),
 				Spec: privatev1.PublicIPSpec_builder{
 					Pool: poolID,
@@ -172,7 +172,7 @@ var _ = Describe("Private public IPs server", func() {
 				_, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 					Object: privatev1.PublicIP_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: auth.SharedTenant,
+							Tenant: auth.SystemTenant,
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -187,7 +187,7 @@ var _ = Describe("Private public IPs server", func() {
 				_, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 					Object: privatev1.PublicIP_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: auth.SharedTenant,
+							Tenant: auth.SystemTenant,
 						}.Build(),
 						Spec: privatev1.PublicIPSpec_builder{}.Build(),
 					}.Build(),
@@ -204,7 +204,7 @@ var _ = Describe("Private public IPs server", func() {
 				response, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 					Object: privatev1.PublicIP_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: auth.SharedTenant,
+							Tenant: auth.SystemTenant,
 						}.Build(),
 						Spec: privatev1.PublicIPSpec_builder{
 							Pool: poolID,
@@ -243,7 +243,7 @@ var _ = Describe("Private public IPs server", func() {
 			response, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,
@@ -260,7 +260,7 @@ var _ = Describe("Private public IPs server", func() {
 			response, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,
@@ -279,7 +279,7 @@ var _ = Describe("Private public IPs server", func() {
 			createResponse, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,
@@ -303,7 +303,7 @@ var _ = Describe("Private public IPs server", func() {
 				_, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 					Object: privatev1.PublicIP_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: auth.SharedTenant,
+							Tenant: auth.SystemTenant,
 						}.Build(),
 						Spec: privatev1.PublicIPSpec_builder{
 							Pool: poolID,
@@ -323,7 +323,7 @@ var _ = Describe("Private public IPs server", func() {
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name:   "original-name",
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,
@@ -353,7 +353,7 @@ var _ = Describe("Private public IPs server", func() {
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
 						Finalizers: []string{"test-finalizer"},
-						Tenant:     auth.SharedTenant,
+						Tenant:     auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,
@@ -389,7 +389,7 @@ var _ = Describe("Private public IPs server", func() {
 			createResponse, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,
@@ -422,7 +422,7 @@ var _ = Describe("Private public IPs server", func() {
 			_, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: "nonexistent-pool-id",
@@ -441,7 +441,7 @@ var _ = Describe("Private public IPs server", func() {
 			resp, err := publicIPPoolDao.Create().SetObject(
 				privatev1.PublicIPPool_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPPoolSpec_builder{
 						Cidrs: []string{"10.0.0.0/24"},
@@ -460,7 +460,7 @@ var _ = Describe("Private public IPs server", func() {
 			_, err = publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: pendingPoolID,
@@ -480,7 +480,7 @@ var _ = Describe("Private public IPs server", func() {
 			_, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: exhaustedPoolID,
@@ -500,7 +500,7 @@ var _ = Describe("Private public IPs server", func() {
 			response, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: readyPoolID,
@@ -532,7 +532,7 @@ var _ = Describe("Private public IPs server", func() {
 			_, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,
@@ -556,7 +556,7 @@ var _ = Describe("Private public IPs server", func() {
 			createResponse, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,
@@ -810,7 +810,7 @@ var _ = Describe("Private public IPs server", func() {
 			createResp, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolA,
@@ -839,7 +839,7 @@ var _ = Describe("Private public IPs server", func() {
 			createResp, err := publicIPsServer.Create(ctx, privatev1.PublicIPsCreateRequest_builder{
 				Object: privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant: auth.SystemTenant,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: poolID,

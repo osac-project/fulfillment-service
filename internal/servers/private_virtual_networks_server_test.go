@@ -869,7 +869,7 @@ var _ = Describe("Private virtual networks server", func() {
 				createResponse, err := server.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 					Object: privatev1.VirtualNetwork_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: auth.SharedTenant,
+							Tenant: "my-tenant",
 						}.Build(),
 						Spec: privatev1.VirtualNetworkSpec_builder{
 							Ipv4Cidr:     new("10.0.0.0/16"),

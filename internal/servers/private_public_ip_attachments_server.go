@@ -120,6 +120,7 @@ func (b *PrivatePublicIPAttachmentsServerBuilder) Build() (*PrivatePublicIPAttac
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetDisallowSharedTenant(true).
 		Build()
 	if err != nil {
 		return nil, err

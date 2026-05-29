@@ -129,6 +129,7 @@ func (b *PrivatePublicIPsServerBuilder) Build() (result *PrivatePublicIPsServer,
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetDisallowSharedTenant(true).
 		Build()
 	if err != nil {
 		return

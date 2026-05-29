@@ -1014,7 +1014,7 @@ var _ = Describe("Private subnets server", func() {
 				createResponse, err := server.Create(ctx, privatev1.SubnetsCreateRequest_builder{
 					Object: privatev1.Subnet_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: auth.SharedTenant,
+							Tenant: auth.SystemTenant,
 						}.Build(),
 						Spec: privatev1.SubnetSpec_builder{
 							Ipv4Cidr:       new("10.0.1.0/24"),

@@ -108,6 +108,7 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetDisallowSharedTenant(true).
 		Build()
 	if err != nil {
 		return
