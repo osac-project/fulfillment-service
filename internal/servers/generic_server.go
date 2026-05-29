@@ -32,6 +32,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/masks"
@@ -41,44 +42,44 @@ import (
 
 // GenericServerBuilder contains the data and logic needed to create new generic servers.
 type GenericServerBuilder[O dao.Object] struct {
-	logger                *slog.Logger
-	service               string
-	ignoredFields         []any
-	notifier              events.Notifier
-	attributionLogic      auth.AttributionLogic
-	tenancyLogic          auth.TenancyLogic
-	metricsRegisterer     prometheus.Registerer
-	disallowSharedTenant  bool
+	logger            *slog.Logger
+	service           string
+	ignoredFields     []any
+	notifier          events.Notifier
+	attributionLogic  auth.AttributionLogic
+	tenancyLogic      auth.TenancyLogic
+	metricsRegisterer prometheus.Registerer
+	allowedTenants    collections.Set[string]
 }
 
 // GenericServer is a gRPC server that knows how to implement the List, Get, Create, Update and Delete operators for
 // any object that has identifier and metadata fields.
 type GenericServer[O dao.Object] struct {
-	logger               *slog.Logger
-	service              string
-	dao                  *dao.GenericDAO[O]
-	attributionLogic     auth.AttributionLogic
-	tenancyLogic         auth.TenancyLogic
-	disallowSharedTenant bool
-	template             proto.Message
-	metadataField     protoreflect.FieldDescriptor
-	nameField         protoreflect.FieldDescriptor
-	listRequest       proto.Message
-	listResponse      proto.Message
-	getRequest        proto.Message
-	getResponse       proto.Message
-	createRequest     proto.Message
-	createResponse    proto.Message
-	updateRequest     proto.Message
-	updateResponse    proto.Message
-	deleteRequest     proto.Message
-	deleteResponse    proto.Message
-	signalRequest     proto.Message
-	signalResponse    proto.Message
-	notifier          events.Notifier
-	pathCompiler      *masks.PathCompiler[O]
-	pathCache         map[string]*masks.Path[O]
-	pathCacheLock     *sync.Mutex
+	logger           *slog.Logger
+	service          string
+	dao              *dao.GenericDAO[O]
+	attributionLogic auth.AttributionLogic
+	tenancyLogic     auth.TenancyLogic
+	allowedTenants   collections.Set[string]
+	template         proto.Message
+	metadataField    protoreflect.FieldDescriptor
+	nameField        protoreflect.FieldDescriptor
+	listRequest      proto.Message
+	listResponse     proto.Message
+	getRequest       proto.Message
+	getResponse      proto.Message
+	createRequest    proto.Message
+	createResponse   proto.Message
+	updateRequest    proto.Message
+	updateResponse   proto.Message
+	deleteRequest    proto.Message
+	deleteResponse   proto.Message
+	signalRequest    proto.Message
+	signalResponse   proto.Message
+	notifier         events.Notifier
+	pathCompiler     *masks.PathCompiler[O]
+	pathCache        map[string]*masks.Path[O]
+	pathCacheLock    *sync.Mutex
 }
 
 type metadataIface interface {
@@ -95,7 +96,9 @@ type metadataIface interface {
 
 // NewGenericServer creates a builder that can then be used to configure and create a new generic server.
 func NewGenericServer[O dao.Object]() *GenericServerBuilder[O] {
-	return &GenericServerBuilder[O]{}
+	return &GenericServerBuilder[O]{
+		allowedTenants: auth.DefaultAllowedTenants,
+	}
 }
 
 // SetLogger sets the logger. This is mandatory.
@@ -152,10 +155,16 @@ func (b *GenericServerBuilder[O]) SetMetricsRegisterer(value prometheus.Register
 	return b
 }
 
-// SetDisallowSharedTenant configures whether creation and tenant reassignment to the shared tenant
-// is forbidden for this resource type.
-func (b *GenericServerBuilder[O]) SetDisallowSharedTenant(value bool) *GenericServerBuilder[O] {
-	b.disallowSharedTenant = value
+// AddAllowedTenants adds the given tenants to the set of tenants where objects can be created. This is useful for
+// servers that need to allow creation in the system or shared tenants, which are disallowed by default.
+func (b *GenericServerBuilder[O]) AddAllowedTenants(values ...string) *GenericServerBuilder[O] {
+	b.allowedTenants = b.allowedTenants.Union(collections.NewSet(values...))
+	return b
+}
+
+// RemoveAllowedTenants removes the given tenants from the set of tenants where objects can be created.
+func (b *GenericServerBuilder[O]) RemoveAllowedTenants(values ...string) *GenericServerBuilder[O] {
+	b.allowedTenants = b.allowedTenants.Difference(collections.NewSet(values...))
 	return b
 }
 
@@ -190,15 +199,15 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 
 	// Create the object early so that we can use its methods as callbacks:
 	s := &GenericServer[O]{
-		logger:               b.logger,
-		service:              b.service,
-		attributionLogic:     b.attributionLogic,
-		tenancyLogic:         b.tenancyLogic,
-		disallowSharedTenant: b.disallowSharedTenant,
-		notifier:          b.notifier,
-		pathCompiler:      pathCompiler,
-		pathCache:         map[string]*masks.Path[O]{},
-		pathCacheLock:     &sync.Mutex{},
+		logger:           b.logger,
+		service:          b.service,
+		attributionLogic: b.attributionLogic,
+		tenancyLogic:     b.tenancyLogic,
+		allowedTenants:   b.allowedTenants,
+		notifier:         b.notifier,
+		pathCompiler:     pathCompiler,
+		pathCache:        map[string]*masks.Path[O]{},
+		pathCacheLock:    &sync.Mutex{},
 	}
 
 	// Create the DAO:
@@ -449,10 +458,10 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	if err != nil {
 		return err
 	}
-	if s.disallowSharedTenant && assignedTenant == auth.SharedTenant {
+	if !s.allowedTenants.Contains(assignedTenant) {
 		return grpcstatus.Errorf(
 			grpccodes.PermissionDenied,
-			"creation in tenant '%s' is not allowed for this resource type",
+			"creation of objects in tenant '%s' is not allowed",
 			assignedTenant,
 		)
 	}
@@ -612,10 +621,10 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 	if err != nil {
 		return err
 	}
-	if s.disallowSharedTenant && assignedTenant == auth.SharedTenant && s.getTenant(currentObject) != assignedTenant {
+	if !s.allowedTenants.Contains(assignedTenant) && s.getTenant(currentObject) != assignedTenant {
 		return grpcstatus.Errorf(
 			grpccodes.PermissionDenied,
-			"tenant '%s' is not allowed for this resource type",
+			"moving objects to tenant '%s' is not allowed",
 			assignedTenant,
 		)
 	}

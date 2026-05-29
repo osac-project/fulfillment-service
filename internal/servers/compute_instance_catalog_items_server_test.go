@@ -14,7 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,38 +28,6 @@ import (
 )
 
 var _ = Describe("Compute instance catalog items server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		ctx = context.Background()
-
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-	})
-
 	Describe("Creation", func() {
 		It("Can be built if all the required parameters are set", func() {
 			server, err := NewComputeInstanceCatalogItemsServer().
@@ -355,6 +322,8 @@ var _ = Describe("Compute instance catalog items server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, err = tx.Exec(
 				ctx,
 				`update compute_instance_catalog_items set finalizers = '{"a"}' where id = $1`,

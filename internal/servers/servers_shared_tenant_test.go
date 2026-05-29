@@ -14,8 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -28,47 +26,237 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
-var _ = Describe("Shared tenant creation restriction", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
+var _ = Describe("Shared tenant creation acceptance", func() {
+	type sharedTenantTestCase struct {
+		name   string
+		create func() error
+		setup  func()
+	}
+
+	entries := func() []TableEntry {
+		return []TableEntry{
+			Entry("Hubs", sharedTenantTestCase{
+				name: "Hubs",
+				create: func() error {
+					server, err := NewPrivateHubsServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.HubsCreateRequest_builder{
+						Object: privatev1.Hub_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+			Entry("HostTypes", sharedTenantTestCase{
+				name: "HostTypes",
+				create: func() error {
+					server, err := NewPrivateHostTypesServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.HostTypesCreateRequest_builder{
+						Object: privatev1.HostType_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title: "Shared host type",
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+			Entry("Roles", sharedTenantTestCase{
+				name: "Roles",
+				create: func() error {
+					server, err := NewPrivateRolesServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.RolesCreateRequest_builder{
+						Object: privatev1.Role_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+			Entry("ClusterCatalogItems", sharedTenantTestCase{
+				name: "ClusterCatalogItems",
+				create: func() error {
+					server, err := NewPrivateClusterCatalogItemsServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+						Object: privatev1.ClusterCatalogItem_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title:    "Shared catalog item",
+							Template: "some-template",
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+			Entry("ClusterTemplates", sharedTenantTestCase{
+				name: "ClusterTemplates",
+				create: func() error {
+					server, err := NewPrivateClusterTemplatesServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
+						Object: privatev1.ClusterTemplate_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title:       "Shared template",
+							Description: "A shared cluster template",
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+			Entry("ComputeInstanceCatalogItems", sharedTenantTestCase{
+				name: "ComputeInstanceCatalogItems",
+				create: func() error {
+					server, err := NewPrivateComputeInstanceCatalogItemsServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+						Object: privatev1.ComputeInstanceCatalogItem_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title:    "Shared CI catalog item",
+							Template: "some-ci-template",
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+			Entry("ComputeInstanceTemplates", sharedTenantTestCase{
+				name: "ComputeInstanceTemplates",
+				create: func() error {
+					server, err := NewPrivateComputeInstanceTemplatesServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+						Object: privatev1.ComputeInstanceTemplate_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title:       "Shared CI template",
+							Description: "A shared compute instance template",
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+			Entry("NetworkClasses", sharedTenantTestCase{
+				name: "NetworkClasses",
+				create: func() error {
+					server, err := NewPrivateNetworkClassesServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+						Object: privatev1.NetworkClass_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title:                  "Shared network class",
+							ImplementationStrategy: "ovn-kubernetes",
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+			Entry("PublicIPPools", sharedTenantTestCase{
+				name: "PublicIPPools",
+				create: func() error {
+					server, err := NewPrivatePublicIPPoolsServer().
+						SetLogger(logger).
+						SetAttributionLogic(attribution).
+						SetTenancyLogic(tenancy).
+						Build()
+					if err != nil {
+						return err
+					}
+					_, err = server.Create(ctx, privatev1.PublicIPPoolsCreateRequest_builder{
+						Object: privatev1.PublicIPPool_builder{
+							Metadata: privatev1.Metadata_builder{
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Spec: privatev1.PublicIPPoolSpec_builder{
+								Cidrs:    []string{"192.168.0.0/24"},
+								IpFamily: privatev1.IPFamily_IP_FAMILY_IPV4,
+							}.Build(),
+						}.Build(),
+					}.Build())
+					return err
+				},
+			}),
+		}
+	}
+
+	DescribeTable("accepts creation in the shared tenant",
+		func(tc sharedTenantTestCase) {
+			if tc.setup != nil {
+				tc.setup()
+			}
+			Expect(tc.create()).To(Succeed())
+		},
+		entries(),
 	)
+})
 
-	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-	})
-
+var _ = Describe("Reserved tenant creation restriction", func() {
 	Describe("Cluster", func() {
 		var templateID string
 
@@ -172,7 +360,6 @@ var _ = Describe("Shared tenant creation restriction", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			// Suite tenancy defaults to "system", which is not disallowed:
 			response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
 				Object: publicv1.Cluster_builder{
 					Spec: publicv1.ClusterSpec_builder{
@@ -182,10 +369,10 @@ var _ = Describe("Shared tenant creation restriction", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
-			Expect(response.GetObject().GetMetadata().GetTenant()).To(Equal(auth.SystemTenant))
+			Expect(response.GetObject().GetMetadata().GetTenant()).To(Equal("test-tenant"))
 		})
 
-		It("Rejects update that moves resource to shared tenant", func() {
+		It("Rejects creation with explicit system tenant", func() {
 			clustersServer, err := NewClustersServer().
 				SetLogger(logger).
 				SetAttributionLogic(attribution).
@@ -194,7 +381,34 @@ var _ = Describe("Shared tenant creation restriction", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			// Create a cluster in "system" tenant:
+			response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Metadata: publicv1.Metadata_builder{
+						Tenant: auth.SystemTenant,
+					}.Build(),
+					Spec: publicv1.ClusterSpec_builder{
+						Template: templateID,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(response).To(BeNil())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
+			Expect(status.Message()).To(ContainSubstring("system"))
+			Expect(status.Message()).To(ContainSubstring("not allowed"))
+		})
+
+		It("Rejects update that moves object to shared tenant", func() {
+			clustersServer, err := NewClustersServer().
+				SetLogger(logger).
+				SetAttributionLogic(attribution).
+				SetTenancyLogic(tenancy).
+				SetScheme(testScheme).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
 			createResponse, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
 				Object: publicv1.Cluster_builder{
 					Spec: publicv1.ClusterSpec_builder{
@@ -205,7 +419,6 @@ var _ = Describe("Shared tenant creation restriction", func() {
 			Expect(err).ToNot(HaveOccurred())
 			clusterID := createResponse.GetObject().GetId()
 
-			// Attempt to update the tenant to "shared":
 			updateResponse, err := clustersServer.Update(ctx, publicv1.ClustersUpdateRequest_builder{
 				Object: publicv1.Cluster_builder{
 					Id: clusterID,
@@ -377,6 +590,27 @@ var _ = Describe("Shared tenant creation restriction", func() {
 		BeforeEach(func() {
 			templateID = "ci-shared-test-template"
 
+			// Create a subnet so compute instance creation passes network validation:
+			subnetsDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			_, err = subnetsDao.Create().SetObject(privatev1.Subnet_builder{
+				Id: "test-subnet",
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				Spec: privatev1.SubnetSpec_builder{
+					VirtualNetwork: "test-vnet",
+					Ipv4Cidr:       proto.String("10.0.0.0/24"),
+				}.Build(),
+				Status: privatev1.SubnetStatus_builder{
+					State: privatev1.SubnetState_SUBNET_STATE_READY,
+				}.Build(),
+			}.Build()).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
 			// Create a ComputeInstanceTemplate via DAO:
 			templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
 				SetLogger(logger).
@@ -443,6 +677,11 @@ var _ = Describe("Shared tenant creation restriction", func() {
 					}.Build(),
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: templateID,
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())

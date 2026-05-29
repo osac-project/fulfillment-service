@@ -19,7 +19,6 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Private projects server", func() {
@@ -28,26 +27,8 @@ var _ = Describe("Private projects server", func() {
 	BeforeEach(func() {
 		var err error
 
-		// Create the tenants used in the tests:
-		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
-			SetLogger(logger).
-			SetTenancyLogic(tenancy).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-		createTenant := func(name string) {
-			_, err = tenantsDao.Create().
-				SetObject(privatev1.Organization_builder{
-					Id: name,
-					Metadata: privatev1.Metadata_builder{
-						Name:   name,
-						Tenant: name,
-					}.Build(),
-				}.Build()).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		}
-		createTenant("my-tenant")
-		createTenant("your-tenant")
+		createTenant(ctx, "my-tenant")
+		createTenant(ctx, "your-tenant")
 
 		// Create server (without notifier for testing):
 		privateServer, err = NewPrivateProjectsServer().

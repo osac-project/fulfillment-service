@@ -31,28 +31,8 @@ import (
 
 var _ = Describe("Private virtual networks server", func() {
 	BeforeEach(func() {
-		var err error
-
-		// Create the tenants used in the tests:
-		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
-			SetLogger(logger).
-			SetTenancyLogic(tenancy).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-		createTenant := func(name string) {
-			_, err = tenantsDao.Create().
-				SetObject(privatev1.Organization_builder{
-					Id: name,
-					Metadata: privatev1.Metadata_builder{
-						Name:   name,
-						Tenant: name,
-					}.Build(),
-				}.Build()).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		}
-		createTenant("tenant-a")
-		createTenant("tenant-b")
+		createTenant(ctx, "tenant-a")
+		createTenant(ctx, "tenant-b")
 	})
 
 	// Helper function to create a NetworkClass for validation tests
@@ -869,7 +849,7 @@ var _ = Describe("Private virtual networks server", func() {
 				createResponse, err := server.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 					Object: privatev1.VirtualNetwork_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenant: "my-tenant",
+							Tenant: "tenant-a",
 						}.Build(),
 						Spec: privatev1.VirtualNetworkSpec_builder{
 							Ipv4Cidr:     new("10.0.0.0/16"),

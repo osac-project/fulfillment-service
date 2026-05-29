@@ -29,27 +29,7 @@ import (
 
 var _ = Describe("Tenancy logic", func() {
 	BeforeEach(func() {
-		var err error
-
-		// Create the tenants used in the tests:
-		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
-			SetLogger(logger).
-			SetTenancyLogic(tenancy).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-		createTenant := func(name string) {
-			_, err = tenantsDao.Create().
-				SetObject(privatev1.Organization_builder{
-					Id: name,
-					Metadata: privatev1.Metadata_builder{
-						Name:   name,
-						Tenant: name,
-					}.Build(),
-				}.Build()).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		}
-		createTenant("my-tenant")
+		createTenant(ctx, "my-tenant")
 	})
 
 	It("Returns tenant in metadata when object is created", func() {

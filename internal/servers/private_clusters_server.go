@@ -139,7 +139,6 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
-		SetDisallowSharedTenant(true).
 		Build()
 	if err != nil {
 		return
