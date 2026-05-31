@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2025 Red Hat Inc.
+Copyright (c) 2026 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
 License. You may obtain a copy of the License at
@@ -11,33 +11,28 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package main
+package generate
 
 import (
-	"errors"
-	"fmt"
-	"os"
+	"github.com/spf13/cobra"
 
-	"github.com/osac-project/fulfillment-service/internal/cmd/cli"
-	"github.com/osac-project/fulfillment-service/internal/exit"
+	"github.com/osac-project/fulfillment-service/internal/cmd/osac-dev/generate/openapi"
 )
 
-func main() {
-	err := run()
-	exitErr, ok := errors.AsType[*exit.Error](err)
-	if ok {
-		os.Exit(exitErr.Code())
+func Cmd() *cobra.Command {
+	result := &cobra.Command{
+		Use:                   "generate [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
 	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
-	}
+	result.AddCommand(openapi.Cmd())
+	return result
 }
 
-func run() error {
-	root, err := cli.Root()
-	if err != nil {
-		return err
-	}
-	return root.Execute()
-}
+const shortHelp = "Generate code"
+
+const longHelp = `
+Generate code.
+`

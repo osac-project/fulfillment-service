@@ -4,12 +4,13 @@
 *.patch
 *.rej
 *.test
+.idea
+.vscode
 /bin
 /dev.yaml
 /dist
-/osac
 /fulfillment-service
 /logs
+/osac
+/osac-dev
 __debug_bin*
-.idea
-.vscode

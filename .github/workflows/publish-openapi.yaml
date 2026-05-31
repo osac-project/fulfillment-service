@@ -1,0 +1,58 @@
+#
+# Copyright (c) 2026 Red Hat Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+#
+
+# This workflow generates the OpenAPI specification and uploads it to the GitHub pages of the project.
+
+name: Publish OpenAPI
+
+on:
+  push:
+    branches:
+    - main
+
+concurrency:
+  group: publish-openapi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # The 'write' permission is required to deploy to the GitHub pages environment, and the 'id-token' permission is
+  # required for the OIDC authentication with that environment.
+  publish-openapi:
+    name: Publish OpenAPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-go
+    - uses: bufbuild/buf-action@91da6f6a1a2c877c182debad24ca0a8a9d848be7
+      with:
+        setup_only: true
+    - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+    - run: |
+        go build ./cmd/osac-dev
+        ./osac-dev generate openapi --project-dir . --output-dir pages/openapi
+    - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
+      with:
+        path: pages
+    - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2025 Red Hat Inc.
+Copyright (c) 2026 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
 License. You may obtain a copy of the License at
@@ -14,30 +14,35 @@ language governing permissions and limitations under the License.
 package main
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"os"
 
-	"github.com/osac-project/fulfillment-service/internal/cmd/cli"
+	"github.com/osac-project/fulfillment-service/internal/cmd/osac-dev"
 	"github.com/osac-project/fulfillment-service/internal/exit"
 )
 
 func main() {
-	err := run()
-	exitErr, ok := errors.AsType[*exit.Error](err)
-	if ok {
-		os.Exit(exitErr.Code())
-	}
+	// Create a context:
+	ctx := context.Background()
+
+	// Execute the main command:
+	err := run(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
+		exitErr, ok := err.(exit.Error)
+		if ok {
+			os.Exit(exitErr.Code())
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			os.Exit(1)
+		}
 	}
 }
 
-func run() error {
-	root, err := cli.Root()
+func run(ctx context.Context) error {
+	root, err := osacdev.Root()
 	if err != nil {
 		return err
 	}
-	return root.Execute()
+	return root.ExecuteContext(ctx)
 }
