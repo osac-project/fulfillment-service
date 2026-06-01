@@ -156,6 +156,33 @@ For flag help, start with a short type hint in italics (e.g. `_[BOOLEAN]_`, `_UR
 Refer to existing commands such as `internal/cmd/cli/login/login_cmd.go` for style and examples of
 how help text is structured.
 
+## API Design Guidelines
+
+### Annotations vs Spec/Status Fields
+
+Annotations (`metadata.annotations`) are intended for arbitrary, user-controlled metadata. They are
+not part of the system's data model and must not be used to represent relationships, configuration,
+or state that the system depends on. When a resource has a relationship to a parent or to another
+resource, or when the system needs to store operational data, use a field in `spec` (for
+user-provided, declarative configuration) or `status` (for system-managed state) instead.
+
+For example, if a Subnet belongs to a VirtualNetwork, the correct approach is a
+`spec.virtual_network` field that holds the parent ID, not an annotation like
+`osac.io/owner-reference`. Spec fields are typed, validated, documented in the schema, and visible
+in generated clients, whereas annotations are opaque strings with no schema enforcement.
+
+In summary:
+
+- **Spec fields** are for user-declared desired state, including references to parent or related
+  resources.
+- **Status fields** are for system-managed observed state, including identifiers the system assigns
+  (e.g., which hub was selected).
+- **Annotations** are for users to attach their own unstructured metadata. The system should never
+  read annotations to make decisions.
+
+Some existing proto files document parent relationships via annotations. That is legacy guidance and
+should not be followed when designing new resources or refactoring existing ones.
+
 ## Common Pitfalls
 
 - Proto changes require both `buf lint` and `buf generate` before committing
