@@ -80,6 +80,8 @@ type Client interface {
 
 	// Authorization policy and permission operations
 	// These methods control who can access which resources with what scopes.
+
+	// Group operations
 	// CreateAuthorizationGroup creates a Keycloak organization group for authorization purposes.
 	// Organization groups are scoped to a specific organization and support hierarchical paths.
 	// Recommended path format: "/{projects}/{project-name}/{viewers|managers}" for top-level projects.
@@ -88,6 +90,20 @@ type Client interface {
 	DeleteAuthorizationGroup(ctx context.Context, organizationName, groupID string) error
 	// GetGroupIDByPath gets a Keycloak organization group ID by its path.
 	GetGroupIDByPath(ctx context.Context, organizationName, groupPath string) (string, error)
+
+	// Policy operations
+	// CreateGroupPolicy creates a group-based authorization policy.
+	// The policy evaluates to PERMIT if the user is a member of any of the specified groups.
+	CreateGroupPolicy(ctx context.Context, policy *AuthorizationPolicy) (*AuthorizationPolicy, error)
+	// DeletePolicy deletes an authorization policy by ID.
+	DeletePolicy(ctx context.Context, policyID string) error
+
+	// Permission operations
+	// CreateScopePermission creates a scope-based permission that connects policies to resource scopes.
+	// The permission grants access to the specified scopes when the associated policies evaluate to true.
+	CreateScopePermission(ctx context.Context, permission *AuthorizationPermission) (*AuthorizationPermission, error)
+	// DeletePermission deletes an authorization permission by ID.
+	DeletePermission(ctx context.Context, permissionID string) error
 
 	// Identity Provider operations
 	// GetIdentityProvider retrieves an external identity provider configuration by alias at the realm level.

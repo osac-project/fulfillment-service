@@ -125,6 +125,21 @@ func (mr *MockClientMockRecorder) CreateAuthorizationResource(ctx, resource any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAuthorizationResource", reflect.TypeOf((*MockClient)(nil).CreateAuthorizationResource), ctx, resource)
 }
 
+// CreateGroupPolicy mocks base method.
+func (m *MockClient) CreateGroupPolicy(ctx context.Context, policy *AuthorizationPolicy) (*AuthorizationPolicy, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateGroupPolicy", ctx, policy)
+	ret0, _ := ret[0].(*AuthorizationPolicy)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateGroupPolicy indicates an expected call of CreateGroupPolicy.
+func (mr *MockClientMockRecorder) CreateGroupPolicy(ctx, policy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGroupPolicy", reflect.TypeOf((*MockClient)(nil).CreateGroupPolicy), ctx, policy)
+}
+
 // CreateOrganization mocks base method.
 func (m *MockClient) CreateOrganization(ctx context.Context, org *Organization) (*Organization, error) {
 	m.ctrl.T.Helper()
@@ -138,6 +153,21 @@ func (m *MockClient) CreateOrganization(ctx context.Context, org *Organization) 
 func (mr *MockClientMockRecorder) CreateOrganization(ctx, org any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOrganization", reflect.TypeOf((*MockClient)(nil).CreateOrganization), ctx, org)
+}
+
+// CreateScopePermission mocks base method.
+func (m *MockClient) CreateScopePermission(ctx context.Context, permission *AuthorizationPermission) (*AuthorizationPermission, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateScopePermission", ctx, permission)
+	ret0, _ := ret[0].(*AuthorizationPermission)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateScopePermission indicates an expected call of CreateScopePermission.
+func (mr *MockClientMockRecorder) CreateScopePermission(ctx, permission any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateScopePermission", reflect.TypeOf((*MockClient)(nil).CreateScopePermission), ctx, permission)
 }
 
 // CreateUser mocks base method.
@@ -195,6 +225,34 @@ func (m *MockClient) DeleteOrganization(ctx context.Context, name string) error 
 func (mr *MockClientMockRecorder) DeleteOrganization(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOrganization", reflect.TypeOf((*MockClient)(nil).DeleteOrganization), ctx, name)
+}
+
+// DeletePermission mocks base method.
+func (m *MockClient) DeletePermission(ctx context.Context, permissionID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePermission", ctx, permissionID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePermission indicates an expected call of DeletePermission.
+func (mr *MockClientMockRecorder) DeletePermission(ctx, permissionID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePermission", reflect.TypeOf((*MockClient)(nil).DeletePermission), ctx, permissionID)
+}
+
+// DeletePolicy mocks base method.
+func (m *MockClient) DeletePolicy(ctx context.Context, policyID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePolicy", ctx, policyID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePolicy indicates an expected call of DeletePolicy.
+func (mr *MockClientMockRecorder) DeletePolicy(ctx, policyID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePolicy", reflect.TypeOf((*MockClient)(nil).DeletePolicy), ctx, policyID)
 }
 
 // DeleteUser mocks base method.

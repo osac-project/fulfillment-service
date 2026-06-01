@@ -82,6 +82,60 @@ type AuthorizationResource struct {
 	Attributes map[string][]string
 }
 
+// AuthorizationPolicy represents a policy in an authorization system.
+// Policies define the conditions under which access is granted.
+type AuthorizationPolicy struct {
+	// ID is the unique identifier assigned by the authorization system
+	ID string
+
+	// Name is the policy name (e.g., "my-project-viewers-policy")
+	Name string
+
+	// Type is the policy type (e.g., "group", "role", "user", "time", "js")
+	Type string
+
+	// Logic is the policy decision strategy ("POSITIVE" or "NEGATIVE")
+	// POSITIVE: policy grants access when conditions are met
+	// NEGATIVE: policy denies access when conditions are met
+	Logic string
+
+	// DecisionStrategy is how multiple policies are evaluated ("UNANIMOUS", "AFFIRMATIVE", "CONSENSUS")
+	DecisionStrategy string
+
+	// GroupsClaim is the claim in the token that contains group membership (for group policies)
+	GroupsClaim string
+
+	// Groups are the group paths that this policy applies to (for group policies)
+	Groups []string
+}
+
+// AuthorizationPermission represents a permission that connects policies to resources/scopes.
+type AuthorizationPermission struct {
+	// ID is the unique identifier assigned by the authorization system
+	ID string
+
+	// Name is the permission name (e.g., "my-project-view-permission")
+	Name string
+
+	// Type is the permission type (e.g., "scope", "resource")
+	Type string
+
+	// Logic is the permission decision strategy ("POSITIVE" or "NEGATIVE")
+	Logic string
+
+	// DecisionStrategy is how multiple policies are evaluated ("UNANIMOUS", "AFFIRMATIVE", "CONSENSUS")
+	DecisionStrategy string
+
+	// ResourceID is the ID of the resource this permission applies to
+	ResourceID string
+
+	// Scopes are the scope names this permission grants
+	Scopes []string
+
+	// Policies are the policy IDs that must evaluate to true for this permission
+	Policies []string
+}
+
 // IdentityProvider represents an external identity provider configuration.
 // This represents the connection to an upstream IdP (LDAP/AD/OIDC/SAML/etc) that
 // users authenticate against.

@@ -187,11 +187,120 @@ func (m *ResourceManager) createProjectAuthorizationGroups(ctx context.Context, 
 		slog.String("organization", organizationName),
 	)
 
-	//TODO: Create group policy and permission for viewers (VIEW_PROJECT scope)
+	// Create group policy for viewers
+	viewersPolicyName := fmt.Sprintf("%s-viewers-policy", projectName)
+	viewersPolicy := &AuthorizationPolicy{
+		Name:   viewersPolicyName,
+		Type:   "group",
+		Logic:  "POSITIVE",
+		Groups: []string{viewersGroupPath},
+	}
 
-	//TODO: Create group policy and permission for managers (MANAGE_PROJECT scope)
+	createdViewersPolicy, err := m.client.CreateGroupPolicy(ctx, viewersPolicy)
+	if err != nil {
+		// Clean up groups on failure
+		m.cleanupGroupsOnFailure(ctx, organizationName, viewersGroupPath, managersGroupPath)
+		return fmt.Errorf("failed to create viewers policy: %w", err)
+	}
+
+	m.logger.InfoContext(ctx, "Created viewers authorization policy",
+		slog.String("policy_id", createdViewersPolicy.ID),
+		slog.String("policy_name", createdViewersPolicy.Name),
+		slog.String("project_name", resourceName),
+	)
+
+	// Create group policy for managers
+	managersPolicyName := fmt.Sprintf("%s-managers-policy", projectName)
+	managersPolicy := &AuthorizationPolicy{
+		Name:   managersPolicyName,
+		Type:   "group",
+		Logic:  "POSITIVE",
+		Groups: []string{managersGroupPath},
+	}
+
+	createdManagersPolicy, err := m.client.CreateGroupPolicy(ctx, managersPolicy)
+	if err != nil {
+		// Clean up groups and viewers policy on failure
+		_ = m.client.DeletePolicy(ctx, createdViewersPolicy.ID)
+		m.cleanupGroupsOnFailure(ctx, organizationName, viewersGroupPath, managersGroupPath)
+		return fmt.Errorf("failed to create managers policy: %w", err)
+	}
+
+	m.logger.InfoContext(ctx, "Created managers authorization policy",
+		slog.String("policy_id", createdManagersPolicy.ID),
+		slog.String("policy_name", createdManagersPolicy.Name),
+		slog.String("project_name", resourceName),
+	)
+
+	// Create scope permission for viewers (VIEW_PROJECT scope)
+	viewersPermissionName := fmt.Sprintf("%s-view-permission", projectName)
+	viewersPermission := &AuthorizationPermission{
+		Name:             viewersPermissionName,
+		Type:             "scope",
+		Logic:            "POSITIVE",
+		DecisionStrategy: "UNANIMOUS",
+		ResourceID:       resourceID,
+		Scopes:           []string{ScopeViewProject},
+		Policies:         []string{createdViewersPolicy.ID},
+	}
+
+	createdViewersPermission, err := m.client.CreateScopePermission(ctx, viewersPermission)
+	if err != nil {
+		// Clean up policies and groups on failure
+		_ = m.client.DeletePolicy(ctx, createdManagersPolicy.ID)
+		_ = m.client.DeletePolicy(ctx, createdViewersPolicy.ID)
+		m.cleanupGroupsOnFailure(ctx, organizationName, viewersGroupPath, managersGroupPath)
+		return fmt.Errorf("failed to create viewers permission: %w", err)
+	}
+
+	m.logger.InfoContext(ctx, "Created viewers scope permission",
+		slog.String("permission_id", createdViewersPermission.ID),
+		slog.String("permission_name", createdViewersPermission.Name),
+		slog.String("project_name", resourceName),
+	)
+
+	// Create scope permission for managers (MANAGE_PROJECT scope)
+	managersPermissionName := fmt.Sprintf("%s-manage-permission", projectName)
+	managersPermission := &AuthorizationPermission{
+		Name:             managersPermissionName,
+		Type:             "scope",
+		Logic:            "POSITIVE",
+		DecisionStrategy: "UNANIMOUS",
+		ResourceID:       resourceID,
+		Scopes:           []string{ScopeManageProject},
+		Policies:         []string{createdManagersPolicy.ID},
+	}
+
+	createdManagersPermission, err := m.client.CreateScopePermission(ctx, managersPermission)
+	if err != nil {
+		// Clean up viewers permission, policies, and groups on failure
+		_ = m.client.DeletePermission(ctx, createdViewersPermission.ID)
+		_ = m.client.DeletePolicy(ctx, createdManagersPolicy.ID)
+		_ = m.client.DeletePolicy(ctx, createdViewersPolicy.ID)
+		m.cleanupGroupsOnFailure(ctx, organizationName, viewersGroupPath, managersGroupPath)
+		return fmt.Errorf("failed to create managers permission: %w", err)
+	}
+
+	m.logger.InfoContext(ctx, "Created managers scope permission",
+		slog.String("permission_id", createdManagersPermission.ID),
+		slog.String("permission_name", createdManagersPermission.Name),
+		slog.String("project_name", resourceName),
+	)
 
 	return nil
+}
+
+// cleanupGroupsOnFailure is a helper to clean up groups when policy or permission creation fails.
+func (m *ResourceManager) cleanupGroupsOnFailure(ctx context.Context, organizationName, viewersGroupPath, managersGroupPath string) {
+	viewersGroupID, _ := m.getGroupIDByPath(ctx, organizationName, viewersGroupPath)
+	if viewersGroupID != "" {
+		_ = m.client.DeleteAuthorizationGroup(ctx, organizationName, viewersGroupID)
+	}
+
+	managersGroupID, _ := m.getGroupIDByPath(ctx, organizationName, managersGroupPath)
+	if managersGroupID != "" {
+		_ = m.client.DeleteAuthorizationGroup(ctx, organizationName, managersGroupID)
+	}
 }
 
 // DeleteAuthorizationResource deletes an Authorization Resource by ID.
@@ -241,8 +350,8 @@ func (m *ResourceManager) DeleteAuthorizationResource(ctx context.Context, resou
 	return nil
 }
 
-// deleteProjectAuthorizationGroups deletes Keycloak organization groups
-// for a project resource using the new hierarchical naming convention.
+// deleteProjectAuthorizationGroups deletes Keycloak organization groups,
+// policies, and permissions for a project resource.
 func (m *ResourceManager) deleteProjectAuthorizationGroups(ctx context.Context, resourceName, organizationName string) error {
 	if organizationName == "" {
 		return fmt.Errorf("organization name is required for deleting groups")
@@ -267,9 +376,77 @@ func (m *ResourceManager) deleteProjectAuthorizationGroups(ctx context.Context, 
 		viewersGroupPath := fmt.Sprintf("/%s/%s", projectName, GroupNameViewers)
 		managersGroupPath := fmt.Sprintf("/%s/%s", projectName, GroupNameManagers)
 
-		// TODO: Delete policies first (they reference the groups)
+		// Delete permissions first (they reference policies)
+		viewersPermissionName := fmt.Sprintf("%s-view-permission", projectName)
+		viewersPermissionID, err := m.getPermissionIDByName(ctx, viewersPermissionName)
+		if err != nil {
+			m.logger.WarnContext(ctx, "Failed to get viewers permission ID for deletion",
+				slog.String("permission_name", viewersPermissionName),
+				slog.Any("error", err),
+			)
+		} else {
+			err = m.client.DeletePermission(ctx, viewersPermissionID)
+			if err != nil {
+				m.logger.WarnContext(ctx, "Failed to delete viewers permission",
+					slog.String("permission_id", viewersPermissionID),
+					slog.Any("error", err),
+				)
+			}
+		}
 
-		// Get group IDs and delete groups
+		managersPermissionName := fmt.Sprintf("%s-manage-permission", projectName)
+		managersPermissionID, err := m.getPermissionIDByName(ctx, managersPermissionName)
+		if err != nil {
+			m.logger.WarnContext(ctx, "Failed to get managers permission ID for deletion",
+				slog.String("permission_name", managersPermissionName),
+				slog.Any("error", err),
+			)
+		} else {
+			err = m.client.DeletePermission(ctx, managersPermissionID)
+			if err != nil {
+				m.logger.WarnContext(ctx, "Failed to delete managers permission",
+					slog.String("permission_id", managersPermissionID),
+					slog.Any("error", err),
+				)
+			}
+		}
+
+		// Delete policies (they reference groups)
+		viewersPolicyName := fmt.Sprintf("%s-viewers-policy", projectName)
+		viewersPolicyID, err := m.getPolicyIDByName(ctx, viewersPolicyName)
+		if err != nil {
+			m.logger.WarnContext(ctx, "Failed to get viewers policy ID for deletion",
+				slog.String("policy_name", viewersPolicyName),
+				slog.Any("error", err),
+			)
+		} else {
+			err = m.client.DeletePolicy(ctx, viewersPolicyID)
+			if err != nil {
+				m.logger.WarnContext(ctx, "Failed to delete viewers policy",
+					slog.String("policy_id", viewersPolicyID),
+					slog.Any("error", err),
+				)
+			}
+		}
+
+		managersPolicyName := fmt.Sprintf("%s-managers-policy", projectName)
+		managersPolicyID, err := m.getPolicyIDByName(ctx, managersPolicyName)
+		if err != nil {
+			m.logger.WarnContext(ctx, "Failed to get managers policy ID for deletion",
+				slog.String("policy_name", managersPolicyName),
+				slog.Any("error", err),
+			)
+		} else {
+			err = m.client.DeletePolicy(ctx, managersPolicyID)
+			if err != nil {
+				m.logger.WarnContext(ctx, "Failed to delete managers policy",
+					slog.String("policy_id", managersPolicyID),
+					slog.Any("error", err),
+				)
+			}
+		}
+
+		// Finally, delete groups
 		viewersGroupID, err := m.getGroupIDByPath(ctx, organizationName, viewersGroupPath)
 		if err != nil {
 			m.logger.WarnContext(ctx, "Failed to get viewers group ID for deletion",
@@ -314,6 +491,38 @@ func (m *ResourceManager) deleteProjectAuthorizationGroups(ctx context.Context, 
 // This delegates to the client's GetGroupIDByPath implementation.
 func (m *ResourceManager) getGroupIDByPath(ctx context.Context, organizationName, groupPath string) (string, error) {
 	return m.client.GetGroupIDByPath(ctx, organizationName, groupPath)
+}
+
+// getPolicyIDByName is a helper to get the policy ID from a policy name.
+// This is a Keycloak-specific operation and may not be available on all IdP clients.
+func (m *ResourceManager) getPolicyIDByName(ctx context.Context, policyName string) (string, error) {
+	// This relies on the Keycloak client implementation
+	// If the client doesn't support this, it will return an error
+	type policyIDGetter interface {
+		GetPolicyIDByName(ctx context.Context, policyName string) (string, error)
+	}
+
+	if getter, ok := m.client.(policyIDGetter); ok {
+		return getter.GetPolicyIDByName(ctx, policyName)
+	}
+
+	return "", fmt.Errorf("client does not support getting policy ID by name")
+}
+
+// getPermissionIDByName is a helper to get the permission ID from a permission name.
+// This is a Keycloak-specific operation and may not be available on all IdP clients.
+func (m *ResourceManager) getPermissionIDByName(ctx context.Context, permissionName string) (string, error) {
+	// This relies on the Keycloak client implementation
+	// If the client doesn't support this, it will return an error
+	type permissionIDGetter interface {
+		GetPermissionIDByName(ctx context.Context, permissionName string) (string, error)
+	}
+
+	if getter, ok := m.client.(permissionIDGetter); ok {
+		return getter.GetPermissionIDByName(ctx, permissionName)
+	}
+
+	return "", fmt.Errorf("client does not support getting permission ID by name")
 }
 
 // GetAuthorizationResource retrieves an Authorization Resource by ID.
