@@ -53,6 +53,11 @@ auth:
   # This defines the URL of the OAuth issuer used for authentication. This parameter is mandatory.
   issuerUrl:
 
+  # UMA (User-Managed Access) client credentials for Keycloak Authorization Services
+  # Used by Authorino to perform resource-level authorization checks
+  umaClientId: osac-authorization
+  umaClientSecret:
+
   # List of sources for the OAuth client credentials used by the controller to authenticate to the fulfillment API.
   # The controller uses the OAuth client credentials flow with the issuer URL specified in `auth.issuerUrl`.
   #
