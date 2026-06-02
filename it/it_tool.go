@@ -1034,30 +1034,32 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 
 	// Add the service account clients and their corresponding users:
 	type serviceAccountData struct {
-		Name        string
-		Description string
-		ClientId    string
-		ClientRoles map[string][]string
+		Name                         string
+		Description                  string
+		ClientId                     string
+		ClientRoles                  map[string][]string
+		AuthorizationServicesEnabled bool
 	}
 	addServiceAccount := func(data serviceAccountData) {
-		clients = append(
-			clients,
-			map[string]any{
-				"name":                      data.Name,
-				"description":               data.Description,
-				"clientId":                  data.ClientId,
-				"enabled":                   true,
-				"clientAuthenticatorType":   "client-secret",
-				"secret":                    t.secret,
-				"serviceAccountsEnabled":    true,
-				"publicClient":              false,
-				"standardFlowEnabled":       false,
-				"implicitFlowEnabled":       false,
-				"directAccessGrantsEnabled": false,
-				"protocol":                  "openid-connect",
-				"fullScopeAllowed":          true,
-			},
-		)
+		client := map[string]any{
+			"name":                      data.Name,
+			"description":               data.Description,
+			"clientId":                  data.ClientId,
+			"enabled":                   true,
+			"clientAuthenticatorType":   "client-secret",
+			"secret":                    t.secret,
+			"serviceAccountsEnabled":    true,
+			"publicClient":              false,
+			"standardFlowEnabled":       false,
+			"implicitFlowEnabled":       false,
+			"directAccessGrantsEnabled": false,
+			"protocol":                  "openid-connect",
+			"fullScopeAllowed":          true,
+		}
+		if data.AuthorizationServicesEnabled {
+			client["authorizationServicesEnabled"] = true
+		}
+		clients = append(clients, client)
 		users = append(
 			users, map[string]any{
 				"username":               fmt.Sprintf("service-account-%s", data.ClientId),
@@ -1082,8 +1084,17 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 				"manage-users",
 				"view-realm",
 				"view-users",
+				"manage-clients",
+				"manage-authorization",
 			},
 		},
+	})
+	addServiceAccount(serviceAccountData{
+		Name:                         "OSAC Authorization",
+		Description:                  "Service account for Authorino to request UMA authorization decisions",
+		ClientId:                     "osac-authorization",
+		ClientRoles:                  map[string][]string{},
+		AuthorizationServicesEnabled: true,
 	})
 
 	// Add the prepared clients, groups and users to the values:
@@ -1418,7 +1429,9 @@ func (t *Tool) deployServiceWithHelm(ctx context.Context, imageRef string) error
 			},
 		},
 		"auth": map[string]any{
-			"issuerUrl": fmt.Sprintf("https://%s/realms/osac", keycloakAddr),
+			"issuerUrl":       fmt.Sprintf("https://%s/realms/osac", keycloakAddr),
+			"umaClientId":     "osac-authorization",
+			"umaClientSecret": t.secret,
 			"controllerCredentials": []any{
 				map[string]any{
 					"secret": map[string]any{

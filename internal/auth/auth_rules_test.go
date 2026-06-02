@@ -72,7 +72,9 @@ var _ = Describe("Authorization rules", Ordered, func() {
 				},
 			},
 			"auth": map[string]any{
-				"issuerUrl": "https://my-issuer.com",
+				"issuerUrl":       "https://my-issuer.com",
+				"umaClientId":     "osac-authorization",
+				"umaClientSecret": "test-secret",
 				"controllerCredentials": map[string]any{
 					"secret": map[string]any{
 						"name": "fulfillment-controller-credentials",
