@@ -369,7 +369,7 @@ func (s *Container) Stop(ctx context.Context) error {
 			return
 		}
 		removeErr := os.Remove(s.configFile)
-		if removeErr == nil {
+		if removeErr != nil {
 			s.logger.ErrorContext(
 				ctx,
 				"Failed to remove configuration file",
