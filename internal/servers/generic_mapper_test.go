@@ -14,7 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -27,12 +26,6 @@ import (
 )
 
 var _ = Describe("Generic mapper", func() {
-	var ctx context.Context
-
-	BeforeEach(func() {
-		ctx = context.Background()
-	})
-
 	parseDate := func(text string) *timestamppb.Timestamp {
 		value, err := time.Parse(time.RFC3339, text)
 		Expect(err).ToNot(HaveOccurred())

@@ -30,40 +30,8 @@ import (
 )
 
 var _ = Describe("Private virtual networks server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
 	BeforeEach(func() {
 		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tenants used in the tests:
 		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
@@ -1334,6 +1302,8 @@ var _ = Describe("Private virtual networks server", func() {
 			defaultNC := createDefaultNetworkClassViaDAO(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
 
 			// Soft-delete the default NC by setting deletion_timestamp via SQL:
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, sqlErr := tx.Exec(ctx,
 				"UPDATE network_classes SET deletion_timestamp = now() WHERE id = $1",
 				defaultNC.GetId(),
@@ -1342,7 +1312,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 			// Create VN without network_class. findDefaultNetworkClass excludes
 			// soft-deleted rows, so no active default is found and creation fails.
-			_, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
+			_, err = vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr: new("10.0.0.0/16"),

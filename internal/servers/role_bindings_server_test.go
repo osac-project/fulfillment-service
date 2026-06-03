@@ -14,48 +14,18 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
 var _ = Describe("Public role bindings server", func() {
-	var (
-		ctx                context.Context
-		tx                 database.Tx
-		roleBindingsServer *RoleBindingsServer
-	)
+	var roleBindingsServer *RoleBindingsServer
 
 	BeforeEach(func() {
 		var err error
-
-		ctx = context.Background()
-
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
 
 		roleBindingsServer, err = NewRoleBindingsServer().
 			SetLogger(logger).

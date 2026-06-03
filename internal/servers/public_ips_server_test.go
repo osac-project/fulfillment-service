@@ -30,41 +30,10 @@ import (
 )
 
 var _ = Describe("Public IPs server", func() {
-	var (
-		ctx             context.Context
-		tx              database.Tx
-		publicIPPoolDao *dao.GenericDAO[*privatev1.PublicIPPool]
-	)
+	var publicIPPoolDao *dao.GenericDAO[*privatev1.PublicIPPool]
 
 	BeforeEach(func() {
 		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the PublicIPPool DAO:
 		publicIPPoolDao, err = dao.NewGenericDAO[*privatev1.PublicIPPool]().
@@ -345,6 +314,8 @@ var _ = Describe("Public IPs server", func() {
 			// archival so we can verify the deletion timestamp. State must be ALLOCATED
 			// because only ALLOCATED PublicIPs can be deleted. Both are set via raw SQL
 			// because the public API doesn't expose finalizers or status.state.
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, err = tx.Exec(
 				ctx,
 				`update public_ips set finalizers = '{"a"}',`+

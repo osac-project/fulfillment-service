@@ -14,7 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -30,42 +29,6 @@ import (
 )
 
 var _ = Describe("Network classes server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-	})
-
 	Describe("Creation", func() {
 		It("Can be built if all the required parameters are set", func() {
 			server, err := NewNetworkClassesServer().
@@ -270,7 +233,9 @@ var _ = Describe("Network classes server", func() {
 			// Add a finalizer, as otherwise the object will be immediatelly deleted and archived and it
 			// won't be possible to verify the deletion timestamp. This can't be done using the server
 			// because this is a public object, and public objects don't have the finalizers field.
-			_, err := tx.Exec(
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = tx.Exec(
 				ctx,
 				`update network_classes set finalizers = '{"a"}' where id = $1`,
 				privateObj.GetId(),
@@ -498,7 +463,9 @@ var _ = Describe("Network classes server", func() {
 			It("Multiple defaults fallback: newest by creation_timestamp wins", func() {
 				// Drop the unique index to simulate a race condition where creation of two default
 				// network classes succeed.
-				_, err := tx.Exec(ctx, "drop index if exists network_classes_single_default")
+				tx, err := database.TxFromContext(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = tx.Exec(ctx, "drop index if exists network_classes_single_default")
 				Expect(err).ToNot(HaveOccurred())
 
 				// Create two default network classes:
@@ -666,6 +633,8 @@ var _ = Describe("Network classes server", func() {
 				ncAId := createResponseA.GetObject().GetId()
 
 				// Soft-delete NC-A by setting deletion_timestamp via SQL:
+				tx, err := database.TxFromContext(ctx)
+				Expect(err).ToNot(HaveOccurred())
 				_, ncErr = tx.Exec(ctx,
 					"UPDATE network_classes SET deletion_timestamp = now() WHERE id = $1",
 					ncAId,

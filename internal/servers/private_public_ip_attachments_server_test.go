@@ -14,8 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -26,14 +24,11 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/collections"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Private public IP attachments server", func() {
 	var (
-		ctx                       context.Context
-		tx                        database.Tx
 		publicIPAttachmentsServer *PrivatePublicIPAttachmentsServer
 		publicIPPoolDao           *dao.GenericDAO[*privatev1.PublicIPPool]
 		publicIPDao               *dao.GenericDAO[*privatev1.PublicIP]
@@ -43,29 +38,6 @@ var _ = Describe("Private public IP attachments server", func() {
 
 	BeforeEach(func() {
 		var err error
-
-		ctx = context.Background()
-
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
 
 		// Create the tenants used in the tests:
 		tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().

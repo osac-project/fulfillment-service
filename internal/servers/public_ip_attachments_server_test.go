@@ -77,41 +77,6 @@ func createComputeInstanceInState(
 }
 
 var _ = Describe("Public IP attachments server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-	})
-
 	Describe("Creation", func() {
 		It("Can be built if all the required parameters are set", func() {
 			server, err := NewPublicIPAttachmentsServer().
@@ -393,7 +358,9 @@ var _ = Describe("Public IP attachments server", func() {
 			// because only non-PENDING PublicIPAttachments can be deleted. Both are
 			// set via raw SQL because the public API doesn't expose finalizers or
 			// status.state.
-			_, err := tx.Exec(
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = tx.Exec(
 				ctx,
 				`update public_ip_attachments set finalizers = '{"a"}',`+
 					` data = jsonb_set(data, '{status,state}', '"PUBLIC_IP_ATTACHMENT_STATE_READY"') where id = $1`,

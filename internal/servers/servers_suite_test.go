@@ -24,7 +24,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 )
@@ -35,12 +34,12 @@ func TestServers(t *testing.T) {
 }
 
 var (
+	ctx         context.Context
 	ctrl        *gomock.Controller
 	logger      *slog.Logger
 	server      *database.Container
 	attribution *auth.MockAttributionLogic
 	tenancy     *auth.MockTenancyLogic
-	visibility  collections.Set[string]
 )
 
 var _ = BeforeSuite(func() {
@@ -75,9 +74,6 @@ var _ = BeforeSuite(func() {
 		Return(auth.AllTenants, nil).
 		AnyTimes()
 
-	// Create the set of visible tenants:
-	visibility = collections.NewUniversalSet[string]()
-
 	// Create the database server:
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	DeferCleanup(cancel)
@@ -93,4 +89,35 @@ var _ = BeforeSuite(func() {
 		err = server.Stop(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
+})
+
+var _ = BeforeEach(func() {
+	var err error
+
+	// Create a context:
+	ctx = context.Background()
+
+	// Prepare the database pool:
+	db, err := server.NewInstance().Build()
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(db.Close)
+	pool, err := db.Pool(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(pool.Close)
+
+	// Create the transaction manager:
+	tm, err := database.NewTxManager().
+		SetLogger(logger).
+		SetPool(pool).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+
+	// Start a transaction and add it to the context:
+	tx, err := tm.Begin(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(func() {
+		err := tm.End(ctx, tx)
+		Expect(err).ToNot(HaveOccurred())
+	})
+	ctx = database.TxIntoContext(ctx, tx)
 })
