@@ -182,7 +182,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Write the Swagger UI landing page:
 	indexFile := filepath.Join(filepath.Dir(c.outputDir), "index.html")
 	c.console.Infof(ctx, "Writing Swagger UI to '%s'\n", indexFile)
-	err = os.WriteFile(indexFile, swaggerUiHtml, 0600)
+	err = os.WriteFile(indexFile, swaggerUiHtml, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write Swagger UI file '%s': %w", indexFile, err)
 	}
