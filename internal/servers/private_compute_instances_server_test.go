@@ -83,7 +83,7 @@ var _ = Describe("Private compute instances server", func() {
 			}.Build(),
 			Spec: privatev1.SubnetSpec_builder{
 				VirtualNetwork: "test-vnet",
-				Ipv4Cidr:       proto.String("10.0.0.0/24"),
+				Ipv4Cidr:       new("10.0.0.0/24"),
 			}.Build(),
 			Status: privatev1.SubnetStatus_builder{
 				State: privatev1.SubnetState_SUBNET_STATE_READY,
@@ -1435,7 +1435,7 @@ var _ = Describe("Private compute instances server", func() {
 						Id: "pod-network-vm",
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							Template:    template.GetId(),
-							RunStrategy: proto.String("Always"),
+							RunStrategy: new("Always"),
 						}.Build(),
 					}.Build(),
 					UpdateMask: &fieldmaskpb.FieldMask{

@@ -243,9 +243,8 @@ var _ = Describe("Cluster catalog items server", func() {
 
 			targetID := publishedResponse.GetObject().GetId()
 			unpublishedID := unpublishedResponse.GetObject().GetId()
-			filter := fmt.Sprintf("this.id == '%s' || this.id == '%s'", targetID, unpublishedID)
 			response, err := server.List(ctx, publicv1.ClusterCatalogItemsListRequest_builder{
-				Filter: proto.String(filter),
+				Filter: new(fmt.Sprintf("this.id == %q || this.id == %q", targetID, unpublishedID)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetItems()).To(HaveLen(1))

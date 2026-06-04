@@ -24,7 +24,6 @@ import (
 	. "github.com/onsi/gomega"
 	osacv1alpha1 "github.com/osac-project/osac-operator/api/v1alpha1"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"

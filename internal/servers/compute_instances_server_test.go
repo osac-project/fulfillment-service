@@ -139,7 +139,7 @@ var _ = Describe("Compute instances server", func() {
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					VirtualNetwork: "test-vnet",
-					Ipv4Cidr:       proto.String("10.0.0.0/24"),
+					Ipv4Cidr:       new("10.0.0.0/24"),
 				}.Build(),
 				Status: privatev1.SubnetStatus_builder{
 					State: privatev1.SubnetState_SUBNET_STATE_READY,
