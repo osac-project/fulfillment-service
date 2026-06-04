@@ -268,9 +268,9 @@ users:
     - view-users
 ```
 
-The `secret` values used here must match the credentials configured in the fulfillment service Helm
-chart (via `auth.controllerCredentials`) or in the Kubernetes secret referenced by the kustomize
-manifests.
+The `secret` for the `osac-controller` client must match the value configured in the fulfillment
+service Helm chart via `auth.controllerCredentials` (or in the Kubernetes secret referenced by the
+kustomize manifests).
 
 ## Exporting the realm
 
