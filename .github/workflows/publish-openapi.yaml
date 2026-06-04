@@ -52,7 +52,6 @@ jobs:
     - run: |
         go build ./cmd/osac-dev
         ./osac-dev generate openapi --project-dir . --output-dir pages/openapi
-        cp pages/swagger-ui.html pages/index.html
     - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
       with:
         path: pages
