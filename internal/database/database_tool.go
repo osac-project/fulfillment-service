@@ -454,238 +454,370 @@ func (t *tool) Pool(ctx context.Context) (result *pgxpool.Pool, err error) {
 // CheckSchema checks that the database schema is consistent. Writes errors to the logger and returns an error if any
 // consistency check fails.
 func (t *tool) CheckSchema(ctx context.Context) error {
-	issues := 0
-
-	// Get a database pool and remember to close it:
+	// Create a connection pool:
 	pool, err := t.Pool(ctx)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
 
-	// Check that all the object tables have the expected columns:
-	rows, err := pool.Query(
-		ctx,
-		`
-		select
-			table_name
-		from
-			information_schema.tables
-		where
-			table_schema = 'public' and
-			table_type = 'BASE TABLE' and
-			table_name not like 'archived_%' and
-			table_name != 'notifications' and
-			table_name != 'schema_migrations'
-		order by
-			table_name
-		`,
-	)
+	// Get the list of object and archive tables:
+	objectTables, err := t.listObjectTables(ctx, pool)
 	if err != nil {
-		return fmt.Errorf("failed to get list of object tables: %w", err)
+		return err
 	}
-	defer rows.Close()
-	var objectTables []string
-	for rows.Next() {
-		var tableName string
-		err = rows.Scan(&tableName)
-		if err != nil {
-			return fmt.Errorf("failed to scan table name: %w", err)
-		}
-		objectTables = append(objectTables, tableName)
-	}
-	err = rows.Err()
+	archiveTables, err := t.listArchiveTables(ctx, pool)
 	if err != nil {
-		return fmt.Errorf("failed to get list of object tables: %w", err)
-	}
-	for _, objectTable := range objectTables {
-		columns, err := t.fetchColumns(ctx, pool, objectTable)
-		if err != nil {
-			return err
-		}
-		for _, column := range toolObjectColumns {
-			if !slices.Contains(columns, column) {
-				t.logger.ErrorContext(
-					ctx,
-					"Object table doesn't have the expected column",
-					slog.String("table", objectTable),
-					slog.String("column", column),
-				)
-				issues++
-			}
-		}
+		return err
 	}
 
-	// Check that all the archive tables have the expected columns:
-	rows, err = pool.Query(
-		ctx,
-		`
-		select
-			table_name
-		from
-			information_schema.tables
-		where
-			table_schema = 'public' and
-			table_type = 'BASE TABLE' and
-			table_name like 'archived_%'
-		order by
-			table_name
-		`,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to get list of archive tables: %w", err)
+	// Perform the per-table checks:
+	issues := 0
+	for _, table := range objectTables {
+		issues += t.checkObjectTable(ctx, pool, table)
 	}
-	defer rows.Close()
-	var archiveTables []string
-	for rows.Next() {
-		var tableName string
-		err = rows.Scan(&tableName)
-		if err != nil {
-			return fmt.Errorf("failed to scan archive table name: %w", err)
-		}
-		archiveTables = append(archiveTables, tableName)
+	for _, table := range archiveTables {
+		issues += t.checkArchiveTable(ctx, pool, table)
 	}
-	err = rows.Err()
-	if err != nil {
-		return fmt.Errorf("failed to get list of archive tables: %w", err)
-	}
-	for _, archiveTable := range archiveTables {
-		columns, err := t.fetchColumns(ctx, pool, archiveTable)
-		if err != nil {
-			return err
-		}
-		for _, column := range toolArchivedColumns {
-			if !slices.Contains(columns, column) {
-				t.logger.ErrorContext(
-					ctx,
-					"Archive table doesn't have the expected column",
-					slog.String("table", archiveTable),
-					slog.String("column", column),
-				)
-				issues++
-			}
-		}
-	}
-
-	// Check that there is an archive table for each object table:
-	for _, objectTable := range objectTables {
-		archiveTable := "archived_" + objectTable
-		if !slices.Contains(archiveTables, archiveTable) {
-			t.logger.ErrorContext(
-				ctx,
-				"Object table doesn't have an archive table",
-				slog.String("table", objectTable),
-			)
-			issues++
-		}
-	}
-
-	// Check that there are no archive tables that don't have a corresponding object table:
-	for _, archiveTable := range archiveTables {
-		objectTable := strings.TrimPrefix(archiveTable, "archived_")
-		if !slices.Contains(objectTables, objectTable) {
-			t.logger.ErrorContext(
-				ctx,
-				"Archive table doesn't have a corresponding object table",
-				slog.String("table", archiveTable),
-			)
-			issues++
-		}
-	}
-
-	// Check that every object table has a foreign key constraint on the 'tenant' column referencing the
-	// 'id' column of the 'organizations' table:
-	for _, objectTable := range objectTables {
-		constraintName := objectTable + "_tenant_fk"
-		var count int
-		row := pool.QueryRow(
-			ctx,
-			`
-			select
-				count(*)
-			from
-				information_schema.table_constraints tc
-			join
-				information_schema.key_column_usage kcu
-			on
-				kcu.constraint_schema = tc.constraint_schema and
-				kcu.constraint_name = tc.constraint_name
-			join
-				information_schema.constraint_column_usage ccu
-			on
-				ccu.constraint_schema = tc.constraint_schema and
-				ccu.constraint_name = tc.constraint_name
-			where
-				tc.table_schema = 'public' and
-				tc.table_name = $1 and
-				tc.constraint_name = $2 and
-				tc.constraint_type = 'FOREIGN KEY' and
-				kcu.column_name = 'tenant' and
-				ccu.table_schema = 'public' and
-				ccu.table_name = 'organizations' and
-				ccu.column_name = 'id'`,
-			objectTable,
-			constraintName,
-		)
-		err = row.Scan(&count)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to check tenant foreign key for table '%s': %w",
-				objectTable, err,
-			)
-		}
-		if count != 1 {
-			t.logger.ErrorContext(
-				ctx,
-				"Object table is missing the tenant foreign key constraint",
-				slog.String("table", objectTable),
-				slog.String("constraint", constraintName),
-			)
-			issues++
-		}
-	}
-
-	// Check the number of issues:
 	if issues > 0 {
 		return fmt.Errorf("found %d issues in the database schema", issues)
 	}
+
 	return nil
 }
 
-// fetchColumns returns the sorted list of column names for the given table.
-func (t *tool) fetchColumns(ctx context.Context, pool *pgxpool.Pool, table string) (result []string, err error) {
+// listObjectTables returns the sorted list of object table names from the public schema, excluding archive tables
+// and internal tables like notifications and schema_migrations.
+func (t *tool) listObjectTables(ctx context.Context, pool *pgxpool.Pool) (result []string, err error) {
 	rows, err := pool.Query(
 		ctx,
 		`
 		select
-			column_name
+			c.relname
 		from
-			information_schema.columns
+			pg_catalog.pg_class c
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
 		where
-			table_schema = 'public' and
-			table_name = $1
+			n.nspname = 'public' and
+			c.relkind = 'r' and
+			c.relname not like 'archived_%' and
+			c.relname not in ('notifications', 'schema_migrations')
 		order by
-			column_name`,
-		table,
+			c.relname
+		`,
 	)
 	if err != nil {
-		err = fmt.Errorf("failed to get list of columns for table '%s': %w", table, err)
+		err = fmt.Errorf("failed to get list of object tables: %w", err)
 		return
 	}
 	defer rows.Close()
-	var columns []string
+	var tables []string
 	for rows.Next() {
-		var column string
-		err = rows.Scan(&column)
+		var name string
+		err = rows.Scan(&name)
 		if err != nil {
-			err = fmt.Errorf("failed to scan column name for table '%s': %w", table, err)
+			err = fmt.Errorf("failed to scan table name: %w", err)
 			return
 		}
-		columns = append(columns, column)
+		tables = append(tables, name)
 	}
 	err = rows.Err()
 	if err != nil {
-		err = fmt.Errorf("failed to get list of columns for table '%s': %w", table, err)
+		err = fmt.Errorf("failed to get list of object tables: %w", err)
+		return
+	}
+	result = tables
+	return
+}
+
+// listArchiveTables returns the sorted list of archive table names from the public schema.
+func (t *tool) listArchiveTables(ctx context.Context, pool *pgxpool.Pool) (result []string, err error) {
+	rows, err := pool.Query(
+		ctx,
+		`
+		select
+			c.relname
+		from
+			pg_catalog.pg_class c
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		where
+			n.nspname = 'public' and
+			c.relkind = 'r' and
+			c.relname like 'archived_%'
+		order by
+			c.relname
+		`,
+	)
+	if err != nil {
+		err = fmt.Errorf("failed to get list of archive tables: %w", err)
+		return
+	}
+	defer rows.Close()
+	var tables []string
+	for rows.Next() {
+		var name string
+		err = rows.Scan(&name)
+		if err != nil {
+			err = fmt.Errorf("failed to scan archive table name: %w", err)
+			return
+		}
+		tables = append(tables, name)
+	}
+	err = rows.Err()
+	if err != nil {
+		err = fmt.Errorf("failed to get list of archive tables: %w", err)
+		return
+	}
+	result = tables
+	return
+}
+
+// checkObjectTable performs all consistency checks for a single object table: verifies that it has the expected columns
+// with the correct types, a primary key on 'id', a tenant foreign key, and a corresponding archive table. Returns the
+// number of issues found.
+func (t *tool) checkObjectTable(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	issues := 0
+	issues += t.checkColumns(ctx, pool, table, toolObjectColumns)
+	issues += t.checkPrimaryKey(ctx, pool, table)
+	issues += t.checkTenantForeignKey(ctx, pool, table)
+	issues += t.checkTableExists(ctx, pool, "archived_"+table)
+	return issues
+}
+
+// checkArchiveTable performs all consistency checks for a single archive table: verifies that it has the expected
+// columns with the correct types and a corresponding object table. Returns the number of issues found.
+func (t *tool) checkArchiveTable(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	issues := 0
+	issues += t.checkColumns(ctx, pool, table, toolArchivedColumns)
+	issues += t.checkTableExists(ctx, pool, strings.TrimPrefix(table, "archived_"))
+	return issues
+}
+
+// checkColumns verifies that the given table contains all the columns specified in the expected map with the correct
+// data types. Returns the number of issues found.
+func (t *tool) checkColumns(ctx context.Context, pool *pgxpool.Pool, table string, expected map[string]string) int {
+	columns, err := t.fetchColumns(ctx, pool, table)
+	if err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to fetch columns",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	issues := 0
+	for column, expectedType := range expected {
+		actualType, ok := columns[column]
+		if !ok {
+			t.logger.ErrorContext(
+				ctx,
+				"Table doesn't have the expected column",
+				slog.String("table", table),
+				slog.String("column", column),
+			)
+			issues++
+		} else if !strings.EqualFold(actualType, expectedType) {
+			t.logger.ErrorContext(
+				ctx,
+				"Table column has unexpected type",
+				slog.String("table", table),
+				slog.String("column", column),
+				slog.String("expected", expectedType),
+				slog.String("actual", actualType),
+			)
+			issues++
+		}
+	}
+	return issues
+}
+
+// checkPrimaryKey verifies that the given table has a primary key constraint on the 'id' column. Returns the number
+// of issues found.
+func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	var count int
+	row := pool.QueryRow(
+		ctx,
+		`
+		select
+			count(*)
+		from
+			pg_catalog.pg_constraint con
+		join
+			pg_catalog.pg_class c on c.oid = con.conrelid
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		join
+			pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum = any(con.conkey)
+		where
+			n.nspname = 'public' and
+			c.relname = $1 and
+			con.contype = 'p' and
+			a.attname = 'id'`,
+		table,
+	)
+	err := row.Scan(&count)
+	if err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to check primary key for table",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	if count != 1 {
+		t.logger.ErrorContext(
+			ctx,
+			"Object table is missing the primary key on 'id' column",
+			slog.String("table", table),
+		)
+		return 1
+	}
+	return 0
+}
+
+// checkTableExists verifies that the given table exists in the public schema. Returns the number of issues found.
+func (t *tool) checkTableExists(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	var count int
+	row := pool.QueryRow(
+		ctx,
+		`
+		select
+			count(*)
+		from
+			pg_catalog.pg_class c
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		where
+			n.nspname = 'public' and
+			c.relkind = 'r' and
+			c.relname = $1`,
+		table,
+	)
+	err := row.Scan(&count)
+	if err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to check table existence",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	if count != 1 {
+		t.logger.ErrorContext(
+			ctx,
+			"Expected table doesn't exist",
+			slog.String("table", table),
+		)
+		return 1
+	}
+	return 0
+}
+
+// checkTenantForeignKey verifies that the given table has a foreign key constraint on the 'tenant' column referencing
+// the 'id' column of the 'organizations' table. Returns the number of issues found.
+func (t *tool) checkTenantForeignKey(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	constraint := table + "_tenant_fk"
+	var count int
+	row := pool.QueryRow(
+		ctx,
+		`
+		select
+			count(*)
+		from
+			pg_catalog.pg_constraint con
+		join
+			pg_catalog.pg_class c on c.oid = con.conrelid
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		join
+			pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum = any(con.conkey)
+		join
+			pg_catalog.pg_class fc on fc.oid = con.confrelid
+		join
+			pg_catalog.pg_namespace fn on fn.oid = fc.relnamespace
+		join
+			pg_catalog.pg_attribute fa on fa.attrelid = fc.oid and fa.attnum = any(con.confkey)
+		where
+			n.nspname = 'public' and
+			c.relname = $1 and
+			con.conname = $2 and
+			con.contype = 'f' and
+			a.attname = 'tenant' and
+			fn.nspname = 'public' and
+			fc.relname = 'organizations' and
+			fa.attname = 'id'`,
+		table,
+		constraint,
+	)
+	err := row.Scan(&count)
+	if err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to check tenant foreign key for table",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	if count != 1 {
+		t.logger.ErrorContext(
+			ctx,
+			"Object table is missing the tenant foreign key constraint",
+			slog.String("table", table),
+			slog.String("constraint", constraint),
+		)
+		return 1
+	}
+	return 0
+}
+
+// fetchColumns returns a map from column name to its full normalized type for the given table.
+func (t *tool) fetchColumns(ctx context.Context, pool *pgxpool.Pool, table string) (result map[string]string,
+	err error) {
+	rows, err := pool.Query(
+		ctx,
+		`
+		select
+			a.attname,
+			format_type(a.atttypid, a.atttypmod)
+		from
+			pg_catalog.pg_attribute a
+		join
+			pg_catalog.pg_class c on c.oid = a.attrelid
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		where
+			n.nspname = 'public' and
+			c.relname = $1 and
+			a.attnum > 0 and
+			not a.attisdropped
+		order by
+			a.attname`,
+		table,
+	)
+	if err != nil {
+		err = fmt.Errorf("failed to get columns for table '%s': %w", table, err)
+		return
+	}
+	defer rows.Close()
+	columns := map[string]string{}
+	for rows.Next() {
+		var name, kind string
+		err = rows.Scan(&name, &kind)
+		if err != nil {
+			err = fmt.Errorf("failed to scan column for table '%s': %w", table, err)
+			return
+		}
+		columns[name] = kind
+	}
+	err = rows.Err()
+	if err != nil {
+		err = fmt.Errorf("failed to get columns for table '%s': %w", table, err)
 		return
 	}
 	result = columns
@@ -721,32 +853,34 @@ var toolFilePathParameters = []string{
 	"sslcrldir",
 }
 
-// toolObjectColumns is the list of columns that the DAO expects in every object table.
-var toolObjectColumns = []string{
-	"annotations",
-	"creation_timestamp",
-	"creator",
-	"data",
-	"deletion_timestamp",
-	"finalizers",
-	"id",
-	"labels",
-	"name",
-	"tenant",
-	"version",
+// toolObjectColumns maps each column name that the DAO expects in every object table to its expected PostgreSQL
+// full type, as reported by 'pg_catalog.format_type'.
+var toolObjectColumns = map[string]string{
+	"annotations":        "jsonb",
+	"creation_timestamp": "timestamp with time zone",
+	"creator":            "text",
+	"data":               "jsonb",
+	"deletion_timestamp": "timestamp with time zone",
+	"finalizers":         "text[]",
+	"id":                 "text",
+	"labels":             "jsonb",
+	"name":               "text",
+	"tenant":             "text",
+	"version":            "integer",
 }
 
-// toolArchivedColumns is the list of columns that the DAO expects in every archived object table.
-var toolArchivedColumns = []string{
-	"annotations",
-	"archival_timestamp",
-	"creation_timestamp",
-	"creator",
-	"data",
-	"deletion_timestamp",
-	"id",
-	"labels",
-	"name",
-	"tenant",
-	"version",
+// toolArchivedColumns maps each column name that the DAO expects in every archived object table to its expected
+// PostgreSQL full type, as reported by 'pg_catalog.format_type'.
+var toolArchivedColumns = map[string]string{
+	"annotations":        "jsonb",
+	"archival_timestamp": "timestamp with time zone",
+	"creation_timestamp": "timestamp with time zone",
+	"creator":            "text",
+	"data":               "jsonb",
+	"deletion_timestamp": "timestamp with time zone",
+	"id":                 "text",
+	"labels":             "jsonb",
+	"name":               "text",
+	"tenant":             "text",
+	"version":            "integer",
 }
