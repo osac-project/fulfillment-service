@@ -11,7 +11,6 @@ To work with this project you will need the following tools:
 - [Buf](https://buf.build) - Used to generate Go code from gRPC specifications.
 - [Ginkgo](https://onsi.github.io/ginkgo) - Used to run unit tests.
 - [gomock](https://github.com/uber-go/mock) - Used to generate test mocks.
-- [Kustomize](https://kustomize.io) - Used to generate Kubernetes manifests.
 - [Kubectl](https://kubernetes.io/es/docs/reference/kubectl) - Used to deploy to an OpenShift cluster.
 - [PostgreSQL](https://www.postgresql.org) - Used to store persistent state.
 - [Podman](https://podman.io) - Used to build and run container images.
@@ -208,17 +207,6 @@ The integration tests will automatically:
 3. Deploy the fulfillment service.
 4. Run all test cases.
 5. Clean up the kind cluster.
-
-### Deployment mode
-
-By default, the integration tests deploy the service using _Helm_. You can also deploy using
-_Kustomize_ by setting the `IT_DEPLOY_MODE` environment variable:
-
-```bash
-$ IT_DEPLOY_MODE=kustomize ginkgo run it
-```
-
-Valid values are `helm` (default) and `kustomize`.
 
 ### Preserving the test cluster
 

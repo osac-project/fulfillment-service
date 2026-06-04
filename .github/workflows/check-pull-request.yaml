@@ -74,8 +74,8 @@ jobs:
       with:
         args: build --snapshot --clean
 
-  run-integration-tests-helm:
-    name: Run integration tests - Helm
+  run-integration-tests:
+    name: Run integration tests
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
@@ -84,28 +84,10 @@ jobs:
         echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
         echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
         echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
-        IT_DEPLOY_MODE=helm ginkgo run --timeout 1h -v it
+        ginkgo run --timeout 1h -v it
     - if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
       with:
-        name: logs-helm
-        path: logs
-        retention-days: 7
-
-  run-integration-tests-kustomize:
-    name: Run integration tests - Kustomize
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
-    - uses: ./.github/actions/setup-go
-    - run: |
-        echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
-        IT_DEPLOY_MODE=kustomize ginkgo run --timeout 1h -v it
-    - if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-      with:
-        name: logs-kustomize
+        name: logs
         path: logs
         retention-days: 7

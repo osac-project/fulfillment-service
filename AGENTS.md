@@ -4,7 +4,9 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Overview
 
-The fulfillment-service is a gRPC server with REST gateway for managing infrastructure resources (clusters, hosts, compute instances, networking). It uses PostgreSQL for storage, OPA for authorization, and supports Kubernetes deployment via Helm/Kustomize.
+The fulfillment-service is a gRPC server with REST gateway for managing infrastructure resources
+(clusters, hosts, compute instances, networking). It uses PostgreSQL for storage, OPA for
+authorization, and supports Kubernetes deployment via Helm.
 
 ## Build and Test Commands
 
@@ -48,9 +50,6 @@ IT_KEEP_KIND=true ginkgo run it
 # Run only setup (create cluster without tests)
 IT_KEEP_KIND=true ginkgo run --label-filter=setup it
 
-# Use kustomize instead of default Helm deployment
-IT_DEPLOY_MODE=kustomize ginkgo run it
-
 # Clean up preserved cluster
 kind delete cluster --name fulfillment-service-it
 ```
@@ -62,7 +61,8 @@ Requires `/etc/hosts` entries:
 
 ### Running Locally
 
-See [README.md](README.md) for instructions on running the service locally, including PostgreSQL setup and starting the gRPC server and REST gateway.
+See [README.md](README.md) for instructions on running the service locally, including PostgreSQL
+setup and starting the gRPC server and REST gateway.
 
 ## Architecture
 
@@ -93,7 +93,8 @@ proto/private/osac/private/v1/ - Admin/controller API (full CRUD + Signal RPC)
 proto/tests/osac/tests/v1/     - Test-only proto definitions
 ```
 
-Each resource has `<resource>_type.proto` (message definitions) and `<resource>s_service.proto` (RPC methods). Generated Go code lands in `internal/api/osac/{public,private}/v1/`.
+Each resource has `<resource>_type.proto` (message definitions) and `<resource>s_service.proto` (RPC
+methods). Generated Go code lands in `internal/api/osac/{public,private}/v1/`.
 
 ### Server Implementation Pattern
 
@@ -122,7 +123,8 @@ The gRPC server uses chained interceptors (configured in `internal/cmd/service/s
 
 ### Mock Generation
 
-Uses `go.uber.org/mock` (uber-go/mock). Mocks are generated with `//go:generate mockgen` directives and live alongside source files (e.g., `attribution_logic_mock.go`).
+Uses `go.uber.org/mock` (uber-go/mock). Mocks are generated with `//go:generate mockgen` directives
+and live alongside source files (e.g., `attribution_logic_mock.go`).
 
 ### Testing Pattern
 
@@ -135,7 +137,8 @@ Tests use Ginkgo v2 + Gomega. Typical suite setup in `*_suite_test.go`:
 
 The following automated checks are configured and should be run at the appropriate times:
 
-- **After proto changes**: When a `.proto` file is edited, run `buf lint && buf generate` to keep generated Go code in sync.
+- **After proto changes**: When a `.proto` file is edited, run `buf lint && buf generate` to keep
+  generated Go code in sync.
 - **After Go module changes**: When `go.mod` is edited, run `go mod tidy`.
 - **Before committing**: Run `buf lint` before every `git commit` to catch proto issues early.
 - **Before creating a PR**: Run `gofmt -s -w .` (auto-formats, then fails if any files changed — commit the fixes first), `buf lint`, and `ginkgo run -r internal`.

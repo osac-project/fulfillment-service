@@ -269,8 +269,7 @@ users:
 ```
 
 The `secret` values used here must match the credentials configured in the fulfillment service Helm
-chart (via `auth.controllerCredentials`) or in the Kubernetes secret referenced by the kustomize
-manifests.
+chart (via `auth.controllerCredentials`).
 
 ## Exporting the realm
 

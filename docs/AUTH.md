@@ -546,7 +546,6 @@ To modify authorization rules, edit the `authorization` section in the AuthConfi
 is located in:
 
 - Template: `charts/service/templates/grpc-server/authconfig.yaml`
-- Base manifest: `manifests/base/grpc-server/authconfig.yaml`
 
 Example: To add a new allowed method for client users, add it to the list in the `is_client` rule:
 
@@ -569,13 +568,7 @@ admin_subjects := {
 }
 ```
 
-After modifying the AuthConfig, apply the changes:
-
-```bash
-kubectl apply -f manifests/base/grpc-server/authconfig.yaml
-```
-
-Or if using Helm:
+After modifying the AuthConfig, apply the changes using Helm:
 
 ```bash
 helm upgrade fulfillment-service charts/service -n osac
