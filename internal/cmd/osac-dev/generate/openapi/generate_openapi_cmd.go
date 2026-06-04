@@ -16,6 +16,7 @@ package openapi
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -32,6 +33,9 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
+
+//go:embed swagger_ui.html
+var swaggerUiHtml []byte
 
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
@@ -173,6 +177,14 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	err = c.generateModule(ctx, privateModuleDir)
 	if err != nil {
 		return err
+	}
+
+	// Write the Swagger UI landing page:
+	indexFile := filepath.Join(filepath.Dir(c.outputDir), "index.html")
+	c.console.Infof(ctx, "Writing Swagger UI to '%s'\n", indexFile)
+	err = os.WriteFile(indexFile, swaggerUiHtml, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write Swagger UI file '%s': %w", indexFile, err)
 	}
 
 	return nil
