@@ -1,11 +1,11 @@
 # Cluster-as-a-Service (CaaS) User Guide
 
 This guide describes how tenants can create, manage, and delete OpenShift clusters through the
-fulfillment CLI and API.
+OSAC CLI and API.
 
 ## Prerequisites
 
-- `fulfillment-cli` installed and authenticated (`fulfillment-cli login`)
+- `osac` installed and authenticated (`osac login`)
 - A cluster template published by your provider
 
 ## Workflow Overview
@@ -22,13 +22,13 @@ fulfillment CLI and API.
 List all available templates:
 
 ```bash
-fulfillment-cli get cluster-templates
+osac get cluster-templates
 ```
 
 Inspect a specific template to see its parameters and default node sets:
 
 ```bash
-fulfillment-cli get cluster-templates <template-id> -o yaml
+osac get cluster-templates <template-id> -o yaml
 ```
 
 Key fields in a template:
@@ -43,7 +43,7 @@ Key fields in a template:
 Create a cluster using a template, providing any required parameters:
 
 ```bash
-fulfillment-cli create cluster \
+osac create cluster \
   --template hosted_cluster \
   --template-parameter cluster_version=4.16
 ```
@@ -64,7 +64,7 @@ after creation via `edit`.
 List all your clusters:
 
 ```bash
-fulfillment-cli get clusters
+osac get clusters
 ```
 
 The table shows ID, name, template, state, API URL, and console URL.
@@ -72,13 +72,13 @@ The table shows ID, name, template, state, API URL, and console URL.
 Get detailed information about a specific cluster:
 
 ```bash
-fulfillment-cli describe cluster <cluster-id>
+osac describe cluster <cluster-id>
 ```
 
 Or in full YAML format:
 
 ```bash
-fulfillment-cli get clusters <cluster-id> -o yaml
+osac get clusters <cluster-id> -o yaml
 ```
 
 ### Cluster States
@@ -106,7 +106,7 @@ Once the cluster is in `READY` state, retrieve credentials:
 **Kubeconfig** (for `oc` / `kubectl`):
 
 ```bash
-fulfillment-cli get kubeconfig <cluster-id> > kubeconfig.yaml
+osac get kubeconfig <cluster-id> > kubeconfig.yaml
 export KUBECONFIG=kubeconfig.yaml
 oc get nodes
 ```
@@ -114,7 +114,7 @@ oc get nodes
 **Admin password** (for the web console):
 
 ```bash
-fulfillment-cli get password <cluster-id>
+osac get password <cluster-id>
 ```
 
 The console URL is shown in `get clusters` output or in the cluster's `status.console_url` field.
@@ -124,7 +124,7 @@ The console URL is shown in `get clusters` output or in the cluster's `status.co
 To change node set sizes, use the generic edit command:
 
 ```bash
-fulfillment-cli edit clusters <cluster-id>
+osac edit clusters <cluster-id>
 ```
 
 This opens the cluster resource in your `$EDITOR`. Modify the `size` field under
@@ -142,7 +142,7 @@ After saving, the cluster transitions to `PROGRESSING` until the new node config
 ## Delete a Cluster
 
 ```bash
-fulfillment-cli delete clusters <cluster-id>
+osac delete clusters <cluster-id>
 ```
 
 Deletion triggers cleanup of all associated resources (HostedCluster, HostPool, bare-metal host
@@ -151,7 +151,7 @@ allocations). The cluster remains visible with a `deletion_timestamp` set until 
 Verify deletion:
 
 ```bash
-fulfillment-cli get clusters
+osac get clusters
 ```
 
 ## API Access
