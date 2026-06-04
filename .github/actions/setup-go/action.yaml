@@ -17,14 +17,14 @@ description: Install and Go and Ginkgo
 runs:
   using: composite
   steps:
-  - uses: actions/setup-go@v6
+  - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
     with:
       go-version: '1.26.2'
   - shell: bash
     run: |
       go mod download
   - id: ginkgo-cache
-    uses: actions/cache@v5
+    uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
     with:
       key: ginkgo
       path: ~/go/bin/ginkgo
