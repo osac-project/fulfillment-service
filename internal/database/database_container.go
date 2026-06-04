@@ -18,9 +18,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
+	"math/rand/v2"
 	"net"
 	"os"
 	"os/exec"
@@ -28,10 +28,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
@@ -62,6 +64,7 @@ type Container struct {
 	adminConn      *pgx.Conn
 	outWriter      *logging.Writer
 	errWriter      *logging.Writer
+	runCmd         *exec.Cmd
 	count          int
 	instances      []*Instance
 }
@@ -173,92 +176,67 @@ func (b *ContainerBuilder) selectTool() (result string, err error) {
 
 // Start starts the database server inside a container and waits until it is ready to accept connections. Cleaning when
 // something fails, or when the container is no longer needed, is the responsibility of the caller.
-func (s *Container) Start(ctx context.Context) error {
+func (c *Container) Start(ctx context.Context) error {
 	// Create the configuration file:
-	err := s.createConfigFile(ctx)
+	err := c.createConfigFile(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Start the database server:
-	runCmd := exec.Command(
-		s.tool,
+	// Start the database server in the foreground so that its stdout and stderr are piped directly to the log
+	// writers, without going through the container runtime's log file. This avoids the latency introduced by conmon
+	// writing to a file and `podman logs` tailing it.
+	c.id = fmt.Sprintf("osac-db-%08x", rand.Uint32())
+	c.runCmd = exec.Command(
+		c.tool,
 		"run",
-		"--env", fmt.Sprintf("POSTGRESQL_ADMIN_PASSWORD=%s", s.adminPassword),
+		"--name", c.id,
+		"--env", fmt.Sprintf("POSTGRESQL_ADMIN_PASSWORD=%s", c.adminPassword),
 		"--publish", "5432",
-		"--detach",
 		"--rm",
-		"--volume", fmt.Sprintf("%s:%s:Z", s.configFile, containerConfigPath),
+		"--volume", fmt.Sprintf("%s:%s:Z", c.configFile, containerConfigPath),
 		containerImage,
 	)
-	runOut := &bytes.Buffer{}
-	runCmd.Stdout = io.MultiWriter(runOut, s.outWriter)
-	runCmd.Stderr = s.errWriter
-	err = runCmd.Run()
+	c.runCmd.Stdout = c.outWriter
+	c.runCmd.Stderr = c.errWriter
+	err = c.runCmd.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start database container: %w", err)
 	}
-	s.id = strings.TrimSpace(runOut.String())
 
-	// Find out the port number assigned to the database server:
-	portCmd := exec.Command(
-		s.tool,
-		"port",
-		s.id,
-		"5432/tcp",
-	)
-	portOut := &bytes.Buffer{}
-	portCmd.Stdout = io.MultiWriter(portOut, s.outWriter)
-	portCmd.Stderr = s.errWriter
-	err = portCmd.Run()
+	// Find out the port number assigned to the database server. Because the container runs in the foreground, the
+	// port mapping may not be available immediately, so we retry with exponential backoff.
+	findPortBo := backoff.NewExponentialBackOff()
+	findPortBo.InitialInterval = 100 * time.Millisecond
+	findPortBo.MaxInterval = 1 * time.Second
+	findPortBo.MaxElapsedTime = 30 * time.Second
+	findPortOp := func() error {
+		return c.findPort(ctx)
+	}
+	err = backoff.Retry(findPortOp, backoff.WithContext(findPortBo, ctx))
 	if err != nil {
-		return fmt.Errorf("failed to get port for database container: %w", err)
+		return err
 	}
-	portLines := strings.Split(portOut.String(), "\n")
-	if len(portLines) < 1 || strings.TrimSpace(portLines[0]) == "" {
-		return fmt.Errorf("failed to parse port output: no lines returned")
-	}
-	hostPort := strings.TrimSpace(portLines[0])
-	host, port, err := net.SplitHostPort(hostPort)
-	if err != nil {
-		return fmt.Errorf("failed to parse host:port '%s': %w", hostPort, err)
-	}
-	if host == "0.0.0.0" {
-		host = "127.0.0.1"
-	}
-	s.host = host
-	s.port = port
 
-	// Wait till the database server is responding:
-	adminUrl := fmt.Sprintf(
-		"postgres://postgres:%s@%s:%s/postgres?sslmode=disable&connect_timeout=1",
-		s.adminPassword, host, port,
-	)
-	var adminConn *pgx.Conn
-	for {
-		adminConn, err = pgx.Connect(ctx, adminUrl)
-		if err == nil {
-			break
-		}
-		s.logger.DebugContext(
-			ctx,
-			"Database server isn't responding yet",
-			slog.Any("error", err),
-		)
-		select {
-		case <-time.After(1 * time.Second):
-		case <-ctx.Done():
-			return fmt.Errorf("timed out waiting for database server to respond: %w", ctx.Err())
-		}
+	// Wait till the database server is responding, using exponential backoff:
+	connectAdminBo := backoff.NewExponentialBackOff()
+	connectAdminBo.InitialInterval = 100 * time.Millisecond
+	connectAdminBo.MaxInterval = 2 * time.Second
+	connectAdminBo.MaxElapsedTime = 30 * time.Second
+	connectAdminOp := func() error {
+		return c.connectAdmin(ctx)
 	}
-	s.adminConn = adminConn
+	err = backoff.Retry(connectAdminOp, backoff.WithContext(connectAdminBo, ctx))
+	if err != nil {
+		return err
+	}
 
 	// Create the shared user that will own all databases:
-	_, err = s.adminConn.Exec(
+	_, err = c.adminConn.Exec(
 		ctx,
 		fmt.Sprintf(
 			"create user %s with password '%s'",
-			containerTemplateUser, s.sharedPassword,
+			containerTemplateUser, c.sharedPassword,
 		),
 	)
 	if err != nil {
@@ -267,7 +245,7 @@ func (s *Container) Start(ctx context.Context) error {
 
 	// Create the template database with all migrations applied. New instances that don't request a specific
 	// migration version will be cloned from this template instead of running migrations from scratch.
-	_, err = s.adminConn.Exec(
+	_, err = c.adminConn.Exec(
 		ctx,
 		fmt.Sprintf(
 			"create database %s owner %s",
@@ -279,10 +257,10 @@ func (s *Container) Start(ctx context.Context) error {
 	}
 	templateUrl := fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		containerTemplateUser, s.sharedPassword, s.host, s.port, containerTemplateDatabase,
+		containerTemplateUser, c.sharedPassword, c.host, c.port, containerTemplateDatabase,
 	)
 	templateTool, err := NewTool().
-		SetLogger(s.logger).
+		SetLogger(c.logger).
 		SetURL(templateUrl).
 		Build()
 	if err != nil {
@@ -292,7 +270,7 @@ func (s *Container) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to run migrations on template database: %w", err)
 	}
-	_, err = s.adminConn.Exec(
+	_, err = c.adminConn.Exec(
 		ctx,
 		fmt.Sprintf(
 			"alter database %s is_template true",
@@ -361,19 +339,69 @@ func (c *Container) createConfigFile(ctx context.Context) (err error) {
 	return nil
 }
 
+// findPort queries the container tool for the host port mapped to the database server's port 5432 and stores it in
+// the container's host and port fields. It returns an error if the port mapping is not yet available.
+func (c *Container) findPort(ctx context.Context) error {
+	// Run the 'podman port' command to find out the host port mapped to the database server's port 5432:
+	portOut := &bytes.Buffer{}
+	portCmd := exec.CommandContext(ctx, c.tool, "port", c.id, "5432/tcp")
+	portCmd.Stdout = portOut
+	portCmd.Stderr = c.errWriter
+	err := portCmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to query container port: %w", err)
+	}
+	portLines := strings.Split(portOut.String(), "\n")
+	if len(portLines) < 1 || strings.TrimSpace(portLines[0]) == "" {
+		return fmt.Errorf("container port output is empty")
+	}
+	hostPort := strings.TrimSpace(portLines[0])
+	host, port, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return fmt.Errorf("failed to parse host:port '%s': %w", hostPort, err)
+	}
+
+	// If the database server is listening on all network interfaces we need to choose a specific one to use, and
+	// the loopback interface is a reasonable choice:
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+
+	// Store the host and port:
+	c.host = host
+	c.port = port
+
+	return nil
+}
+
+// connectAdmin attempts to establish an admin connection to the database server. It stores the connection in the
+// container on success. It returns an error if the server is not yet accepting connections.
+func (c *Container) connectAdmin(ctx context.Context) error {
+	adminUrl := fmt.Sprintf(
+		"postgres://postgres:%s@%s:%s/postgres?sslmode=disable&connect_timeout=1",
+		c.adminPassword, c.host, c.port,
+	)
+	adminConn, err := pgx.Connect(ctx, adminUrl)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database server: %w", err)
+	}
+	c.adminConn = adminConn
+	return nil
+}
+
 // Stop stops the database server and removes all databases that were created.
-func (s *Container) Stop(ctx context.Context) error {
+func (c *Container) Stop(ctx context.Context) error {
 	// Remember to remove the configuration file:
 	defer func() {
-		if s.configFile == "" {
+		if c.configFile == "" {
 			return
 		}
-		removeErr := os.Remove(s.configFile)
+		removeErr := os.Remove(c.configFile)
 		if removeErr != nil {
-			s.logger.ErrorContext(
+			c.logger.ErrorContext(
 				ctx,
 				"Failed to remove configuration file",
-				slog.String("file", s.configFile),
+				slog.String("file", c.configFile),
 				slog.Any("error", removeErr),
 			)
 			return
@@ -381,10 +409,10 @@ func (s *Container) Stop(ctx context.Context) error {
 	}()
 
 	// Delete all instance databases:
-	for _, instance := range s.instances {
+	for _, instance := range c.instances {
 		err := instance.Close(ctx)
 		if err != nil {
-			s.logger.ErrorContext(
+			c.logger.ErrorContext(
 				ctx,
 				"Failed to close database instance",
 				slog.Any("error", err),
@@ -393,85 +421,74 @@ func (s *Container) Stop(ctx context.Context) error {
 	}
 
 	// Drop the template database and the shared user:
-	_, err := s.adminConn.Exec(
-		ctx,
-		fmt.Sprintf(
-			"alter database %s is_template false",
-			containerTemplateDatabase,
-		),
-	)
-	if err != nil {
-		s.logger.ErrorContext(
+	if c.adminConn != nil {
+		_, err := c.adminConn.Exec(
 			ctx,
-			"Failed to unmark template database",
-			slog.Any("error", err),
+			fmt.Sprintf(
+				"alter database %s is_template false",
+				containerTemplateDatabase,
+			),
 		)
-	}
-	_, err = s.adminConn.Exec(
-		ctx,
-		fmt.Sprintf(
-			"drop database if exists %s with (force)",
-			containerTemplateDatabase,
-		),
-	)
-	if err != nil {
-		s.logger.ErrorContext(
+		if err != nil {
+			c.logger.ErrorContext(
+				ctx,
+				"Failed to unmark template database",
+				slog.Any("error", err),
+			)
+		}
+		_, err = c.adminConn.Exec(
 			ctx,
-			"Failed to drop template database",
-			slog.Any("error", err),
+			fmt.Sprintf(
+				"drop database if exists %s with (force)",
+				containerTemplateDatabase,
+			),
 		)
-	}
-	_, err = s.adminConn.Exec(
-		ctx,
-		fmt.Sprintf(
-			"drop user if exists %s",
-			containerTemplateUser,
-		),
-	)
-	if err != nil {
-		s.logger.ErrorContext(
+		if err != nil {
+			c.logger.ErrorContext(
+				ctx,
+				"Failed to drop template database",
+				slog.Any("error", err),
+			)
+		}
+		_, err = c.adminConn.Exec(
 			ctx,
-			"Failed to drop shared user",
-			slog.Any("error", err),
+			fmt.Sprintf(
+				"drop user if exists %s",
+				containerTemplateUser,
+			),
 		)
-	}
-
-	// Close the database handle:
-	err = s.adminConn.Close(ctx)
-	if err != nil {
-		s.logger.ErrorContext(
-			ctx,
-			"Failed to close database handle",
-			slog.Any("error", err),
-		)
-	}
-
-	// Get the logs of the database server:
-	logsCmd := exec.Command(s.tool, "logs", s.id)
-	logsOut := &bytes.Buffer{}
-	logsCmd.Stdout = io.MultiWriter(logsOut, s.outWriter)
-	logsCmd.Stderr = s.errWriter
-	err = logsCmd.Run()
-	if err != nil {
-		s.logger.ErrorContext(
-			ctx,
-			"Failed to get container logs",
-			slog.Any("error", err),
-		)
+		if err != nil {
+			c.logger.ErrorContext(
+				ctx,
+				"Failed to drop shared user",
+				slog.Any("error", err),
+			)
+		}
+		err = c.adminConn.Close(ctx)
+		if err != nil {
+			c.logger.ErrorContext(
+				ctx,
+				"Failed to close database handle",
+				slog.Any("error", err),
+			)
+		}
 	}
 
-	// Stop the database server:
-	killCmd := exec.Command(s.tool, "kill", s.id)
-	killOut := &bytes.Buffer{}
-	killCmd.Stdout = io.MultiWriter(killOut, s.outWriter)
-	killCmd.Stderr = s.errWriter
-	err = killCmd.Run()
+	// Stop the database server and wait for the foreground run command to exit so that all remaining output is
+	// flushed through the writers.
+	killCmd := exec.Command(c.tool, "kill", c.id)
+	killCmd.Stdout = c.outWriter
+	killCmd.Stderr = c.errWriter
+	err := killCmd.Run()
 	if err != nil {
-		s.logger.ErrorContext(
+		c.logger.ErrorContext(
 			ctx,
 			"Failed to kill database container",
 			slog.Any("error", err),
 		)
+	}
+	if c.runCmd != nil {
+		_ = c.runCmd.Wait()
 	}
 
 	return nil
@@ -496,9 +513,9 @@ type Instance struct {
 
 // NewInstance creates a builder that can then be used to configure and create a new database instance inside this
 // server.
-func (s *Container) NewInstance() *InstanceBuilder {
+func (c *Container) NewInstance() *InstanceBuilder {
 	return &InstanceBuilder{
-		container: s,
+		container: c,
 	}
 }
 
