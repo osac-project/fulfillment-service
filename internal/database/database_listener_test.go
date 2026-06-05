@@ -159,20 +159,17 @@ var _ = Describe("Listener", func() {
 		})
 
 		// notify sends a payload through the database notification channel.
-		notify := func(payload proto.Message) {
-			tx, err := tm.Begin(ctx)
-			defer func() {
-				err := tx.End(ctx)
+		notify := func(ctx context.Context, payload proto.Message) {
+			err := tm.Run(ctx, func(ctx context.Context) {
+				err := notifier.Notify(ctx, payload)
 				Expect(err).ToNot(HaveOccurred())
-			}()
-			ctx = TxIntoContext(ctx, tx)
-			err = notifier.Notify(ctx, payload)
+			})
 			Expect(err).ToNot(HaveOccurred())
 		}
 
 		It("Receives one notification", func() {
 			sent := wrapperspb.String("my payload")
-			notify(sent)
+			notify(ctx, sent)
 			var received *wrapperspb.StringValue
 			Eventually(payloads).Should(Receive(&received))
 			Expect(proto.Equal(received, sent)).To(BeTrue())
@@ -192,7 +189,7 @@ var _ = Describe("Listener", func() {
 				"nueve",
 			}
 			for _, value := range sent {
-				notify(wrapperspb.String(value))
+				notify(ctx, wrapperspb.String(value))
 			}
 			var received []string
 			for range len(sent) {

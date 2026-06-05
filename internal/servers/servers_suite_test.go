@@ -38,6 +38,7 @@ var (
 	ctrl        *gomock.Controller
 	logger      *slog.Logger
 	server      *database.Container
+	tm          database.TxManager
 	attribution *auth.MockAttributionLogic
 	tenancy     *auth.MockTenancyLogic
 )
@@ -106,7 +107,7 @@ var _ = BeforeEach(func() {
 	DeferCleanup(pool.Close)
 
 	// Create the transaction manager:
-	tm, err := database.NewTxManager().
+	tm, err = database.NewTxManager().
 		SetLogger(logger).
 		SetPool(pool).
 		Build()

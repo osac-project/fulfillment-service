@@ -54,16 +54,6 @@ var _ = Describe("Notifier", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	// runWithTx starts a transaction, runs the given function using it, and ends the transaction when it finishes.
-	runWithTx := func(task func(ctx context.Context)) {
-		tx, err := tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		taskCtx := TxIntoContext(ctx, tx)
-		task(taskCtx)
-		err = tx.End(ctx)
-		Expect(err).ToNot(HaveOccurred())
-	}
-
 	Describe("Creation", func() {
 		It("Can be created when all the required parameters are set", func() {
 			notifier, err := NewNotifier().
@@ -137,9 +127,7 @@ var _ = Describe("Notifier", func() {
 
 			// Send the notification:
 			payload := wrapperspb.Int32(42)
-			runWithTx(func(ctx context.Context) {
-				err = notifier.Notify(ctx, payload)
-			})
+			err = tm.Run(ctx, notifier.Notify, payload)
 			Expect(err).ToNot(HaveOccurred())
 		})
 

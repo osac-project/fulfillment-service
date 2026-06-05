@@ -37,18 +37,6 @@ var _ = Describe("Generic DAO events", func() {
 		tenancy *auth.MockTenancyLogic
 	)
 
-	// runWithTx starts a transaction, runs the given function using it, and ends the transaction when it finishes.
-	runWithTx := func(task func(ctx context.Context)) {
-		tx, err := tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		defer func() {
-			err := tx.End(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		}()
-		taskCtx := database.TxIntoContext(ctx, tx)
-		task(taskCtx)
-	}
-
 	BeforeEach(func() {
 		var err error
 
@@ -87,7 +75,7 @@ var _ = Describe("Generic DAO events", func() {
 			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			_, err = tenantsDao.Create().
 				SetObject(&privatev1.Organization{
 					Id: "my-tenant",
@@ -113,7 +101,7 @@ var _ = Describe("Generic DAO events", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			_, err = generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
@@ -142,7 +130,7 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		var object *privatev1.Cluster
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
@@ -157,7 +145,7 @@ var _ = Describe("Generic DAO events", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			_, err = generic.Update().
 				SetObject(&privatev1.Cluster{
 					Id: object.Id,
@@ -189,7 +177,7 @@ var _ = Describe("Generic DAO events", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		var object *privatev1.Cluster
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
@@ -203,7 +191,7 @@ var _ = Describe("Generic DAO events", func() {
 			}
 		})
 		Expect(err).ToNot(HaveOccurred())
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			_, err = generic.Delete().
 				SetId(object.GetId()).
 				Do(ctx)
@@ -224,19 +212,23 @@ var _ = Describe("Generic DAO events", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		var object *privatev1.Cluster
-		runWithTx(func(ctx context.Context) {
-			response, createErr := generic.Create().
-				SetObject(&privatev1.Cluster{
-					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
-					}.Build(),
-				}).
-				Do(ctx)
-			err = createErr
-			if err == nil {
+		err = tm.Run(
+			ctx,
+			func(ctx context.Context) error {
+				response, err := generic.Create().
+					SetObject(&privatev1.Cluster{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: "my-tenant",
+						}.Build(),
+					}).
+					Do(ctx)
+				if err != nil {
+					return err
+				}
 				object = response.GetObject()
-			}
-		})
+				return nil
+			},
+		)
 		Expect(err).To(MatchError("my error"))
 		Expect(object).To(BeNil())
 		row := pool.QueryRow(ctx, "select count(*) from clusters")
@@ -254,7 +246,7 @@ var _ = Describe("Generic DAO events", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		var object *privatev1.Cluster
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
@@ -278,24 +270,32 @@ var _ = Describe("Generic DAO events", func() {
 			}).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
-		runWithTx(func(ctx context.Context) {
-			_, err = generic.Delete().
-				SetId(object.GetId()).
-				Do(ctx)
-		})
+		err = tm.Run(
+			ctx,
+			func(ctx context.Context) error {
+				_, err := generic.Delete().
+					SetId(object.GetId()).
+					Do(ctx)
+				return err
+			},
+		)
 		Expect(err).To(MatchError("my error"))
 
 		// Check that the object is still there:
 		var exists bool
-		runWithTx(func(ctx context.Context) {
-			response, existsErr := generic.Exists().
-				SetId(object.GetId()).
-				Do(ctx)
-			err = existsErr
-			if err == nil {
+		err = tm.Run(
+			ctx,
+			func(ctx context.Context) error {
+				response, err := generic.Exists().
+					SetId(object.GetId()).
+					Do(ctx)
+				if err != nil {
+					return err
+				}
 				exists = response.GetExists()
-			}
-		})
+				return nil
+			},
+		)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(exists).To(BeTrue())
 	})
@@ -308,7 +308,7 @@ var _ = Describe("Generic DAO events", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 		var object *privatev1.Cluster
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			response, createErr := generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
@@ -335,23 +335,27 @@ var _ = Describe("Generic DAO events", func() {
 			}).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
-		runWithTx(func(ctx context.Context) {
-			_, err = generic.Update().
-				SetObject(&privatev1.Cluster{
-					Id: object.GetId(),
-					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
-					}.Build(),
-					Status: &privatev1.ClusterStatus{
-						ApiUrl: "https://your.api",
-					},
-				}).
-				Do(ctx)
-		})
+		err = tm.Run(
+			ctx,
+			func(ctx context.Context) error {
+				_, err := generic.Update().
+					SetObject(&privatev1.Cluster{
+						Id: object.GetId(),
+						Metadata: privatev1.Metadata_builder{
+							Tenant: "my-tenant",
+						}.Build(),
+						Status: &privatev1.ClusterStatus{
+							ApiUrl: "https://your.api",
+						},
+					}).
+					Do(ctx)
+				return err
+			},
+		)
 		Expect(err).To(MatchError("my error"))
 
 		// Check that the object hasn't been updated:
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			getResponse, getErr := generic.Get().
 				SetId(object.GetId()).
 				Do(ctx)
@@ -384,7 +388,7 @@ var _ = Describe("Generic DAO events", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			_, err = generic.Create().
 				SetObject(&privatev1.Cluster{
 					Metadata: privatev1.Metadata_builder{
@@ -415,15 +419,19 @@ var _ = Describe("Generic DAO events", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		runWithTx(func(ctx context.Context) {
-			_, err = generic.Create().
-				SetObject(&privatev1.Cluster{
-					Metadata: privatev1.Metadata_builder{
-						Tenant: "my-tenant",
-					}.Build(),
-				}).
-				Do(ctx)
-		})
+		err = tm.Run(
+			ctx,
+			func(ctx context.Context) error {
+				_, err := generic.Create().
+					SetObject(&privatev1.Cluster{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: "my-tenant",
+						}.Build(),
+					}).
+					Do(ctx)
+				return err
+			},
+		)
 		Expect(err).To(MatchError("my error 1"))
 		Expect(called1).To(BeTrue())
 		Expect(called2).To(BeFalse())
@@ -444,7 +452,7 @@ var _ = Describe("Generic DAO events", func() {
 
 		// Create an object with finalizers:
 		var object *privatev1.Cluster
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			createResponse, err := generic.Create().
 				SetObject(
 					privatev1.Cluster_builder{
@@ -462,7 +470,7 @@ var _ = Describe("Generic DAO events", func() {
 		})
 
 		// Delete the object:
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			_, err = generic.Delete().
 				SetId(object.GetId()).
 				Do(ctx)
@@ -471,7 +479,7 @@ var _ = Describe("Generic DAO events", func() {
 
 		// Remove the finalizers:
 		object.Metadata.Finalizers = []string{}
-		runWithTx(func(ctx context.Context) {
+		err = tm.Run(ctx, func(ctx context.Context) {
 			_, err = generic.Update().
 				SetObject(object).
 				Do(ctx)

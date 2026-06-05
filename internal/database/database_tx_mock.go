@@ -126,3 +126,22 @@ func (mr *MockTxMockRecorder) ReportError(err any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportError", reflect.TypeOf((*MockTx)(nil).ReportError), err)
 }
+
+// Run mocks base method.
+func (m *MockTx) Run(ctx context.Context, task any, args ...any) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, task}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Run", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Run indicates an expected call of Run.
+func (mr *MockTxMockRecorder) Run(ctx, task any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, task}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockTx)(nil).Run), varargs...)
+}

@@ -80,185 +80,155 @@ var _ = Describe("Lock", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	// createObject inserts an object directly into the database using auto-commit so that it is
-	// visible to all transactions.
-	createObject := func(id string, tenant string) {
-		_, err := pool.Exec(
-			ctx,
-			"insert into objects (id, tenant, data) values ($1, $2, '{}')",
-			id, tenant,
-		)
+	// createObject inserts an object directly into the database using auto-commit so that it is visible to all
+	// transactions.
+	createObject := func(ctx context.Context, id string, tenant string) {
+		err := tm.Run(ctx, func(tx database.Tx) {
+			_, err := tx.Exec(
+				ctx,
+				"insert into objects (id, tenant, data) values ($1, $2, '{}')",
+				id, tenant,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		})
 		Expect(err).ToNot(HaveOccurred())
 	}
 
-	// checkLocked verifies that the given identifiers correspond to rows that are currently locked
-	// by using 'for update skip locked' to detect locked rows. If a row is locked by another
-	// transaction, 'skip locked' will skip it, so an empty result means all the rows are locked.
-	checkLocked := func(ids ...string) {
-		rows, err := pool.Query(
+	// fetchUnlocked fetches the identifiers of the objects that are not locked by using 'for update skip locked'.
+	fetchUnlocked := func(ctx context.Context, ids ...string) []string {
+		var result []string
+		err := tm.Run(
 			ctx,
-			"select id from objects where id = any($1) for update skip locked",
-			ids,
+			func(tx database.Tx) {
+				rows, err := tx.Query(
+					ctx,
+					"select id from objects where id = any($1) for update skip locked",
+					ids,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				defer rows.Close()
+				for rows.Next() {
+					var id string
+					err = rows.Scan(&id)
+					Expect(err).ToNot(HaveOccurred())
+					result = append(result, id)
+				}
+				err = rows.Err()
+				Expect(err).ToNot(HaveOccurred())
+			},
 		)
 		Expect(err).ToNot(HaveOccurred())
-		defer rows.Close()
+		return result
+	}
 
-		var unlocked []string
-		for rows.Next() {
-			var id string
-			err = rows.Scan(&id)
-			Expect(err).ToNot(HaveOccurred())
-			unlocked = append(unlocked, id)
-		}
-		Expect(rows.Err()).ToNot(HaveOccurred())
+	// checkLocked verifies that the given identifiers correspond to rows that are currently locked by using 'for
+	// update skip locked' to detect locked rows. If a row is locked by another transaction, 'skip locked' will skip
+	// it, so an empty result means all the rows are locked.
+	checkLocked := func(ctx context.Context, ids ...string) {
+		unlocked := fetchUnlocked(ctx, ids...)
 		Expect(unlocked).To(BeEmpty())
 	}
 
-	// checkNotLocked verifies that the given identifiers correspond to rows that are not locked
-	// by using the same 'for update skip locked' technique. If a row is not locked it will be
-	// returned, so all the requested rows being returned means none of them are locked.
-	checkNotLocked := func(ids ...string) {
-		rows, err := pool.Query(
-			ctx,
-			"select id from objects where id = any($1) for update skip locked",
-			ids,
-		)
-		Expect(err).ToNot(HaveOccurred())
-		defer rows.Close()
-
-		var unlocked []string
-		for rows.Next() {
-			var id string
-			err = rows.Scan(&id)
-			Expect(err).ToNot(HaveOccurred())
-			unlocked = append(unlocked, id)
-		}
-		Expect(rows.Err()).ToNot(HaveOccurred())
+	// checkNotLocked verifies that the given identifiers correspond to rows that are not locked by using the same
+	// 'for update skip locked' technique. If a row is not locked it will be returned, so all the requested rows
+	// being returned means none of them are locked.
+	checkNotLocked := func(ctx context.Context, ids ...string) {
+		unlocked := fetchUnlocked(ctx, ids...)
 		Expect(unlocked).To(ConsistOf(ids))
 	}
 
 	It("Locks a single object", func() {
-		createObject("obj1", "my_tenant")
-
-		tx, err := tm.Begin(ctx)
+		err := tm.Run(
+			ctx,
+			func(ctx context.Context) {
+				createObject(ctx, "obj1", "my_tenant")
+				_, err := generic.Lock().AddId("obj1").Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				checkLocked(ctx, "obj1")
+			},
+		)
 		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tx.End(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		_, err = generic.Lock().
-			AddId("obj1").
-			Do(ctx)
-		Expect(err).ToNot(HaveOccurred())
-
-		checkLocked("obj1")
 	})
 
 	It("Locks multiple objects", func() {
-		createObject("obj1", "my_tenant")
-		createObject("obj2", "my_tenant")
-		createObject("obj3", "my_tenant")
-
-		tx, err := tm.Begin(ctx)
+		err := tm.Run(
+			ctx,
+			func(ctx context.Context) {
+				objects := []string{"obj1", "obj2", "obj3"}
+				for _, object := range objects {
+					createObject(ctx, object, "my_tenant")
+				}
+				_, err := generic.Lock().AddIds(objects...).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				checkLocked(ctx, objects...)
+			},
+		)
 		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tx.End(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		_, err = generic.Lock().
-			AddIds("obj1", "obj2", "obj3").
-			Do(ctx)
-		Expect(err).ToNot(HaveOccurred())
-
-		checkLocked("obj1", "obj2", "obj3")
 	})
 
 	It("Fails with not found error when locking non-existent object", func() {
-		tx, err := tm.Begin(ctx)
+		err := tm.Run(
+			ctx,
+			func(ctx context.Context) {
+				_, err := generic.Lock().AddId("does-not-exist").Do(ctx)
+				Expect(err).To(HaveOccurred())
+				var notFoundErr *ErrNotFound
+				Expect(errors.As(err, &notFoundErr)).To(BeTrue())
+			},
+		)
 		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tx.End(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		_, err = generic.Lock().
-			AddId("does-not-exist").
-			Do(ctx)
-		Expect(err).To(HaveOccurred())
-		var notFoundErr *ErrNotFound
-		Expect(errors.As(err, &notFoundErr)).To(BeTrue())
-		Expect(notFoundErr.IDs).To(ConsistOf("does-not-exist"))
 	})
 
 	It("Fails when one of multiple objects doesn't exist", func() {
-		createObject("obj1", "my_tenant")
-
-		tx, err := tm.Begin(ctx)
+		err := tm.Run(
+			ctx,
+			func(ctx context.Context) {
+				createObject(ctx, "obj1", "my_tenant")
+				_, err := generic.Lock().AddIds("obj1", "does-not-exist").Do(ctx)
+				Expect(err).To(HaveOccurred())
+				var notFoundErr *ErrNotFound
+				Expect(errors.As(err, &notFoundErr)).To(BeTrue())
+			},
+		)
 		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tx.End(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		_, err = generic.Lock().
-			AddId("obj1").
-			AddId("does-not-exist").
-			Do(ctx)
-		Expect(err).To(HaveOccurred())
-		var notFoundErr *ErrNotFound
-		Expect(errors.As(err, &notFoundErr)).To(BeTrue())
-		Expect(notFoundErr.IDs).To(ConsistOf("does-not-exist"))
 	})
 
 	It("Unlocks object when transaction is committed", func() {
-		createObject("obj1", "my_tenant")
-
-		tx, err := tm.Begin(ctx)
+		err := tm.Run(
+			ctx,
+			func(ctx context.Context) {
+				createObject(ctx, "obj1", "my_tenant")
+				_, err := generic.Lock().AddId("obj1").Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				checkLocked(ctx, "obj1")
+			},
+		)
 		Expect(err).ToNot(HaveOccurred())
-		ctx = database.TxIntoContext(ctx, tx)
-		_, err = generic.Lock().
-			AddId("obj1").
-			Do(ctx)
-		Expect(err).ToNot(HaveOccurred())
-
-		err = tx.End(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		checkNotLocked("obj1")
+		checkNotLocked(ctx, "obj1")
 	})
 
 	It("Unlocks object when transaction is rolled back", func() {
-		createObject("obj1", "my_tenant")
-
-		tx, err := tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		ctx = database.TxIntoContext(ctx, tx)
-		_, err = generic.Lock().
-			AddId("obj1").
-			Do(ctx)
-		Expect(err).ToNot(HaveOccurred())
-
-		rollbackErr := errors.New("force rollback")
-		tx.ReportError(&rollbackErr)
-		err = tx.End(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		checkNotLocked("obj1")
+		err := tm.Run(
+			ctx,
+			func(ctx context.Context) error {
+				createObject(ctx, "obj1", "my_tenant")
+				_, err := generic.Lock().AddId("obj1").Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				return errors.New("my error")
+			},
+		)
+		Expect(err).To(MatchError("my error"))
+		checkNotLocked(ctx, "obj1")
 	})
 
 	It("Prevents deadlocks by locking in consistent order", func() {
-		createObject("a", "my_tenant")
-		createObject("b", "my_tenant")
+		createObject(ctx, "a", "my_tenant")
+		createObject(ctx, "b", "my_tenant")
 
 		// Start a transaction and lock 'a' using direct SQL:
-		tx1, err := pool.Begin(ctx)
+		tx, err := pool.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
-		defer tx1.Rollback(ctx)
-		_, err = tx1.Exec(ctx, "select id from objects where id = 'a' for update")
+		_, err = tx.Exec(ctx, "select id from objects where id = 'a' for update")
 		Expect(err).ToNot(HaveOccurred())
 
 		// Start a goroutine that tries to lock 'b' and 'a' (in that order) via the DAO.
@@ -267,29 +237,26 @@ var _ = Describe("Lock", func() {
 		done := make(chan error, 1)
 		go func() {
 			defer GinkgoRecover()
-			tx2, err := tm.Begin(ctx)
-			if err != nil {
-				done <- err
-				return
-			}
-			ctx := database.TxIntoContext(ctx, tx2)
-			_, lockErr := generic.Lock().
-				AddIds("b", "a").
-				Do(ctx)
-			err = tx2.End(ctx)
-			done <- errors.Join(lockErr, err)
+			err := tm.Run(
+				ctx,
+				func(ctx context.Context) error {
+					_, err := generic.Lock().AddIds("b", "a").Do(ctx)
+					return err
+				},
+			)
+			done <- err
 		}()
 
-		// Give the goroutine time to reach the blocking lock on 'a' and verify that it
-		// doesn't complete while 'a' is held:
+		// Give the goroutine time to reach the blocking lock on 'a' and verify that it doesn't complete while
+		// 'a' is held:
 		Consistently(done, 100*time.Millisecond).ShouldNot(Receive())
 
-		// Verify that 'b' is not locked, proving that the DAO tried to lock 'a' first
-		// even though 'b' was passed first:
-		checkNotLocked("b")
+		// Verify that 'b' is not locked, proving that the DAO tried to lock 'a' first even though 'b' was
+		// passed first:
+		checkNotLocked(ctx, "b")
 
 		// Release 'a' by committing, allowing the goroutine to proceed:
-		err = tx1.Commit(ctx)
+		err = tx.Commit(ctx)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the goroutine completed without error:

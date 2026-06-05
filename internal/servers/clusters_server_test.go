@@ -14,7 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,53 +28,20 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Clusters server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
 	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
+		// Put a context into the subject:
 		ctx = auth.ContextWithSubject(
 			ctx,
 			&auth.Subject{
-				User:    "system",
-				Tenants: collections.NewUniversalSet[string](),
+				User:    auth.SystemTenant,
+				Tenants: auth.AllTenants,
 			},
 		)
-
-		// Prepare the database pool:
-		db, err := server.NewInstance().Build()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(db.Close)
-		pool, err := db.Pool(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tx.End(ctx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
 	})
 
 	Describe("Creation", func() {
@@ -880,6 +846,8 @@ var _ = Describe("Clusters server", func() {
 			// Add a finalizer, as otherwise the object will be immediatelly deleted and archived and it
 			// won't be possible to verify the deletion timestamp. This can't be done using the server
 			// because this is a public object, and public objects don't have the finalizers field.
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, err = tx.Exec(
 				ctx,
 				`update clusters set finalizers = '{"a"}' where id = $1`,

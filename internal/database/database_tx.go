@@ -63,6 +63,15 @@ type Tx interface {
 	// It this method is called multiple times for the same transaction the reported errors will be accumulated.
 	ReportError(err *error)
 
+	// Run executes the given task function within this transaction. If the task returns an error or panics, the
+	// error is reported to the transaction (marking it for rollback) and returned to the caller. The transaction is
+	// not ended by this method; the caller is still responsible for calling End.
+	//
+	// The task must be a function whose first parameter is either context.Context or Tx. Any additional parameters
+	// are passed via args. If the last return value implements the error interface, it will be used to determine
+	// the outcome.
+	Run(ctx context.Context, task any, args ...any) error
+
 	// End finishes a transaction. It will be committed if no errors have been reported, or rolled back otherwise.
 	// See the ReportError method for details on how errors are tracked.
 	End(ctx context.Context) error
