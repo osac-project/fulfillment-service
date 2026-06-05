@@ -111,6 +111,91 @@ Uses `pgx/v5` with a generic DAO pattern:
 - CEL filter expressions translated to SQL WHERE clauses via `FilterTranslator`
 - Migrations in `internal/database/migrations/` (numbered `*.up.sql` files)
 
+### Enforcing Cross-Object Constraints
+
+Because objects are stored as JSON-serialized protobuf in a single `data` column, the database
+cannot natively enforce uniqueness or referential integrity for values buried inside the JSON. When
+a constraint must span multiple rows or multiple object types (for example, ensuring that an e-mail
+address is claimed by at most one user), use the **materialized helper table** pattern:
+
+1. Create a small helper table whose schema mirrors the relationship or constraint (e.g., a
+   `user_emails` table with `email` as the primary key and `username` as a foreign key).
+2. Add an index on columns used for lookup in the trigger (e.g., the `username` column) so that the
+   trigger's delete-and-reinsert cycle remains efficient.
+3. Write a PL/pgSQL trigger function that fires after insert or update on the object table. The
+   function deletes stale rows for the affected object, then re-inserts the current values
+   extracted from the JSONB `data` column. Catch constraint violations and re-raise them with a
+   descriptive application-level error code.
+4. Attach the trigger to the object table.
+
+This keeps the source of truth in the JSONB `data` column while letting PostgreSQL enforce the
+constraint through the helper table's primary key or unique index. A typical migration looks like
+this:
+
+```sql
+-- Helper table that mirrors the constraint:
+create table user_emails (
+  email text not null primary key,
+  username text not null references users(id) on delete cascade
+);
+create index user_emails_by_username on user_emails (username);
+
+-- Trigger function that materializes values from the JSONB data column:
+create function materialize_user_emails() returns trigger as $$
+declare
+  e text;
+begin
+  delete from user_emails where username = new.id;
+
+  for e in select jsonb_array_elements_text(new.data->'spec'->'emails')
+  loop
+    begin
+      insert into user_emails (email, username) values (e, new.id);
+    exception when unique_violation then
+      raise exception using
+        errcode = 'Z0002',
+        message = format('email ''%s'' is already used by another user', e);
+    end;
+  end loop;
+
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger materialize_user_emails
+  after insert or update on users
+  for each row
+  execute function materialize_user_emails();
+```
+
+Because the trigger fires only on `insert` or `update`, rows that already exist when the migration
+runs will not have corresponding entries in the helper table. After deploying a migration that adds
+a materialized helper table, include a backfill statement that touches every existing row so the
+trigger populates the helper table for them. A no-op update works well:
+
+```sql
+update users set data = data;
+```
+
+This ensures constraints and lookups against the helper table are consistent immediately after the
+migration, without requiring a separate backfill script.
+
+Helper tables do not follow the standard DAO schema, so the database schema test will flag them
+unless they are explicitly excluded. When adding a new helper table, update the `CheckSchema` method
+in `internal/database/database_tool.go` so it is skipped during schema validation.
+
+When a trigger raises an exception with a custom SQLSTATE code (the `Z` class is reserved for
+user-defined conditions), the Go layer must also be updated so the error is translated before it
+reaches gRPC clients. For each new code:
+
+1. Add a constant in `internal/database/dao/dao_errors.go` following the pattern of the existing
+   `errImmutableCode` (`Z0001`).
+2. Add a corresponding `case` in the `translateError` functions in `generic_dao_create.go` and/or
+   `generic_dao_update.go` (whichever operations the trigger can fire on) to map the PostgreSQL
+   error to the appropriate domain error type (e.g., `ErrDenied`, `ErrReference`).
+
+Without this step, the raw PostgreSQL error will propagate as an internal error to callers.
+
 ### gRPC Interceptor Chain
 
 The gRPC server uses chained interceptors (configured in `internal/cmd/service/start/grpcserver/`):
