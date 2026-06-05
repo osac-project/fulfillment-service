@@ -98,12 +98,12 @@ var _ = Describe("ResourceManager", func() {
 
 			// Expect viewers group creation (new organization groups API)
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(ctx, "acme", "viewers", "/projects/web-app/viewers").
+				CreateAuthorizationGroup(ctx, "acme", "viewers", "/web-app/viewers").
 				Return(nil)
 
 			// Expect managers group creation (new organization groups API)
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(ctx, "acme", "managers", "/projects/web-app/managers").
+				CreateAuthorizationGroup(ctx, "acme", "managers", "/web-app/managers").
 				Return(nil)
 
 			resourceID, err := manager.CreateProjectAuthorizationResource(ctx, testProjectID, testTenant, testProject, testScopes)
@@ -139,7 +139,7 @@ var _ = Describe("ResourceManager", func() {
 
 			// Viewers group creation fails
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(ctx, "acme", "viewers", "/projects/web-app/viewers").
+				CreateAuthorizationGroup(ctx, "acme", "viewers", "/web-app/viewers").
 				Return(context.DeadlineExceeded)
 
 			// Expect cleanup: delete the resource
@@ -167,17 +167,17 @@ var _ = Describe("ResourceManager", func() {
 
 			// Viewers group creation succeeds
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(ctx, "acme", "viewers", "/projects/web-app/viewers").
+				CreateAuthorizationGroup(ctx, "acme", "viewers", "/web-app/viewers").
 				Return(nil)
 
 			// Managers group creation fails
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(ctx, "acme", "managers", "/projects/web-app/managers").
+				CreateAuthorizationGroup(ctx, "acme", "managers", "/web-app/managers").
 				Return(context.DeadlineExceeded)
 
 			// Expect cleanup: get viewers group ID, then delete it
 			mockClient.EXPECT().
-				GetGroupIDByPath(ctx, "acme", "/projects/web-app/viewers").
+				GetGroupIDByPath(ctx, "acme", "/web-app/viewers").
 				Return("viewers-group-id", nil)
 			mockClient.EXPECT().
 				DeleteAuthorizationGroup(ctx, "acme", "viewers-group-id").
@@ -213,7 +213,7 @@ var _ = Describe("ResourceManager", func() {
 
 			// Get viewers group ID (new organization groups API)
 			mockClient.EXPECT().
-				GetGroupIDByPath(ctx, "acme", "/projects/web-app/viewers").
+				GetGroupIDByPath(ctx, "acme", "/web-app/viewers").
 				Return("viewers-group-id", nil)
 
 			// Delete viewers group (new organization groups API)
@@ -223,7 +223,7 @@ var _ = Describe("ResourceManager", func() {
 
 			// Get managers group ID (new organization groups API)
 			mockClient.EXPECT().
-				GetGroupIDByPath(ctx, "acme", "/projects/web-app/managers").
+				GetGroupIDByPath(ctx, "acme", "/web-app/managers").
 				Return("managers-group-id", nil)
 
 			// Delete managers group (new organization groups API)
@@ -276,12 +276,12 @@ var _ = Describe("ResourceManager", func() {
 
 			// Viewers group lookup fails
 			mockClient.EXPECT().
-				GetGroupIDByPath(ctx, "acme", "/projects/web-app/viewers").
+				GetGroupIDByPath(ctx, "acme", "/web-app/viewers").
 				Return("", context.DeadlineExceeded)
 
 			// Managers group lookup succeeds
 			mockClient.EXPECT().
-				GetGroupIDByPath(ctx, "acme", "/projects/web-app/managers").
+				GetGroupIDByPath(ctx, "acme", "/web-app/managers").
 				Return("managers-group-id", nil)
 
 			// Managers group deletion fails

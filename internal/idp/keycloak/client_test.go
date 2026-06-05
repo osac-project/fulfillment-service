@@ -1758,8 +1758,8 @@ var _ = Describe("Keycloak Client", func() {
 
 	Describe("Authorization Groups", func() {
 		Describe("CreateAuthorizationGroup", func() {
-			It("should create an organization group with name and path", func() {
-				var receivedPayload map[string]interface{}
+			It("should create hierarchical organization groups", func() {
+				createdGroups := make(map[string]string) // name -> id
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					// First request: get organization by name
 					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=acme-corp" {
@@ -1774,12 +1774,31 @@ var _ = Describe("Keycloak Client", func() {
 						}
 						return
 					}
-					// Second request: create organization group
+					// Create parent group: /web-app
 					if r.Method == http.MethodPost && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
-						if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+						var payload map[string]interface{}
+						if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 							http.Error(w, err.Error(), http.StatusBadRequest)
 							return
 						}
+						groupName := payload["name"].(string)
+						groupID := "group-" + groupName
+						createdGroups[groupName] = groupID
+						w.Header().Set("Location", "/admin/realms/osac/organizations/org-123/groups/"+groupID)
+						w.WriteHeader(http.StatusCreated)
+						return
+					}
+					// Create child group: viewers under /web-app
+					if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/children") {
+						var payload map[string]interface{}
+						if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+							http.Error(w, err.Error(), http.StatusBadRequest)
+							return
+						}
+						groupName := payload["name"].(string)
+						groupID := "group-" + groupName
+						createdGroups[groupName] = groupID
+						w.Header().Set("Location", "/admin/realms/osac/organizations/org-123/groups/"+groupID)
 						w.WriteHeader(http.StatusCreated)
 						return
 					}
@@ -1788,10 +1807,10 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				err := client.CreateAuthorizationGroup(ctx, "acme-corp", "viewers", "/projects/web-app/viewers")
+				err := client.CreateAuthorizationGroup(ctx, "acme-corp", "viewers", "/web-app/viewers")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(receivedPayload["name"]).To(Equal("viewers"))
-				Expect(receivedPayload["path"]).To(Equal("/projects/web-app/viewers"))
+				Expect(createdGroups).To(HaveKey("web-app"))
+				Expect(createdGroups).To(HaveKey("viewers"))
 			})
 
 			It("should return error when organization is not found", func() {
@@ -1810,15 +1829,16 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				err := client.CreateAuthorizationGroup(ctx, "nonexistent-org", "viewers", "/projects/web-app/viewers")
+				err := client.CreateAuthorizationGroup(ctx, "nonexistent-org", "viewers", "/web-app/viewers")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get organization"))
 			})
 
-			It("should return error when group creation fails", func() {
+			It("should handle 409 conflict by looking up existing group", func() {
+				createdGroups := make(map[string]string)
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					// First request: get organization
-					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" {
+					// Get organization
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && strings.Contains(r.URL.RawQuery, "search=acme-corp") {
 						orgs := []keycloakOrganization{
 							{ID: "org-123", Name: "acme-corp"},
 						}
@@ -1830,9 +1850,42 @@ var _ = Describe("Keycloak Client", func() {
 						}
 						return
 					}
-					// Second request: create group fails
+					// List or search for existing group
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
+						// Return the existing group for both search and list operations
+						groups := []struct {
+							ID   string `json:"id"`
+							Path string `json:"path"`
+						}{
+							{ID: "existing-group-id", Path: "/web-app"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(groups); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					// Create parent group fails with 409
 					if r.Method == http.MethodPost && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
+						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusConflict)
+						json.NewEncoder(w).Encode(map[string]string{"errorMessage": "Group with the given name already exists."})
+						return
+					}
+					// Create child group under existing parent
+					if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/children") {
+						var payload map[string]interface{}
+						if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+							http.Error(w, err.Error(), http.StatusBadRequest)
+							return
+						}
+						groupName := payload["name"].(string)
+						groupID := "group-" + groupName
+						createdGroups[groupName] = groupID
+						w.Header().Set("Location", "/admin/realms/osac/organizations/org-123/groups/"+groupID)
+						w.WriteHeader(http.StatusCreated)
 						return
 					}
 					w.WriteHeader(http.StatusNotFound)
@@ -1840,9 +1893,9 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				err := client.CreateAuthorizationGroup(ctx, "acme-corp", "viewers", "/projects/web-app/viewers")
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failed to create organization group"))
+				err := client.CreateAuthorizationGroup(ctx, "acme-corp", "viewers", "/web-app/viewers")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createdGroups).To(HaveKey("viewers"))
 			})
 		})
 
@@ -1950,7 +2003,7 @@ var _ = Describe("Keycloak Client", func() {
 					// Second request: search organization groups
 					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
 						// Verify search query is present with the expected path
-						expectedSearch := "search=%2Fprojects%2Fweb-app%2Fviewers" // URL-encoded "/projects/web-app/viewers"
+						expectedSearch := "search=%2Fweb-app%2Fviewers" // URL-encoded "/web-app/viewers"
 						if !strings.Contains(r.URL.RawQuery, expectedSearch) {
 							w.WriteHeader(http.StatusBadRequest)
 							return
@@ -1959,8 +2012,8 @@ var _ = Describe("Keycloak Client", func() {
 							ID   string `json:"id"`
 							Path string `json:"path"`
 						}{
-							{ID: "group-123", Path: "/projects/web-app/viewers"},
-							{ID: "group-456", Path: "/projects/web-app/managers"},
+							{ID: "group-123", Path: "/web-app/viewers"},
+							{ID: "group-456", Path: "/web-app/managers"},
 						}
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -1975,7 +2028,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				groupID, err := client.GetGroupIDByPath(ctx, "acme-corp", "/projects/web-app/viewers")
+				groupID, err := client.GetGroupIDByPath(ctx, "acme-corp", "/web-app/viewers")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(groupID).To(Equal("group-123"))
 			})
@@ -1996,7 +2049,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				_, err := client.GetGroupIDByPath(ctx, "nonexistent-org", "/projects/web-app/viewers")
+				_, err := client.GetGroupIDByPath(ctx, "nonexistent-org", "/web-app/viewers")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get organization"))
 			})
@@ -2065,7 +2118,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/projects/web-app/viewers")
+				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/web-app/viewers")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to search organization groups"))
 			})

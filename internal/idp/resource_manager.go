@@ -129,13 +129,20 @@ func (m *ResourceManager) CreateProjectAuthorizationResource(ctx context.Context
 
 // createProjectAuthorizationGroups creates Keycloak organization groups
 // for viewer and manager access to a project.
-// Uses the hierarchical naming convention: /{projects}/{project-name}/{viewers|managers}
+//
+// Uses the hierarchical naming convention:
+//   - Top-level: /{project-name}/{viewers|managers}
+//   - Nested: /{parent-project}/{sub-project}/{viewers|managers}
+//
+// The projectName parameter should contain the full project path (e.g., "web-app" or "web-app/api").
 func (m *ResourceManager) createProjectAuthorizationGroups(ctx context.Context, resourceID, organizationName, projectName string) error {
 	resourceName := fmt.Sprintf("PROJECT-%s-%s", organizationName, projectName)
 
-	// Create viewers group using new naming convention
-	// Group path: /{projects}/{project-name}/{viewers}
-	viewersGroupPath := fmt.Sprintf("/%s/%s/%s", GroupPathProjects, projectName, GroupNameViewers)
+	// Create viewers group using hierarchical path
+	// Group path: /{project-name}/{viewers}
+	// The CreateAuthorizationGroup method will create parent group (/{project-name})
+	// if it doesn't exist, then create the viewers group under it
+	viewersGroupPath := fmt.Sprintf("/%s/%s", projectName, GroupNameViewers)
 	err := m.client.CreateAuthorizationGroup(ctx, organizationName, GroupNameViewers, viewersGroupPath)
 	if err != nil {
 		return fmt.Errorf("failed to create viewers group: %w", err)
@@ -147,11 +154,9 @@ func (m *ResourceManager) createProjectAuthorizationGroups(ctx context.Context, 
 		slog.String("organization", organizationName),
 	)
 
-	// Create managers group using new naming convention
-	// Group path: /{projects}/{project-name}/{managers}
-	managersGroupName := GroupNameManagers
-	managersGroupPath := fmt.Sprintf("/%s/%s/%s", GroupPathProjects, projectName, GroupNameManagers)
-	err = m.client.CreateAuthorizationGroup(ctx, organizationName, managersGroupName, managersGroupPath)
+	// Create managers group using hierarchical path
+	managersGroupPath := fmt.Sprintf("/%s/%s", projectName, GroupNameManagers)
+	err = m.client.CreateAuthorizationGroup(ctx, organizationName, GroupNameManagers, managersGroupPath)
 	if err != nil {
 		// Clean up viewers group on failure
 		viewersGroupID, getErr := m.getGroupIDByPath(ctx, organizationName, viewersGroupPath)
@@ -258,9 +263,9 @@ func (m *ResourceManager) deleteProjectAuthorizationGroups(ctx context.Context, 
 	if len(parts) > firstDash+1 {
 		projectName := parts[firstDash+1:] // Skip tenant and dash
 
-		// Use new hierarchical paths: /{projects}/{project-name}/{viewers|managers}
-		viewersGroupPath := fmt.Sprintf("/%s/%s/%s", GroupPathProjects, projectName, GroupNameViewers)
-		managersGroupPath := fmt.Sprintf("/%s/%s/%s", GroupPathProjects, projectName, GroupNameManagers)
+		// Use new hierarchical paths: /{project-name}/{viewers|managers}
+		viewersGroupPath := fmt.Sprintf("/%s/%s", projectName, GroupNameViewers)
+		managersGroupPath := fmt.Sprintf("/%s/%s", projectName, GroupNameManagers)
 
 		// TODO: Delete policies first (they reference the groups)
 

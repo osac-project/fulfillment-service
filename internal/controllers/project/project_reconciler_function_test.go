@@ -214,12 +214,12 @@ var _ = Describe("Validation and Activation", func() {
 
 			// Expect viewers group creation (new organization groups API)
 			mockIdpClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "acme", "viewers", "/projects/test-project/viewers").
+				CreateAuthorizationGroup(gomock.Any(), "acme", "viewers", "/test-project/viewers").
 				Return(nil)
 
 			// Expect managers group creation (new organization groups API)
 			mockIdpClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/projects/test-project/managers").
+				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/test-project/managers").
 				Return(nil)
 
 			task := &task{
@@ -258,12 +258,12 @@ var _ = Describe("Validation and Activation", func() {
 
 			// Expect viewers group creation (new organization groups API)
 			mockIdpClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "acme", "viewers", "/projects/test-project/viewers").
+				CreateAuthorizationGroup(gomock.Any(), "acme", "viewers", "/test-project/viewers").
 				Return(nil)
 
 			// Expect managers group creation (new organization groups API)
 			mockIdpClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/projects/test-project/managers").
+				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/test-project/managers").
 				Return(nil)
 
 			task := &task{
@@ -321,12 +321,12 @@ var _ = Describe("Validation and Activation", func() {
 
 			// Expect viewers group creation (new organization groups API)
 			mockIdpClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "acme", "viewers", "/projects/child-project/viewers").
+				CreateAuthorizationGroup(gomock.Any(), "acme", "viewers", "/child-project/viewers").
 				Return(nil)
 
 			// Expect managers group creation (new organization groups API)
 			mockIdpClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/projects/child-project/managers").
+				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/child-project/managers").
 				Return(nil)
 
 			task := &task{
@@ -396,12 +396,12 @@ var _ = Describe("Validation and Activation", func() {
 
 			// Expect viewers group creation (new organization groups API)
 			mockIdpClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "acme", "viewers", "/projects/child-project/viewers").
+				CreateAuthorizationGroup(gomock.Any(), "acme", "viewers", "/child-project/viewers").
 				Return(nil)
 
 			// Expect managers group creation (new organization groups API)
 			mockIdpClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/projects/child-project/managers").
+				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/child-project/managers").
 				Return(nil)
 
 			task := &task{
@@ -787,7 +787,7 @@ var _ = Describe("Deletion Cleanup", func() {
 
 		// Expect viewers group ID lookup (new organization groups API with new paths)
 		mockIdpClient.EXPECT().
-			GetGroupIDByPath(gomock.Any(), "acme", "/projects/test-project/viewers").
+			GetGroupIDByPath(gomock.Any(), "acme", "/test-project/viewers").
 			Return("viewers-group-id", nil)
 
 		// Expect viewers group deletion (new organization groups API)
@@ -797,7 +797,7 @@ var _ = Describe("Deletion Cleanup", func() {
 
 		// Expect managers group ID lookup (new organization groups API with new paths)
 		mockIdpClient.EXPECT().
-			GetGroupIDByPath(gomock.Any(), "acme", "/projects/test-project/managers").
+			GetGroupIDByPath(gomock.Any(), "acme", "/test-project/managers").
 			Return("managers-group-id", nil)
 
 		// Expect managers group deletion (new organization groups API)

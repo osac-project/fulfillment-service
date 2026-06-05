@@ -14,14 +14,11 @@ language governing permissions and limitations under the License.
 package idp
 
 // Authorization group constants for hierarchical project access control.
-// These define the group names and path segments used in Keycloak organization groups.
+// These define the group names used in Keycloak organization groups.
 const (
 	// GroupNameViewers is the name for viewer access groups
 	GroupNameViewers = "viewers"
 
 	// GroupNameManagers is the name for manager access groups
 	GroupNameManagers = "managers"
-
-	// GroupPathProjects is the root path segment for project groups
-	GroupPathProjects = "projects"
 )
