@@ -162,7 +162,7 @@ var _ = Describe("Listener", func() {
 		notify := func(payload proto.Message) {
 			tx, err := tm.Begin(ctx)
 			defer func() {
-				err := tm.End(ctx, tx)
+				err := tx.End(ctx)
 				Expect(err).ToNot(HaveOccurred())
 			}()
 			ctx = TxIntoContext(ctx, tx)

@@ -16,7 +16,6 @@ package database
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
@@ -24,17 +23,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// TxManager is a database transaction manager. It knows how to start, commit and rollback transactions.
+// TxManager is a database transaction manager. It knows how to start transactions.
 //
 //go:generate mockgen -destination=database_tx_manager_mock.go -package=database . TxManager
 type TxManager interface {
 	// Begin starts a new transaction.
 	Begin(ctx context.Context) (Tx, error)
-
-	// End finishes a transaction. It will be commited or rolled back according to the errors that have been
-	// reported during its execution. See the ReportError of the Tx interface for details. Note that this only
-	// supports transactions created with the Begin method of the same transaction manager.
-	End(ctx context.Context, tx Tx) error
 }
 
 // TxManagerBuilder is a builder responsible for constructing database transaction managers. Don't create instances of
@@ -98,42 +92,20 @@ func (m *txManager) Begin(ctx context.Context) (tx Tx, err error) {
 	return
 }
 
-// End ends the given transaction, commiting it if no errors have been reported, or rolling it back otherwise. Note that
-// this only supports transactions returned by the Begin method of the same transaction manager.
-func (m *txManager) End(ctx context.Context, tx Tx) error {
-	if tx == nil {
+func (t *managedTx) End(ctx context.Context) error {
+	if t.real == nil {
 		return nil
 	}
-	switch tx := tx.(type) {
-	case *managedTx:
-		return m.end(ctx, tx)
-	default:
-		return fmt.Errorf("unsupported transaction type %T", tx)
+	if len(t.errs) == 0 {
+		t.manager.logger.DebugContext(ctx, "Committing transaction")
+		return t.real.Commit(ctx)
 	}
-}
-
-func (m *txManager) end(ctx context.Context, tx *managedTx) error {
-	// Reject the transaction if it hasn't been created by this transaction manager:
-	if tx.manager != m {
-		return errors.New("transaction belongs to another transaction manager")
-	}
-
-	// Nothing to do if no real transaction was started:
-	if tx.real == nil {
-		return nil
-	}
-
-	// Commit the transaction if there are no errors, otherwise roll it back:
-	if len(tx.errs) == 0 {
-		m.logger.DebugContext(ctx, "Committing transaction")
-		return tx.real.Commit(ctx)
-	}
-	m.logger.DebugContext(
+	t.manager.logger.DebugContext(
 		ctx,
 		"Rolling back transaction",
-		slog.Any("errors", tx.errs),
+		slog.Any("errors", t.errs),
 	)
-	return tx.real.Rollback(ctx)
+	return t.real.Rollback(ctx)
 }
 
 // managedTx is an implementation of the transaction interface that will start a real transaction only when one of the

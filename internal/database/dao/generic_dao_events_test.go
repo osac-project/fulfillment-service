@@ -42,7 +42,7 @@ var _ = Describe("Generic DAO events", func() {
 		tx, err := tm.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		defer func() {
-			err := tm.End(ctx, tx)
+			err := tx.End(ctx)
 			Expect(err).ToNot(HaveOccurred())
 		}()
 		taskCtx := database.TxIntoContext(ctx, tx)

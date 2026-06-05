@@ -970,7 +970,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 			if err != nil {
 				return nil, err
 			}
-			defer txManager.End(ctx, tx)
+			defer tx.End(ctx)
 			txCtx := database.TxIntoContext(ctx, tx)
 			resp, err := privateHubsServer.Get(txCtx, privatev1.HubsGetRequest_builder{
 				Id: id,

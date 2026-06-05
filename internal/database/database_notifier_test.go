@@ -60,7 +60,7 @@ var _ = Describe("Notifier", func() {
 		Expect(err).ToNot(HaveOccurred())
 		taskCtx := TxIntoContext(ctx, tx)
 		task(taskCtx)
-		err = tm.End(ctx, tx)
+		err = tx.End(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	}
 

@@ -143,7 +143,7 @@ var _ = Describe("Lock", func() {
 		tx, err := tm.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
+			err := tx.End(ctx)
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
@@ -164,7 +164,7 @@ var _ = Describe("Lock", func() {
 		tx, err := tm.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
+			err := tx.End(ctx)
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
@@ -181,7 +181,7 @@ var _ = Describe("Lock", func() {
 		tx, err := tm.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
+			err := tx.End(ctx)
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
@@ -201,7 +201,7 @@ var _ = Describe("Lock", func() {
 		tx, err := tm.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
+			err := tx.End(ctx)
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
@@ -227,7 +227,7 @@ var _ = Describe("Lock", func() {
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 
-		err = tm.End(ctx, tx)
+		err = tx.End(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		checkNotLocked("obj1")
 	})
@@ -245,7 +245,7 @@ var _ = Describe("Lock", func() {
 
 		rollbackErr := errors.New("force rollback")
 		tx.ReportError(&rollbackErr)
-		err = tm.End(ctx, tx)
+		err = tx.End(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		checkNotLocked("obj1")
 	})
@@ -276,7 +276,7 @@ var _ = Describe("Lock", func() {
 			_, lockErr := generic.Lock().
 				AddIds("b", "a").
 				Do(ctx)
-			err = tm.End(ctx, tx2)
+			err = tx2.End(ctx)
 			done <- errors.Join(lockErr, err)
 		}()
 

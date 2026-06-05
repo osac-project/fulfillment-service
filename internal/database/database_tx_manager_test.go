@@ -7,13 +7,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.uber.org/mock/gomock"
 )
 
 var _ = Describe("Transaction manager", func() {
 	var (
 		ctx  context.Context
-		ctrl *gomock.Controller
 		pool *pgxpool.Pool
 	)
 
@@ -21,9 +19,6 @@ var _ = Describe("Transaction manager", func() {
 		var err error
 
 		ctx = context.Background()
-
-		ctrl = gomock.NewController(GinkgoT())
-		DeferCleanup(ctrl.Finish)
 
 		db, err := server.NewInstance().Build()
 		Expect(err).ToNot(HaveOccurred())
@@ -89,31 +84,6 @@ var _ = Describe("Transaction manager", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("Should return an error for unsupported transaction types", func() {
-			tx := NewMockTx(ctrl)
-			err := manager.End(ctx, tx)
-			Expect(err).To(MatchError("unsupported transaction type *database.MockTx"))
-		})
-
-		It("Should reject transactions created by another manager", func() {
-			// Create a transaction with another manager:
-			another, err := NewTxManager().
-				SetLogger(logger).
-				SetPool(pool).
-				Build()
-			Expect(err).ToNot(HaveOccurred())
-			tx, err := another.Begin(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() {
-				err := another.End(ctx, tx)
-				Expect(err).ToNot(HaveOccurred())
-			}()
-
-			// Verify that it is rejected:
-			err = manager.End(ctx, tx)
-			Expect(err).To(MatchError("transaction belongs to another transaction manager"))
-		})
-
 		It("Should commit the transaction if no errors are reported", func() {
 			// Create a table:
 			_, err := pool.Exec(ctx, "create table my_table (my_column text)")
@@ -124,7 +94,7 @@ var _ = Describe("Transaction manager", func() {
 				tx, err := manager.Begin(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				defer func() {
-					err := manager.End(ctx, tx)
+					err := tx.End(ctx)
 					Expect(err).ToNot(HaveOccurred())
 				}()
 				_, err = tx.Exec(ctx, "insert into my_table (my_column) values ($1)", "my_value")
@@ -149,7 +119,7 @@ var _ = Describe("Transaction manager", func() {
 				tx, err := manager.Begin(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				defer func() {
-					err := manager.End(ctx, tx)
+					err := tx.End(ctx)
 					Expect(err).ToNot(HaveOccurred())
 				}()
 				_, err = tx.Exec(ctx, "insert into my_table (my_column) values ($1)", "my_value")

@@ -54,17 +54,3 @@ func (mr *MockTxManagerMockRecorder) Begin(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Begin", reflect.TypeOf((*MockTxManager)(nil).Begin), ctx)
 }
-
-// End mocks base method.
-func (m *MockTxManager) End(ctx context.Context, tx Tx) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "End", ctx, tx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// End indicates an expected call of End.
-func (mr *MockTxManagerMockRecorder) End(ctx, tx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "End", reflect.TypeOf((*MockTxManager)(nil).End), ctx, tx)
-}

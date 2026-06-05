@@ -116,7 +116,7 @@ var _ = BeforeEach(func() {
 	tx, err := tm.Begin(ctx)
 	Expect(err).ToNot(HaveOccurred())
 	DeferCleanup(func() {
-		err := tm.End(ctx, tx)
+		err := tx.End(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 	ctx = database.TxIntoContext(ctx, tx)

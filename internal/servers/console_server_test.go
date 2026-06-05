@@ -156,6 +156,8 @@ func (m *mockTx) Exec(ctx context.Context, query string, args ...any) (pgconn.Co
 
 func (m *mockTx) ReportError(err *error) {}
 
+func (m *mockTx) End(ctx context.Context) error { return nil }
+
 // newFakeHubClientFactory returns a HubClientFactory that ignores the kubeconfig
 // and always returns the provided fake client.
 func newFakeHubClientFactory(client clnt.Client) HubClientFactory {

@@ -62,4 +62,8 @@ type Tx interface {
 	//
 	// It this method is called multiple times for the same transaction the reported errors will be accumulated.
 	ReportError(err *error)
+
+	// End finishes a transaction. It will be committed if no errors have been reported, or rolled back otherwise.
+	// See the ReportError method for details on how errors are tracked.
+	End(ctx context.Context) error
 }

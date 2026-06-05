@@ -363,7 +363,7 @@ func (s *consoleServer) resolveComputeInstance(ctx context.Context, id string) (
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to begin transaction: %v", err)
 	}
-	defer s.txManager.End(ctx, tx)
+	defer tx.End(ctx)
 
 	txCtx := database.TxIntoContext(ctx, tx)
 	resp, err := s.ciServer.Get(txCtx, privatev1.ComputeInstancesGetRequest_builder{
