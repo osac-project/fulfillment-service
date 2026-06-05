@@ -25,7 +25,10 @@ import (
 
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/logging"
+
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 )
 
 func TestServers(t *testing.T) {
@@ -68,7 +71,7 @@ var _ = BeforeSuite(func() {
 		Return(auth.AllTenants, nil).
 		AnyTimes()
 	tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
-		Return(auth.SystemTenant, nil).
+		Return("test-tenant", nil).
 		AnyTimes()
 	tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 		Return(auth.AllTenants, nil).
@@ -120,4 +123,24 @@ var _ = BeforeEach(func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 	ctx = database.TxIntoContext(ctx, tx)
+
+	createTenant(ctx, "test-tenant")
 })
+
+func createTenant(ctx context.Context, name string) {
+	tenantsDao, err := dao.NewGenericDAO[*privatev1.Organization]().
+		SetLogger(logger).
+		SetTenancyLogic(tenancy).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+	_, err = tenantsDao.Create().
+		SetObject(privatev1.Organization_builder{
+			Id: name,
+			Metadata: privatev1.Metadata_builder{
+				Name:   name,
+				Tenant: name,
+			}.Build(),
+		}.Build()).
+		Do(ctx)
+	Expect(err).ToNot(HaveOccurred())
+}

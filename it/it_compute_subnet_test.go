@@ -73,11 +73,15 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		Expect(err).ToNot(HaveOccurred())
 		networkClassId = ncResp.GetObject().GetId()
 
-		// Create VirtualNetwork
+		// Create VirtualNetwork with an explicit tenant because VNs cannot be created in the
+		// shared tenant (admin default).
 		virtualNetworkId = fmt.Sprintf("test-vnet-%s", uuid.New())
 		_, err = virtualNetworksClient.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 			Object: privatev1.VirtualNetwork_builder{
 				Id: virtualNetworkId,
+				Metadata: privatev1.Metadata_builder{
+					Tenant: usersGroup,
+				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					NetworkClass: networkClassId,
 					Region:       "us-east-1",
@@ -108,6 +112,9 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		_, err = subnetsClient.Create(ctx, privatev1.SubnetsCreateRequest_builder{
 			Object: privatev1.Subnet_builder{
 				Id: subnetId,
+				Metadata: privatev1.Metadata_builder{
+					Tenant: usersGroup,
+				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					VirtualNetwork: virtualNetworkId,
 					Ipv4Cidr:       new("10.100.1.0/24"),

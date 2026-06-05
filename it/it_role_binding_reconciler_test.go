@@ -44,7 +44,8 @@ var _ = Describe("Role binding reconciler", func() {
 		createResponse, err := client.Create(ctx, privatev1.RoleBindingsCreateRequest_builder{
 			Object: privatev1.RoleBinding_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name: fmt.Sprintf("my-%s", uuid.New()),
+					Name:   fmt.Sprintf("my-%s", uuid.New()),
+					Tenant: usersGroup,
 				}.Build(),
 				Spec: privatev1.RoleBindingSpec_builder{
 					Role: "my-role",
@@ -85,7 +86,8 @@ var _ = Describe("Role binding reconciler", func() {
 		createResponse, err := client.Create(ctx, privatev1.RoleBindingsCreateRequest_builder{
 			Object: privatev1.RoleBinding_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name: fmt.Sprintf("my-%s", uuid.New()),
+					Name:   fmt.Sprintf("my-%s", uuid.New()),
+					Tenant: usersGroup,
 				}.Build(),
 				Spec: privatev1.RoleBindingSpec_builder{
 					Role: "my-role",

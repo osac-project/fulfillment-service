@@ -32,6 +32,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/masks"
@@ -48,6 +49,7 @@ type GenericServerBuilder[O dao.Object] struct {
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
+	allowedTenants    collections.Set[string]
 }
 
 // GenericServer is a gRPC server that knows how to implement the List, Get, Create, Update and Delete operators for
@@ -58,6 +60,7 @@ type GenericServer[O dao.Object] struct {
 	dao              *dao.GenericDAO[O]
 	attributionLogic auth.AttributionLogic
 	tenancyLogic     auth.TenancyLogic
+	allowedTenants   collections.Set[string]
 	template         proto.Message
 	metadataField    protoreflect.FieldDescriptor
 	nameField        protoreflect.FieldDescriptor
@@ -93,7 +96,9 @@ type metadataIface interface {
 
 // NewGenericServer creates a builder that can then be used to configure and create a new generic server.
 func NewGenericServer[O dao.Object]() *GenericServerBuilder[O] {
-	return &GenericServerBuilder[O]{}
+	return &GenericServerBuilder[O]{
+		allowedTenants: auth.DefaultAllowedTenants,
+	}
 }
 
 // SetLogger sets the logger. This is mandatory.
@@ -150,6 +155,19 @@ func (b *GenericServerBuilder[O]) SetMetricsRegisterer(value prometheus.Register
 	return b
 }
 
+// AddAllowedTenants adds the given tenants to the set of tenants where objects can be created. This is useful for
+// servers that need to allow creation in the system or shared tenants, which are disallowed by default.
+func (b *GenericServerBuilder[O]) AddAllowedTenants(values ...string) *GenericServerBuilder[O] {
+	b.allowedTenants = b.allowedTenants.Union(collections.NewSet(values...))
+	return b
+}
+
+// RemoveAllowedTenants removes the given tenants from the set of tenants where objects can be created.
+func (b *GenericServerBuilder[O]) RemoveAllowedTenants(values ...string) *GenericServerBuilder[O] {
+	b.allowedTenants = b.allowedTenants.Difference(collections.NewSet(values...))
+	return b
+}
+
 // Build uses the configuration stored in the builder to create and configure a new generic server.
 func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) {
 	// Check parameters:
@@ -185,6 +203,7 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		service:          b.service,
 		attributionLogic: b.attributionLogic,
 		tenancyLogic:     b.tenancyLogic,
+		allowedTenants:   b.allowedTenants,
 		notifier:         b.notifier,
 		pathCompiler:     pathCompiler,
 		pathCache:        map[string]*masks.Path[O]{},
@@ -439,6 +458,13 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	if err != nil {
 		return err
 	}
+	if !s.allowedTenants.Contains(assignedTenant) {
+		return grpcstatus.Errorf(
+			grpccodes.PermissionDenied,
+			"creation of objects in tenant '%s' is not allowed",
+			assignedTenant,
+		)
+	}
 	err = s.setTenant(ctx, requestObject, assignedTenant)
 	if err != nil {
 		return err
@@ -594,6 +620,13 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 	assignedTenant, err := s.determineAssignedTenant(ctx, tmpObject, currentObject)
 	if err != nil {
 		return err
+	}
+	if !s.allowedTenants.Contains(assignedTenant) && s.getTenant(currentObject) != assignedTenant {
+		return grpcstatus.Errorf(
+			grpccodes.PermissionDenied,
+			"moving objects to tenant '%s' is not allowed",
+			assignedTenant,
+		)
 	}
 	err = s.setTenant(ctx, tmpObject, assignedTenant)
 	if err != nil {
