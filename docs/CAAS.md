@@ -6,58 +6,52 @@ OSAC CLI and API.
 ## Prerequisites
 
 - `osac` installed and authenticated (`osac login`)
-- A cluster template published by your provider
+- A cluster catalog item published by your provider
 
 ## Workflow Overview
 
-1. Browse available cluster templates
-2. Create a cluster from a template
+1. Browse available cluster catalog items
+2. Create a cluster from a catalog item
 3. Wait for the cluster to become ready
 4. Access the cluster (kubeconfig, console, admin password)
 5. Scale nodes as needed
 6. Delete the cluster when done
 
-## Browse Cluster Templates
+## Browse Cluster Catalog Items
 
-List all available templates:
-
-```bash
-osac get cluster-templates
-```
-
-Inspect a specific template to see its parameters and default node sets:
+List all available catalog items:
 
 ```bash
-osac get cluster-templates <template-id> -o yaml
+osac get cluster-catalog-items
 ```
 
-Key fields in a template:
+Inspect a specific catalog item to see its fields and defaults:
 
-- **`parameters`**: Input parameters for cluster creation. Each parameter has a `name`, `type`,
-  whether it is `required`, and optionally a `default` value.
-- **`node_sets`**: Default node set configuration. Each node set specifies a `host_class` (hardware
-  type) and initial `size` (number of nodes).
+```bash
+osac get cluster-catalog-items <catalog-item-id> -o yaml
+```
+
+Key fields in a catalog item:
+
+- **`title`**: Human-friendly short description of the offering.
+- **`description`**: Detailed Markdown description of what the catalog item provides.
+- **`field_definitions`**: Definitions of the fields that users can set when creating a cluster,
+  including which fields are required, their types, and default values.
 
 ## Create a Cluster
 
-Create a cluster using a template, providing any required parameters:
+Create a cluster using a catalog item:
 
 ```bash
 osac create cluster \
-  --template hosted_cluster \
-  --template-parameter cluster_version=4.16
+  --catalog-item hosted_cluster_offering
 ```
 
 Optional flags:
 
 - `-n, --name <name>` - Human-readable name for the cluster
-- `-p, --template-parameter <name=value>` - Template parameter (repeatable)
-- `-f, --template-parameter-file <name=filename>` - Template parameter from file (repeatable)
 
 The command outputs the cluster ID upon successful creation.
-
-If you don't specify `node_sets`, the template defaults are used. Node sets can be customized
-after creation via `edit`.
 
 ## Check Cluster Status
 
@@ -160,6 +154,8 @@ All CLI operations correspond to REST API endpoints:
 
 | Operation | Method | Endpoint |
 |-----------|--------|----------|
+| List catalog items | `GET` | `/api/fulfillment/v1/cluster_catalog_items` |
+| Get catalog item | `GET` | `/api/fulfillment/v1/cluster_catalog_items/{id}` |
 | List clusters | `GET` | `/api/fulfillment/v1/clusters` |
 | Get cluster | `GET` | `/api/fulfillment/v1/clusters/{id}` |
 | Create cluster | `POST` | `/api/fulfillment/v1/clusters` |
@@ -167,7 +163,5 @@ All CLI operations correspond to REST API endpoints:
 | Delete cluster | `DELETE` | `/api/fulfillment/v1/clusters/{id}` |
 | Get kubeconfig | `GET` | `/api/fulfillment/v1/clusters/{id}/kubeconfig` |
 | Get password | `GET` | `/api/fulfillment/v1/clusters/{id}/password` |
-| List templates | `GET` | `/api/fulfillment/v1/cluster_templates` |
-| Get template | `GET` | `/api/fulfillment/v1/cluster_templates/{id}` |
 
 See [Filter expressions](FILTER.md) for filtering and ordering list results.
