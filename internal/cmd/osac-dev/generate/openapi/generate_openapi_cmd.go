@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v2"
@@ -299,6 +300,12 @@ func (c *runnerContext) generateModule(ctx context.Context, moduleDir string) er
 	// Calculate the base name for the output files:
 	moduleName := filepath.Base(moduleDir)
 
+	// Set the spec title and remove the default servers entry:
+	err = c.setSpecMetadata(v3TmpFile, moduleName)
+	if err != nil {
+		return err
+	}
+
 	// Write the files to the output directory:
 	v2OutDir := filepath.Join(c.outputDir, "v2")
 	err = os.MkdirAll(v2OutDir, 0700)
@@ -359,6 +366,30 @@ func (r *runnerContext) copyFile(ctx context.Context, src, dst string) error {
 	}()
 	_, err = io.Copy(dstStream, srcStream)
 	return err
+}
+
+func (r *runnerContext) setSpecMetadata(path, moduleName string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var spec map[string]any
+	err = yaml.Unmarshal(content, &spec)
+	if err != nil {
+		return fmt.Errorf("failed to parse OpenAPI spec '%s': %w", path, err)
+	}
+	info, _ := spec["info"].(map[any]any)
+	if info == nil {
+		info = make(map[any]any)
+		spec["info"] = info
+	}
+	info["title"] = fmt.Sprintf("OSAC %s API", strings.ToUpper(moduleName[:1])+moduleName[1:])
+	delete(spec, "servers")
+	out, err := yaml.Marshal(spec)
+	if err != nil {
+		return fmt.Errorf("failed to marshal OpenAPI spec: %w", err)
+	}
+	return os.WriteFile(path, out, 0644)
 }
 
 // fixStreamingResultSchemaNames fixes the names of schemas for streaming methods, replacing 'Stream result of ...'
