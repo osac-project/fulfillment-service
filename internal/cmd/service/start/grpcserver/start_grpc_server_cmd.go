@@ -830,6 +830,34 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	privatev1.RegisterNetworkClassesServer(grpcServer, privateNetworkClassesServer)
 
+	// Create the instance types server:
+	c.logger.InfoContext(ctx, "Creating instance types server")
+	instanceTypesServer, err := servers.NewInstanceTypesServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(publicAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create instance types server: %w", err)
+	}
+	publicv1.RegisterInstanceTypesServer(grpcServer, instanceTypesServer)
+
+	// Create the private instance types server:
+	c.logger.InfoContext(ctx, "Creating private instance types server")
+	privateInstanceTypesServer, err := servers.NewPrivateInstanceTypesServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private instance types server: %w", err)
+	}
+	privatev1.RegisterInstanceTypesServer(grpcServer, privateInstanceTypesServer)
+
 	// Create the roles server:
 	c.logger.InfoContext(ctx, "Creating roles server")
 	rolesServer, err := servers.NewRolesServer().
