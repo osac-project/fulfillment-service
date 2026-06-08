@@ -384,12 +384,26 @@ func (r *runnerContext) setSpecMetadata(path, moduleName string) error {
 		spec["info"] = info
 	}
 	info["title"] = fmt.Sprintf("OSAC %s API", strings.ToUpper(moduleName[:1])+moduleName[1:])
-	delete(spec, "servers")
+	removeDefaultServers(spec)
 	out, err := yaml.Marshal(spec)
 	if err != nil {
 		return fmt.Errorf("failed to marshal OpenAPI spec: %w", err)
 	}
 	return os.WriteFile(path, out, 0644)
+}
+
+func removeDefaultServers(spec map[string]any) {
+	servers, ok := spec["servers"].([]any)
+	if !ok || len(servers) != 1 {
+		return
+	}
+	server, ok := servers[0].(map[any]any)
+	if !ok {
+		return
+	}
+	if url, _ := server["url"].(string); url == "/" {
+		delete(spec, "servers")
+	}
 }
 
 // fixStreamingResultSchemaNames fixes the names of schemas for streaming methods, replacing 'Stream result of ...'
