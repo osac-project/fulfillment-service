@@ -296,6 +296,7 @@ func (c *runnerContext) registerHandlers(ctx context.Context, mux *runtime.Serve
 		publicv1.RegisterRoleBindingsHandler,
 		publicv1.RegisterConsoleSessionsHandler,
 		publicv1.RegisterJsonWebKeySetHandler,
+		publicv1.RegisterInstanceTypesHandler,
 
 		// Private API:
 		privatev1.RegisterCapabilitiesHandler,
@@ -317,6 +318,7 @@ func (c *runnerContext) registerHandlers(ctx context.Context, mux *runtime.Serve
 		privatev1.RegisterPublicIPAttachmentsHandler,
 		privatev1.RegisterRolesHandler,
 		privatev1.RegisterRoleBindingsHandler,
+		privatev1.RegisterInstanceTypesHandler,
 	}
 	for _, register := range handlers {
 		if err := register(ctx, mux, c.grpcClient); err != nil {
