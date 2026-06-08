@@ -207,6 +207,8 @@ spec:
               "/osac.public.v1.Events/Watch",
               "/osac.public.v1.HostTypes/Get",
               "/osac.public.v1.HostTypes/List",
+              "/osac.public.v1.InstanceTypes/Get",
+              "/osac.public.v1.InstanceTypes/List",
               "/osac.public.v1.NetworkClasses/Create",
               "/osac.public.v1.NetworkClasses/Delete",
               "/osac.public.v1.NetworkClasses/Get",
