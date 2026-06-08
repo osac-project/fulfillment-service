@@ -87,6 +87,16 @@ message SecurityGroupSpec {
   //
   // Example: Allow all outbound traffic, or restrict to specific destinations
   repeated SecurityRule egress = 3;
+
+  // Implementation strategy that determines the backend used to enforce security rules.
+  // Set by the system at creation time. Immutable after creation.
+  //
+  // Known values:
+  //   - "network_policy": standard Kubernetes NetworkPolicy (current default)
+  string implementation_strategy = 4 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.field_behavior) = IMMUTABLE
+  ];
 }
 
 // Defines a single firewall rule for network traffic filtering.
