@@ -401,8 +401,10 @@ func removeDefaultServers(spec map[string]any) {
 	if !ok {
 		return
 	}
-	if url, _ := server["url"].(string); url == "/" {
-		delete(spec, "servers")
+	if len(server) == 1 {
+		if url, _ := server["url"].(string); url == "/" {
+			delete(spec, "servers")
+		}
 	}
 }
 
