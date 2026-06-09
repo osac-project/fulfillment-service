@@ -15,6 +15,7 @@ package servers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -1180,6 +1181,175 @@ var _ = Describe("Private subnets server", func() {
 
 		// SUB-VAL-12, SUB-VAL-13: Tenant isolation for Delete and List operations
 		// are covered by servers_tenancy_test.go, not validation tests
+
+		Context("Deletion validation", func() {
+			var computeInstancesDao *dao.GenericDAO[*privatev1.ComputeInstance]
+
+			BeforeEach(func() {
+				var err error
+				computeInstancesDao, err = dao.NewGenericDAO[*privatev1.ComputeInstance]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("rejects deletion when a compute instance uses the subnet", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+
+				createResponse, err := server.Create(ctx, privatev1.SubnetsCreateRequest_builder{
+					Object: privatev1.Subnet_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.SubnetSpec_builder{
+							Ipv4Cidr:       new("10.0.1.0/24"),
+							VirtualNetwork: vn.GetId(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				subnetID := createResponse.GetObject().GetId()
+
+				_, err = computeInstancesDao.Create().
+					SetObject(privatev1.ComputeInstance_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnetID,
+								}.Build(),
+							},
+						}.Build(),
+					}.Build()).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = server.Delete(ctx, privatev1.SubnetsDeleteRequest_builder{
+					Id: subnetID,
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+				Expect(status.Message()).To(ContainSubstring("compute instance"))
+			})
+
+			It("allows deletion when no compute instances use the subnet", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+
+				createResponse, err := server.Create(ctx, privatev1.SubnetsCreateRequest_builder{
+					Object: privatev1.Subnet_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.SubnetSpec_builder{
+							Ipv4Cidr:       new("10.0.1.0/24"),
+							VirtualNetwork: vn.GetId(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				subnetID := createResponse.GetObject().GetId()
+
+				_, err = server.Delete(ctx, privatev1.SubnetsDeleteRequest_builder{
+					Id: subnetID,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("rejects creating a compute instance referencing a deleted subnet", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+
+				createResponse, err := server.Create(ctx, privatev1.SubnetsCreateRequest_builder{
+					Object: privatev1.Subnet_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.SubnetSpec_builder{
+							Ipv4Cidr:       new("10.0.1.0/24"),
+							VirtualNetwork: vn.GetId(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				subnetID := createResponse.GetObject().GetId()
+
+				// Soft-delete the subnet:
+				_, err = server.Delete(ctx, privatev1.SubnetsDeleteRequest_builder{
+					Id: subnetID,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				// Try to create a compute instance referencing the deleted subnet:
+				_, err = computeInstancesDao.Create().
+					SetObject(privatev1.ComputeInstance_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnetID,
+								}.Build(),
+							},
+						}.Build(),
+					}.Build()).
+					Do(ctx)
+				Expect(err).To(HaveOccurred())
+				var referenceErr *dao.ErrReference
+				Expect(errors.As(err, &referenceErr)).To(BeTrue())
+				Expect(referenceErr.Reason).To(ContainSubstring(subnetID))
+			})
+
+			It("allows deletion when compute instance using it is itself deleted", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+
+				createResponse, err := server.Create(ctx, privatev1.SubnetsCreateRequest_builder{
+					Object: privatev1.Subnet_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.SubnetSpec_builder{
+							Ipv4Cidr:       new("10.0.1.0/24"),
+							VirtualNetwork: vn.GetId(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				subnetID := createResponse.GetObject().GetId()
+
+				ciCreateResponse, err := computeInstancesDao.Create().
+					SetObject(privatev1.ComputeInstance_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnetID,
+								}.Build(),
+							},
+						}.Build(),
+					}.Build()).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Soft-delete the compute instance first:
+				_, err = computeInstancesDao.Delete().
+					SetId(ciCreateResponse.GetObject().GetId()).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Subnet deletion should now succeed:
+				_, err = server.Delete(ctx, privatev1.SubnetsDeleteRequest_builder{
+					Id: subnetID,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
 	})
 
 	Describe("GenericDAO Subnet operations", func() {
