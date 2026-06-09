@@ -33,7 +33,10 @@ var _ = Describe("Capabilities server", func() {
 		It("Can be built if all the required parameters are set", func() {
 			server, err := NewCapabilitiesServer().
 				SetLogger(logger).
-				AddAutnTrustedTokenIssuers("https://my-issuer.com").
+				AddAuthnTrustedTokenIssuers(TokenIssuerPair{
+					InternalURL: "https://internal-issuer.com",
+					ExternalURL: "https://external-issuer.com",
+				}).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(server).ToNot(BeNil())
@@ -41,7 +44,10 @@ var _ = Describe("Capabilities server", func() {
 
 		It("Fails if logger is not set", func() {
 			server, err := NewCapabilitiesServer().
-				AddAutnTrustedTokenIssuers("https://my-issuer.com").
+				AddAuthnTrustedTokenIssuers(TokenIssuerPair{
+					InternalURL: "https://internal-issuer.com",
+					ExternalURL: "https://external-issuer.com",
+				}).
 				Build()
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError("logger is mandatory"))
@@ -50,82 +56,56 @@ var _ = Describe("Capabilities server", func() {
 	})
 
 	Describe("Behaviour", func() {
-		It("Returns no token issuer", func() {
+		It("Returns no token issuers when none are configured", func() {
 			server, err := NewCapabilitiesServer().
 				SetLogger(logger).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
 			Expect(err).ToNot(HaveOccurred())
-			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(BeEmpty())
+			Expect(response.GetAuthn().GetTrustedTokenIssuers()).To(BeEmpty())
 		})
 
-		It("Returns one token issuer", func() {
+		It("Returns one token issuer with internal and external URLs", func() {
 			server, err := NewCapabilitiesServer().
 				SetLogger(logger).
-				AddAutnTrustedTokenIssuers("https://my-issuer.com").
+				AddAuthnTrustedTokenIssuers(TokenIssuerPair{
+					InternalURL: "https://internal-issuer.com",
+					ExternalURL: "https://external-issuer.com",
+				}).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
 			Expect(err).ToNot(HaveOccurred())
 			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(Equal([]string{"https://my-issuer.com"}))
+			Expect(issuers).To(HaveLen(1))
+			Expect(issuers[0].GetInternalUrl()).To(Equal("https://internal-issuer.com"))
+			Expect(issuers[0].GetExternalUrl()).To(Equal("https://external-issuer.com"))
 		})
 
-		It("Returns two token issuers", func() {
+		It("Returns multiple token issuers in order", func() {
 			server, err := NewCapabilitiesServer().
 				SetLogger(logger).
-				AddAutnTrustedTokenIssuers(
-					"https://my-issuer.com",
-					"https://your-issuer.com",
+				AddAuthnTrustedTokenIssuers(
+					TokenIssuerPair{
+						InternalURL: "https://internal-a.com",
+						ExternalURL: "https://external-a.com",
+					},
+					TokenIssuerPair{
+						InternalURL: "https://internal-b.com",
+						ExternalURL: "https://external-b.com",
+					},
 				).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
 			Expect(err).ToNot(HaveOccurred())
 			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(HaveExactElements(
-				"https://my-issuer.com",
-				"https://your-issuer.com",
-			))
-		})
-
-		It("Sorts the token issuers", func() {
-			server, err := NewCapabilitiesServer().
-				SetLogger(logger).
-				AddAutnTrustedTokenIssuers(
-					"https://your-issuer.com",
-					"https://my-issuer.com",
-				).
-				Build()
-			Expect(err).ToNot(HaveOccurred())
-			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
-			Expect(err).ToNot(HaveOccurred())
-			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(HaveExactElements(
-				"https://my-issuer.com",
-				"https://your-issuer.com",
-			))
-		})
-
-		It("Removes duplicates from the token issuers", func() {
-			server, err := NewCapabilitiesServer().
-				SetLogger(logger).
-				AddAutnTrustedTokenIssuers(
-					"https://my-issuer.com",
-					"https://your-issuer.com",
-					"https://my-issuer.com",
-				).
-				Build()
-			Expect(err).ToNot(HaveOccurred())
-			response, err := server.Get(ctx, &publicv1.CapabilitiesGetRequest{})
-			Expect(err).ToNot(HaveOccurred())
-			issuers := response.GetAuthn().GetTrustedTokenIssuers()
-			Expect(issuers).To(HaveExactElements(
-				"https://my-issuer.com",
-				"https://your-issuer.com",
-			))
+			Expect(issuers).To(HaveLen(2))
+			Expect(issuers[0].GetInternalUrl()).To(Equal("https://internal-a.com"))
+			Expect(issuers[0].GetExternalUrl()).To(Equal("https://external-a.com"))
+			Expect(issuers[1].GetInternalUrl()).To(Equal("https://internal-b.com"))
+			Expect(issuers[1].GetExternalUrl()).To(Equal("https://external-b.com"))
 		})
 	})
 })

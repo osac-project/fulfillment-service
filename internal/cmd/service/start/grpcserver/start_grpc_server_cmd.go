@@ -390,11 +390,17 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		return fmt.Errorf("failed to create system attribution logic: %w", err)
 	}
 
+	// Parse the token issuers from the "internalUrl=externalUrl" flag format:
+	tokenIssuers, err := parseTokenIssuers(c.args.trustedTokenIssuers)
+	if err != nil {
+		return fmt.Errorf("failed to parse token issuers: %w", err)
+	}
+
 	// Create the capabilities servers:
 	c.logger.InfoContext(ctx, "Creating capabilities servers")
 	capabilitiesServer, err := servers.NewCapabilitiesServer().
 		SetLogger(c.logger).
-		AddAutnTrustedTokenIssuers(c.args.trustedTokenIssuers...).
+		AddAuthnTrustedTokenIssuers(tokenIssuers...).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create public capabilities server: %w", err)
@@ -402,7 +408,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	publicv1.RegisterCapabilitiesServer(grpcServer, capabilitiesServer)
 	privateCapabilitiesServer, err := servers.NewPrivateCapabilitiesServer().
 		SetLogger(c.logger).
-		AddAuthnTrustedTokenIssuers(c.args.trustedTokenIssuers...).
+		AddAuthnTrustedTokenIssuers(tokenIssuers...).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create private capabilities server: %w", err)
@@ -1155,9 +1161,29 @@ format. Used for TLS connections to the external auth service.
 `
 
 const grpcAuthnTrustedTokenIssuersFlagHelp = `
-_ISSUERS_ - Comma separated list of token issuers that
-are advertised as trusted by the gRPC server.
+_ISSUERS_ - Comma separated list of token issuers to advertise. Each entry must be in the format
+{{ bt }}internalUrl=externalUrl{{ bt }}, where {{ bt }}internalUrl{{ bt }} is the in-cluster Keycloak
+realm URL used for server-side token validation, and {{ bt }}externalUrl{{ bt }} is the publicly
+accessible URL that browsers and external CLI users should use to perform OAuth flows.
 `
+
+// parseTokenIssuers parses the "internalUrl=externalUrl" flag values into tokenIssuerPairs.
+func parseTokenIssuers(values []string) ([]servers.TokenIssuerPair, error) {
+	result := make([]servers.TokenIssuerPair, 0, len(values))
+	for _, v := range values {
+		idx := strings.Index(v, "=")
+		if idx < 0 {
+			return nil, fmt.Errorf(
+				"token issuer %q is not in the required 'internalUrl=externalUrl' format", v,
+			)
+		}
+		result = append(result, servers.TokenIssuerPair{
+			InternalURL: v[:idx],
+			ExternalURL: v[idx+1:],
+		})
+	}
+	return result, nil
+}
 
 const tenancyLogicFlagHelp = `
 _LOGIC_ - Type of tenancy logic to use. Valid values are

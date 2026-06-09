@@ -29,14 +29,18 @@ The following table lists the configurable parameters of the chart and their def
 | `certs.caBundle.configMap` | Name of configmap containing trusted CA certificates in PEM format | Required                                                       |
 | `externalHostname`         | Hostname used to access the public API from outside the cluster (see note below) | None                                                |
 | `internalHostname`         | Hostname used to access both the public and private APIs (see note below)        | None                                                |
-| `auth.issuerUrl`           | OAuth issuer URL for authentication                                | `https://keycloak.keycloak.svc.cluster.local:8000/realms/osac` |
+| `auth.issuerUrl`           | In-cluster OAuth issuer URL for token validation                   | None |
+| `auth.externalIssuerUrl`   | External OAuth issuer URL for browsers and external CLI clients    | None                                                           |
 | `log.level`                | Log level for all components (debug, info, warn, error)            | `info`                                                         |
 | `log.headers`              | Enable logging of HTTP/gRPC headers                                | `false`                                                        |
 | `log.bodies`               | Enable logging of HTTP/gRPC request and response bodies            | `false`                                                        |
 | `images.service`           | Fulfillment service container image                                | `ghcr.io/osac/fulfillment-service:main`                        |
+| `images.ui`                | UI container image                                                 | `ghcr.io/osac/osac-ui:main`                                    |
 | `images.envoy`             | Envoy proxy container image                                        | `docker.io/envoyproxy/envoy:v1.37.1`                           |
 | `database.connection`      | List of sources for database connection parameters (see below)     | `[]`                                                           |
-
+| `ui.enabled`               | Deploy the UI as part of this chart                                | `true`                                                         |
+| `ui.hostname`              | External hostname for the UI                                       | None                                                           |
+| `ui.oidcClientId`          | OIDC client ID registered in Keycloak for the UI                   | `osac-ui`                                                      |
 **Note on `internalHostname`:** The internal API exposes both the public and private APIs. The
 administrator is responsible for ensuring that this hostname is accessible only from the internal
 network and not accessible to regular users. This isn't strictly required because access is subject

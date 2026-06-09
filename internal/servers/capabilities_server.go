@@ -17,7 +17,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"slices"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
@@ -25,7 +24,7 @@ import (
 // CapabilitiesServerBuilder contains the data and logic needed to create a new capabilities server.
 type CapabilitiesServerBuilder struct {
 	logger                   *slog.Logger
-	authnTrustedTokenIssuers []string
+	authnTrustedTokenIssuers []TokenIssuerPair
 }
 
 // Make sure that we implement the interface:
@@ -36,7 +35,7 @@ type CapabilitiesServer struct {
 	publicv1.UnimplementedCapabilitiesServer
 
 	logger                   *slog.Logger
-	authnTrustedTokenIssuers []string
+	authnTrustedTokenIssuers []TokenIssuerPair
 }
 
 // NewCapabilitiesServer creates a builder that can the be used to configure and create a new capabilities server.
@@ -50,29 +49,21 @@ func (b *CapabilitiesServerBuilder) SetLogger(value *slog.Logger) *CapabilitiesS
 	return b
 }
 
-// AddAutnTrustedTokenIssuers adds a list of token issuers whose tokens are accepted by the server for authentication.
-func (b *CapabilitiesServerBuilder) AddAutnTrustedTokenIssuers(value ...string) *CapabilitiesServerBuilder {
+// AddAuthnTrustedTokenIssuers adds token issuers to the list of issuers advertised by the server.
+func (b *CapabilitiesServerBuilder) AddAuthnTrustedTokenIssuers(value ...TokenIssuerPair) *CapabilitiesServerBuilder {
 	b.authnTrustedTokenIssuers = append(b.authnTrustedTokenIssuers, value...)
 	return b
 }
 
-// Build uses the data stored in the builder to create a new metadata server.
+// Build uses the data stored in the builder to create a new capabilities server.
 func (b *CapabilitiesServerBuilder) Build() (result *CapabilitiesServer, err error) {
-	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
 		return
 	}
-
-	// Make sure that the list of issuers doens't have duplicates, and that it is sorted in a predictable way:
-	authnTrustedTokenIssuers := slices.Clone(b.authnTrustedTokenIssuers)
-	slices.Sort(authnTrustedTokenIssuers)
-	authnTrustedTokenIssuers = slices.Compact(authnTrustedTokenIssuers)
-
-	// Create and populate the object:
 	result = &CapabilitiesServer{
 		logger:                   b.logger,
-		authnTrustedTokenIssuers: authnTrustedTokenIssuers,
+		authnTrustedTokenIssuers: b.authnTrustedTokenIssuers,
 	}
 	return
 }
@@ -80,9 +71,16 @@ func (b *CapabilitiesServerBuilder) Build() (result *CapabilitiesServer, err err
 // Get is the implementation of the method that returns the capabilities of the server.
 func (s *CapabilitiesServer) Get(ctx context.Context,
 	request *publicv1.CapabilitiesGetRequest) (response *publicv1.CapabilitiesGetResponse, err error) {
+	issuers := make([]*publicv1.TokenIssuer, len(s.authnTrustedTokenIssuers))
+	for i, p := range s.authnTrustedTokenIssuers {
+		issuers[i] = publicv1.TokenIssuer_builder{
+			InternalUrl: p.InternalURL,
+			ExternalUrl: p.ExternalURL,
+		}.Build()
+	}
 	response = publicv1.CapabilitiesGetResponse_builder{
 		Authn: &publicv1.AuthnCapabilities{
-			TrustedTokenIssuers: s.authnTrustedTokenIssuers,
+			TrustedTokenIssuers: issuers,
 		},
 	}.Build()
 	return response, nil

@@ -1,0 +1,16 @@
+{{- if .Values.ui.enabled }}
+{{- $caBundleConfigMap := required "certs.caBundle.configMap is required" .Values.certs.caBundle.configMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: osac-ui
+data:
+  PORT: "8080"
+  HOST: "0.0.0.0"
+  LOG_LEVEL: {{ .Values.log.level | quote }}
+  FULFILLMENT_API_URL: https://fulfillment-api:8000"
+  FULFILLMENT_TLS_CA_FILE: "/etc/osac-ui/tls/cas/bundle.pem"
+  OIDC_TLS_CA_FILE: "/etc/osac-ui/tls/cas/bundle.pem"
+  OIDC_CLIENT_ID: {{ .Values.ui.oidcClientId | quote }}
+{{- end }}

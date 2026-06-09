@@ -459,7 +459,8 @@ func (c *runnerContext) fetchCapabilities(ctx context.Context,
 func (c *runnerContext) selectTokenIssuer(ctx context.Context, capabilities *publicv1.CapabilitiesGetResponse) (result string, err error) {
 	advertisedIssuers := capabilities.GetAuthn().GetTrustedTokenIssuers()
 	if len(advertisedIssuers) > 0 {
-		result = advertisedIssuers[0]
+		// The CLI runs outside the cluster, so use the external URL for OAuth flows.
+		result = advertisedIssuers[0].GetExternalUrl()
 		if len(advertisedIssuers) > 1 {
 			c.logger.WarnContext(
 				ctx,

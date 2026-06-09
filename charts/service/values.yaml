@@ -50,8 +50,14 @@ internalHostname:
 # Authentication and authorization configuration:
 auth:
 
-  # This defines the URL of the OAuth issuer used for authentication. This parameter is mandatory.
+  # This defines the in-cluster URL of the OAuth issuer (Keycloak realm) used for authentication.
+  # This is the internal service URL, used for server-side token validation and by in-cluster clients.
+  # This parameter is mandatory.
   issuerUrl:
+
+  # This defines the external URL of the OAuth issuer (Keycloak realm) that clients outside the
+  # cluster (browsers, CLI) should use to perform OAuth flows. This parameter is mandatory.
+  externalIssuerUrl:
 
   # List of sources for the OAuth client credentials used by the controller to authenticate to the fulfillment API.
   # The controller uses the OAuth client credentials flow with the issuer URL specified in `auth.issuerUrl`.
@@ -105,6 +111,7 @@ log:
 # Image configuration:
 images:
   service: ghcr.io/osac/fulfillment-service:main
+  ui: ghcr.io/osac/osac-ui:main
   envoy: docker.io/envoyproxy/envoy:v1.37.1
 
 # Database connection configuration. The service expects an external PostgreSQL database to be available. The database
@@ -179,3 +186,16 @@ idp:
   #
   # This parameter is mandatory.
   credentials:
+
+# UI configuration:
+ui:
+
+  # This controls whether the UI is deployed as part of this chart.
+  enabled: true
+
+  # External hostname for the UI.
+  # Must match the redirect URI registered in Keycloak.
+  hostname:
+
+  # OIDC client ID registered in Keycloak (realm: osac) for the UI application.
+  oidcClientId: osac-ui

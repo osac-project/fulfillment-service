@@ -17,7 +17,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"slices"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 )
@@ -25,7 +24,7 @@ import (
 // PrivateCapabilitiesServerBuilder contains the data and logic needed to create a new private capabilities server.
 type PrivateCapabilitiesServerBuilder struct {
 	logger                   *slog.Logger
-	authnTrustedTokenIssuers []string
+	authnTrustedTokenIssuers []TokenIssuerPair
 }
 
 var _ privatev1.CapabilitiesServer = (*PrivateCapabilitiesServer)(nil)
@@ -35,7 +34,7 @@ type PrivateCapabilitiesServer struct {
 	privatev1.UnimplementedCapabilitiesServer
 
 	logger                   *slog.Logger
-	authnTrustedTokenIssuers []string
+	authnTrustedTokenIssuers []TokenIssuerPair
 }
 
 // NewPrivateCapabilitiesServer creates a builder that can then be used to configure and create a new private
@@ -50,10 +49,8 @@ func (b *PrivateCapabilitiesServerBuilder) SetLogger(value *slog.Logger) *Privat
 	return b
 }
 
-// AddAuthnTrustedTokenIssuers adds a list of token issuers whose tokens are accepted by the server for
-// authentication.
-func (b *PrivateCapabilitiesServerBuilder) AddAuthnTrustedTokenIssuers(
-	value ...string) *PrivateCapabilitiesServerBuilder {
+// AddAuthnTrustedTokenIssuers adds token issuers to the list of issuers advertised by the server.
+func (b *PrivateCapabilitiesServerBuilder) AddAuthnTrustedTokenIssuers(value ...TokenIssuerPair) *PrivateCapabilitiesServerBuilder {
 	b.authnTrustedTokenIssuers = append(b.authnTrustedTokenIssuers, value...)
 	return b
 }
@@ -64,14 +61,9 @@ func (b *PrivateCapabilitiesServerBuilder) Build() (result *PrivateCapabilitiesS
 		err = errors.New("logger is mandatory")
 		return
 	}
-
-	authnTrustedTokenIssuers := slices.Clone(b.authnTrustedTokenIssuers)
-	slices.Sort(authnTrustedTokenIssuers)
-	authnTrustedTokenIssuers = slices.Compact(authnTrustedTokenIssuers)
-
 	result = &PrivateCapabilitiesServer{
 		logger:                   b.logger,
-		authnTrustedTokenIssuers: authnTrustedTokenIssuers,
+		authnTrustedTokenIssuers: b.authnTrustedTokenIssuers,
 	}
 	return
 }
@@ -79,9 +71,16 @@ func (b *PrivateCapabilitiesServerBuilder) Build() (result *PrivateCapabilitiesS
 // Get is the implementation of the method that returns the capabilities of the server.
 func (s *PrivateCapabilitiesServer) Get(ctx context.Context,
 	request *privatev1.CapabilitiesGetRequest) (response *privatev1.CapabilitiesGetResponse, err error) {
+	issuers := make([]*privatev1.TokenIssuer, len(s.authnTrustedTokenIssuers))
+	for i, p := range s.authnTrustedTokenIssuers {
+		issuers[i] = privatev1.TokenIssuer_builder{
+			InternalUrl: p.InternalURL,
+			ExternalUrl: p.ExternalURL,
+		}.Build()
+	}
 	response = privatev1.CapabilitiesGetResponse_builder{
 		Authn: &privatev1.AuthnCapabilities{
-			TrustedTokenIssuers: s.authnTrustedTokenIssuers,
+			TrustedTokenIssuers: issuers,
 		},
 	}.Build()
 	return response, nil

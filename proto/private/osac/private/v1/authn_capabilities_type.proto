@@ -15,8 +15,19 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+// Represents an OAuth token issuer with both an in-cluster and an external URL.
+message TokenIssuer {
+  // The in-cluster URL of the OAuth issuer. Used by services running inside the cluster for
+  // server-side token validation.
+  string internal_url = 1;
+
+  // The externally accessible URL of the OAuth issuer. Clients running outside the cluster
+  // (browsers, CLI) should use this URL to perform OAuth flows.
+  string external_url = 2;
+}
+
 // Contains the information that helps client know how authentication is managed by the server.
 message AuthnCapabilities {
-  // A list of the OAuth issuers whose access tokens are accepted by the server for authentication.
-  repeated string trusted_token_issuers = 1;
+  // A list of the OAuth token issuers trusted by the server, each with an internal and external URL.
+  repeated TokenIssuer trusted_token_issuers = 1;
 }

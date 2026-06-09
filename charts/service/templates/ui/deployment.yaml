@@ -1,0 +1,54 @@
+{{- if .Values.ui.enabled }}
+{{- $caBundleConfigMap := required "certs.caBundle.configMap is required" .Values.certs.caBundle.configMap }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: osac-ui
+spec:
+  selector:
+    matchLabels:
+      app: osac-ui
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: osac-ui
+    spec:
+      volumes:
+      - name: cas
+        configMap:
+          name: {{ $caBundleConfigMap }}
+      containers:
+      - name: osac-ui
+        image: {{ .Values.images.ui }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        - name: cas
+          mountPath: /etc/osac-ui/tls/cas
+        envFrom:
+        - configMapRef:
+            name: osac-ui
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+{{- end }}

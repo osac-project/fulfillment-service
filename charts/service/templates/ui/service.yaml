@@ -1,0 +1,58 @@
+{{- if .Values.ui.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: osac-ui
+spec:
+  selector:
+    app: osac-ui
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+
+---
+
+{{ if eq .Values.variant "openshift" }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: osac-ui
+spec:
+  {{- if .Values.ui.hostname }}
+  host: {{ .Values.ui.hostname }}
+  {{- end }}
+  to:
+    kind: Service
+    name: osac-ui
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{ end }}
+
+{{ if eq .Values.variant "kind" }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: osac-ui
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    namespace: envoy-gateway
+    name: default
+  {{- if .Values.ui.hostname }}
+  hostnames:
+  - {{ .Values.ui.hostname }}
+  {{- end }}
+  rules:
+  - backendRefs:
+    - name: osac-ui
+      port: 80
+{{ end }}
+{{- end }}
