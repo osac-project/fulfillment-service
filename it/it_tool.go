@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -74,7 +75,7 @@ var ServiceAccountTenants = map[string]string{
 
 var OIDCTenants = map[string][]string{
 	"adam":    {"engineering"},
-	"ben":     {"engineering", "sales"},
+	"ben":     {"development"},
 	"charles": {"sales"},
 }
 
@@ -426,6 +427,12 @@ func (t *Tool) Setup(ctx context.Context) error {
 
 	// Create the test tenants:
 	err = t.createTenants(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Add users to Keycloak Organizations:
+	err = t.addUsersToKeycloakOrganizations(ctx)
 	if err != nil {
 		return err
 	}
@@ -1775,21 +1782,243 @@ func (t *Tool) createTenants(ctx context.Context) error {
 	// have two tenants, one for regular users and one for system administrators. System administrators belong to
 	// the 'system' tenant, which is built-in and doesn't need to be explicitly created, so we only need to create
 	// the tenant for regular users. Tests may create additional tenants as needed.
-	tenantsClient := privatev1.NewTenantsClient(t.internalView.adminConn)
-	_, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
-		Object: privatev1.Tenant_builder{
-			Id: usersGroup,
-			Metadata: privatev1.Metadata_builder{
-				Name:   usersGroup,
-				Tenant: usersGroup,
-			}.Build(),
-		}.Build(),
-	}.Build())
-	status, ok := grpcstatus.FromError(err)
-	if ok && status.Code() == grpccodes.AlreadyExists {
-		err = nil
+	uniqueTenants := make(map[string]bool)
+	uniqueTenants[usersGroup] = true
+	for _, tenants := range OIDCTenants {
+		for _, tenant := range tenants {
+			uniqueTenants[tenant] = true
+		}
 	}
-	return err
+	tenantsClient := privatev1.NewTenantsClient(t.internalView.adminConn)
+	for tenant := range uniqueTenants {
+		_, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   tenant,
+					Tenant: tenant,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		status, ok := grpcstatus.FromError(err)
+		if ok && status.Code() == grpccodes.AlreadyExists {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addUsersToKeycloakOrganizations adds test users to their corresponding tenant (Keycloak organization)
+// so that the organization claim is included in their JWT tokens.
+func (t *Tool) addUsersToKeycloakOrganizations(ctx context.Context) error {
+	// Build a map of tenant name to list of users
+	tenantUsers := make(map[string][]string)
+	tenantUsers[usersGroup] = []string{userUsername}
+	for user, tenants := range OIDCTenants {
+		for _, tenant := range tenants {
+			tenantUsers[tenant] = append(tenantUsers[tenant], user)
+		}
+	}
+
+	// For each tenant, get its Keycloak Organization ID and add all users to it
+	for tenantName, users := range tenantUsers {
+		// Wait for the tenant to be synced to Keycloak by the controller
+		var tenantId string
+		backOff := backoff.NewExponentialBackOff()
+		backOff.InitialInterval = 1 * time.Second
+		backOff.MaxInterval = 10 * time.Second
+		backOff.MaxElapsedTime = 60 * time.Second
+		err := backoff.Retry(func() error {
+			query := url.Values{}
+			query.Set("exact", "true")
+			query.Set("search", tenantName)
+			code, body, err := t.KeycloakAdminRequest(ctx, http.MethodGet,
+				"/organizations?"+query.Encode(), nil)
+			if err != nil {
+				return fmt.Errorf("failed to get tenant '%s': %w", tenantName, err)
+			}
+			if code != http.StatusOK {
+				return fmt.Errorf("failed to get tenant '%s': status=%d body=%s", tenantName, code, string(body))
+			}
+
+			var orgs []map[string]any
+			if err := json.Unmarshal(body, &orgs); err != nil {
+				return fmt.Errorf("failed to parse organizations response: %w", err)
+			}
+			if len(orgs) == 0 {
+				t.logger.DebugContext(
+					ctx,
+					"Tenant not yet synced to Keycloak, will retry",
+					"tenant", tenantName,
+				)
+				return fmt.Errorf("tenant '%s' not found in Keycloak", tenantName)
+			}
+
+			id, ok := orgs[0]["id"].(string)
+			if !ok {
+				return fmt.Errorf("tenant '%s' has no id", tenantName)
+			}
+			tenantId = id
+			return nil
+		}, backoff.WithContext(backOff, ctx))
+		if err != nil {
+			return err
+		}
+
+		// Add each user to this tenant
+		for _, username := range users {
+			// Get user ID by username
+			query := url.Values{}
+			query.Set("username", username)
+			query.Set("exact", "true")
+			code, body, err := t.KeycloakAdminRequest(ctx, http.MethodGet,
+				"/users?"+query.Encode(), nil)
+			if err != nil {
+				return fmt.Errorf("failed to get user '%s': %w", username, err)
+			}
+			if code != http.StatusOK {
+				return fmt.Errorf("failed to get user '%s': status=%d body=%s", username, code, string(body))
+			}
+
+			var usersResult []map[string]any
+			if err := json.Unmarshal(body, &usersResult); err != nil {
+				return fmt.Errorf("failed to parse users response: %w", err)
+			}
+			if len(usersResult) == 0 {
+				return fmt.Errorf("user '%s' not found in Keycloak", username)
+			}
+
+			userId, ok := usersResult[0]["id"].(string)
+			if !ok {
+				return fmt.Errorf("user '%s' has no id", username)
+			}
+
+			// Add user to organization
+			code, body, err = t.KeycloakAdminRequest(ctx, http.MethodPost,
+				fmt.Sprintf("/organizations/%s/members", tenantId), userId)
+			if err != nil {
+				return fmt.Errorf("failed to add user '%s' to tenant '%s': %w", username, tenantName, err)
+			}
+			// 201 Created, 204 No Content, or 409 Conflict (already a member) are all acceptable
+			if code != http.StatusCreated && code != http.StatusNoContent && code != http.StatusConflict {
+				return fmt.Errorf("failed to add user '%s' to organization '%s': status=%d body=%s",
+					username, tenantName, code, string(body))
+			}
+
+			t.logger.InfoContext(ctx, "Added user to Keycloak tenant",
+				"!user", username, "!tenant", tenantName)
+		}
+
+		// Create a default group in the tenant and add all users to it.
+		// This is required for the oidc-tenant-group-membership-mapper to include
+		// the tenant in the JWT token's tenant claim.
+		defaultGroupName := "/members"
+		groupPayload := map[string]any{
+			"name": defaultGroupName,
+		}
+		code, body, err := t.KeycloakAdminRequest(ctx, http.MethodPost,
+			fmt.Sprintf("/organizations/%s/groups", tenantId), groupPayload)
+		if err != nil {
+			return fmt.Errorf("failed to create group '%s' in tenant '%s': %w",
+				defaultGroupName, tenantName, err)
+		}
+		// 201 Created or 409 Conflict (already exists) are acceptable
+		if code != http.StatusCreated && code != http.StatusConflict {
+			return fmt.Errorf("failed to create group '%s' in tenant '%s': status=%d body=%s",
+				defaultGroupName, tenantName, code, string(body))
+		}
+
+		// Get the group ID
+		var groupId string
+		if code == http.StatusCreated {
+			// Parse the created group response to get the ID
+			var groupResp map[string]any
+			if err := json.Unmarshal(body, &groupResp); err != nil {
+				return fmt.Errorf("failed to parse group creation response: %w", err)
+			}
+			groupId, _ = groupResp["id"].(string)
+		}
+
+		if groupId == "" {
+			// Group already existed, need to fetch it
+			code, body, err = t.KeycloakAdminRequest(ctx, http.MethodGet,
+				fmt.Sprintf("/organizations/%s/groups", tenantId), nil)
+			if err != nil {
+				return fmt.Errorf("failed to get groups for tenant '%s': %w", tenantName, err)
+			}
+			if code != http.StatusOK {
+				return fmt.Errorf("failed to get groups for tenant '%s': status=%d body=%s",
+					tenantName, code, string(body))
+			}
+
+			var groups []map[string]any
+			if err := json.Unmarshal(body, &groups); err != nil {
+				return fmt.Errorf("failed to parse groups response: %w", err)
+			}
+
+			for _, g := range groups {
+				if name, ok := g["name"].(string); ok && name == defaultGroupName {
+					groupId, _ = g["id"].(string)
+					break
+				}
+			}
+
+			if groupId == "" {
+				return fmt.Errorf("failed to find group '%s' in tenant '%s'",
+					defaultGroupName, tenantName)
+			}
+		}
+
+		// Add all users in this organization to the default group
+		for _, username := range users {
+			// Get user ID by username
+			query := url.Values{}
+			query.Set("username", username)
+			query.Set("exact", "true")
+			code, body, err = t.KeycloakAdminRequest(ctx, http.MethodGet,
+				"/users?"+query.Encode(), nil)
+			if err != nil {
+				return fmt.Errorf("failed to get user '%s': %w", username, err)
+			}
+			if code != http.StatusOK {
+				return fmt.Errorf("failed to get user '%s': status=%d body=%s",
+					username, code, string(body))
+			}
+
+			var usersResult []map[string]any
+			if err := json.Unmarshal(body, &usersResult); err != nil {
+				return fmt.Errorf("failed to parse users response: %w", err)
+			}
+			if len(usersResult) == 0 {
+				return fmt.Errorf("user '%s' not found in Keycloak", username)
+			}
+
+			userId, ok := usersResult[0]["id"].(string)
+			if !ok {
+				return fmt.Errorf("user '%s' has no id", username)
+			}
+
+			// Add user to the group
+			code, body, err = t.KeycloakAdminRequest(ctx, http.MethodPut,
+				fmt.Sprintf("/organizations/%s/groups/%s/members/%s", tenantId, groupId, userId), nil)
+			if err != nil {
+				return fmt.Errorf("failed to add user '%s' to group '%s' in tenant '%s': %w",
+					username, defaultGroupName, tenantName, err)
+			}
+			// 200 OK, 201 Created, 204 No Content, or 409 Conflict (already a member) are all acceptable
+			if code != http.StatusOK && code != http.StatusCreated && code != http.StatusNoContent && code != http.StatusConflict {
+				return fmt.Errorf("failed to add user '%s' to group '%s' in tenant '%s': status=%d body=%s",
+					username, defaultGroupName, tenantName, code, string(body))
+			}
+
+			t.logger.InfoContext(ctx, "Added user to tenant group",
+				"!user", username, "!tenant", tenantName, "group", defaultGroupName)
+		}
+	}
+
+	return nil
 }
 
 func (t *Tool) createUserServiceAccounts(ctx context.Context) error {
@@ -1862,7 +2091,7 @@ func (t *Tool) makeKeycloakTokenSource(ctx context.Context, username, password s
 		SetClientId("osac-cli").
 		SetUsername(username).
 		SetPassword(password).
-		SetScopes("openid").
+		SetScopes("openid", "organization").
 		Build()
 	return
 }
@@ -2470,3 +2699,30 @@ const (
 	adminClientId      = "osac-admin"
 	controllerClientId = "osac-controller"
 )
+
+// ExtractOrganizationNames extracts organization names from a JWT organization claim.
+// The claim can be in two formats:
+// - Array format: ["org1", "org2"]
+// - Object format with groups: {"org1": {"groups": [...]}, "org2": {"groups": [...]}}
+func ExtractOrganizationNames(orgClaim any) ([]string, error) {
+	switch v := orgClaim.(type) {
+	case []any:
+		// Simple array format: ["org-name"]
+		var orgNames []string
+		for _, o := range v {
+			if s, ok := o.(string); ok {
+				orgNames = append(orgNames, s)
+			}
+		}
+		return orgNames, nil
+	case map[string]any:
+		// Object format with groups: {"org-name": {"groups": [...]}}
+		var orgNames []string
+		for orgName := range v {
+			orgNames = append(orgNames, orgName)
+		}
+		return orgNames, nil
+	default:
+		return nil, fmt.Errorf("organization claim should be an array or object, got %T", orgClaim)
+	}
+}

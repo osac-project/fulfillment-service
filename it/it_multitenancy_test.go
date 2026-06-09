@@ -330,6 +330,8 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				}
 				Expect(err).ToNot(HaveOccurred())
 			}
+			// Tenants are already created in tool setup (createTenants),
+			// so we don't need to create them again here.
 		})
 
 		Describe("cluster resources", func() {
@@ -344,6 +346,29 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 				// Create map to track which clusters can be seen by which tenants
 				clusterTenantMapping = make(map[string][]string)
+
+				// Create the tenants used by the tests:
+				tenantsClient := privatev1.NewTenantsClient(tool.InternalView().AdminConn())
+				uniqueTenants := make(map[string]bool)
+				for _, tenants := range OIDCTenants {
+					for _, tenant := range tenants {
+						uniqueTenants[tenant] = true
+					}
+				}
+				for tenant := range uniqueTenants {
+					_, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+						Object: privatev1.Tenant_builder{
+							Metadata: privatev1.Metadata_builder{
+								Name: tenant,
+							}.Build(),
+						}.Build(),
+					}.Build())
+					status, ok := grpcstatus.FromError(err)
+					if ok && status.Code() == grpccodes.AlreadyExists {
+						err = nil
+					}
+					Expect(err).ToNot(HaveOccurred())
+				}
 
 				// Create host type for testing
 				hostTypeId := fmt.Sprintf("oidc-isolation-hosttype-%s", uuid.New())

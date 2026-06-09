@@ -476,8 +476,13 @@ func (i *GrpcAuthzInterceptor) buildInput(ctx context.Context, method string, re
 		if groups := claimAsAnySlice(claims, "groups"); groups != nil {
 			identity["groups"] = groups
 		}
-		if org := claimAsAnySlice(claims, "organization"); org != nil {
-			identity["organization"] = org
+		// Handle organization claim - can be array or object
+		if orgValue := claims["organization"]; orgValue != nil {
+			if orgArray := claimAsAnySlice(claims, "organization"); orgArray != nil {
+				identity["organization"] = orgArray
+			} else if orgObj, ok := orgValue.(map[string]any); ok {
+				identity["organization"] = orgObj
+			}
 		}
 		if orgs := claimAsAnySlice(claims, "organizations"); orgs != nil {
 			identity["organizations"] = orgs

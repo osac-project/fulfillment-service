@@ -528,13 +528,9 @@ var _ = Describe("Tenant authorization boundaries", func() {
 		By("Verifying 'organization' claim contains the org name")
 		orgClaim, ok := claims["organization"]
 		Expect(ok).To(BeTrue(), "JWT should contain 'organization' claim")
-		orgList, ok := orgClaim.([]any)
-		Expect(ok).To(BeTrue(), "'organization' claim should be an array")
-		orgStrings := make([]string, len(orgList))
-		for i, o := range orgList {
-			orgStrings[i], _ = o.(string)
-		}
-		Expect(orgStrings).To(ContainElement(name))
+		orgNames, err := ExtractOrganizationNames(orgClaim)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(orgNames).To(ContainElement(name))
 
 		By("Verifying 'tenant-idp-manager' role in realm_access")
 		realmAccess, ok := claims["realm_access"]
