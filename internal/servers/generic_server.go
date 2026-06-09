@@ -457,9 +457,13 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 				alreadyExistsErr.ID,
 			)
 		}
+		var notUniqueErr *dao.ErrNotUnique
+		if errors.As(err, &notUniqueErr) {
+			return grpcstatus.Errorf(grpccodes.AlreadyExists, "%s", notUniqueErr.Error())
+		}
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
-			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Error())
 		}
 		var referenceErr *dao.ErrReference
 		if errors.As(err, &referenceErr) {
@@ -619,9 +623,13 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 			if errors.As(err, &referenceErr) {
 				return grpcstatus.Errorf(grpccodes.FailedPrecondition, "%s", referenceErr.Error())
 			}
+			var notUniqueErr *dao.ErrNotUnique
+			if errors.As(err, &notUniqueErr) {
+				return grpcstatus.Errorf(grpccodes.AlreadyExists, "%s", notUniqueErr.Error())
+			}
 			var deniedErr *dao.ErrDenied
 			if errors.As(err, &deniedErr) {
-				return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+				return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Error())
 			}
 			var immutableErr *dao.ErrImmutable
 			if errors.As(err, &immutableErr) {

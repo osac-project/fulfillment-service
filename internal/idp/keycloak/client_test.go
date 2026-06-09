@@ -129,6 +129,206 @@ var _ = Describe("Keycloak Client", func() {
 			_, err := client.CreateOrganization(ctx, org)
 			Expect(err).To(HaveOccurred())
 		})
+
+		It("sends domains to Keycloak when specified", func() {
+			var receivedOrg *keycloakOrganization
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost && r.URL.Path == "/admin/realms/osac/organizations" {
+					receivedOrg = &keycloakOrganization{}
+					json.NewDecoder(r.Body).Decode(receivedOrg)
+					w.WriteHeader(http.StatusCreated)
+					return
+				}
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" &&
+					r.URL.RawQuery == "exact=true&search=test-org" {
+					enabled := true
+					response := []keycloakOrganization{{
+						ID:      "org-uuid-123",
+						Name:    "test-org",
+						Enabled: &enabled,
+						Domains: []*keycloakOrganizationDomain{
+							{Name: "example.com"},
+							{Name: "corp.example.org"},
+						},
+					}}
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(response)
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			org := &idp.Organization{
+				Name:    "test-org",
+				Enabled: true,
+				Domains: []string{"example.com", "corp.example.org"},
+			}
+			createdOrg, err := client.CreateOrganization(ctx, org)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(receivedOrg.Domains).To(HaveLen(2))
+			Expect(receivedOrg.Domains[0].Name).To(Equal("example.com"))
+			Expect(receivedOrg.Domains[1].Name).To(Equal("corp.example.org"))
+			Expect(createdOrg.Domains).To(ConsistOf("example.com", "corp.example.org"))
+		})
+
+		It("sends empty domains list when no domains specified", func() {
+			var receivedOrg *keycloakOrganization
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost && r.URL.Path == "/admin/realms/osac/organizations" {
+					receivedOrg = &keycloakOrganization{}
+					json.NewDecoder(r.Body).Decode(receivedOrg)
+					w.WriteHeader(http.StatusCreated)
+					return
+				}
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" &&
+					r.URL.RawQuery == "exact=true&search=test-org" {
+					enabled := true
+					response := []keycloakOrganization{{
+						ID:      "org-uuid-123",
+						Name:    "test-org",
+						Enabled: &enabled,
+					}}
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(response)
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			org := &idp.Organization{
+				Name:    "test-org",
+				Enabled: true,
+			}
+			_, err := client.CreateOrganization(ctx, org)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(receivedOrg.Domains).To(BeEmpty())
+		})
+	})
+
+	Describe("UpdateOrganization", func() {
+		It("updates an organization in Keycloak", func() {
+			var receivedOrg *keycloakOrganization
+			var receivedMethod string
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPut && r.URL.Path == "/admin/realms/osac/organizations/org-uuid-123" {
+					receivedMethod = r.Method
+					receivedOrg = &keycloakOrganization{}
+					json.NewDecoder(r.Body).Decode(receivedOrg)
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" &&
+					r.URL.RawQuery == "exact=true&search=test-org" {
+					enabled := true
+					response := []keycloakOrganization{{
+						ID:      "org-uuid-123",
+						Name:    "test-org",
+						Enabled: &enabled,
+						Domains: []*keycloakOrganizationDomain{
+							{Name: "updated.example.com"},
+						},
+					}}
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(response)
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			org := &idp.Organization{
+				ID:      "org-uuid-123",
+				Name:    "test-org",
+				Enabled: true,
+				Domains: []string{"updated.example.com"},
+			}
+			updatedOrg, err := client.UpdateOrganization(ctx, org)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(receivedMethod).To(Equal(http.MethodPut))
+			Expect(receivedOrg.Domains).To(HaveLen(1))
+			Expect(receivedOrg.Domains[0].Name).To(Equal("updated.example.com"))
+			Expect(updatedOrg).ToNot(BeNil())
+			Expect(updatedOrg.ID).To(Equal("org-uuid-123"))
+			Expect(updatedOrg.Domains).To(ConsistOf("updated.example.com"))
+		})
+
+		It("updates an organization with empty domains", func() {
+			var receivedOrg *keycloakOrganization
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPut && r.URL.Path == "/admin/realms/osac/organizations/org-uuid-123" {
+					receivedOrg = &keycloakOrganization{}
+					json.NewDecoder(r.Body).Decode(receivedOrg)
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" &&
+					r.URL.RawQuery == "exact=true&search=test-org" {
+					enabled := true
+					response := []keycloakOrganization{{
+						ID:      "org-uuid-123",
+						Name:    "test-org",
+						Enabled: &enabled,
+					}}
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(response)
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			org := &idp.Organization{
+				ID:      "org-uuid-123",
+				Name:    "test-org",
+				Enabled: true,
+			}
+			updatedOrg, err := client.UpdateOrganization(ctx, org)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(receivedOrg.Domains).To(BeEmpty())
+			Expect(updatedOrg.Domains).To(BeEmpty())
+		})
+
+		It("returns an error when organization ID is empty", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			org := &idp.Organization{
+				Name:    "test-org",
+				Enabled: true,
+			}
+			_, err := client.UpdateOrganization(ctx, org)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("organization ID is required"))
+		})
+
+		It("returns an error when organization is nil", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			_, err := client.UpdateOrganization(ctx, nil)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("organization is required"))
+		})
+
+		It("returns an error on server error", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+
+			client = createTestClient(server.URL)
+			org := &idp.Organization{
+				ID:   "org-uuid-123",
+				Name: "test-org",
+			}
+			_, err := client.UpdateOrganization(ctx, org)
+			Expect(err).To(HaveOccurred())
+		})
 	})
 
 	Describe("GetOrganization", func() {

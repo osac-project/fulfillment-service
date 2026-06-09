@@ -189,6 +189,26 @@ func (c *Client) GetOrganization(ctx context.Context, name string) (*idp.Organiz
 	return fromKeycloakOrganization(&kcOrg), nil
 }
 
+// UpdateOrganization updates an existing organization (Keycloak organization in the configured realm).
+// The organization must have a non-empty ID.
+func (c *Client) UpdateOrganization(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+	if org == nil {
+		return nil, fmt.Errorf("organization is required for update")
+	}
+	if org.ID == "" {
+		return nil, fmt.Errorf("organization ID is required for update")
+	}
+	kcOrg := toKeycloakOrganization(org)
+	path := fmt.Sprintf("/admin/realms/%s/organizations/%s", c.realmName, url.PathEscape(org.ID))
+	response, err := c.httpClient.DoRequest(ctx, http.MethodPut, path, kcOrg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update organization: %w", err)
+	}
+	response.Body.Close()
+
+	return c.GetOrganization(ctx, org.Name)
+}
+
 // DeleteOrganization deletes an organization (Keycloak organization in the configured realm) by name.
 func (c *Client) DeleteOrganization(ctx context.Context, organizationName string) error {
 	// Delete the break-glass account first (Keycloak-specific: it belongs to realm, not organization)

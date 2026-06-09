@@ -287,6 +287,10 @@ func (r *UpdateRequest[O]) translateError(ctx context.Context, id, tenant string
 		return &ErrImmutable{
 			Fields: fields,
 		}
+	case errNotUniqueCode:
+		return &ErrNotUnique{
+			Reason: pgErr.Message,
+		}
 	default:
 		return err
 	}

@@ -149,10 +149,9 @@ func (t *task) update(ctx context.Context) error {
 		return nil
 	}
 
-	// For synced organizations, no updates are needed since spec is empty.
-	// TODO: When fields are added to OrganizationSpec in the future, update logic would go here.
+	// For synced organizations, update the IDP with any spec changes (e.g. domains).
 	if state == privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED {
-		return nil
+		return t.updateIDP(ctx)
 	}
 
 	// Organization is PENDING or UNSPECIFIED, perform initial sync to IDP
@@ -167,6 +166,7 @@ func (t *task) syncToIDP(ctx context.Context) error {
 	config := &idp.OrganizationConfig{
 		Name:    orgName,
 		Enabled: new(!t.isBuiltin()),
+		Domains: t.organization.GetSpec().GetDomains(),
 	}
 
 	credentials, err := t.r.idpManager.CreateOrganization(ctx, config)
@@ -191,6 +191,31 @@ func (t *task) syncToIDP(ctx context.Context) error {
 		slog.String("organization_name", orgName),
 	)
 
+	return nil
+}
+
+// updateIDP updates the organization in the identity provider with the current spec values.
+func (t *task) updateIDP(ctx context.Context) error {
+	orgName := t.organization.GetStatus().GetIdpOrganizationName()
+	if orgName == "" {
+		t.organization.GetStatus().SetState(privatev1.OrganizationState_ORGANIZATION_STATE_FAILED)
+		t.organization.GetStatus().SetMessage("Organization name is empty")
+		t.r.logger.ErrorContext(
+			ctx,
+			"Organization name is empty",
+			slog.String("tenant", t.organization.GetMetadata().GetName()),
+		)
+		return nil
+	}
+	domains := t.organization.GetSpec().GetDomains()
+	err := t.r.idpManager.UpdateOrganization(ctx, orgName, domains)
+	if err != nil {
+		t.r.logger.ErrorContext(ctx, "Failed to update organization domains in IDP",
+			slog.String("organization_id", t.organization.GetId()),
+			slog.Any("error", err),
+		)
+		return err
+	}
 	return nil
 }
 

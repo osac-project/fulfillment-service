@@ -433,3 +433,18 @@ func (mr *MockClientMockRecorder) RemoveOrganizationRolesFromUser(ctx, organizat
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveOrganizationRolesFromUser", reflect.TypeOf((*MockClient)(nil).RemoveOrganizationRolesFromUser), ctx, organizationName, userID, roles)
 }
+
+// UpdateOrganization mocks base method.
+func (m *MockClient) UpdateOrganization(ctx context.Context, org *Organization) (*Organization, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateOrganization", ctx, org)
+	ret0, _ := ret[0].(*Organization)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateOrganization indicates an expected call of UpdateOrganization.
+func (mr *MockClientMockRecorder) UpdateOrganization(ctx, org any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateOrganization", reflect.TypeOf((*MockClient)(nil).UpdateOrganization), ctx, org)
+}

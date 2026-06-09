@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"slices"
 	"time"
 )
 
@@ -81,6 +82,9 @@ type OrganizationConfig struct {
 
 	// Enabled indicates whether the organization should be enabled in the identity provider. Nil defaults to true.
 	Enabled *bool
+
+	// Domains is the list of e-mail domains associated with the organization.
+	Domains []string
 
 	// BreakGlassUsername is the username for the break-glass account
 	// If empty, defaults to "osac-break-glass"
@@ -158,6 +162,7 @@ func (m *OrganizationManager) CreateOrganization(ctx context.Context, config *Or
 		Name:        config.Name,
 		DisplayName: config.DisplayName,
 		Enabled:     enabled,
+		Domains:     config.Domains,
 	}
 	createdOrg, err := m.client.CreateOrganization(ctx, org)
 	if err != nil {
@@ -184,6 +189,48 @@ func (m *OrganizationManager) CreateOrganization(ctx context.Context, config *Or
 		slog.String("organization", createdOrg.Name),
 	)
 	return credentials, nil
+}
+
+// UpdateOrganization updates an existing organization in the identity provider. It fetches the current
+// organization by name, applies the updated domains, and sends the update to the IDP.
+func (m *OrganizationManager) UpdateOrganization(ctx context.Context, name string, domains []string) error {
+	if name == "" {
+		return errors.New("organization name is mandatory")
+	}
+
+	m.logger.InfoContext(ctx, "Updating IdP organization domains",
+		slog.String("organization", name),
+	)
+
+	org, err := m.client.GetOrganization(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to get organization for update: %w", err)
+	}
+	if org == nil {
+		return fmt.Errorf("organization '%s' not found", name)
+	}
+
+	currentDomains := slices.Clone(org.Domains)
+	desiredDomains := slices.Clone(domains)
+	slices.Sort(currentDomains)
+	slices.Sort(desiredDomains)
+	if slices.Equal(currentDomains, desiredDomains) {
+		m.logger.DebugContext(ctx, "IdP organization domains already up to date, skipping update",
+			slog.String("organization", name),
+		)
+		return nil
+	}
+
+	org.Domains = domains
+	_, err = m.client.UpdateOrganization(ctx, org)
+	if err != nil {
+		return fmt.Errorf("failed to update organization: %w", err)
+	}
+
+	m.logger.InfoContext(ctx, "IdP organization domains updated successfully",
+		slog.String("organization", name),
+	)
+	return nil
 }
 
 // rollback performs cleanup by deleting the organization.

@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
@@ -298,5 +300,128 @@ var _ = Describe("Private tenants server", func() {
 		Expect(status.Message()).To(Equal(
 			"field 'metadata.tenant' is immutable",
 		))
+	})
+
+	Describe("Domain validation", func() {
+		DescribeTable(
+			"Accepts valid domains",
+			func(domains []string) {
+				err := privateServer.validateDomains(domains)
+				Expect(err).ToNot(HaveOccurred())
+			},
+			Entry(
+				"Empty list",
+				[]string{},
+			),
+			Entry(
+				"Simple domain",
+				[]string{
+					"example.com",
+				},
+			),
+			Entry(
+				"Subdomain",
+				[]string{
+					"sub.example.org",
+				},
+			),
+			Entry(
+				"Multiple domains",
+				[]string{
+					"example.com",
+					"example.org",
+				},
+			),
+		)
+
+		DescribeTable(
+			"Rejects invalid domains",
+			func(domains []string, msgSubstring string) {
+				err := privateServer.validateDomains(domains)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring(msgSubstring))
+			},
+			Entry(
+				"Empty domain string",
+				[]string{
+					"",
+				},
+				"must not be empty",
+			),
+			Entry(
+				"Longer than 253 characters",
+				[]string{
+					strings.Repeat("a", 250) + ".com",
+				},
+				"must be at most 253 characters",
+			),
+			Entry(
+				"IPv4 address",
+				[]string{
+					"192.168.1.1",
+				},
+				"must be a DNS hostname, not an IP address",
+			),
+			Entry(
+				"IPv6 address",
+				[]string{
+					"::1",
+				},
+				"must be a DNS hostname, not an IP address",
+			),
+			Entry(
+				"fewer than two labels",
+				[]string{
+					"localhost",
+				},
+				"must have at least two labels",
+			),
+			Entry(
+				"uppercase letters",
+				[]string{
+					"Example.com",
+				},
+				"contains invalid label",
+			),
+			Entry(
+				"underscores",
+				[]string{
+					"my_domain.com",
+				},
+				"contains invalid label",
+			),
+			Entry(
+				"label starting with hyphen",
+				[]string{
+					"-example.com",
+				},
+				"contains invalid label",
+			),
+			Entry(
+				"label ending with hyphen",
+				[]string{
+					"example-.com",
+				},
+				"contains invalid label",
+			),
+			Entry(
+				"label longer than 63 characters",
+				[]string{
+					strings.Repeat("a", 64) + ".com",
+				},
+				"must be at most 63 characters",
+			),
+			Entry(
+				"duplicate domains",
+				[]string{
+					"example.com",
+					"example.com",
+				},
+				"contains duplicate domain",
+			),
+		)
 	})
 })

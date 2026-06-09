@@ -502,7 +502,11 @@ func (t *tool) listObjectTables(ctx context.Context, pool *pgxpool.Pool) (result
 			n.nspname = 'public' and
 			c.relkind = 'r' and
 			c.relname not like 'archived_%' and
-			c.relname not in ('notifications', 'schema_migrations')
+			c.relname not in (
+				'notifications',
+				'schema_migrations',
+				'tenant_domains'
+			)
 		order by
 			c.relname
 		`,

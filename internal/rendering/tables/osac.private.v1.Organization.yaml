@@ -13,8 +13,8 @@
 
 columns:
 
-- header: ID
-  value: this.id
-
 - header: NAME
   value: "has(this.metadata.name)? this.metadata.name: '-'"
+
+- header: DOMAINS
+  value: "has(this.spec.domains) && size(this.spec.domains) > 0 ? this.spec.domains.join(', ') : '-'"

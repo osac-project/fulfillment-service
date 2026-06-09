@@ -117,11 +117,21 @@ type ErrReference struct {
 	Reason string
 }
 
-// Error returns the error message.
 func (e *ErrReference) Error() string {
 	if e.Reason == "" {
 		return "some reference is invalid"
 	}
+	return e.Reason
+}
+
+// ErrNotUnique is an error type that indicates that a value that must be globally unique is already in use. For
+// example, this is returned when an organization e-mail domain is already assigned to another organization.
+type ErrNotUnique struct {
+	// Reason is a human-readable description of the uniqueness violation.
+	Reason string
+}
+
+func (e *ErrNotUnique) Error() string {
 	return e.Reason
 }
 
@@ -132,4 +142,10 @@ const (
 	// an update attempts to modify one or more immutable columns. When this error is received the detail field of
 	// the PostgreSQL error contains a JSON array with the names of the columns that the caller tried to modify.
 	errImmutableCode = "Z0001"
+
+	// errNotUniqueCode is the SQLSTATE error code returned by database triggers when an insert or update violates
+	// a custom uniqueness constraint enforced via a helper trigger. For example, the
+	// 'normalize_organization_domains' trigger returns this code when an e-mail domain is already assigned to
+	// another tenant.
+	errNotUniqueCode = "Z0002"
 )

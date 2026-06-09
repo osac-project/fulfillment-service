@@ -418,6 +418,118 @@ var _ = Describe("IDP Sync", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(organization.GetStatus().GetState()).To(Equal(privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED))
 	})
+
+	It("should pass domains to IDP during initial sync", func() {
+		organization := privatev1.Organization_builder{
+			Id: "org-domains",
+			Metadata: privatev1.Metadata_builder{
+				Name: "domain-org",
+				Finalizers: []string{
+					finalizers.Controller,
+				},
+				Tenant: "tenant-1",
+			}.Build(),
+			Spec: privatev1.OrganizationSpec_builder{
+				Domains: []string{
+					"example.com",
+					"corp.example.org",
+				},
+			}.Build(),
+		}.Build()
+
+		mockClient.EXPECT().
+			CreateOrganization(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+				Expect(org.Domains).To(ConsistOf(
+					"example.com",
+					"corp.example.org",
+				))
+				return &idp.Organization{
+					Name:    "domain-org",
+					Enabled: true,
+					Domains: org.Domains,
+				}, nil
+			}).
+			Times(1)
+
+		mockClient.EXPECT().
+			CreateUser(gomock.Any(), "domain-org", gomock.Any()).
+			Return(&idp.User{ID: "user-domains"}, nil).
+			Times(1)
+
+		mockClient.EXPECT().
+			AssignIdpManagerPermissions(gomock.Any(), "user-domains").
+			Return(nil).
+			Times(1)
+
+		task := &task{
+			r:            reconciler,
+			organization: organization,
+		}
+
+		err := task.update(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(organization.GetStatus().GetState()).To(
+			Equal(privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED),
+		)
+	})
+
+	It("should update domains in IDP for synced organization", func() {
+		organization := privatev1.Organization_builder{
+			Id: "org-update",
+			Metadata: privatev1.Metadata_builder{
+				Name: "update-org",
+				Finalizers: []string{
+					finalizers.Controller,
+				},
+				Tenant: "tenant-1",
+			}.Build(),
+			Spec: privatev1.OrganizationSpec_builder{
+				Domains: []string{
+					"new.example.com",
+					"new.corp.example.org",
+				},
+			}.Build(),
+			Status: privatev1.OrganizationStatus_builder{
+				State:               privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED,
+				IdpOrganizationName: "update-org",
+				BreakGlassUserId:    "user-update",
+			}.Build(),
+		}.Build()
+
+		mockClient.EXPECT().
+			GetOrganization(gomock.Any(), "update-org").
+			Return(&idp.Organization{
+				Name:    "update-org",
+				Enabled: true,
+				Domains: []string{
+					"old.example.com",
+				},
+			}, nil).
+			Times(1)
+
+		mockClient.EXPECT().
+			UpdateOrganization(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+				Expect(org.Domains).To(ConsistOf(
+					"new.example.com",
+					"new.corp.example.org",
+				))
+				return org, nil
+			}).
+			Times(1)
+
+		task := &task{
+			r:            reconciler,
+			organization: organization,
+		}
+
+		err := task.update(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(organization.GetStatus().GetState()).To(
+			Equal(privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED),
+		)
+	})
 })
 
 var _ = Describe("Builtin Organization Detection", func() {
@@ -629,11 +741,28 @@ var _ = Describe("Deletion", func() {
 })
 
 var _ = Describe("Skip Reconciliation", func() {
-	It("should skip reconciliation for synced organizations", func() {
+	It("should call updateIDP for synced organizations", func() {
+		ctrl := gomock.NewController(GinkgoT())
+		mockClient := idp.NewMockClient(ctrl)
+
+		idpManager, err := idp.NewOrganizationManager().
+			SetLogger(logger).
+			SetClient(mockClient).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		reconciler := &function{
+			logger:     logger,
+			idpManager: idpManager,
+		}
+
 		organization := privatev1.Organization_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
+			}.Build(),
+			Spec: privatev1.OrganizationSpec_builder{
+				Domains: []string{"example.com"},
 			}.Build(),
 			Status: privatev1.OrganizationStatus_builder{
 				State:               privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED,
@@ -642,11 +771,22 @@ var _ = Describe("Skip Reconciliation", func() {
 			}.Build(),
 		}.Build()
 
+		mockClient.EXPECT().
+			GetOrganization(gomock.Any(), "test-org").
+			Return(&idp.Organization{Name: "test-org", Enabled: true}, nil).
+			Times(1)
+
+		mockClient.EXPECT().
+			UpdateOrganization(gomock.Any(), gomock.Any()).
+			Return(&idp.Organization{Name: "test-org", Enabled: true}, nil).
+			Times(1)
+
 		task := &task{
+			r:            reconciler,
 			organization: organization,
 		}
 
-		err := task.update(context.Background())
+		err = task.update(context.Background())
 		Expect(err).ToNot(HaveOccurred())
 	})
 

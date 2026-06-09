@@ -28,5 +28,10 @@ message Organization {
 }
 
 message OrganizationSpec {
-  // Reserved for future organization configuration fields.
+  // List of e-mail domains associated with this organization.
+  //
+  // These are used to automatically redirect users to the correct identity provider during login. Each domain must be a
+  // valid DNS hostname with only lowercase labels, for example `example.com` or `corp.example.org`. Uppercase letters
+  // are rejected. Domains must be globally unique across all organizations.
+  repeated string domains = 1;
 }

@@ -31,6 +31,7 @@ type Client interface {
 	// These manage Keycloak Organizations within the configured realm.
 	CreateOrganization(ctx context.Context, org *Organization) (*Organization, error)
 	GetOrganization(ctx context.Context, name string) (*Organization, error)
+	UpdateOrganization(ctx context.Context, org *Organization) (*Organization, error)
 	DeleteOrganization(ctx context.Context, name string) error
 
 	// User operations

@@ -31,6 +31,10 @@ type mockClient struct {
 	failUserCreation    bool                          // Trigger user creation failure
 	failRoleAssignment  bool                          // Trigger role assignment failure
 	failOrgDeletion     bool                          // Trigger organization deletion failure
+	failOrgGet          bool                          // Trigger organization get failure
+	failOrgUpdate       bool                          // Trigger organization update failure
+	returnNilOrg        bool                          // GetOrganization returns nil without error
+	orgUpdateCalled     bool                          // Track whether UpdateOrganization was called
 }
 
 func (m *mockClient) CreateOrganization(ctx context.Context, org *Organization) (*Organization, error) {
@@ -41,12 +45,31 @@ func (m *mockClient) CreateOrganization(ctx context.Context, org *Organization) 
 		DisplayName: org.DisplayName,
 		Enabled:     org.Enabled,
 		Attributes:  org.Attributes,
+		Domains:     org.Domains,
 	}
 	m.createdRealm = createdOrg
 	return createdOrg, nil
 }
 
 func (m *mockClient) GetOrganization(ctx context.Context, name string) (*Organization, error) {
+	if m.failOrgGet {
+		return nil, fmt.Errorf("simulated get organization failure")
+	}
+	if m.returnNilOrg {
+		return nil, nil
+	}
+	return m.createdRealm, nil
+}
+
+func (m *mockClient) UpdateOrganization(ctx context.Context, org *Organization) (*Organization, error) {
+	m.orgUpdateCalled = true
+	if m.failOrgUpdate {
+		return nil, fmt.Errorf("simulated update organization failure")
+	}
+	if m.createdRealm != nil {
+		m.createdRealm.Domains = org.Domains
+		m.createdRealm.Enabled = org.Enabled
+	}
 	return m.createdRealm, nil
 }
 
@@ -522,6 +545,125 @@ var _ = Describe("OrganizationManager", func() {
 			// because it uses a fresh context
 			Expect(failingMock.createdRealm).ToNot(BeNil())
 			Expect(failingMock.deletedRealm).To(Equal("test-org"))
+		})
+	})
+
+	Describe("UpdateOrganization", func() {
+		It("skips the IDP update when domains already match", func() {
+			config := &OrganizationConfig{
+				Name:               "test-org",
+				Enabled:            new(true),
+				Domains:            []string{"a.example.com", "b.example.com"},
+				BreakGlassPassword: "breakglass123",
+			}
+			_, err := manager.CreateOrganization(ctx, config)
+			Expect(err).ToNot(HaveOccurred())
+
+			mock.orgUpdateCalled = false
+			err = manager.UpdateOrganization(
+				ctx, "test-org", []string{"b.example.com", "a.example.com"},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mock.orgUpdateCalled).To(BeFalse())
+			Expect(mock.createdRealm.Domains).To(ConsistOf("a.example.com", "b.example.com"))
+		})
+
+		It("updates the organization domains", func() {
+			config := &OrganizationConfig{
+				Name:               "test-org",
+				Enabled:            new(true),
+				Domains:            []string{"example.com"},
+				BreakGlassPassword: "breakglass123",
+			}
+			_, err := manager.CreateOrganization(ctx, config)
+			Expect(err).ToNot(HaveOccurred())
+
+			err = manager.UpdateOrganization(ctx, "test-org", []string{"new.example.com", "corp.example.org"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mock.createdRealm.Domains).To(ConsistOf("new.example.com", "corp.example.org"))
+		})
+
+		It("clears domains when given an empty list", func() {
+			config := &OrganizationConfig{
+				Name:               "test-org",
+				Enabled:            new(true),
+				Domains:            []string{"example.com"},
+				BreakGlassPassword: "breakglass123",
+			}
+			_, err := manager.CreateOrganization(ctx, config)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mock.createdRealm.Domains).To(ConsistOf("example.com"))
+
+			err = manager.UpdateOrganization(ctx, "test-org", []string{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mock.createdRealm.Domains).To(BeEmpty())
+		})
+
+		It("clears domains when given nil", func() {
+			config := &OrganizationConfig{
+				Name:               "test-org",
+				Enabled:            new(true),
+				Domains:            []string{"example.com"},
+				BreakGlassPassword: "breakglass123",
+			}
+			_, err := manager.CreateOrganization(ctx, config)
+			Expect(err).ToNot(HaveOccurred())
+
+			err = manager.UpdateOrganization(ctx, "test-org", nil)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mock.createdRealm.Domains).To(BeEmpty())
+		})
+
+		It("returns an error when the name is empty", func() {
+			err := manager.UpdateOrganization(ctx, "", []string{"example.com"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("organization name is mandatory"))
+		})
+
+		It("returns an error when getting the organization fails", func() {
+			failingMock := &mockClient{
+				failOrgGet: true,
+			}
+			failingManager, err := NewOrganizationManager().
+				SetLogger(logger).
+				SetClient(failingMock).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			err = failingManager.UpdateOrganization(ctx, "test-org", []string{"example.com"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get organization for update"))
+		})
+
+		It("returns an error when the organization does not exist", func() {
+			failingMock := &mockClient{
+				returnNilOrg: true,
+			}
+			failingManager, err := NewOrganizationManager().
+				SetLogger(logger).
+				SetClient(failingMock).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			err = failingManager.UpdateOrganization(ctx, "missing-org", []string{"example.com"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("not found"))
+		})
+
+		It("returns an error when the client update fails", func() {
+			failingMock := &mockClient{
+				createdRealm:  &Organization{Name: "test-org"},
+				failOrgUpdate: true,
+			}
+			failingManager, err := NewOrganizationManager().
+				SetLogger(logger).
+				SetClient(failingMock).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			err = failingManager.UpdateOrganization(ctx, "test-org", []string{"example.com"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to update organization"))
 		})
 	})
 

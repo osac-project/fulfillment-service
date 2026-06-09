@@ -80,6 +80,46 @@ var _ = Describe("Organization reconciler", func() {
 		).Should(Succeed())
 	})
 
+	It("Syncs domains to Keycloak", func() {
+		name := fmt.Sprintf("my-%s", uuid.New())
+		domains := []string{
+			fmt.Sprintf("%s.example.com", uuid.New()),
+			fmt.Sprintf("%s.example.org", uuid.New()),
+		}
+		createResponse, err := client.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+			Object: privatev1.Organization_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: name,
+				}.Build(),
+				Spec: privatev1.OrganizationSpec_builder{
+					Domains: domains,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		id := createResponse.GetObject().GetId()
+		DeferCleanup(func() {
+			_, _ = client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
+				Id: id,
+			}.Build())
+		})
+
+		Eventually(
+			func(g Gomega) {
+				getResponse, err := client.Get(ctx, privatev1.OrganizationsGetRequest_builder{
+					Id: id,
+				}.Build())
+				g.Expect(err).ToNot(HaveOccurred())
+				object := getResponse.GetObject()
+				g.Expect(object.GetStatus().GetState()).To(
+					Equal(privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED),
+				)
+			},
+			time.Minute,
+			time.Second,
+		).Should(Succeed())
+	})
+
 	It("Deletes the Keycloak organization", func() {
 		// Create the organization:
 		name := fmt.Sprintf("my-%s", uuid.New())

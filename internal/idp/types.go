@@ -24,6 +24,7 @@ type Organization struct {
 	Name        string
 	DisplayName string
 	Enabled     bool
+	Domains     []string
 	Attributes  map[string][]string
 }
 
