@@ -452,13 +452,26 @@ var _ = Describe("Organization authorization boundaries", func() {
 		By("Verifying 'organization' claim contains the org name")
 		orgClaim, ok := claims["organization"]
 		Expect(ok).To(BeTrue(), "JWT should contain 'organization' claim")
-		orgList, ok := orgClaim.([]any)
-		Expect(ok).To(BeTrue(), "'organization' claim should be an array")
-		orgStrings := make([]string, len(orgList))
-		for i, o := range orgList {
-			orgStrings[i], _ = o.(string)
+
+		// The organization claim can be either an array or an object depending on whether
+		// the user has group memberships within the organization
+		var orgNames []string
+		if orgList, ok := orgClaim.([]any); ok {
+			// Array format: ["org-name"]
+			orgNames = make([]string, len(orgList))
+			for i, o := range orgList {
+				orgNames[i], _ = o.(string)
+			}
+		} else if orgMap, ok := orgClaim.(map[string]any); ok {
+			// Object format: {"org-name": {"groups": [...]}}
+			orgNames = make([]string, 0, len(orgMap))
+			for orgName := range orgMap {
+				orgNames = append(orgNames, orgName)
+			}
+		} else {
+			Fail("'organization' claim should be either an array or an object")
 		}
-		Expect(orgStrings).To(ContainElement(name))
+		Expect(orgNames).To(ContainElement(name))
 
 		By("Verifying 'tenant-idp-manager' role in realm_access")
 		realmAccess, ok := claims["realm_access"]
