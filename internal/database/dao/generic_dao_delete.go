@@ -57,7 +57,13 @@ func (r *DeleteRequest[O]) Do(ctx context.Context) (response *DeleteResponse, er
 
 func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, err error) {
 	// Add the tenancy filter:
-	err = r.addTenancyFilter(ctx)
+	err = r.addTenantFilter(ctx)
+	if err != nil {
+		return
+	}
+
+	// Add the project filter:
+	err = r.addProjectFilter(ctx)
 	if err != nil {
 		return
 	}
@@ -90,6 +96,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			finalizers,
 			creator,
 			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -108,6 +115,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		finalizers      []string
 		creator         string
 		tenant          string
+		project         string
 		labelsData      []byte
 		annotationsData []byte
 		version         int32
@@ -126,6 +134,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			&finalizers,
 			&creator,
 			&tenant,
+			&project,
 			&labelsData,
 			&annotationsData,
 			&version,
@@ -166,6 +175,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		finalizers:  finalizers,
 		creator:     creator,
 		tenant:      tenant,
+		project:     project,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
@@ -190,6 +200,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		deletionTs:      deletionTs,
 		creator:         creator,
 		tenant:          tenant,
+		project:         project,
 		name:            name,
 		labelsData:      labelsData,
 		annotationsData: annotationsData,

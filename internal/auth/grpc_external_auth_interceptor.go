@@ -341,6 +341,17 @@ func (i *GrpcExternalAuthInterceptor) handleCheckResponse(ctx context.Context, m
 		return
 	}
 
+	// TODO: We still have installations that copy the Rego rules, and as a result the subject will not have any
+	// projects. To temporarily fix this we will allow access to all projects.
+	if subject.Projects.Empty() {
+		subject.Projects = AllProjects
+		i.logger.WarnContext(
+			ctx,
+			"Subject has no projects, allowing access to all projects",
+			slog.String("user", subject.User),
+		)
+	}
+
 	// If we are here, then the external server granted access:
 	logger.DebugContext(ctx, "Permission granted by external service")
 	result = ContextWithSubject(ctx, subject)

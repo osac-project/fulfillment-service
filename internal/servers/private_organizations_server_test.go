@@ -24,13 +24,24 @@ import (
 )
 
 var _ = Describe("Private tenants server", func() {
-	var privateServer *PrivateOrganizationsServer
+	var (
+		tenantsServer  *PrivateOrganizationsServer
+		projectsServer *PrivateProjectsServer
+	)
 
 	BeforeEach(func() {
 		var err error
 
-		// Create server (without notifier for testing):
-		privateServer, err = NewPrivateOrganizationsServer().
+		// Create the projects server:
+		projectsServer, err = NewPrivateProjectsServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create the tenants server:
+		tenantsServer, err = NewPrivateOrganizationsServer().
 			SetLogger(logger).
 			SetAttributionLogic(attribution).
 			SetTenancyLogic(tenancy).
@@ -49,12 +60,35 @@ var _ = Describe("Private tenants server", func() {
 		}.Build()
 
 		// Create tenant:
-		response, err := privateServer.Create(ctx, request)
+		response, err := tenantsServer.Create(ctx, request)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response).ToNot(BeNil())
 		Expect(response.Object).ToNot(BeNil())
 		Expect(response.Object.Id).ToNot(BeEmpty())
 		Expect(response.Object.Metadata.Name).To(Equal("my-tenant"))
+	})
+
+	It("Automatically creates the default project when a tenant is created", func() {
+		// Create a tenant:
+		_, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+			Object: privatev1.Organization_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: "my-tenant",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+
+		// Verify that the default project was created:
+		listProjectsResponse, err := projectsServer.List(ctx, privatev1.ProjectsListRequest_builder{
+			Filter: new("this.metadata.tenant == 'my-tenant' && this.metadata.name == ''"),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		projects := listProjectsResponse.GetItems()
+		Expect(projects).To(HaveLen(1))
+		project := projects[0]
+		Expect(project.GetMetadata().GetName()).To(Equal(""))
+		Expect(project.GetMetadata().GetTenant()).To(Equal("my-tenant"))
 	})
 
 	It("Lists tenants", func() {
@@ -66,11 +100,11 @@ var _ = Describe("Private tenants server", func() {
 				}.Build(),
 			}.Build(),
 		}.Build()
-		_, err := privateServer.Create(ctx, createReq)
+		_, err := tenantsServer.Create(ctx, createReq)
 		Expect(err).ToNot(HaveOccurred())
 
 		// List tenants:
-		listResp, err := privateServer.List(ctx, &privatev1.OrganizationsListRequest{
+		listResp, err := tenantsServer.List(ctx, &privatev1.OrganizationsListRequest{
 			Filter: new("this.metadata.name == 'my-tenant'"),
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -79,7 +113,7 @@ var _ = Describe("Private tenants server", func() {
 		Expect(listResp.Items[0].Metadata.Name).To(Equal("my-tenant"))
 	})
 
-	It("Gets a tenant by ID", func() {
+	It("Gets a tenant by identifier", func() {
 		// Create a tenant:
 		createReq := privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
@@ -88,11 +122,11 @@ var _ = Describe("Private tenants server", func() {
 				}.Build(),
 			}.Build(),
 		}.Build()
-		createResp, err := privateServer.Create(ctx, createReq)
+		createResp, err := tenantsServer.Create(ctx, createReq)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Get the tenant:
-		getResp, err := privateServer.Get(ctx, privatev1.OrganizationsGetRequest_builder{
+		getResp, err := tenantsServer.Get(ctx, privatev1.OrganizationsGetRequest_builder{
 			Id: createResp.Object.Id,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -100,21 +134,53 @@ var _ = Describe("Private tenants server", func() {
 		Expect(getResp.Object.Metadata.Name).To(Equal("my-tenant"))
 	})
 
-	It("Deletes a tenant", func() {
+	It("Can't delete a tenant that only has the default project", func() {
 		// Create a tenant:
-		createReq := privatev1.OrganizationsCreateRequest_builder{
+		createTenantResponse, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "my-tenant",
 				}.Build(),
 			}.Build(),
-		}.Build()
-		createResp, err := privateServer.Create(ctx, createReq)
+		}.Build())
 		Expect(err).ToNot(HaveOccurred())
+		tenant := createTenantResponse.GetObject()
+
+		// Try to delete the tenant, and verify that it fails because it still has the default project:
+		_, err = tenantsServer.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
+			Id: tenant.GetId(),
+		}.Build())
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("Can delete a tenant after deleting all projects", func() {
+		// Create a tenant:
+		createTenantResponse, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+			Object: privatev1.Organization_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: "my-tenant",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		tenant := createTenantResponse.GetObject()
+
+		// Find and delete the projects:
+		listProjectsResponse, err := projectsServer.List(ctx, privatev1.ProjectsListRequest_builder{
+			Filter: new("this.metadata.tenant == 'my-tenant'"),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		projects := listProjectsResponse.GetItems()
+		for _, project := range projects {
+			_, err = projectsServer.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+				Id: project.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		}
 
 		// Delete the tenant:
-		_, err = privateServer.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
-			Id: createResp.Object.Id,
+		_, err = tenantsServer.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
+			Id: tenant.GetId(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 	})
@@ -128,7 +194,7 @@ var _ = Describe("Private tenants server", func() {
 				}.Build(),
 			}.Build(),
 		}.Build()
-		createResp, err := privateServer.Create(ctx, createReq)
+		createResp, err := tenantsServer.Create(ctx, createReq)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Update the tenant:
@@ -145,13 +211,13 @@ var _ = Describe("Private tenants server", func() {
 				},
 			},
 		}.Build()
-		updateResp, err := privateServer.Update(ctx, updateReq)
+		updateResp, err := tenantsServer.Update(ctx, updateReq)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(updateResp.Object.Status.State).To(Equal(privatev1.OrganizationState_ORGANIZATION_STATE_SYNCED))
 	})
 
 	It("Rejects creation of a tenant with an empty name", func() {
-		response, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		response, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "",
@@ -169,7 +235,7 @@ var _ = Describe("Private tenants server", func() {
 	})
 
 	It("Rejects creation of a tenant with an identifier different from the name", func() {
-		response, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		response, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Id: "your-tenant",
 				Metadata: privatev1.Metadata_builder{
@@ -188,7 +254,7 @@ var _ = Describe("Private tenants server", func() {
 	})
 
 	It("Uses the name as the identifier if no identifier is provided", func() {
-		response, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		response, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "my-tenant",
@@ -201,7 +267,7 @@ var _ = Describe("Private tenants server", func() {
 	})
 
 	It("Rejects an explicit tenant different than the name", func() {
-		response, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		response, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "my-tenant",
@@ -220,7 +286,7 @@ var _ = Describe("Private tenants server", func() {
 	})
 
 	It("Uses the name as the tenant if no tenant is provided", func() {
-		response, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		response, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "my-tenant",
@@ -233,7 +299,7 @@ var _ = Describe("Private tenants server", func() {
 	})
 
 	It("Rejects update of the name of a tenant", func() {
-		createResponse, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		createResponse, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "my-tenant",
@@ -243,7 +309,7 @@ var _ = Describe("Private tenants server", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		id := object.GetId()
-		updateResponse, err := privateServer.Update(ctx, privatev1.OrganizationsUpdateRequest_builder{
+		updateResponse, err := tenantsServer.Update(ctx, privatev1.OrganizationsUpdateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Id: id,
 				Metadata: privatev1.Metadata_builder{
@@ -267,7 +333,7 @@ var _ = Describe("Private tenants server", func() {
 	})
 
 	It("Rejects update of the tenant of a tenant", func() {
-		createResponse, err := privateServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		createResponse, err := tenantsServer.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "my-tenant",
@@ -277,7 +343,7 @@ var _ = Describe("Private tenants server", func() {
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
 		id := object.GetId()
-		updateResponse, err := privateServer.Update(ctx, privatev1.OrganizationsUpdateRequest_builder{
+		updateResponse, err := tenantsServer.Update(ctx, privatev1.OrganizationsUpdateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Id: id,
 				Metadata: privatev1.Metadata_builder{
@@ -296,7 +362,7 @@ var _ = Describe("Private tenants server", func() {
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		Expect(status.Message()).To(Equal(
-			"field 'metadata.tenant' is immutable",
+			"field 'metadata.tenant' is immutable and cannot be changed from 'my-tenant' to 'your-tenant'",
 		))
 	})
 })

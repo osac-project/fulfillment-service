@@ -24,7 +24,6 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
@@ -54,8 +53,6 @@ var _ = Describe("Generic DAO events", func() {
 		pool, err = db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
-		_, err = pool.Exec(ctx, createObjectsTableSQL)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Prepare the transaction manager:
 		tm, err = database.NewTxManager().
@@ -67,8 +64,12 @@ var _ = Describe("Generic DAO events", func() {
 		// Create a tenancy logic without restrictions:
 		tenancy = auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewUniversalSet[string](), nil).
+			Return(auth.AllTenants, nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
+			AnyTimes()
+
 		// Create the tenant used in the tests:
 		tenantsDao, err := NewGenericDAO[*privatev1.Organization]().
 			SetLogger(logger).

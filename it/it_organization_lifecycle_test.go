@@ -46,11 +46,46 @@ func createOrg(ctx context.Context, client privatev1.OrganizationsClient, name s
 	Expect(err).ToNot(HaveOccurred())
 	id := createResponse.GetObject().GetId()
 	DeferCleanup(func() {
-		_, _ = client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
+		deleteOrgDefaultProject(ctx, name)
+		_, err := client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
 			Id: id,
 		}.Build())
+		status, ok := grpcstatus.FromError(err)
+		if ok && status.Code() == grpccodes.NotFound {
+			return
+		}
+		Expect(err).ToNot(HaveOccurred())
 	})
 	return id
+}
+
+// deleteOrgDefaultProject deletes the default (root) project that is automatically created when a tenant is created.
+// This must be called before deleting the tenant itself, because the foreign key from the projects table to the
+// organizations table would otherwise block the deletion.
+func deleteOrgDefaultProject(ctx context.Context, tenant string) {
+	projectsClient := privatev1.NewProjectsClient(tool.InternalView().AdminConn())
+	filter := fmt.Sprintf("this.metadata.tenant == %q && this.metadata.name == ''", tenant)
+	listResponse, err := projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+		Filter: new(filter),
+	}.Build())
+	Expect(err).ToNot(HaveOccurred())
+	for _, project := range listResponse.GetItems() {
+		_, err = projectsClient.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+			Id: project.GetId(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+	}
+	Eventually(
+		func(g Gomega) {
+			listResponse, err := projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+				Filter: new(filter),
+			}.Build())
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(listResponse.GetItems()).To(BeEmpty())
+		},
+		time.Minute,
+		time.Second,
+	).Should(Succeed())
 }
 
 func waitForOrgSynced(ctx context.Context, client privatev1.OrganizationsClient, id string) {
@@ -206,6 +241,9 @@ var _ = Describe("Organization lifecycle", func() {
 
 		By("Verifying organization exists in Keycloak")
 		verifyOrgInKeycloak(ctx, name)
+
+		By("Deleting the default project")
+		deleteOrgDefaultProject(ctx, name)
 
 		By("Deleting organization")
 		_, err = client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
@@ -551,6 +589,9 @@ var _ = Describe("Organization edge cases and resilience", func() {
 		id := createOrg(ctx, client, name)
 		waitForOrgSynced(ctx, client, id)
 
+		By("Deleting the default project")
+		deleteOrgDefaultProject(ctx, name)
+
 		By("Deleting the organization")
 		_, err := client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
 			Id: id,
@@ -583,9 +624,15 @@ var _ = Describe("Organization edge cases and resilience", func() {
 		Expect(err).ToNot(HaveOccurred())
 		newId := createResponse.GetObject().GetId()
 		DeferCleanup(func() {
-			_, _ = client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
+			deleteOrgDefaultProject(ctx, name)
+			_, err = client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
 				Id: newId,
 			}.Build())
+			status, ok := grpcstatus.FromError(err)
+			if ok && status.Code() == grpccodes.NotFound {
+				return
+			}
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		By("Verifying the re-created organization reaches SYNCED")
@@ -605,6 +652,9 @@ var _ = Describe("Organization edge cases and resilience", func() {
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		id := createResponse.GetObject().GetId()
+
+		By("Deleting the default project")
+		deleteOrgDefaultProject(ctx, name)
 
 		By("Immediately deleting the organization before it reaches SYNCED")
 		_, err = client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{

@@ -176,4 +176,119 @@ var _ = Describe("Default tenancy logic", func() {
 			Expect(result.Equal(SharedTenants)).To(BeTrue())
 		})
 	})
+
+	Describe("Determine assignable projects", func() {
+		It("Returns the projects from the subject", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: collections.NewSet("project-a", "project-b"),
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineAssignableProjects(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Equal(collections.NewSet("project-a", "project-b"))).To(BeTrue())
+		})
+
+		It("Returns universal set when projects is universal", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: AllProjects,
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineAssignableProjects(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Equal(AllProjects)).To(BeTrue())
+		})
+
+		It("Fails if the subject has an empty projects set", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: collections.NewSet[string](),
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			_, err := logic.DetermineAssignableProjects(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("at least one project"))
+		})
+
+		It("Returns an empty set when there is an error", func() {
+			subject := &Subject{
+				User: "my_user",
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineAssignableProjects(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(result.Empty()).To(BeTrue())
+		})
+	})
+
+	Describe("Determine default project", func() {
+		It("Returns a project from the subject", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: collections.NewSet("project-a", "project-b"),
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineDefaultProject(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(BeElementOf("project-a", "project-b"))
+		})
+
+		It("Returns default project when projects is universal", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: AllProjects,
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineDefaultProject(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal(DefaultProject))
+		})
+
+		It("Fails if the subject has an empty projects set", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: collections.NewSet[string](),
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			_, err := logic.DetermineDefaultProject(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("at least one project"))
+		})
+	})
+
+	Describe("Determine visible projects", func() {
+		It("Returns projects from the subject", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: collections.NewSet("project-a", "project-b"),
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineVisibleProjects(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Equal(collections.NewSet("project-a", "project-b"))).To(BeTrue())
+		})
+
+		It("Returns universal set when projects is universal", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: AllProjects,
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineVisibleProjects(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Equal(AllProjects)).To(BeTrue())
+		})
+
+		It("Returns empty set when projects is empty", func() {
+			subject := &Subject{
+				User:     "my_user",
+				Projects: collections.NewSet[string](),
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			result, err := logic.DetermineVisibleProjects(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Empty()).To(BeTrue())
+		})
+	})
 })

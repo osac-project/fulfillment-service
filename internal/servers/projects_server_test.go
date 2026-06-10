@@ -219,7 +219,7 @@ var _ = Describe("Public projects server", func() {
 
 		It("Filters projects by parent", func() {
 			// Create parent:
-			parentResp, err := publicServer.Create(ctx, publicv1.ProjectsCreateRequest_builder{
+			_, err := publicServer.Create(ctx, publicv1.ProjectsCreateRequest_builder{
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
 						Name:   "parent",
@@ -236,24 +236,23 @@ var _ = Describe("Public projects server", func() {
 			_, err = publicServer.Create(ctx, publicv1.ProjectsCreateRequest_builder{
 				Object: publicv1.Project_builder{
 					Metadata: publicv1.Metadata_builder{
-						Name:   "child",
+						Name:   "parent.child",
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: publicv1.ProjectSpec_builder{
-						Title:  "Child",
-						Parent: new(parentResp.Object.Id),
+						Title: "Child",
 					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 
-			// List child projects:
+			// List child projects by parent name:
 			listResp, err := publicServer.List(ctx, publicv1.ProjectsListRequest_builder{
-				Filter: new("this.spec.parent == '" + parentResp.Object.Id + "'"),
+				Filter: new("this.metadata.project == 'parent'"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(listResp.Size).To(Equal(int32(1)))
-			Expect(listResp.Items[0].Metadata.Name).To(Equal("child"))
+			Expect(listResp.GetSize()).To(Equal(int32(1)))
+			Expect(listResp.GetItems()[0].GetMetadata().GetName()).To(Equal("parent.child"))
 		})
 	})
 })

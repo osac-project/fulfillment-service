@@ -30,19 +30,21 @@ import (
 
 var _ = Describe("Organization reconciler", func() {
 	var (
-		ctx    context.Context
-		client privatev1.OrganizationsClient
+		ctx            context.Context
+		tenantsClient  privatev1.OrganizationsClient
+		projectsClient privatev1.ProjectsClient
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		client = privatev1.NewOrganizationsClient(tool.InternalView().AdminConn())
+		tenantsClient = privatev1.NewOrganizationsClient(tool.InternalView().AdminConn())
+		projectsClient = privatev1.NewProjectsClient(tool.InternalView().AdminConn())
 	})
 
 	It("Creates the Keycloak organization", func() {
-		// Create the organization and remember to delete it after the test:
+		// Create the tenant and remember to delete it after the test:
 		name := fmt.Sprintf("my-%s", uuid.New())
-		createResponse, err := client.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		createResponse, err := tenantsClient.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: name,
@@ -52,16 +54,17 @@ var _ = Describe("Organization reconciler", func() {
 		Expect(err).ToNot(HaveOccurred())
 		id := createResponse.GetObject().GetId()
 		DeferCleanup(func() {
-			_, _ = client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
+			_, err := tenantsClient.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
 				Id: id,
 			}.Build())
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		// Verify that the reconciler eventually adds the finalizer, sets the state to 'SYNCED', and populates
 		// the Keycloak organization name:
 		Eventually(
 			func(g Gomega) {
-				getResponse, err := client.Get(ctx, privatev1.OrganizationsGetRequest_builder{
+				getResponse, err := tenantsClient.Get(ctx, privatev1.OrganizationsGetRequest_builder{
 					Id: id,
 				}.Build())
 				g.Expect(err).ToNot(HaveOccurred())
@@ -81,9 +84,9 @@ var _ = Describe("Organization reconciler", func() {
 	})
 
 	It("Deletes the Keycloak organization", func() {
-		// Create the organization:
+		// Create the tenant:
 		name := fmt.Sprintf("my-%s", uuid.New())
-		createResponse, err := client.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
+		createResponse, err := tenantsClient.Create(ctx, privatev1.OrganizationsCreateRequest_builder{
 			Object: privatev1.Organization_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: name,
@@ -97,7 +100,7 @@ var _ = Describe("Organization reconciler", func() {
 		// deleted immediately by the server without going through the reconciler.
 		Eventually(
 			func(g Gomega) {
-				getResponse, err := client.Get(ctx, privatev1.OrganizationsGetRequest_builder{
+				getResponse, err := tenantsClient.Get(ctx, privatev1.OrganizationsGetRequest_builder{
 					Id: id,
 				}.Build())
 				g.Expect(err).ToNot(HaveOccurred())
@@ -113,16 +116,29 @@ var _ = Describe("Organization reconciler", func() {
 			time.Second,
 		).Should(Succeed())
 
-		// Delete the organization:
-		_, err = client.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
+		// Delete the default project, as otherwise deleting the tenant will be blocked:
+		listProjectsResponse, err := projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+			Filter: new(fmt.Sprintf("this.metadata.tenant == %q && this.metadata.name == ''", name)),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		projects := listProjectsResponse.GetItems()
+		Expect(projects).To(HaveLen(1))
+		project := projects[0]
+		_, err = projectsClient.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+			Id: project.GetId(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+
+		// Delete the tenant:
+		_, err = tenantsClient.Delete(ctx, privatev1.OrganizationsDeleteRequest_builder{
 			Id: id,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 
-		// Verify the organization eventually disappears:
+		// Verify the tenant eventually disappears:
 		Eventually(
 			func(g Gomega) {
-				_, err := client.Get(ctx, privatev1.OrganizationsGetRequest_builder{
+				_, err := tenantsClient.Get(ctx, privatev1.OrganizationsGetRequest_builder{
 					Id: id,
 				}.Build())
 				g.Expect(err).To(HaveOccurred())

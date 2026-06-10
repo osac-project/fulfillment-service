@@ -94,6 +94,7 @@ spec:
           # The organization claim is required for tenant admins and IdP managers.
           # For regular users without organization claim, fall back to groups.
           default subject_tenants = []
+          default subject_projects = []
           subject_tenants = input.auth.identity.organization if {
             input.auth.identity.authnMethod == "jwt"
             input.auth.identity.organization
@@ -112,6 +113,10 @@ spec:
           subject_tenants = subject_groups if {
             input.auth.identity.authnMethod == "serviceaccount"
           }
+
+          # Get the subject's project(s). For now all authenticated users have access to all projects. This will be
+          # refined when project management is fully implemented.
+          subject_projects = ["*"]
 
           # Get the subject's realm roles from JWT
           default subject_realm_roles = []
@@ -287,3 +292,6 @@ spec:
                     : auth.identity.authnMethod == "jwt"
                       ? auth.authorization.default.subject_tenants
                       : [auth.identity.user.username.split(":")[2]]
+              projects:
+                expression: |
+                  auth.authorization.default.subject_projects

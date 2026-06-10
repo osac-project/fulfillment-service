@@ -64,4 +64,23 @@ message Metadata {
 
   // Version is a numeric field that is automatically incremented with every change to the object.
   int32 version = 9;
+
+  // Full name of the project that the object is assigned to. It can be empty, which means the object belongs to
+  // the default project of the tenant.
+  //
+  // When not empty, the value is a dot-separated path of labels representing a hierarchy of projects. For example,
+  // `team-a.frontend.staging` represents a project nested three levels deep.
+  //
+  // Each label in the path has the same restrictions as DNS labels, as described in RFC 1035:
+  //
+  // - Must be between 1 and 63 characters long.
+  // - Must only contain letters (a-z), digits (0-9) and hyphens (-).
+  // - It isn't case sensitive.
+  //
+  // For project objects this field represents the parent project. For example, if a project named `frontend` has
+  // this field set to `team-a`, it means that `frontend` is a child of the `team-a` project, and its full name is
+  // `team-a.frontend`.
+  //
+  // For organization objects this field is always empty, as organizations don't belong to a project.
+  string project = 10;
 }

@@ -37,10 +37,11 @@ import (
 
 // request is a common base for all DAO request types, containing shared fields.
 type request[O Object] struct {
-	dao     *GenericDAO[O]
-	tx      database.Tx
-	tenants collections.Set[string]
-	sql     struct {
+	dao      *GenericDAO[O]
+	tx       database.Tx
+	tenants  collections.Set[string]
+	projects collections.Set[string]
+	sql      struct {
 		filter strings.Builder
 		params []any
 	}
@@ -52,6 +53,7 @@ type archiveArgs struct {
 	deletionTs      time.Time
 	creator         string
 	tenant          string
+	project         string
 	name            string
 	labelsData      []byte
 	annotationsData []byte
@@ -59,7 +61,7 @@ type archiveArgs struct {
 	data            []byte
 }
 
-// init initializes the request, in particular it calculates the set of visible tenants.
+// init initializes the request, in particular it calculates the sets of visible tenants and projects.
 func (r *request[O]) init(ctx context.Context) error {
 	// Determine the set of visible tenants:
 	tenants, err := r.dao.tenancyLogic.DetermineVisibleTenants(ctx)
@@ -67,6 +69,13 @@ func (r *request[O]) init(ctx context.Context) error {
 		return err
 	}
 	r.tenants = tenants
+
+	// Determine the set of visible projects:
+	projects, err := r.dao.tenancyLogic.DetermineVisibleProjects(ctx)
+	if err != nil {
+		return err
+	}
+	r.projects = projects
 
 	return nil
 }
@@ -82,6 +91,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 			deletion_timestamp,
 			creator,
 			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -96,7 +106,8 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 			$7,
 			$8,
 			$9,
-			$10
+			$10,
+			$11
 		)
 		`,
 		r.dao.table,
@@ -111,6 +122,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 		args.deletionTs,
 		args.creator,
 		args.tenant,
+		args.project,
 		args.labelsData,
 		args.annotationsData,
 		args.version,
@@ -124,9 +136,9 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 	return err
 }
 
-// addTenancyFilter adds a clause to restrict results to only those objects that belong to tenants the current user
+// addTenantFilter adds a clause to restrict results to only those objects that belong to tenants the current user
 // has permission to see.
-func (r *request[O]) addTenancyFilter(ctx context.Context) error {
+func (r *request[O]) addTenantFilter(ctx context.Context) error {
 	// If the visible tenants set is universal, it means that the user has permission to see all tenants, so we don't
 	// need to apply any filtering:
 	if r.tenants.Universal() {
@@ -177,12 +189,66 @@ func (r *request[O]) addTenancyFilter(ctx context.Context) error {
 	}
 }
 
+// addProjectFilter adds a clause to restrict results to only those objects that belong to projects the current user
+// has permission to see.
+func (r *request[O]) addProjectFilter(ctx context.Context) error {
+	// If the visible projects set is universal, it means that the user has permission to see all projects, so we
+	// don't need to apply any filtering:
+	if r.projects.Universal() {
+		return nil
+	}
+
+	// If the visible projects set is empty, it means that the user has no permission to see any projects, so we
+	// can discard any previous filter and return instead a filter that matches nothing. Note that if parameters
+	// have been already added to the query, for example in the form of '$1', we need to preserve the existing
+	// filter to avoid potential binding errors.
+	if r.projects.Empty() {
+		if len(r.sql.params) == 0 {
+			r.sql.filter.WriteString("false")
+		} else {
+			previous := r.sql.filter.String()
+			r.sql.filter.Reset()
+			r.sql.filter.WriteString("false and (")
+			r.sql.filter.WriteString(previous)
+			r.sql.filter.WriteString(")")
+		}
+		return nil
+	}
+
+	// If the project set is finite, then we can add a filter that matches the project in the set.
+	if r.projects.Finite() {
+		ids := r.projects.Inclusions()
+		sort.Strings(ids)
+		r.sql.params = append(r.sql.params, ids)
+		filter := fmt.Sprintf("project = any($%d)", len(r.sql.params))
+		if r.sql.filter.Len() == 0 {
+			r.sql.filter.WriteString(filter)
+		} else {
+			previous := r.sql.filter.String()
+			r.sql.filter.Reset()
+			fmt.Fprintf(&r.sql.filter, "(%s) and %s", previous, filter)
+		}
+		return nil
+	}
+
+	// If we are here then the project set is infinite, and we don't know how to apply filtering for that at the
+	// moment, so return an error.
+	r.dao.logger.Warn(
+		"Operation not permitted because visible project set is infinite",
+		slog.Any("exclusions", r.projects.Exclusions()),
+	)
+	return &ErrDenied{
+		Reason: "operation not permitted",
+	}
+}
+
 type makeMetadataArgs struct {
 	creationTs  time.Time
 	deletionTs  time.Time
 	finalizers  []string
 	creator     string
 	tenant      string
+	project     string
 	name        string
 	labels      map[string]string
 	annotations map[string]string
@@ -201,6 +267,7 @@ func (r *request[O]) makeMetadata(args makeMetadataArgs) metadataIface {
 	result.SetFinalizers(args.finalizers)
 	result.SetCreator(args.creator)
 	result.SetTenant(r.filterTenant(args.tenant))
+	result.SetProject(args.project)
 	result.SetLabels(args.labels)
 	result.SetAnnotations(args.annotations)
 	result.SetVersion(args.version)

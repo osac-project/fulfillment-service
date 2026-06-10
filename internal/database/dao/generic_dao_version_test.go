@@ -53,8 +53,6 @@ var _ = Describe("Version", func() {
 		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
-		_, err = pool.Exec(ctx, createObjectsTableSQL)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err := database.NewTxManager().
@@ -77,6 +75,31 @@ var _ = Describe("Version", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+
+		// Create the tenants used in the tests:
+		createTenant := func(name string) {
+			_, err = pool.Exec(ctx, `
+				insert into organizations (
+					id,
+					name,
+					tenant,
+					data
+				)
+				values (
+					$1,
+					$2,
+					$3,
+					'{}'
+				)
+				`,
+				name, name, name,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("my-tenant")
 
 		// Create the DAO:
 		generic, err = NewGenericDAO[*testsv1.Object]().
@@ -99,7 +122,9 @@ var _ = Describe("Version", func() {
 		response, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -114,7 +139,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -134,7 +161,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -155,7 +184,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -189,8 +220,10 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
-					MyInt32:  0,
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
+					MyInt32: 0,
 				}.Build(),
 			).
 			Do(ctx)
@@ -213,7 +246,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -251,7 +286,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenant: "my-tenant"}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "v0",
 				}.Build(),
 			).

@@ -24,6 +24,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
@@ -38,7 +39,8 @@ func createPublicIPInState(
 	resp, err := publicIPDao.Create().SetObject(
 		privatev1.PublicIP_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenant: "shared",
+				Tenant:  "shared",
+				Project: auth.DefaultProject,
 			}.Build(),
 			Spec: privatev1.PublicIPSpec_builder{
 				Pool: poolID,
@@ -62,7 +64,8 @@ func createComputeInstanceInState(
 	resp, err := computeInstanceDao.Create().SetObject(
 		privatev1.ComputeInstance_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenant: "shared",
+				Tenant:  "shared",
+				Project: auth.DefaultProject,
 			}.Build(),
 			Spec: privatev1.ComputeInstanceSpec_builder{
 				Template: "general.small",
@@ -148,7 +151,8 @@ var _ = Describe("Public IP attachments server", func() {
 			poolResp, err := publicIPPoolDao.Create().SetObject(
 				privatev1.PublicIPPool_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "shared",
+						Tenant:  "shared",
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.PublicIPPoolSpec_builder{
 						Cidrs: []string{"10.0.0.0/24"},

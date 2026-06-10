@@ -71,8 +71,6 @@ var _ = Describe("Generic DAO", func() {
 		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
-		_, err = pool.Exec(ctx, createObjectsTableSQL)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err := database.NewTxManager().
@@ -95,6 +93,57 @@ var _ = Describe("Generic DAO", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+
+		// Create the tenants used in the tests:
+		createTenant := func(name string) {
+			_, err = pool.Exec(ctx,
+				`
+				insert into organizations (
+					id,
+					tenant,
+					name,
+					data
+				)
+				values (
+					$1,
+					$2,
+					$3,
+					'{}'
+				)
+				`,
+				name, name, name,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("my-tenant")
+
+		// Create the projects used in the tests:
+		createProject := func(tenant, name string) {
+			_, err = pool.Exec(ctx,
+				`
+				insert into projects (
+					id,
+					tenant,
+					project,
+					name,
+					data
+				)
+				values (
+					uuidv7(),
+					$1,
+					'',
+					$2,
+					'{}'
+				)
+				`,
+				tenant, name,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createProject("my-tenant", "my-project")
 	})
 
 	Describe("Creation", func() {
@@ -218,6 +267,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -273,6 +323,30 @@ var _ = Describe("Generic DAO", func() {
 			Expect(object.GetMetadata().GetCreator()).To(Equal("my-user"))
 		})
 
+		It("Sets project when creating", func() {
+			// Create the object with a project and verify that the result has the project set:
+			object := &testsv1.Object{
+				Metadata: &testsv1.Metadata{
+					Tenant:  "my-tenant",
+					Project: "my-project",
+				},
+			}
+			response, err := generic.Create().
+				SetObject(object).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object = response.GetObject()
+			Expect(object.GetMetadata().GetProject()).To(Equal("my-project"))
+
+			// Get the object and verify that the result has the project set:
+			getResponse, err := generic.Get().
+				SetId(object.GetId()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object = getResponse.GetObject()
+			Expect(object.GetMetadata().GetProject()).To(Equal("my-project"))
+		})
+
 		It("Sets creation timestamp when creating", func() {
 			object := &testsv1.Object{
 				Metadata: &testsv1.Metadata{
@@ -296,6 +370,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -391,6 +466,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -436,6 +512,7 @@ var _ = Describe("Generic DAO", func() {
 						Id: id,
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -449,6 +526,7 @@ var _ = Describe("Generic DAO", func() {
 						Id: id,
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -465,6 +543,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -492,12 +571,13 @@ var _ = Describe("Generic DAO", func() {
 		It("Lists objects", func() {
 			// Insert a couple of rows:
 			const count = 2
-			for range count {
+			for i := range count {
 				_, err := generic.Create().
 					SetObject(
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
 						}.Build(),
 					).
@@ -515,7 +595,7 @@ var _ = Describe("Generic DAO", func() {
 			}
 		})
 
-		It("Lists objects sorted by ID identifier default", func() {
+		It("Lists objects sorted by identifier by default", func() {
 			// Create objects with specific identifier in non-alphabetical order:
 			ids := []string{"zebra", "apple", "banana"}
 			objects := make([]*testsv1.Object, len(ids))
@@ -526,6 +606,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: id,
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
 						}.Build(),
 					).
@@ -554,6 +635,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -576,6 +658,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -601,6 +684,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 						MyString: "my value",
 						MyBool:   true,
@@ -671,6 +755,7 @@ var _ = Describe("Generic DAO", func() {
 						Metadata: testsv1.Metadata_builder{
 							Finalizers: []string{"a"},
 							Tenant:     "my-tenant",
+							Name:       "my-object",
 						}.Build(),
 						MyString: "my value",
 						MyBool:   true,
@@ -758,6 +843,7 @@ var _ = Describe("Generic DAO", func() {
 								"my-annotation": "my-value",
 							},
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -813,6 +899,7 @@ var _ = Describe("Generic DAO", func() {
 						Metadata: testsv1.Metadata_builder{
 							Finalizers: []string{"a"},
 							Tenant:     "my-tenant",
+							Name:       "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -904,6 +991,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "b"},
 								Tenant:     "my-tenant",
+								Name:       "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -925,6 +1013,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "b"},
 								Tenant:     "my-tenant",
+								Name:       "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -947,6 +1036,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -964,6 +1054,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Name:       "my-object",
 							}.Build(),
 						}.Build()).
 					Do(ctx)
@@ -980,6 +1071,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "b"},
 								Tenant:     "my-tenant",
+								Name:       "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -997,6 +1089,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "a"},
 								Tenant:     "my-tenant",
+								Name:       "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -1013,6 +1106,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -1035,6 +1129,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -1058,6 +1153,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a", "b"},
 								Tenant:     "my-tenant",
+								Name:       "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -1080,6 +1176,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -1105,16 +1202,17 @@ var _ = Describe("Generic DAO", func() {
 				// this works correctly because the DAO sorts object by identifier by default.
 				objects = make([]*testsv1.Object, objectCount)
 				for i := range len(objects) {
-					objects[i] = &testsv1.Object{
-						Id: uuid.New(),
-						Metadata: &testsv1.Metadata{
+					objects[i] = testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
-						},
-					}
-					_, err := generic.Create().
+							Name:   fmt.Sprintf("my-object-%d", i),
+						}.Build(),
+					}.Build()
+					response, err := generic.Create().
 						SetObject(objects[i]).
 						Do(ctx)
 					Expect(err).ToNot(HaveOccurred())
+					objects[i] = response.GetObject()
 				}
 				sort(objects)
 			})
@@ -1220,6 +1318,7 @@ var _ = Describe("Generic DAO", func() {
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -1248,6 +1347,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 						MyString: "my_value",
 					}.Build(),
@@ -1272,6 +1372,7 @@ var _ = Describe("Generic DAO", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 						MyString: "my_value",
 					}.Build(),
@@ -1296,40 +1397,6 @@ var _ = Describe("Generic DAO", func() {
 			Expect(updated.GetMetadata().GetCreationTimestamp()).To(Equal(created.GetMetadata().GetCreationTimestamp()))
 		})
 
-		It("Updates name", func() {
-			// Create an object with an initial name:
-			response, err := generic.Create().
-				SetObject(
-					testsv1.Object_builder{
-						Metadata: testsv1.Metadata_builder{
-							Name:   "my-name",
-							Tenant: "my-tenant",
-						}.Build(),
-					}.Build(),
-				).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			object := response.GetObject()
-			Expect(object.GetMetadata().GetName()).To(Equal("my-name"))
-
-			// Update the name:
-			object.GetMetadata().SetName("your-name")
-			updateResponse, err := generic.Update().
-				SetObject(object).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			object = updateResponse.GetObject()
-			Expect(object.GetMetadata().GetName()).To(Equal("your-name"))
-
-			// Get the object and verify the name was updated:
-			getResponse, err := generic.Get().
-				SetId(object.GetId()).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			object = getResponse.GetObject()
-			Expect(object.GetMetadata().GetName()).To(Equal("your-name"))
-		})
-
 		It("Updates labels", func() {
 			response, err := generic.Create().
 				SetObject(
@@ -1339,6 +1406,7 @@ var _ = Describe("Generic DAO", func() {
 								"my-label": "my-value",
 							},
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -1377,6 +1445,7 @@ var _ = Describe("Generic DAO", func() {
 								"my-annotation": "my-value",
 							},
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -1411,6 +1480,7 @@ var _ = Describe("Generic DAO", func() {
 						Metadata: testsv1.Metadata_builder{
 							Finalizers: []string{"my-finalizer"},
 							Tenant:     "my-tenant",
+							Name:       "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -1433,12 +1503,13 @@ var _ = Describe("Generic DAO", func() {
 			Expect(object.GetMetadata().GetFinalizers()).To(Equal([]string{"your-finalizer"}))
 		})
 
-		It("Updates tenant", func() {
+		It("Rejects updating object with empty tenant", func() {
 			response, err := generic.Create().
 				SetObject(
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -1446,20 +1517,12 @@ var _ = Describe("Generic DAO", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := response.GetObject()
 
-			object.GetMetadata().SetTenant("your-tenant")
-			updateResponse, err := generic.Update().
+			object.GetMetadata().SetTenant("")
+			_, err = generic.Update().
 				SetObject(object).
 				Do(ctx)
-
-			object = updateResponse.GetObject()
-			Expect(object.GetMetadata().GetTenant()).To(Equal("your-tenant"))
-
-			getResponse, err := generic.Get().
-				SetId(object.GetId()).
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			object = getResponse.GetObject()
-			Expect(object.GetMetadata().GetTenant()).To(Equal("your-tenant"))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("empty tenant"))
 		})
 
 		It("Returns not found error when updating object that doesn't exist", func() {
@@ -1469,6 +1532,7 @@ var _ = Describe("Generic DAO", func() {
 						Id: "does-not-exist",
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 						MyString: "some-value",
 					}.Build(),
@@ -1489,6 +1553,7 @@ var _ = Describe("Generic DAO", func() {
 								Id: fmt.Sprintf("%d", i),
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   fmt.Sprintf("my-object-%d", i),
 								}.Build(),
 							}.Build(),
 						).
@@ -1512,6 +1577,7 @@ var _ = Describe("Generic DAO", func() {
 								Id: fmt.Sprintf("%d", i),
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   fmt.Sprintf("my-object-%d", i),
 								}.Build(),
 							}.Build(),
 						).
@@ -1539,6 +1605,7 @@ var _ = Describe("Generic DAO", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   fmt.Sprintf("my-object-%d", i),
 								}.Build(),
 								MyString: fmt.Sprintf("my_value_%d", i),
 							}.Build(),
@@ -1563,6 +1630,7 @@ var _ = Describe("Generic DAO", func() {
 								Id: fmt.Sprintf("%d", i),
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   fmt.Sprintf("my-object-%d", i),
 								}.Build(),
 								MyString: fmt.Sprintf("my_value_%d", i),
 							}.Build(),
@@ -1591,6 +1659,7 @@ var _ = Describe("Generic DAO", func() {
 								Id: fmt.Sprintf("%d", i),
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   fmt.Sprintf("my-object-%d", i),
 								}.Build(),
 								MyString: fmt.Sprintf("my_value_%d", i),
 							}.Build(),
@@ -1615,6 +1684,7 @@ var _ = Describe("Generic DAO", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   fmt.Sprintf("my-object-%d", i),
 								}.Build(),
 								MyInt32: int32(i),
 							}.Build(),
@@ -1637,6 +1707,7 @@ var _ = Describe("Generic DAO", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   fmt.Sprintf("my-object-%d", i),
 								}.Build(),
 								Spec: testsv1.Spec_builder{
 									SpecString: fmt.Sprintf("my_value_%d", i),
@@ -1664,6 +1735,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Name:       "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -1691,6 +1763,7 @@ var _ = Describe("Generic DAO", func() {
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Name:       "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -1715,9 +1788,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "old",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "old",
 							}.Build(),
 							MyTimestamp: timestamppb.New(now.Add(-time.Minute)),
 						}.Build(),
@@ -1730,6 +1803,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "new",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "new",
 							}.Build(),
 							MyTimestamp: timestamppb.New(now.Add(+time.Minute)),
 						}.Build(),
@@ -1742,7 +1816,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("new"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("new"))
 			})
 
 			It("Filters by timestamp in the past", func() {
@@ -1751,9 +1825,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "old",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "old",
 							}.Build(),
 							MyTimestamp: timestamppb.New(now.Add(-time.Minute)),
 						}.Build(),
@@ -1763,9 +1837,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "new",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "new",
 							}.Build(),
 							MyTimestamp: timestamppb.New(now.Add(+time.Minute)),
 						}.Build(),
@@ -1778,7 +1852,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("old"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("old"))
 			})
 
 			It("Filters by presence of message field", func() {
@@ -1786,9 +1860,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "good",
 							}.Build(),
 							Spec: testsv1.Spec_builder{}.Build(),
 						}.Build(),
@@ -1798,9 +1872,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "bad",
 							}.Build(),
 							Spec: nil,
 						}.Build(),
@@ -1813,7 +1887,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Filters by presence of string field", func() {
@@ -1821,9 +1895,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "good",
 							}.Build(),
 							MyString: "my value",
 						}.Build(),
@@ -1836,6 +1910,7 @@ var _ = Describe("Generic DAO", func() {
 							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "bad",
 							}.Build(),
 							MyString: "",
 						}.Build(),
@@ -1847,37 +1922,38 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Filters by presence of deletion timestamp", func() {
-				var err error
-				_, err = generic.Create().
+				createReponse, err := generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Name:       "good",
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
+				goodObject := createReponse.GetObject()
+				goodId := goodObject.GetId()
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Name:       "bad",
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				_, err = generic.Delete().
-					SetId("good").
+					SetId(goodId).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				response, err := generic.List().
@@ -1886,37 +1962,38 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Filters by absence of deletion timestamp", func() {
-				var err error
-				_, err = generic.Create().
+				_, err := generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Name:       "good",
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
+				createReponse, err := generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Finalizers: []string{"a"},
 								Tenant:     "my-tenant",
+								Name:       "bad",
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
+				badObject := createReponse.GetObject()
+				badId := badObject.GetId()
 				_, err = generic.Delete().
-					SetId("bad").
+					SetId(badId).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				response, err := generic.List().
@@ -1925,7 +2002,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Filters by presence of nested string field", func() {
@@ -1933,9 +2010,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "good",
 							}.Build(),
 							Spec: testsv1.Spec_builder{
 								SpecString: "my value",
@@ -1947,9 +2024,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "bad",
 							}.Build(),
 							Spec: testsv1.Spec_builder{
 								SpecString: "",
@@ -1964,7 +2041,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Filters by string prefix", func() {
@@ -1972,9 +2049,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "good",
 							}.Build(),
 							MyString: "my value",
 						}.Build(),
@@ -1984,9 +2061,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "bad",
 							}.Build(),
 							MyString: "your value",
 						}.Build(),
@@ -1999,7 +2076,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Filters by string suffix", func() {
@@ -2007,9 +2084,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "good",
 							}.Build(),
 							MyString: "value my",
 						}.Build(),
@@ -2019,9 +2096,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "bad",
 							}.Build(),
 							MyString: "value your",
 						}.Build(),
@@ -2034,7 +2111,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Escapes percent in prefix", func() {
@@ -2042,9 +2119,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "good",
 							}.Build(),
 							MyString: "my% value",
 						}.Build(),
@@ -2054,9 +2131,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "bad",
 							}.Build(),
 							MyString: "my value",
 						}.Build(),
@@ -2069,7 +2146,7 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Escapes underscore in prefix", func() {
@@ -2077,9 +2154,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "good",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "good",
 							}.Build(),
 							MyString: "my_ value",
 						}.Build(),
@@ -2089,9 +2166,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "bad",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "bad",
 							}.Build(),
 							MyString: "my value",
 						}.Build(),
@@ -2104,17 +2181,17 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("good"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
 			})
 
 			It("Filters by tenant", func() {
-				// Create objects with 'my-tenant' set in metadata
+				// Create objects with 'my-tenant' set in metadata:
 				_, err := generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "object_1",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "my-object",
 							}.Build(),
 						}.Build(),
 					).
@@ -2123,16 +2200,16 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "object_2",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "your-object",
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 
-				// Filter by the tenant that is set in the metadata
+				// Filter by the tenant that is set in the metadata:
 				response, err := generic.List().
 					SetFilter("this.metadata.tenant == 'my-tenant'").
 					Do(ctx)
@@ -2143,7 +2220,7 @@ var _ = Describe("Generic DAO", func() {
 					Expect(item.GetMetadata().GetTenant()).To(Equal("my-tenant"))
 				}
 
-				// Filter by a non-existent tenant
+				// Filter by a non-existent tenant:
 				response, err = generic.List().
 					SetFilter("this.metadata.tenant == 'non_existent_tenant'").
 					Do(ctx)
@@ -2156,12 +2233,12 @@ var _ = Describe("Generic DAO", func() {
 				_, err := generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "object_with_label",
 							Metadata: testsv1.Metadata_builder{
 								Labels: map[string]string{
 									"mylabel": "myvalue",
 								},
 								Tenant: "my-tenant",
+								Name:   "with-label",
 							}.Build(),
 						}.Build(),
 					).
@@ -2170,9 +2247,9 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "object_without_label",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "without-label",
 							}.Build(),
 						}.Build(),
 					).
@@ -2185,19 +2262,20 @@ var _ = Describe("Generic DAO", func() {
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("object_with_label"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("with-label"))
 			})
 
 			It("Filters by absence of label key", func() {
+				// Create an object with a lable, and another without:
 				_, err := generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "object_with_label",
 							Metadata: testsv1.Metadata_builder{
-								Labels: map[string]string{
-									"mylabel": "myvalue",
-								},
 								Tenant: "my-tenant",
+								Name:   "with-label",
+								Labels: map[string]string{
+									"my-label": "my-value",
+								},
 							}.Build(),
 						}.Build(),
 					).
@@ -2206,22 +2284,23 @@ var _ = Describe("Generic DAO", func() {
 				_, err = generic.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "object_without_label",
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   "without-label",
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 
+				// List by absence of label and verify that we only get the object without the label:
 				response, err := generic.List().
-					SetFilter("!('mylabel' in this.metadata.labels)").
+					SetFilter("!('my-label' in this.metadata.labels)").
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
 				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("object_without_label"))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("without-label"))
 			})
 
 			It("Filters by boolean field", func() {

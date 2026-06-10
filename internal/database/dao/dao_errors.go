@@ -44,13 +44,37 @@ func (e *ErrNotFound) Error() string {
 
 // ErrAlreadyExists is an error type that indicates that an object can't be created because it already exists.
 type ErrAlreadyExists struct {
+	// Table is the name of the table that the object already exists in.
+	Table string
+
 	// ID is the identifier of the object that already exists.
 	ID string
+
+	// Name is the name of the object that already exists.
+	Name string
 }
 
 // Error returns the error message.
 func (e *ErrAlreadyExists) Error() string {
-	return fmt.Sprintf("object with identifier '%s' already exists", e.ID)
+	var kind string
+	switch e.Table {
+	case "projects":
+		kind = "project"
+	case "tenants":
+		kind = "tenant"
+	default:
+		kind = "object"
+	}
+	switch {
+	case e.ID != "" && e.Name != "":
+		return fmt.Sprintf("%s with identifier '%s' and name '%s' already exists", kind, e.ID, e.Name)
+	case e.ID != "":
+		return fmt.Sprintf("%s with identifier '%s' already exists", kind, e.ID)
+	case e.Name != "":
+		return fmt.Sprintf("%s '%s' already exists", kind, e.Name)
+	default:
+		return fmt.Sprintf("%s already exists", kind)
+	}
 }
 
 // ErrConflict is an error type that indicates that an update was rejected because the object's current version does not

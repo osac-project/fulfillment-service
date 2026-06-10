@@ -80,7 +80,8 @@ var _ = Describe("Private public IP attachments server", func() {
 		poolResp, err := publicIPPoolDao.Create().SetObject(
 			privatev1.PublicIPPool_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 				Spec: privatev1.PublicIPPoolSpec_builder{
 					Cidrs: []string{"10.0.0.0/24"},
@@ -612,6 +613,15 @@ var _ = Describe("Private public IP attachments server", func() {
 			restrictedTenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 				Return(collections.NewSet("shared"), nil).
 				AnyTimes()
+			restrictedTenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+				Return(collections.NewUniversalSet[string](), nil).
+				AnyTimes()
+			restrictedTenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+				Return(auth.DefaultProject, nil).
+				AnyTimes()
+			restrictedTenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+				Return(collections.NewUniversalSet[string](), nil).
+				AnyTimes()
 
 			restrictedServer, err := NewPrivatePublicIPAttachmentsServer().
 				SetLogger(logger).
@@ -623,7 +633,8 @@ var _ = Describe("Private public IP attachments server", func() {
 			otherTenantIP, err := publicIPDao.Create().SetObject(
 				privatev1.PublicIP_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "other-tenant",
+						Tenant:  "other-tenant",
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.PublicIPSpec_builder{
 						Pool: sharedPool.GetId(),
@@ -668,6 +679,15 @@ var _ = Describe("Private public IP attachments server", func() {
 			restrictedTenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 				Return(collections.NewSet("shared"), nil).
 				AnyTimes()
+			restrictedTenancy.EXPECT().DetermineAssignableProjects(gomock.Any()).
+				Return(collections.NewUniversalSet[string](), nil).
+				AnyTimes()
+			restrictedTenancy.EXPECT().DetermineDefaultProject(gomock.Any()).
+				Return(auth.DefaultProject, nil).
+				AnyTimes()
+			restrictedTenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+				Return(collections.NewUniversalSet[string](), nil).
+				AnyTimes()
 
 			restrictedServer, err := NewPrivatePublicIPAttachmentsServer().
 				SetLogger(logger).
@@ -681,7 +701,8 @@ var _ = Describe("Private public IP attachments server", func() {
 			otherTenantCI, err := computeInstanceDao.Create().SetObject(
 				privatev1.ComputeInstance_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "other-tenant",
+						Tenant:  "other-tenant",
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "general.small",

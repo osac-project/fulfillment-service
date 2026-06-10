@@ -15,6 +15,7 @@ package dao
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -53,8 +54,6 @@ var _ = Describe("Metrics", func() {
 		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
-		_, err = pool.Exec(ctx, createObjectsTableSQL)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err := database.NewTxManager().
@@ -81,6 +80,31 @@ var _ = Describe("Metrics", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
+			AnyTimes()
+
+		// Create the tenant used in the tests:
+		createTenant := func(name string) {
+			_, err = pool.Exec(ctx, `
+				insert into organizations (
+					id,
+					tenant,
+					name,
+					data
+				)
+				values (
+					$1,
+					$2,
+					$3,
+					'{}'
+				)
+				`,
+				name, name, name,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("my-tenant")
 
 		// Create the DAO with metrics enabled:
 		dao, err = NewGenericDAO[*testsv1.Object]().
@@ -98,6 +122,7 @@ var _ = Describe("Metrics", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -116,6 +141,7 @@ var _ = Describe("Metrics", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -134,6 +160,7 @@ var _ = Describe("Metrics", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).
@@ -150,6 +177,7 @@ var _ = Describe("Metrics", func() {
 			object := testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
 					Tenant: "my-tenant",
+					Name:   "my-object",
 				}.Build(),
 			}.Build()
 			object.SetId("duplicate")
@@ -187,6 +215,7 @@ var _ = Describe("Metrics", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   "my-object",
 								}.Build(),
 							}.Build(),
 						).
@@ -203,6 +232,7 @@ var _ = Describe("Metrics", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   "my-object",
 								}.Build(),
 							}.Build(),
 						).
@@ -241,6 +271,7 @@ var _ = Describe("Metrics", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   "my-object",
 								}.Build(),
 							}.Build(),
 						).
@@ -263,6 +294,7 @@ var _ = Describe("Metrics", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   "my-object",
 								}.Build(),
 							}.Build(),
 						).
@@ -283,6 +315,7 @@ var _ = Describe("Metrics", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   "my-object",
 								}.Build(),
 							}.Build(),
 						).
@@ -303,6 +336,7 @@ var _ = Describe("Metrics", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   "my-object",
 								}.Build(),
 							}.Build(),
 						).
@@ -323,6 +357,7 @@ var _ = Describe("Metrics", func() {
 							testsv1.Object_builder{
 								Metadata: testsv1.Metadata_builder{
 									Tenant: "my-tenant",
+									Name:   "my-object",
 								}.Build(),
 							}.Build(),
 						).
@@ -337,12 +372,13 @@ var _ = Describe("Metrics", func() {
 		)
 
 		It("Counts multiple operations correctly", func() {
-			for range 3 {
+			for i := range 3 {
 				_, err := dao.Create().
 					SetObject(
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
 						}.Build(),
 					).
@@ -368,6 +404,7 @@ var _ = Describe("Metrics", func() {
 					testsv1.Object_builder{
 						Metadata: testsv1.Metadata_builder{
 							Tenant: "my-tenant",
+							Name:   "my-object",
 						}.Build(),
 					}.Build(),
 				).

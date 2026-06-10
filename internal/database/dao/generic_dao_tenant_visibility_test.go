@@ -27,7 +27,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
-var _ = Describe("Tenancy logic", func() {
+var _ = Describe("Tenant visibility", func() {
 	var (
 		ctx  context.Context
 		tx   database.Tx
@@ -47,8 +47,6 @@ var _ = Describe("Tenancy logic", func() {
 		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
-		_, err = pool.Exec(ctx, createObjectsTableSQL)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err := database.NewTxManager().
@@ -66,6 +64,33 @@ var _ = Describe("Tenancy logic", func() {
 		})
 		ctx = database.TxIntoContext(ctx, tx)
 
+		// Create the tenants used in the tests:
+		createTenant := func(name string) {
+			_, err = pool.Exec(ctx,
+				`
+				insert into organizations (
+					id,
+					tenant,
+					name,
+					data
+				)
+				values (
+					$1,
+					$2,
+					$3,
+					'{}'
+				)
+				`,
+				name, name, name,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("tenant-a")
+		createTenant("tenant-b")
+		createTenant("tenant-c")
+		createTenant("tenant-x")
+		createTenant("tenant-y")
+
 		// Create the mock controller:
 		ctrl = gomock.NewController(GinkgoT())
 		DeferCleanup(ctrl.Finish)
@@ -75,7 +100,10 @@ var _ = Describe("Tenancy logic", func() {
 		// Create a tenancy logic that makes certain tenants visible to the user:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant_a", "tenant_c"), nil).
+			Return(collections.NewSet("tenant-a", "tenant-c"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
 			AnyTimes()
 
 		// Create the DAO:
@@ -89,13 +117,13 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant: "tenant-a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
-		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant_a"))
+		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant-a"))
 
 		// Retrieve the object by identifier and verify it still shows the tenant:
 		getResponse, err := dao.Get().
@@ -103,7 +131,7 @@ var _ = Describe("Tenancy logic", func() {
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object = getResponse.GetObject()
-		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant_a"))
+		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant-a"))
 
 		// Retrieve the object as part of a list and verify it still shows the tenant:
 		listResponse, err := dao.List().
@@ -112,31 +140,34 @@ var _ = Describe("Tenancy logic", func() {
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResponse.GetItems()).To(HaveLen(1))
-		Expect(listResponse.GetItems()[0].GetMetadata().GetTenant()).To(Equal("tenant_a"))
+		Expect(listResponse.GetItems()[0].GetMetadata().GetTenant()).To(Equal("tenant-a"))
 
 		// Update the object and verify the response still shows the tenant:
 		object.SetMyString("hello")
-		object.GetMetadata().SetTenant("tenant_a")
+		object.GetMetadata().SetTenant("tenant-a")
 		updateResponse, err := dao.Update().
 			SetObject(object).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object = updateResponse.GetObject()
-		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant_a"))
+		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant-a"))
 
 		// Verify the actual database contains the tenant:
 		var tenant string
 		row := tx.QueryRow(ctx, "select tenant from objects where id = $1", object.GetId())
 		err = row.Scan(&tenant)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(tenant).To(Equal("tenant_a"))
+		Expect(tenant).To(Equal("tenant-a"))
 	})
 
 	It("Shows all tenants when user has no tenant restrictions", func() {
 		// Create a tenancy logic that makes all tenants visible to the user:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewUniversalSet[string](), nil).
+			Return(auth.AllTenants, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
 			AnyTimes()
 
 		// Create the DAO:
@@ -150,20 +181,23 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant: "tenant-a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
-		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant_a"))
+		Expect(object.GetMetadata().GetTenant()).To(Equal("tenant-a"))
 	})
 
 	It("Shows no tenants when user has no visible tenants that intersect with object tenants", func() {
 		// Create a tenancy logic that makes only one tenant visible to the user:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant_x"), nil).
+			Return(collections.NewSet("tenant-x"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
 			AnyTimes()
 
 		// Create the DAO:
@@ -177,7 +211,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_y",
+					Tenant: "tenant-y",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -204,7 +238,10 @@ var _ = Describe("Tenancy logic", func() {
 		// Create a DAO with visibility for tenant A:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant_a"), nil).
+			Return(collections.NewSet("tenant-a"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
 			AnyTimes()
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -216,7 +253,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant: "tenant-a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -242,7 +279,10 @@ var _ = Describe("Tenancy logic", func() {
 		// Create the DAO with visibility for tenant A and insert the object:
 		tenancyA := auth.NewMockTenancyLogic(ctrl)
 		tenancyA.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant_a"), nil).
+			Return(collections.NewSet("tenant-a"), nil).
+			AnyTimes()
+		tenancyA.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
 			AnyTimes()
 		daoA, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -254,7 +294,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := daoA.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant: "tenant-a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -265,7 +305,10 @@ var _ = Describe("Tenancy logic", func() {
 		// tenant A:
 		tenancyB := auth.NewMockTenancyLogic(ctrl)
 		tenancyB.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant_b"), nil).
+			Return(collections.NewSet("tenant-b"), nil).
+			AnyTimes()
+		tenancyB.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
 			AnyTimes()
 		daoB, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -291,7 +334,10 @@ var _ = Describe("Tenancy logic", func() {
 		// Create a DAO with visibility for tenant A:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant_a"), nil).
+			Return(collections.NewSet("tenant-a"), nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -303,7 +349,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := dao.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant: "tenant-a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -330,7 +376,10 @@ var _ = Describe("Tenancy logic", func() {
 		// Create a tenancy logic that makes all tenants visible, used to create the object:
 		tenancyA := auth.NewMockTenancyLogic(ctrl)
 		tenancyA.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant_a"), nil).
+			Return(collections.NewSet("tenant-a"), nil).
+			AnyTimes()
+		tenancyA.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
 			AnyTimes()
 
 		// Create the DAO for tenant A and insert the object:
@@ -342,7 +391,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := daoA.Create().
 			SetObject(testsv1.Object_builder{
 				Metadata: testsv1.Metadata_builder{
-					Tenant: "tenant_a",
+					Tenant: "tenant-a",
 				}.Build(),
 			}.Build()).
 			Do(ctx)
@@ -353,7 +402,10 @@ var _ = Describe("Tenancy logic", func() {
 		// tenant A:
 		tenancyB := auth.NewMockTenancyLogic(ctrl)
 		tenancyB.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant_b"), nil).
+			Return(collections.NewSet("tenant-b"), nil).
+			AnyTimes()
+		tenancyB.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
 			AnyTimes()
 		daoB, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).

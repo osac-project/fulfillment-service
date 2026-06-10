@@ -57,6 +57,7 @@ type GenericDAOBuilder[O Object] struct {
 //   - `finalizers` - The list of finalizers for the object.
 //   - `creator` - The creator of the object.
 //   - `tenant` - The tenant that the object belongs to.
+//   - `project` - The project that the object is assigned to.
 //   - `labels` - The labels assigned to the object.
 //   - `annotations` - The annotations assigned to the object.
 //   - `version` - The version number, automatically incremented on every update.
@@ -98,6 +99,8 @@ type metadataIface interface {
 	SetCreator(string)
 	GetTenant() string
 	SetTenant(string)
+	GetProject() string
+	SetProject(string)
 	GetLabels() map[string]string
 	SetLabels(map[string]string)
 	GetAnnotations() map[string]string

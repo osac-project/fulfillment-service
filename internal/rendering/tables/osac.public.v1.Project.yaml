@@ -13,17 +13,14 @@
 
 columns:
 
-- header: ID
-  value: this.id
+- header: PROJECT
+  value: "has(this.metadata.project)? this.metadata.project: '-'"
 
 - header: NAME
   value: "has(this.metadata.name)? this.metadata.name: '-'"
 
 - header: TITLE
   value: "has(this.spec.title)? this.spec.title: '-'"
-
-- header: TENANT
-  value: "has(this.metadata.tenant)? this.metadata.tenant: '-'"
 
 - header: STATE
   value: this.status.state

@@ -104,3 +104,49 @@ func (p *DefaultTenancyLogic) DetermineVisibleTenants(ctx context.Context) (resu
 	}
 	return
 }
+
+// DetermineAssignableProjects extracts the subject from the auth context and returns the identifiers of the projects
+// that can be assigned to objects.
+func (p *DefaultTenancyLogic) DetermineAssignableProjects(ctx context.Context) (result collections.Set[string],
+	err error) {
+	subject := SubjectFromContext(ctx)
+	result = subject.Projects
+	if result.Empty() {
+		p.logger.ErrorContext(
+			ctx,
+			"Subject has no projects",
+			slog.String("user", subject.User),
+		)
+		err = fmt.Errorf("subject must belong to at least one project to create objects")
+		return
+	}
+	return
+}
+
+// DetermineDefaultProject extracts the subject from the auth context and returns the project that will be assigned
+// by default to objects. When the subject has access to all projects (e.g. an admin), the default is the well-known
+// default project because a universal set can't be stored as the project of an object.
+func (p *DefaultTenancyLogic) DetermineDefaultProject(ctx context.Context) (result string, err error) {
+	assignable, err := p.DetermineAssignableProjects(ctx)
+	if err != nil {
+		return
+	}
+	if !assignable.Finite() {
+		result = DefaultProject
+		return
+	}
+	inclusions := assignable.Inclusions()
+	if len(inclusions) > 0 {
+		result = inclusions[0]
+	}
+	return
+}
+
+// DetermineVisibleProjects extracts the subject from the auth context and returns the identifiers of the projects
+// that the current user has permission to see.
+func (p *DefaultTenancyLogic) DetermineVisibleProjects(ctx context.Context) (result collections.Set[string],
+	err error) {
+	subject := SubjectFromContext(ctx)
+	result = subject.Projects
+	return
+}

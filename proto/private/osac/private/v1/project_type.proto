@@ -15,7 +15,6 @@ syntax = "proto3";
 
 package osac.private.v1;
 
-import "google/api/field_behavior.proto";
 import "osac/private/v1/condition_status_type.proto";
 import "osac/private/v1/metadata_type.proto";
 
@@ -25,8 +24,9 @@ import "osac/private/v1/metadata_type.proto";
 // Projects can be nested to create hierarchical resource organization, allowing for flexible multi-level
 // resource grouping.
 //
-// For nested projects, the spec.parent field references the parent Project ID. Tenant isolation is
-// enforced via the standard metadata.tenant field.
+// For nested projects, the parent is identified by the metadata.project field, which contains the
+// full name of the parent project. Tenant isolation is enforced via the standard metadata.tenant
+// field.
 //
 // Projects support the following use cases:
 // - Organizing resources by team, department, or application
@@ -34,7 +34,6 @@ import "osac/private/v1/metadata_type.proto";
 // - Quota and resource allocation boundaries
 //
 // The system validates the project hierarchy during reconciliation:
-// - Parent project (if specified) must exist and be in ACTIVE state
 // - Circular dependencies are prevented
 message Project {
   // Unique identifier of the project.
@@ -55,21 +54,6 @@ message Project {
 // The spec contains user-specified parameters that define how the project should be configured. These fields
 // follow a declarative model where users specify the desired state and the system reconciles to match it.
 message ProjectSpec {
-  // Optional parent Project ID for nested projects. Immutable after creation.
-  //
-  // If specified, must reference the ID of an existing Project in ACTIVE state.
-  // Leave empty for top-level projects.
-  //
-  // The system validates during reconciliation that:
-  // - The parent Project exists
-  // - The parent Project.status.state is ACTIVE
-  // - No circular dependencies exist in the project hierarchy
-  //
-  // If validation fails, the project will transition to FAILED state with an appropriate error message.
-  //
-  // Example: "550e8400-e29b-41d4-a716-446655440000"
-  optional string parent = 1 [(google.api.field_behavior) = IMMUTABLE];
-
   // Human-friendly short description of the project, only a few words, suitable for displaying in one single line on
   // a UI or CLI. For example: "Production Environment" or "Development Workspace".
   string title = 2;
@@ -90,12 +74,9 @@ message ProjectStatus {
 
   // Human-readable message providing additional details about the current state.
   //
-  // For PENDING state, this might contain progress information like "Validating parent project" or
-  // "Initializing project resources".
+  // For PENDING state, this might contain progress information like "Initializing project resources".
   //
   // For FAILED state, contains error details like:
-  // - "Parent project not found"
-  // - "Parent project not in ACTIVE state"
   // - "Circular dependency detected"
   //
   // For ACTIVE state, this is typically empty or contains confirmation like "Project ready for use".
@@ -141,7 +122,6 @@ enum ProjectState {
   // The project is being initialized and is not ready for use yet.
   //
   // During this state, the system is:
-  // - Validating that the parent project (if specified) exists and is in ACTIVE state
   // - Checking for circular dependencies in the project hierarchy
   // - Initializing project resources and access controls
   //
@@ -151,7 +131,6 @@ enum ProjectState {
   // The project is fully operational and ready for resources.
   //
   // In this state:
-  // - Parent project (if specified) is in ACTIVE state
   // - Project hierarchy is validated
   // - Access controls are configured
   // - Resources can be created and attached to the project
@@ -160,8 +139,6 @@ enum ProjectState {
   // The project has encountered an error and is unusable.
   //
   // Common failure reasons include:
-  // - Parent project not found (for nested projects)
-  // - Parent project not in ACTIVE state (for nested projects)
   // - Circular dependency detected in project hierarchy
   // - Access control configuration error
   //

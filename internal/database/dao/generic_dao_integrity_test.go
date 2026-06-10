@@ -74,6 +74,9 @@ var _ = Describe("Referential integrity", func() {
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(auth.AllTenants, nil).
 			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleProjects(gomock.Any()).
+			Return(auth.AllProjects, nil).
+			AnyTimes()
 
 		// Create the DAO:
 		generic, err = NewGenericDAO[*privatev1.Cluster]().

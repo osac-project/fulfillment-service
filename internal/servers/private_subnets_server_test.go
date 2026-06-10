@@ -76,7 +76,8 @@ var _ = Describe("Private subnets server", func() {
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
 			Metadata: privatev1.Metadata_builder{
-				Tenant: auth.SharedTenant,
+				Tenant:  auth.SharedTenant,
+				Project: auth.DefaultProject,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -110,7 +111,8 @@ var _ = Describe("Private subnets server", func() {
 
 		builder := privatev1.VirtualNetwork_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenant: auth.SharedTenant,
+				Tenant:  auth.SharedTenant,
+				Project: auth.DefaultProject,
 			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				NetworkClass: nc.GetImplementationStrategy(),
@@ -423,7 +425,8 @@ var _ = Describe("Private subnets server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant:  auth.SharedTenant,
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     new("10.0.0.0/16"),
@@ -468,7 +471,8 @@ var _ = Describe("Private subnets server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant:  auth.SharedTenant,
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     new("10.0.0.0/16"),
@@ -637,7 +641,8 @@ var _ = Describe("Private subnets server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: "tenant-a",
+						Tenant:  "tenant-a",
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Ipv4Cidr:     new("10.0.0.0/16"),
@@ -683,7 +688,8 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenant: auth.SharedTenant,
+						Tenant:  auth.SharedTenant,
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
 						Ipv4Cidr:       new("10.0.1.0/24"),
@@ -1061,8 +1067,9 @@ var _ = Describe("Private subnets server", func() {
 
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   name,
-						Tenant: auth.SharedTenant,
+						Name:    name,
+						Tenant:  auth.SharedTenant,
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: builder.Build(),
 				}.Build()
@@ -1371,7 +1378,8 @@ var _ = Describe("Private subnets server", func() {
 
 			subnet := privatev1.Subnet_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       new("10.0.1.0/24"),
@@ -1394,7 +1402,8 @@ var _ = Describe("Private subnets server", func() {
 
 			subnet := privatev1.Subnet_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: auth.SharedTenant,
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       new("10.0.1.0/24"),
@@ -1424,8 +1433,9 @@ var _ = Describe("Private subnets server", func() {
 			for i := 0; i < count; i++ {
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   fmt.Sprintf("subnet-%d", i),
-						Tenant: auth.SharedTenant,
+						Name:    fmt.Sprintf("subnet-%d", i),
+						Tenant:  auth.SharedTenant,
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
 						Ipv4Cidr:       new(fmt.Sprintf("10.%d.0.0/16", i)),
@@ -1456,8 +1466,9 @@ var _ = Describe("Private subnets server", func() {
 			for i := range 3 {
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   fmt.Sprintf("vn1-subnet-%d", i),
-						Tenant: auth.SharedTenant,
+						Name:    fmt.Sprintf("vn1-subnet-%d", i),
+						Tenant:  auth.SharedTenant,
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
 						Ipv4Cidr:       new(fmt.Sprintf("10.0.%d.0/24", i)),
@@ -1475,8 +1486,9 @@ var _ = Describe("Private subnets server", func() {
 			for i := range 2 {
 				subnet := privatev1.Subnet_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   fmt.Sprintf("vn2-subnet-%d", i),
-						Tenant: auth.SharedTenant,
+						Name:    fmt.Sprintf("vn2-subnet-%d", i),
+						Tenant:  auth.SharedTenant,
+						Project: auth.DefaultProject,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
 						Ipv4Cidr:       new(fmt.Sprintf("192.168.%d.0/24", i)),
@@ -1506,8 +1518,9 @@ var _ = Describe("Private subnets server", func() {
 
 			subnet := privatev1.Subnet_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name:   "original-name",
-					Tenant: auth.SharedTenant,
+					Name:    "original-name",
+					Tenant:  auth.SharedTenant,
+					Project: auth.DefaultProject,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       new("10.0.1.0/24"),
@@ -1545,6 +1558,7 @@ var _ = Describe("Private subnets server", func() {
 				Metadata: privatev1.Metadata_builder{
 					Finalizers: []string{"test-finalizer"},
 					Tenant:     auth.SharedTenant,
+					Project:    auth.DefaultProject,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       new("10.0.1.0/24"),
@@ -1580,8 +1594,9 @@ var _ = Describe("Private subnets server", func() {
 			// Create Subnet with tenant-a
 			subnet1 := privatev1.Subnet_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name:   "subnet-tenant-a",
-					Tenant: "tenant-a",
+					Name:    "subnet-tenant-a",
+					Tenant:  "tenant-a",
+					Project: auth.DefaultProject,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       new("10.0.1.0/24"),
@@ -1597,8 +1612,9 @@ var _ = Describe("Private subnets server", func() {
 			// Create Subnet with tenant-b
 			subnet2 := privatev1.Subnet_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name:   "subnet-tenant-b",
-					Tenant: "tenant-b",
+					Name:    "subnet-tenant-b",
+					Tenant:  "tenant-b",
+					Project: auth.DefaultProject,
 				}.Build(),
 				Spec: privatev1.SubnetSpec_builder{
 					Ipv4Cidr:       new("192.168.1.0/24"),

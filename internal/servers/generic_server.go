@@ -45,6 +45,7 @@ type GenericServerBuilder[O dao.Object] struct {
 	service           string
 	ignoredFields     []any
 	notifier          events.Notifier
+	nameValidator     func(context.Context, string) error
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -56,6 +57,7 @@ type GenericServer[O dao.Object] struct {
 	logger           *slog.Logger
 	service          string
 	dao              *dao.GenericDAO[O]
+	nameValidator    func(context.Context, string) error
 	attributionLogic auth.AttributionLogic
 	tenancyLogic     auth.TenancyLogic
 	template         proto.Message
@@ -88,6 +90,8 @@ type metadataIface interface {
 	SetCreator(string)
 	GetTenant() string
 	SetTenant(string)
+	GetProject() string
+	SetProject(string)
 	GetVersion() int32
 }
 
@@ -127,6 +131,13 @@ func (b *GenericServerBuilder[O]) AddIgnoredFields(values ...any) *GenericServer
 // SetNotifier sets the notifier that the server will use to send change notifications. This is optional.
 func (b *GenericServerBuilder[O]) SetNotifier(value events.Notifier) *GenericServerBuilder[O] {
 	b.notifier = reflection.NormalizeNil(value)
+	return b
+}
+
+// SetNameValidator sets the validator that will be used to validate the name of objects. This is optional. If not set,
+// the default DNS label validation will be used.
+func (b *GenericServerBuilder[O]) SetNameValidator(value func(context.Context, string) error) *GenericServerBuilder[O] {
+	b.nameValidator = value
 	return b
 }
 
@@ -189,6 +200,13 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		pathCompiler:     pathCompiler,
 		pathCache:        map[string]*masks.Path[O]{},
 		pathCacheLock:    &sync.Mutex{},
+	}
+
+	// Prepare the name validator:
+	if b.nameValidator != nil {
+		s.nameValidator = b.nameValidator
+	} else {
+		s.nameValidator = s.validateName
 	}
 
 	// Create the DAO:
@@ -417,7 +435,7 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	} else {
 		requestMetadata := s.getMetadata(requestObject)
 		if requestMetadata != nil {
-			err := s.validateMetadata(requestMetadata)
+			err := s.validateMetadata(ctx, requestMetadata)
 			if err != nil {
 				return err
 			}
@@ -444,6 +462,16 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 		return err
 	}
 
+	// Calculate the assigned project:
+	assignedProject, err := s.determineAssignedProject(ctx, requestObject)
+	if err != nil {
+		return err
+	}
+	err = s.setProject(ctx, requestObject, assignedProject)
+	if err != nil {
+		return err
+	}
+
 	// Save the object:
 	daoResponse, err := s.dao.Create().
 		SetObject(requestObject).
@@ -451,11 +479,7 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	if err != nil {
 		var alreadyExistsErr *dao.ErrAlreadyExists
 		if errors.As(err, &alreadyExistsErr) {
-			return grpcstatus.Errorf(
-				grpccodes.AlreadyExists,
-				"object with identifier '%s' already exists",
-				alreadyExistsErr.ID,
-			)
+			return grpcstatus.Errorf(grpccodes.AlreadyExists, "%s", alreadyExistsErr.Error())
 		}
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
@@ -584,18 +608,38 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 	// Validate the resulting metadata:
 	tmpMetadata := s.getMetadata(tmpObject)
 	if tmpMetadata != nil {
-		err = s.validateMetadata(tmpMetadata)
+		err = s.validateMetadata(ctx, tmpMetadata)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Calculate the tenant for the updated object:
-	assignedTenant, err := s.determineAssignedTenant(ctx, tmpObject, currentObject)
+	// Ensure that the tenant hasn't changed, as it is immutable after creation:
+	currentTenant := s.getTenant(currentObject)
+	requestTenant := s.getTenant(tmpObject)
+	if requestTenant != "" && requestTenant != currentTenant {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'metadata.tenant' is immutable and cannot be changed from '%s' to '%s'",
+			currentTenant, requestTenant,
+		)
+	}
+	err = s.setTenant(ctx, tmpObject, currentTenant)
 	if err != nil {
 		return err
 	}
-	err = s.setTenant(ctx, tmpObject, assignedTenant)
+
+	// Ensure that the project hasn't changed, as it is immutable after creation:
+	currentProject := s.getProject(currentObject)
+	requestProject := s.getProject(tmpObject)
+	if requestProject != "" && requestProject != currentProject {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'metadata.project' is immutable and cannot be changed from '%s' to '%s'",
+			currentProject, requestProject,
+		)
+	}
+	err = s.setProject(ctx, tmpObject, currentProject)
 	if err != nil {
 		return err
 	}
@@ -893,10 +937,10 @@ func (s *GenericServer[O]) setPointer(pointer any, value any) {
 	reflect.ValueOf(pointer).Elem().Set(reflect.ValueOf(value))
 }
 
-func (s *GenericServer[O]) validateMetadata(metadata metadataIface) error {
+func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metadataIface) error {
 	name := metadata.GetName()
 	if name != "" {
-		err := s.validateName(name)
+		err := s.nameValidator(ctx, name)
 		if err != nil {
 			return err
 		}
@@ -923,7 +967,7 @@ func (s *GenericServer[O]) validateMetadata(metadata metadataIface) error {
 // - Must be between 1 and 63 characters long
 // - Must only contain lowercase letters (a-z), digits (0-9) and hyphens (-)
 // - Cannot start or end with a hyphen
-func (s *GenericServer[O]) validateName(name string) error {
+func (s *GenericServer[O]) validateName(ctx context.Context, name string) error {
 	// Max length:
 	if len(name) > 63 {
 		return grpcstatus.Errorf(
@@ -1163,6 +1207,86 @@ func (s *GenericServer[O]) setCreator(ctx context.Context, object O, creator str
 		s.setMetadata(object, metadata)
 	}
 	metadata.SetCreator(creator)
+	return nil
+}
+
+// determineAssignedProject calls the tenancy logic to determine which project will be assigned to an object that
+// is being created. If the request specifies a project it is validated against the visible and assignable sets,
+// otherwise the default project is used. In case of error it returns a gRPC error that can be directly returned
+// to the client.
+func (s *GenericServer[O]) determineAssignedProject(ctx context.Context, requestObject O) (result string,
+	err error) {
+	// Determine the projects that can be assigned to the object:
+	assignableProjects, err := s.tenancyLogic.DetermineAssignableProjects(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine assignable projects",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assignable projects")
+		return
+	}
+	if assignableProjects.Empty() {
+		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no assignable projects")
+		return
+	}
+
+	// Determine the default project:
+	defaultProject, err := s.tenancyLogic.DetermineDefaultProject(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine default project",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default project")
+		return
+	}
+
+	// If the request specifies a project, check that it is assignable:
+	requestProject := s.getProject(requestObject)
+	if requestProject != "" {
+		if !assignableProjects.Contains(requestProject) {
+			s.logger.WarnContext(
+				ctx,
+				"User is trying to assign a project that is not assignable",
+				slog.String("requested", requestProject),
+			)
+			err = grpcstatus.Errorf(
+				grpccodes.PermissionDenied,
+				"project '%s' can't be assigned",
+				requestProject,
+			)
+			return
+		}
+		result = requestProject
+		return
+	}
+
+	// Fall back to the default project:
+	result = defaultProject
+	return
+}
+
+// getProject extracts the project from an object's metadata.
+func (s *GenericServer[O]) getProject(object O) string {
+	metadata := s.getMetadata(object)
+	if metadata == nil {
+		return ""
+	}
+	return metadata.GetProject()
+}
+
+// setProject sets the project in the object's metadata, creating the metadata if necessary. In case of error it
+// returns a gRPC error that can be directly returned to the client.
+func (s *GenericServer[O]) setProject(ctx context.Context, object O, project string) error {
+	metadata := s.getMetadata(object)
+	if metadata == nil {
+		metadata = s.newMetadata()
+		s.setMetadata(object, metadata)
+	}
+	metadata.SetProject(project)
 	return nil
 }
 

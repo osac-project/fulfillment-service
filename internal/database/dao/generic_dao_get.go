@@ -60,7 +60,13 @@ func (r *GetRequest[O]) Do(ctx context.Context) (response *GetResponse[O], err e
 
 func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err error) {
 	// Add the where clause to filter by tenant:
-	err = r.addTenancyFilter(ctx)
+	err = r.addTenantFilter(ctx)
+	if err != nil {
+		return
+	}
+
+	// Add the where clause to filter by project:
+	err = r.addProjectFilter(ctx)
 	if err != nil {
 		return
 	}
@@ -88,6 +94,7 @@ func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err e
 			finalizers,
 			creator,
 			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -113,6 +120,7 @@ func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err e
 		finalizers      []string
 		creator         string
 		tenant          string
+		project         string
 		labelsData      []byte
 		annotationsData []byte
 		version         int32
@@ -131,6 +139,7 @@ func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err e
 			&finalizers,
 			&creator,
 			&tenant,
+			&project,
 			&labelsData,
 			&annotationsData,
 			&version,
@@ -167,6 +176,7 @@ func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err e
 		finalizers:  finalizers,
 		creator:     creator,
 		tenant:      tenant,
+		project:     project,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,

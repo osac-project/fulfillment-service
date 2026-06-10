@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	neturl "net/url"
 	"os"
@@ -578,9 +579,30 @@ func (t *tool) listArchiveTables(ctx context.Context, pool *pgxpool.Pool) (resul
 // with the correct types, a primary key on 'id', a tenant foreign key, and a corresponding archive table. Returns the
 // number of issues found.
 func (t *tool) checkObjectTable(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	// Make a copy of the expected columns so that we can adjust it for special cases without interfering with the
+	// original map:
+	objectColumns := maps.Clone(toolObjectColumns)
+
+	// The 'projects' table is special because the 'name' column is of type 'ltree' instead of 'text' like in all
+	// the other tables:
+	if table == "projects" {
+		objectColumns["name"] = "ltree"
+	}
+
+	// Perform the consistency checks:
 	issues := 0
-	issues += t.checkColumns(ctx, pool, table, toolObjectColumns)
-	issues += t.checkPrimaryKey(ctx, pool, table)
+
+	// Check the columns:
+	issues += t.checkColumns(ctx, pool, table, objectColumns)
+
+	// Check the primary key. The 'projects' table uses a composite primary key on '(tenant, name)' instead of
+	// just 'id' like all the other tables:
+	if table == "projects" {
+		issues += t.checkPrimaryKey(ctx, pool, table, "tenant", "name")
+	} else {
+		issues += t.checkPrimaryKey(ctx, pool, table, "id")
+	}
+
 	issues += t.checkTenantForeignKey(ctx, pool, table)
 	issues += t.checkTableExists(ctx, pool, "archived_"+table)
 	return issues
@@ -634,15 +656,15 @@ func (t *tool) checkColumns(ctx context.Context, pool *pgxpool.Pool, table strin
 	return issues
 }
 
-// checkPrimaryKey verifies that the given table has a primary key constraint on the 'id' column. Returns the number
-// of issues found.
-func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table string) int {
-	var count int
-	row := pool.QueryRow(
+// checkPrimaryKey verifies that the given table has a primary key constraint on exactly the specified columns.
+// Returns the number of issues found.
+func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table string, columns ...string) int {
+	var actualColumns []string
+	rows, err := pool.Query(
 		ctx,
 		`
 		select
-			count(*)
+			a.attname
 		from
 			pg_catalog.pg_constraint con
 		join
@@ -654,11 +676,11 @@ func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table st
 		where
 			n.nspname = 'public' and
 			c.relname = $1 and
-			con.contype = 'p' and
-			a.attname = 'id'`,
+			con.contype = 'p'
+		order by
+			array_position(con.conkey, a.attnum)`,
 		table,
 	)
-	err := row.Scan(&count)
 	if err != nil {
 		t.logger.ErrorContext(
 			ctx,
@@ -668,11 +690,36 @@ func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table st
 		)
 		return 1
 	}
-	if count != 1 {
+	defer rows.Close()
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			t.logger.ErrorContext(
+				ctx,
+				"Failed to scan primary key column",
+				slog.String("table", table),
+				slog.Any("error", err),
+			)
+			return 1
+		}
+		actualColumns = append(actualColumns, col)
+	}
+	if err := rows.Err(); err != nil {
 		t.logger.ErrorContext(
 			ctx,
-			"Object table is missing the primary key on 'id' column",
+			"Failed to check primary key for table",
 			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	if !slices.Equal(actualColumns, columns) {
+		t.logger.ErrorContext(
+			ctx,
+			"Object table has unexpected primary key columns",
+			slog.String("table", table),
+			slog.Any("expected", columns),
+			slog.Any("actual", actualColumns),
 		)
 		return 1
 	}
@@ -865,6 +912,7 @@ var toolObjectColumns = map[string]string{
 	"id":                 "text",
 	"labels":             "jsonb",
 	"name":               "text",
+	"project":            "ltree",
 	"tenant":             "text",
 	"version":            "integer",
 }
@@ -881,6 +929,7 @@ var toolArchivedColumns = map[string]string{
 	"id":                 "text",
 	"labels":             "jsonb",
 	"name":               "text",
+	"project":            "ltree",
 	"tenant":             "text",
 	"version":            "integer",
 }

@@ -35,6 +35,19 @@ type TenancyLogic interface {
 	// to see. Database queries will be filtered to only return objects where the tenants column has a non-empty
 	// intersection with the values returned by this method.
 	DetermineVisibleTenants(ctx context.Context) (collections.Set[string], error)
+
+	// DetermineAssignableProjects calculates and returns the set of project identifiers that can be assigned to
+	// an object that is being created or updated. This should be a superset of the default projects.
+	DetermineAssignableProjects(ctx context.Context) (collections.Set[string], error)
+
+	// DetermineDefaultProject returns the project identifier that is assigned by default when an object is
+	// created without an explicit project in the request.
+	DetermineDefaultProject(ctx context.Context) (string, error)
+
+	// DetermineVisibleProjects calculates and returns the set of project identifiers that the current user has
+	// permission to see. Database queries will be filtered to only return objects whose project is contained in
+	// this set.
+	DetermineVisibleProjects(ctx context.Context) (collections.Set[string], error)
 }
 
 // SystemTenant is the tenant that is assigned to objects that are only visible to the system.
@@ -51,3 +64,13 @@ var SharedTenants = collections.NewSet(SharedTenant)
 
 // AllTenants is the set of all tenants that are possible.
 var AllTenants = collections.NewUniversalSet[string]()
+
+// AllProjects is the set of all projects that are possible.
+var AllProjects = collections.NewUniversalSet[string]()
+
+// DefaultProject is the project that is assigned by default when no explicit project is provided. Note that this is
+// empty, which means it is the root project of the tenant that is automatically created when a tenant is created.
+const DefaultProject = ""
+
+// DefaultProjects is the set of projects that are assigned by default when no explicit project is provided.
+var DefaultProjects = collections.NewSet(DefaultProject)
