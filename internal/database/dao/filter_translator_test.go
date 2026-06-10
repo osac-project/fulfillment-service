@@ -307,5 +307,45 @@ var _ = Describe("Filter translator", func() {
 			`has(this.metadata.creator)`,
 			`creator != ''`,
 		),
+		Entry(
+			"Enum field equals integer literal",
+			`this.spec.spec_enum == 1`,
+			`data->'spec'->>'spec_enum' = 'MY_ENUM_VALUE_A'`,
+		),
+		Entry(
+			"Enum field not equals integer literal",
+			`this.spec.spec_enum != 2`,
+			`data->'spec'->>'spec_enum' != 'MY_ENUM_VALUE_B'`,
+		),
+		Entry(
+			"Enum field equals zero (unspecified)",
+			`this.spec.spec_enum == 0`,
+			`data->'spec'->>'spec_enum' = 'MY_ENUM_UNSPECIFIED'`,
+		),
+		Entry(
+			"Reversed enum comparison",
+			`1 == this.spec.spec_enum`,
+			`data->'spec'->>'spec_enum' = 'MY_ENUM_VALUE_A'`,
+		),
+	)
+
+	DescribeTable(
+		"Enum translation errors",
+		func(filter string) {
+			_, err := translator.Translate(ctx, filter)
+			Expect(err).To(HaveOccurred())
+		},
+		Entry(
+			"Unknown enum value",
+			`this.spec.spec_enum == 99`,
+		),
+		Entry(
+			"Non-literal numeric expression equals enum",
+			`this.spec.spec_enum == (1 + 1)`,
+		),
+		Entry(
+			"Non-literal numeric expression not-equals enum",
+			`this.spec.spec_enum != (1 + 1)`,
+		),
 	)
 })
