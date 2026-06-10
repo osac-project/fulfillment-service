@@ -16,6 +16,7 @@ package start
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/consoleproxy"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/controller"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/grpcserver"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/restgateway"
@@ -30,6 +31,7 @@ func Cmd() *cobra.Command {
 		DisableFlagsInUseLine: true,
 		Args:                  cobra.NoArgs,
 	}
+	result.AddCommand(consoleproxy.Cmd())
 	result.AddCommand(controller.Cmd())
 	result.AddCommand(grpcserver.Cmd())
 	result.AddCommand(restgateway.Cmd())

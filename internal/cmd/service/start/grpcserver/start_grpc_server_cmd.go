@@ -40,6 +40,7 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/auth/jwe"
 	"github.com/osac-project/fulfillment-service/internal/console"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	hubscheme "github.com/osac-project/fulfillment-service/internal/kubernetes/scheme"
@@ -97,6 +98,30 @@ func Cmd() *cobra.Command {
 		"default",
 		tenancyLogicFlagHelp,
 	)
+	flags.StringVar(
+		&runner.args.tokenSignerCrt,
+		"token-signer-crt",
+		"",
+		tokenSignerCrtFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.tokenSignerKey,
+		"token-signer-key",
+		"",
+		tokenSignerKeyFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.tokenEncryptionCrt,
+		"token-encryption-crt",
+		"",
+		tokenEncryptionCrtFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.tokenIssuer,
+		"token-issuer",
+		"",
+		tokenIssuerFlagHelp,
+	)
 	return command
 }
 
@@ -110,6 +135,10 @@ type runnerContext struct {
 		externalAuthAddress string
 		trustedTokenIssuers []string
 		tenancyLogic        string
+		tokenSignerCrt      string
+		tokenSignerKey      string
+		tokenEncryptionCrt  string
+		tokenIssuer         string
 	}
 }
 
@@ -962,51 +991,65 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 	privatev1.RegisterUsersServer(grpcServer, privateUsersServer)
 
-	// Create the console manager and server:
+	// Create the token sealer (sign + encrypt infrastructure):
+	c.logger.InfoContext(ctx, "Creating token sealer")
+	tokenSealer, err := jwe.NewSealer().
+		SetLogger(c.logger).
+		SetSigningCertFile(c.args.tokenSignerCrt).
+		SetSigningKeyFile(c.args.tokenSignerKey).
+		SetEncryptionCertFile(c.args.tokenEncryptionCrt).
+		SetIssuer(c.args.tokenIssuer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create token sealer: %w", err)
+	}
+
+	// Wrap the token sealer for console-specific ticket claim mapping:
+	ticketSealer := console.NewTicketSealer(tokenSealer)
+
+	// Create the JSON Web Key Set server (serves JWKS at /.well-known/jwks.json):
+	c.logger.InfoContext(ctx, "Creating JSON Web Key Set server")
+	jsonWebKeySetServer, err := servers.NewJsonWebKeySetServer().
+		SetLogger(c.logger).
+		SetSealer(tokenSealer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create JSON Web Key Set server: %w", err)
+	}
+	publicv1.RegisterJsonWebKeySetServer(grpcServer, jsonWebKeySetServer)
+
+	// Build the console target resolver (lookup/policy only):
+	hubLookup := servers.NewPrivateServerHubLookup(privateHubsServer)
+	consoleResolver, err := servers.NewConsoleTargetResolver().
+		SetLogger(c.logger).
+		SetComputeInstanceLookup(servers.NewPrivateServerCILookup(privateComputeInstancesServer)).
+		SetHubLookup(hubLookup).
+		SetHubClientFactory(servers.NewDefaultHubClientFactory(hubScheme)).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create console target resolver: %w", err)
+	}
+
+	// Build the console session service (orchestration):
+	sessionService, err := console.NewSessionService().
+		SetLogger(c.logger).
+		SetResolver(consoleResolver).
+		SetSealer(ticketSealer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create console session service: %w", err)
+	}
+
+	// Create the console sessions server (thin adapter):
 	c.logger.InfoContext(ctx, "Creating console server")
-	hubConfigProvider := console.HubConfigProviderFromKubeconfigs(
-		func(ctx context.Context, id string) ([]byte, error) {
-			tx, err := txManager.Begin(ctx)
-			if err != nil {
-				return nil, err
-			}
-			defer tx.End(ctx)
-			txCtx := database.TxIntoContext(ctx, tx)
-			resp, err := privateHubsServer.Get(txCtx, privatev1.HubsGetRequest_builder{
-				Id: id,
-			}.Build())
-			if err != nil {
-				return nil, err
-			}
-			return resp.GetObject().GetSpec().GetKubeconfig(), nil
-		},
-	)
-	kvBackend, err := console.NewKubeVirtBackend().
-		SetLogger(c.logger).
-		SetHubConfigProvider(hubConfigProvider).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create kubevirt backend: %w", err)
-	}
-	consoleManager, err := console.NewManager().
-		SetLogger(c.logger).
-		AddBackend("compute_instance", kvBackend).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create console manager: %w", err)
-	}
 	consoleServer, err := servers.NewConsoleServer().
 		SetLogger(c.logger).
-		SetManager(consoleManager).
-		SetComputeInstancesServer(privateComputeInstancesServer).
-		SetHubServer(privateHubsServer).
-		SetTxManager(txManager).
-		SetScheme(hubScheme).
+		SetSessionService(sessionService).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create console server: %w", err)
 	}
-	publicv1.RegisterConsoleServer(grpcServer, consoleServer)
+	publicv1.RegisterConsoleSessionsServer(grpcServer, consoleServer)
 
 	// Create the events server:
 	c.logger.InfoContext(ctx, "Creating events server")
@@ -1125,9 +1168,9 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	return shutdown.Wait()
 }
 
-// publicMethodRegex is regular expression for the methods that are considered public, including the capabilities, and
-// reflection, health methods. These will skip authentication and authorization.
-const publicMethodRegex = `^/(osac\.public\.v1\.Capabilities/|grpc\.(reflection|health)\.).*$`
+// publicMethodRegex is regular expression for the methods that are considered public, including the capabilities,
+// JWKS, reflection, and health methods. These will skip authentication and authorization.
+const publicMethodRegex = `^/(osac\.public\.v1\.(Capabilities/|JsonWebKeySet/)|grpc\.(reflection|health)\.).*$`
 
 // grpcServerUserAgent is the user agent string for the gRPC server.
 const grpcServerUserAgent = "fulfillment-grpc-server"
@@ -1162,4 +1205,24 @@ are advertised as trusted by the gRPC server.
 const tenancyLogicFlagHelp = `
 _LOGIC_ - Type of tenancy logic to use. Valid values are
 {{ bt }}default{{ bt }} and {{ bt }}guest{{ bt }}.
+`
+
+const tokenSignerCrtFlagHelp = `
+_FILE_ - Path to the PEM-encoded signing certificate used to sign
+JWT tokens issued by this server.
+`
+
+const tokenSignerKeyFlagHelp = `
+_FILE_ - Path to the PEM-encoded private key used to sign
+JWT tokens issued by this server.
+`
+
+const tokenEncryptionCrtFlagHelp = `
+_FILE_ - Path to the PEM-encoded encryption certificate (public key)
+of the token recipient. Used to encrypt the JWE envelope of issued tokens.
+`
+
+const tokenIssuerFlagHelp = `
+_URL_ - Issuer URL for JWT tokens. Used as the iss claim. Token
+consumers derive the JWKS endpoint as <issuer>/.well-known/jwks.json.
 `

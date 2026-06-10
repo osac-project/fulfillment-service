@@ -24,6 +24,21 @@ Kubernetes service hostname based on the release namespace.
 {{- end -}}
 
 {{/*
+Generate the token issuer URL for JWT signing and JWKS discovery.
+
+On OpenShift with an external hostname, a Route provides TLS passthrough on
+port 443, so the URL omits the port. In all other cases (kind variant, or no
+external hostname) traffic goes directly to the Kubernetes Service on port 8000.
+*/}}
+{{- define "fulfillment-api.tokenIssuerUrl" -}}
+{{- if and (eq .Values.variant "openshift") .Values.externalHostname -}}
+https://{{ .Values.externalHostname }}
+{{- else -}}
+https://{{ include "fulfillment-api.hostname" . }}:8000
+{{- end -}}
+{{- end -}}
+
+{{/*
 Generate the hostname for the fulfillment internal API. If .Values.internalHostname is set, use it; otherwise, use the
 default Kubernetes service hostname based on the release namespace.
 */}}

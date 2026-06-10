@@ -18,6 +18,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2
 	github.com/json-iterator/go v1.1.12
 	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/mattn/go-colorable v0.1.15
 	github.com/mattn/go-isatty v0.0.22
 	github.com/neilotoole/jsoncolor v0.9.1
@@ -30,6 +31,7 @@ require (
 	go.uber.org/mock v0.6.0
 	go.yaml.in/yaml/v2 v2.4.4
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93
+	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.43.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478
@@ -92,7 +94,6 @@ require (
 	github.com/lestrrat-go/dsig-secp256k1 v1.0.0 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc/v3 v3.0.5 // indirect
-	github.com/lestrrat-go/jwx/v3 v3.1.1 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
@@ -124,7 +125,6 @@ require (
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect

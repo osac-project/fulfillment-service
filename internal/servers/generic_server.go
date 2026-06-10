@@ -710,6 +710,10 @@ func (s *GenericServer[O]) Delete(ctx context.Context, request any, response any
 		if errors.As(err, &deniedErr) {
 			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
 		}
+		var inUseErr *dao.ErrInUse
+		if errors.As(err, &inUseErr) {
+			return grpcstatus.Errorf(grpccodes.FailedPrecondition, "%s", inUseErr.Error())
+		}
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to delete object",

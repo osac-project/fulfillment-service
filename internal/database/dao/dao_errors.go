@@ -125,6 +125,20 @@ func (e *ErrReference) Error() string {
 	return e.Reason
 }
 
+// ErrInUse indicates that a deletion was rejected because the object is still referenced by other objects.
+type ErrInUse struct {
+	// Reason is a human-friendly description of what is still using the object.
+	Reason string
+}
+
+// Error returns the error message.
+func (e *ErrInUse) Error() string {
+	if e.Reason == "" {
+		return "object is still in use"
+	}
+	return e.Reason
+}
+
 // Custom PostgreSQL SQLSTATE error codes used by database triggers. These codes use the 'Z' class, which is reserved
 // for user-defined conditions and will not collide with any standard PostgreSQL error code.
 const (
@@ -132,4 +146,12 @@ const (
 	// an update attempts to modify one or more immutable columns. When this error is received the detail field of
 	// the PostgreSQL error contains a JSON array with the names of the columns that the caller tried to modify.
 	errImmutableCode = "Z0001"
+
+	// errReferenceCode is the SQLSTATE error code returned by the 'check_compute_instance_subnet_refs'
+	// trigger when an insert references a resource that does not exist or has been deleted.
+	errReferenceCode = "Z0002"
+
+	// errInUseCode is the SQLSTATE error code returned by the 'check_subnet_not_in_use' trigger when a
+	// soft-delete is rejected because the object is still referenced by other objects.
+	errInUseCode = "Z0003"
 )

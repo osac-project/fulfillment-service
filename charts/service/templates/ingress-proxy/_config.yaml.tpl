@@ -86,6 +86,12 @@ static_resources:
               "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
               path: /dev/stdout
           stat_prefix: external-api
+          http2_protocol_options:
+            connection_keepalive:
+              interval: 15s
+              timeout: 10s
+          upgrade_configs:
+          - upgrade_type: websocket
           route_config:
             name: backend
             virtual_hosts:
@@ -104,6 +110,26 @@ static_resources:
                   allow_credentials: true
                   max_age: "86400"
               routes:
+
+              # This route is for the WebSocket console proxy. Console sessions are long-lived
+              # and require HTTP/1.1 for the WebSocket upgrade. This route must be matched
+              # before the rest-gateway route which catches all /api/... paths. The ticket
+              # travels in the Authorization header or console-ticket cookie.
+              - name: console-ws
+                match:
+                  path: /api/fulfillment/v1/console_sessions/connect
+                route:
+                  cluster: console-proxy-ws
+                  timeout: 0s
+                  idle_timeout: 1800s
+
+              # JWKS endpoint for token verification. Public, unauthenticated.
+              - name: jwks
+                match:
+                  path: /.well-known/jwks.json
+                route:
+                  cluster: rest-gateway
+                  timeout: 10s
 
               # This route is for the REST gateway. The public API endpoints use path prefixes
               # like /api/fulfillment/ and /api/events/.
@@ -126,6 +152,19 @@ static_resources:
                   cluster: grpc-server
                   timeout: 0s
                   idle_timeout: 0s
+
+              # This route is for the ConsoleProxy.Connect bidirectional stream. Like Watch
+              # streams, console sessions are long-lived and must not be subject to the
+              # default request timeout. The backend enforces a 30-minute session timeout
+              # via context deadline (see manager.go).
+              - name: console-proxy-grpc
+                match:
+                  safe_regex:
+                    regex: /osac\.public\..*ConsoleProxy/Connect
+                route:
+                  cluster: console-proxy-grpc
+                  timeout: 0s
+                  idle_timeout: 1800s
 
               # This route is for public API and gRPC reflection unary requests.
               - name: grpc-server
@@ -176,6 +215,10 @@ static_resources:
               "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
               path: /dev/stdout
           stat_prefix: internal-api
+          http2_protocol_options:
+            connection_keepalive:
+              interval: 15s
+              timeout: 10s
           route_config:
             name: backend
             virtual_hosts:
@@ -195,6 +238,14 @@ static_resources:
                   max_age: "86400"
               routes:
 
+              # JWKS endpoint for token verification. Public, unauthenticated.
+              - name: jwks
+                match:
+                  path: /.well-known/jwks.json
+                route:
+                  cluster: rest-gateway
+                  timeout: 10s
+
               # This route is for the REST gateway.
               - name: rest-gateway
                 match:
@@ -212,6 +263,16 @@ static_resources:
                     regex: ^.*/Watch$
                 route:
                   cluster: grpc-server
+                  timeout: 0s
+                  idle_timeout: 0s
+
+              # This route is for the ConsoleProxy.Connect bidirectional stream.
+              - name: console-proxy-grpc
+                match:
+                  safe_regex:
+                    regex: /osac\.public\..*ConsoleProxy/Connect
+                route:
+                  cluster: console-proxy-grpc
                   timeout: 0s
                   idle_timeout: 0s
 
@@ -305,6 +366,60 @@ static_resources:
             address:
               socket_address:
                 address: fulfillment-rest-gateway
+                port_value: 8000
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /etc/envoy/tls/ca.crt
+
+  # This cluster connects to the console proxy WebSocket listener. It must use
+  # HTTP/1.1 (no http2_protocol_options) because WebSocket requires an HTTP/1.1
+  # upgrade handshake.
+  - name: console-proxy-ws
+    connect_timeout: 1s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: console-proxy-ws
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: fulfillment-console-proxy
+                port_value: 8090
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /etc/envoy/tls/ca.crt
+
+  # This cluster connects to the console proxy gRPC listener for the
+  # ConsoleProxy.Connect bidirectional stream.
+  - name: console-proxy-grpc
+    connect_timeout: 1s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http2_protocol_options: {}
+    load_assignment:
+      cluster_name: console-proxy-grpc
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: fulfillment-console-proxy
                 port_value: 8000
     transport_socket:
       name: envoy.transport_sockets.tls

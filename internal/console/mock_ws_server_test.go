@@ -81,40 +81,6 @@ func (m *mockWSServer) Close() error {
 	return m.server.Close()
 }
 
-// newMockWSServerCapturingPath creates a mock server that records the request path.
-func newMockWSServerCapturingPath() (*mockWSServer, *pathCapture, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to listen: %w", err)
-	}
-
-	capture := &pathCapture{ch: make(chan string, 10)}
-	m := &mockWSServer{
-		listener:   listener,
-		echoPrefix: "echo: ",
-		banner:     "Welcome to mock console\r\n",
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/apis/console.osac.openshift.io/v1alpha1/namespaces/", websocket.Handler(func(ws *websocket.Conn) {
-		select {
-		case capture.ch <- ws.Request().URL.Path:
-		default:
-		}
-		m.handleConsole(ws)
-	}))
-
-	m.server = &http.Server{Handler: mux}
-	go m.server.Serve(listener)
-
-	return m, capture, nil
-}
-
-// pathCapture records the request path from WebSocket connections.
-type pathCapture struct {
-	ch chan string
-}
-
 // handleConsole handles WebSocket connections to the console subresource.
 // It sends a banner, then echoes all received data back with a prefix.
 func (m *mockWSServer) handleConsole(ws *websocket.Conn) {

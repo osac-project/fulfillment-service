@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -138,6 +139,12 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		return
 	}
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == errInUseCode {
+			err = &ErrInUse{
+				Reason: pgErr.Message,
+			}
+		}
 		return
 	}
 	object := r.newObject()
