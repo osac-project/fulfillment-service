@@ -107,6 +107,9 @@ type filterTranslatorResult struct {
 	// message.
 	desc protoreflect.MessageDescriptor
 
+	// enumDesc is the descriptor of the enum type. Set when the result is an enum field extracted from JSON.
+	enumDesc protoreflect.EnumDescriptor
+
 	// mapIndexOperand is the SQL for the map operand, if this is a map index result.
 	mapIndexOperand string
 
@@ -118,6 +121,12 @@ type filterTranslatorResult struct {
 
 	// hasStringValue indicates if stringValue is present.
 	hasStringValue bool
+
+	// intValue is the original literal value for integers, if available.
+	intValue int64
+
+	// hasIntValue indicates if intValue is present.
+	hasIntValue bool
 }
 
 // Precendes of operators in the SQL language.
@@ -376,6 +385,10 @@ func (t *FilterTranslator[O]) translateEquals(leftTr, rightTr filterTranslatorRe
 		result.kind = filterTranslatorBooleanKind
 		return
 	}
+	result, err = t.translateEnumEquals(leftTr, rightTr)
+	if err != nil || result.sql != "" {
+		return
+	}
 	return assembleBinarySQL(leftTr, rightTr, "=", filterTranslatorComparisonPrecedence, filterTranslatorBooleanKind), nil
 }
 
@@ -405,6 +418,10 @@ func (t *FilterTranslator[O]) translateNotEquals(leftTr, rightTr filterTranslato
 		}
 		result.precedence = filterTranslatorComparisonPrecedence
 		result.kind = filterTranslatorBooleanKind
+		return
+	}
+	result, err = t.translateEnumNotEquals(leftTr, rightTr)
+	if err != nil || result.sql != "" {
 		return
 	}
 	return assembleBinarySQL(leftTr, rightTr, "!=", filterTranslatorComparisonPrecedence, filterTranslatorBooleanKind), nil
@@ -485,6 +502,8 @@ func (t *FilterTranslator[O]) translateLiteral(value ref.Val) (result filterTran
 	case int64:
 		result.sql = fmt.Sprintf("%d", value)
 		result.kind = filterTranslatorNumericKind
+		result.intValue = value
+		result.hasIntValue = true
 	case string:
 		text, escaped := t.translateString(value, "")
 		if escaped {
@@ -610,6 +629,89 @@ func (t *FilterTranslator[O]) translateMapNotEquals(operand, key, value string) 
 		return "", err
 	}
 	return fmt.Sprintf("not (%s)", existsSql), nil
+}
+
+func (t *FilterTranslator[O]) resolveEnumName(enumDesc protoreflect.EnumDescriptor, value int64) (string, bool) {
+	if value < math.MinInt32 || value > math.MaxInt32 {
+		return "", false
+	}
+	enumValue := enumDesc.Values().ByNumber(protoreflect.EnumNumber(value))
+	if enumValue == nil {
+		return "", false
+	}
+	return string(enumValue.Name()), true
+}
+
+func (t *FilterTranslator[O]) translateEnumEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
+	enumDesc, intVal, fieldSql, ok := t.extractEnumComparison(leftTr, rightTr)
+	if !ok {
+		err = t.checkUnsupportedEnumComparison(leftTr, rightTr)
+		return
+	}
+	name, found := t.resolveEnumName(enumDesc, intVal)
+	if !found {
+		err = fmt.Errorf("unknown enum value %d for %s", intVal, enumDesc.FullName())
+		return
+	}
+	text, escaped := t.translateString(name, "")
+	if escaped {
+		result.sql = fmt.Sprintf("%s = e'%s'", fieldSql, text)
+	} else {
+		result.sql = fmt.Sprintf("%s = '%s'", fieldSql, text)
+	}
+	result.precedence = filterTranslatorComparisonPrecedence
+	result.kind = filterTranslatorBooleanKind
+	return
+}
+
+func (t *FilterTranslator[O]) translateEnumNotEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
+	enumDesc, intVal, fieldSql, ok := t.extractEnumComparison(leftTr, rightTr)
+	if !ok {
+		err = t.checkUnsupportedEnumComparison(leftTr, rightTr)
+		return
+	}
+	name, found := t.resolveEnumName(enumDesc, intVal)
+	if !found {
+		err = fmt.Errorf("unknown enum value %d for %s", intVal, enumDesc.FullName())
+		return
+	}
+	text, escaped := t.translateString(name, "")
+	if escaped {
+		result.sql = fmt.Sprintf("%s != e'%s'", fieldSql, text)
+	} else {
+		result.sql = fmt.Sprintf("%s != '%s'", fieldSql, text)
+	}
+	result.precedence = filterTranslatorComparisonPrecedence
+	result.kind = filterTranslatorBooleanKind
+	return
+}
+
+func (t *FilterTranslator[O]) checkUnsupportedEnumComparison(leftTr, rightTr filterTranslatorResult) error {
+	if leftTr.enumDesc != nil && rightTr.kind == filterTranslatorNumericKind {
+		return fmt.Errorf(
+			"comparison of enum '%s' requires a literal integer value",
+			leftTr.enumDesc.FullName(),
+		)
+	}
+	if rightTr.enumDesc != nil && leftTr.kind == filterTranslatorNumericKind {
+		return fmt.Errorf(
+			"comparison of enum '%s' requires a literal integer value",
+			rightTr.enumDesc.FullName(),
+		)
+	}
+	return nil
+}
+
+func (t *FilterTranslator[O]) extractEnumComparison(leftTr, rightTr filterTranslatorResult) (
+	enumDesc protoreflect.EnumDescriptor, intVal int64, fieldSql string, ok bool,
+) {
+	if leftTr.enumDesc != nil && rightTr.hasIntValue {
+		return leftTr.enumDesc, rightTr.intValue, leftTr.sql, true
+	}
+	if rightTr.enumDesc != nil && leftTr.hasIntValue {
+		return rightTr.enumDesc, leftTr.intValue, rightTr.sql, true
+	}
+	return nil, 0, "", false
 }
 
 func (t *FilterTranslator[O]) translateInList(key ast.Expr, list ast.ListExpr) (result filterTranslatorResult, err error) {
@@ -878,6 +980,10 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 	case protoreflect.StringKind:
 		result.sql = fmt.Sprintf("%s->>'%s'", operandSql, fieldName)
 		result.kind = filterTranslatorStringKind
+	case protoreflect.EnumKind:
+		result.sql = fmt.Sprintf("%s->>'%s'", operandSql, fieldName)
+		result.kind = filterTranslatorStringKind
+		result.enumDesc = fieldDesc.Enum()
 	case protoreflect.MessageKind:
 		msgDesc := fieldDesc.Message()
 		switch msgDesc {
