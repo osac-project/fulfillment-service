@@ -88,11 +88,11 @@ func (b *ConsoleProxyCoreBuilder) Build() (*ConsoleProxyCore, error) {
 // Used by both gRPC (from metadata) and WebSocket (from HTTP header) transports.
 func ExtractBearerToken(authValue string) (string, error) {
 	if len(authValue) < 7 || !strings.EqualFold(authValue[:7], "Bearer ") {
-		return "", errors.New("Authorization must use Bearer scheme")
+		return "", errors.New("authorization must use Bearer scheme")
 	}
 	token := strings.TrimSpace(authValue[7:])
 	if token == "" {
-		return "", errors.New("Authorization must use Bearer scheme")
+		return "", errors.New("authorization must use Bearer scheme")
 	}
 	return token, nil
 }

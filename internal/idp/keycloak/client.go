@@ -234,7 +234,7 @@ func (c *Client) CreateUserInRealm(ctx context.Context, user *idp.User) (*idp.Us
 
 	location := response.Header.Get("Location")
 	if location == "" {
-		return nil, fmt.Errorf("Location header not present in create user response")
+		return nil, fmt.Errorf("Location header not present in create user response") //nolint:staticcheck // ST1005: Location is an HTTP header name
 	}
 
 	// Extract the user ID from the Location header (e.g., "/admin/realms/osac/users/user-123" -> "user-123")

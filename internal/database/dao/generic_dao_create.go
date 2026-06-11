@@ -163,7 +163,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		)
 	}()
 	if err != nil {
-		err = r.translateError(ctx, id, tenant, err)
+		err = r.translateError(ctx, id, name, tenant, err)
 		return
 	}
 	created := r.cloneObject(r.object)
@@ -198,13 +198,19 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 }
 
 // translateError translates raw PostgreSQL errors into domain-specific error types.
-func (r *CreateRequest[O]) translateError(ctx context.Context, id, tenant string, err error) error {
+func (r *CreateRequest[O]) translateError(ctx context.Context, id, name, tenant string, err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		return err
 	}
 	switch pgErr.Code {
 	case pgerrcode.UniqueViolation:
+		if strings.Contains(pgErr.ConstraintName, "_unique_name_") {
+			return &ErrAlreadyExists{
+				ID:   id,
+				Name: name,
+			}
+		}
 		return &ErrAlreadyExists{
 			ID: id,
 		}

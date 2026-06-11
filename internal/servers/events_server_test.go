@@ -15,6 +15,7 @@ package servers
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -47,7 +48,7 @@ func (c *eventsCollector) Collect(stream publicv1.Events_WatchClient) {
 		defer GinkgoRecover()
 		for {
 			response, err := stream.Recv()
-			if err == io.EOF || err != nil {
+			if errors.Is(err, io.EOF) || err != nil {
 				return
 			}
 			c.lock.Lock()

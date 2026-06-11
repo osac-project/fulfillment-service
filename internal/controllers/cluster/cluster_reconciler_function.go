@@ -281,7 +281,7 @@ func (t *task) setConditionDefaults(value privatev1.ClusterConditionType) {
 
 func (t *task) validateTenant() error {
 	if !t.cluster.HasMetadata() || t.cluster.GetMetadata().GetTenant() == "" {
-		return errors.New("Cluster must have a tenant assigned")
+		return errors.New("Cluster must have a tenant assigned") //nolint:staticcheck // ST1005: Cluster is an API resource name
 	}
 	return nil
 }
@@ -454,7 +454,7 @@ func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.ClusterO
 	count := len(items)
 	if count > 1 {
 		err = fmt.Errorf(
-			"expected at most one cluster order with identifer '%s' but found %d",
+			"expected at most one cluster order with identifier '%s' but found %d",
 			t.cluster.GetId(), count,
 		)
 		return

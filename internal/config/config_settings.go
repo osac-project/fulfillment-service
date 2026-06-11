@@ -296,16 +296,16 @@ func (s *Settings) loadGeneral(ctx context.Context) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("failed to check if config file '%s' exists: %v", file, err)
+		return fmt.Errorf("failed to check if config file '%s' exists: %w", file, err)
 	}
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(filepath.Clean(file))
 	if err != nil {
-		return fmt.Errorf("failed to read config file '%s': %v", file, err)
+		return fmt.Errorf("failed to read config file '%s': %w", file, err)
 	}
 	if len(data) > 0 {
 		err = json.Unmarshal(data, &s.general)
 		if err != nil {
-			return fmt.Errorf("failed to parse config file '%s': %v", file, err)
+			return fmt.Errorf("failed to parse config file '%s': %w", file, err)
 		}
 	}
 	s.logger.DebugContext(
@@ -349,15 +349,15 @@ func (s *Settings) saveGeneral(ctx context.Context) error {
 	file := filepath.Join(s.dir, "config.json")
 	data, err := json.MarshalIndent(&s.general, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %v", err)
+		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 	err = os.MkdirAll(s.dir, os.FileMode(0755))
 	if err != nil {
-		return fmt.Errorf("failed to create directory %s: %v", s.dir, err)
+		return fmt.Errorf("failed to create directory %s: %w", s.dir, err)
 	}
 	err = os.WriteFile(file, data, 0600)
 	if err != nil {
-		return fmt.Errorf("failed to write file '%s': %v", file, err)
+		return fmt.Errorf("failed to write file '%s': %w", file, err)
 	}
 	s.logger.DebugContext(
 		ctx,

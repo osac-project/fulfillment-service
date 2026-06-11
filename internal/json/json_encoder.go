@@ -234,11 +234,11 @@ func (e *Encoder) marshalSingle(stream *jsoniter.Stream, value protoreflect.Valu
 	case protoreflect.Int32Kind,
 		protoreflect.Sint32Kind,
 		protoreflect.Sfixed32Kind:
-		stream.WriteInt32(int32(value.Int()))
+		stream.WriteInt32(int32(value.Int())) // #nosec G115 -- guarded by Int32Kind switch
 		return stream.Error
 	case protoreflect.Uint32Kind,
 		protoreflect.Fixed32Kind:
-		stream.WriteUint32(uint32(value.Uint()))
+		stream.WriteUint32(uint32(value.Uint())) // #nosec G115 -- guarded by Uint32Kind switch
 		return stream.Error
 	case protoreflect.Int64Kind,
 		protoreflect.Sint64Kind,

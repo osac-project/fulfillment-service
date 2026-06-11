@@ -215,8 +215,14 @@ func (c *runnerContext) proxyVNC(
 		Writer:  conn,
 		BufSize: 32 * 1024,
 		InterruptRead: func() func() {
-			conn.(*net.TCPConn).SetReadDeadline(time.Now())
-			return func() { conn.(*net.TCPConn).SetReadDeadline(time.Time{}) }
+			if err := conn.(*net.TCPConn).SetReadDeadline(time.Now()); err != nil {
+				c.logger.DebugContext(ctx, "SetReadDeadline failed", "error", err)
+			}
+			return func() {
+				if err := conn.(*net.TCPConn).SetReadDeadline(time.Time{}); err != nil {
+					c.logger.DebugContext(ctx, "SetReadDeadline reset failed", "error", err)
+				}
+			}
 		},
 		OnDisconnect: func(msg string) {
 			c.logger.DebugContext(ctx, "VNC stream disconnected", "message", msg)

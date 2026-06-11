@@ -427,5 +427,117 @@ var _ = Describe("Private cluster catalog items server", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("database connection lost"))
 		})
+
+		It("Rejects duplicate name within same tenant", func() {
+			_, err := server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "dev-sandbox",
+					}.Build(),
+					Title:    "First catalog item",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "dev-sandbox",
+					}.Build(),
+					Title:    "Second catalog item",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			Expect(status.Message()).To(ContainSubstring("dev-sandbox"))
+		})
+
+		It("Allows same name across different tenants", func() {
+			_, err := server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "dev-sandbox",
+						Tenant: "system",
+					}.Build(),
+					Title:    "Catalog item for system tenant",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "dev-sandbox",
+						Tenant: "shared",
+					}.Build(),
+					Title:    "Catalog item for shared tenant",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Rejects update to duplicate name within same tenant", func() {
+			_, err := server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "first-item",
+					}.Build(),
+					Title:    "First catalog item",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			secondResponse, err := server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "second-item",
+					}.Build(),
+					Title:    "Second catalog item",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Update(ctx, privatev1.ClusterCatalogItemsUpdateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Id: secondResponse.GetObject().GetId(),
+					Metadata: privatev1.Metadata_builder{
+						Name: "first-item",
+					}.Build(),
+					Title:    "Second catalog item",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			Expect(status.Message()).To(ContainSubstring("first-item"))
+		})
+
+		It("Allows empty name without conflict", func() {
+			_, err := server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Title:    "First unnamed item",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+				Object: privatev1.ClusterCatalogItem_builder{
+					Title:    "Second unnamed item",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
 	})
 })

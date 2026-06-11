@@ -236,7 +236,7 @@ func (b *CertPoolBuilder) loadFile(pool *x509.CertPool, caFile string) error {
 			"Loading CA file",
 			slog.String("file", caFile),
 		)
-		data, err := os.ReadFile(caFile)
+		data, err := os.ReadFile(filepath.Clean(caFile))
 		if err != nil {
 			return err
 		}

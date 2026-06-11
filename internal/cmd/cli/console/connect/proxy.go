@@ -69,7 +69,7 @@ func Proxy(ctx context.Context,
 		for {
 			resp, err := stream.Recv()
 			if err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					errCh <- nil
 				} else {
 					errCh <- err
@@ -130,7 +130,7 @@ func Proxy(ctx context.Context,
 				}
 			}
 			if err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					errCh <- nil
 				} else {
 					errCh <- errors.Join(ErrLocalIOFailed, err)

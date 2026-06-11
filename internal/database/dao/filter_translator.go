@@ -95,7 +95,7 @@ type filterTranslatorResult struct {
 	sql string
 
 	// precedence is the precedence of the operator used at the top of the translation. This is used to decide if
-	// it is necessary to put parenthesis arround the text to use it in larger translations.
+	// it is necessary to put parenthesis around the text to use it in larger translations.
 	//
 	// Note that this is the precedence of SQL operators, not of CEL operators.
 	precedence int
@@ -133,6 +133,29 @@ const (
 	filterTranslatorAndPrecedence            = 1
 	filterTranslatorOrPrecedence             = 0
 )
+
+// binaryOpInfo describes a simple binary operator that maps directly to a SQL operator.
+type binaryOpInfo struct {
+	sql         string
+	precedence  int
+	inheritKind bool // true = result kind inherited from left operand; false = BooleanKind
+}
+
+// binaryOps maps CEL operator names to their SQL equivalents for all operators that don't
+// require special-case logic (everything except Equals and NotEquals).
+var binaryOps = map[string]binaryOpInfo{
+	operators.Add:           {"+", filterTranslatorAdditivePrecedence, true},
+	operators.Subtract:      {"-", filterTranslatorAdditivePrecedence, true},
+	operators.Multiply:      {"*", filterTranslatorMultiplicativePrecedence, true},
+	operators.Divide:        {"/", filterTranslatorMultiplicativePrecedence, true},
+	operators.Modulo:        {"%", filterTranslatorMultiplicativePrecedence, true},
+	operators.Greater:       {">", filterTranslatorComparisonPrecedence, false},
+	operators.GreaterEquals: {">=", filterTranslatorComparisonPrecedence, false},
+	operators.Less:          {"<", filterTranslatorComparisonPrecedence, false},
+	operators.LessEquals:    {"<=", filterTranslatorComparisonPrecedence, false},
+	operators.LogicalAnd:    {"and", filterTranslatorAndPrecedence, false},
+	operators.LogicalOr:     {"or", filterTranslatorOrPrecedence, false},
+}
 
 // NewFilterTranslator creates a object that knows how to translate filter expressions into SQL where statements.
 func NewFilterTranslator[O proto.Message]() *FilterTranslatorBuilder[O] {
@@ -298,11 +321,6 @@ func (t *FilterTranslator[O]) translateCall(expr ast.CallExpr) (result filterTra
 }
 
 func (t *FilterTranslator[O]) translateBinary(name string, left, right ast.Expr) (result filterTranslatorResult, err error) {
-	var (
-		operatorSql      string
-		resultPrecedence int
-		resultKind       filterTranslatorResultKind
-	)
 	leftTr, err := t.translate(left)
 	if err != nil {
 		return
@@ -312,120 +330,91 @@ func (t *FilterTranslator[O]) translateBinary(name string, left, right ast.Expr)
 		return
 	}
 	switch name {
-	case operators.Add:
-		operatorSql = "+"
-		resultPrecedence = filterTranslatorAdditivePrecedence
-		resultKind = leftTr.kind
-	case operators.Subtract:
-		operatorSql = "-"
-		resultPrecedence = filterTranslatorAdditivePrecedence
-		resultKind = leftTr.kind
-	case operators.Multiply:
-		operatorSql = "*"
-		resultPrecedence = filterTranslatorMultiplicativePrecedence
-		resultKind = leftTr.kind
-	case operators.Divide:
-		operatorSql = "/"
-		resultPrecedence = filterTranslatorMultiplicativePrecedence
-		resultKind = leftTr.kind
-	case operators.Modulo:
-		operatorSql = "%"
-		resultPrecedence = filterTranslatorMultiplicativePrecedence
-		resultKind = leftTr.kind
 	case operators.Equals:
-		// If one of the sides is a null expression then we swap sides so that the null is always on the right,
-		// as that way we can convert it to 'is null'.
-		if leftTr.kind == filterTranslatorNullType {
-			leftTr, rightTr = rightTr, leftTr
-		}
-		if rightTr.kind == filterTranslatorNullType {
-			operatorSql = "is"
-			resultPrecedence = filterTranslatorIsPrecedence
-		} else {
-			if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
-				result.sql, err = t.translateMapEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
-				if err != nil {
-					return
-				}
-				result.precedence = filterTranslatorComparisonPrecedence
-				result.kind = filterTranslatorBooleanKind
-				return
-			}
-			if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
-				result.sql, err = t.translateMapEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
-				if err != nil {
-					return
-				}
-				result.precedence = filterTranslatorComparisonPrecedence
-				result.kind = filterTranslatorBooleanKind
-				return
-			}
-			operatorSql = "="
-			resultPrecedence = filterTranslatorComparisonPrecedence
-		}
-		resultKind = filterTranslatorBooleanKind
+		return t.translateEquals(leftTr, rightTr)
 	case operators.NotEquals:
-		// If one of the sides is a null expression then we swap sides so that the null is always on the right,
-		// as that way we can convert it to 'is not null'.
-		if leftTr.kind == filterTranslatorNullType {
-			leftTr, rightTr = rightTr, leftTr
-		}
-		if rightTr.kind == filterTranslatorNullType {
-			operatorSql = "is not"
-			resultPrecedence = filterTranslatorIsPrecedence
-		} else {
-			if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
-				result.sql, err = t.translateMapNotEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
-				if err != nil {
-					return
-				}
-				result.precedence = filterTranslatorComparisonPrecedence
-				result.kind = filterTranslatorBooleanKind
-				return
-			}
-			if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
-				result.sql, err = t.translateMapNotEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
-				if err != nil {
-					return
-				}
-				result.precedence = filterTranslatorComparisonPrecedence
-				result.kind = filterTranslatorBooleanKind
-				return
-			}
-			operatorSql = "!="
-			resultPrecedence = filterTranslatorComparisonPrecedence
-		}
-		resultKind = filterTranslatorBooleanKind
-	case operators.Greater:
-		operatorSql = ">"
-		resultPrecedence = filterTranslatorComparisonPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.GreaterEquals:
-		operatorSql = ">="
-		resultPrecedence = filterTranslatorComparisonPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.Less:
-		operatorSql = "<"
-		resultPrecedence = filterTranslatorComparisonPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.LessEquals:
-		operatorSql = "<="
-		resultPrecedence = filterTranslatorComparisonPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.LogicalAnd:
-		operatorSql = "and"
-		resultPrecedence = filterTranslatorAndPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.LogicalOr:
-		operatorSql = "or"
-		resultPrecedence = filterTranslatorOrPrecedence
-		resultKind = filterTranslatorBooleanKind
+		return t.translateNotEquals(leftTr, rightTr)
 	default:
-		err = fmt.Errorf("unsupported operator '%s'", name)
+		op, ok := binaryOps[name]
+		if !ok {
+			err = fmt.Errorf("unsupported operator '%s'", name)
+			return
+		}
+		resultKind := filterTranslatorBooleanKind
+		if op.inheritKind {
+			resultKind = leftTr.kind
+		}
+		return assembleBinarySQL(leftTr, rightTr, op.sql, op.precedence, resultKind), nil
+	}
+}
+
+// translateEquals handles the CEL == operator, including null-swap and map-index equality.
+func (t *FilterTranslator[O]) translateEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
+	// If one of the sides is a null expression then we swap sides so that the null is always on the right,
+	// as that way we can convert it to 'is null'.
+	if leftTr.kind == filterTranslatorNullType {
+		leftTr, rightTr = rightTr, leftTr
+	}
+	if rightTr.kind == filterTranslatorNullType {
+		return assembleBinarySQL(leftTr, rightTr, "is", filterTranslatorIsPrecedence, filterTranslatorBooleanKind), nil
+	}
+	if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
+		result.sql, err = t.translateMapEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
+		if err != nil {
+			return
+		}
+		result.precedence = filterTranslatorComparisonPrecedence
+		result.kind = filterTranslatorBooleanKind
 		return
 	}
+	if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
+		result.sql, err = t.translateMapEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
+		if err != nil {
+			return
+		}
+		result.precedence = filterTranslatorComparisonPrecedence
+		result.kind = filterTranslatorBooleanKind
+		return
+	}
+	return assembleBinarySQL(leftTr, rightTr, "=", filterTranslatorComparisonPrecedence, filterTranslatorBooleanKind), nil
+}
+
+// translateNotEquals handles the CEL != operator, including null-swap and map-index inequality.
+func (t *FilterTranslator[O]) translateNotEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
+	// If one of the sides is a null expression then we swap sides so that the null is always on the right,
+	// as that way we can convert it to 'is not null'.
+	if leftTr.kind == filterTranslatorNullType {
+		leftTr, rightTr = rightTr, leftTr
+	}
+	if rightTr.kind == filterTranslatorNullType {
+		return assembleBinarySQL(leftTr, rightTr, "is not", filterTranslatorIsPrecedence, filterTranslatorBooleanKind), nil
+	}
+	if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
+		result.sql, err = t.translateMapNotEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
+		if err != nil {
+			return
+		}
+		result.precedence = filterTranslatorComparisonPrecedence
+		result.kind = filterTranslatorBooleanKind
+		return
+	}
+	if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
+		result.sql, err = t.translateMapNotEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
+		if err != nil {
+			return
+		}
+		result.precedence = filterTranslatorComparisonPrecedence
+		result.kind = filterTranslatorBooleanKind
+		return
+	}
+	return assembleBinarySQL(leftTr, rightTr, "!=", filterTranslatorComparisonPrecedence, filterTranslatorBooleanKind), nil
+}
+
+// assembleBinarySQL wraps left and right operands with parentheses as needed and joins them
+// with the given SQL operator.
+func assembleBinarySQL(leftTr, rightTr filterTranslatorResult, operatorSQL string, precedence int, kind filterTranslatorResultKind) filterTranslatorResult {
 	var buffer bytes.Buffer
-	if leftTr.precedence < resultPrecedence {
+	if leftTr.precedence < precedence {
 		buffer.WriteString("(")
 		buffer.WriteString(leftTr.sql)
 		buffer.WriteString(")")
@@ -433,19 +422,20 @@ func (t *FilterTranslator[O]) translateBinary(name string, left, right ast.Expr)
 		buffer.WriteString(leftTr.sql)
 	}
 	buffer.WriteString(" ")
-	buffer.WriteString(operatorSql)
+	buffer.WriteString(operatorSQL)
 	buffer.WriteString(" ")
-	if rightTr.precedence < resultPrecedence {
+	if rightTr.precedence < precedence {
 		buffer.WriteString("(")
 		buffer.WriteString(rightTr.sql)
 		buffer.WriteString(")")
 	} else {
 		buffer.WriteString(rightTr.sql)
 	}
-	result.sql = buffer.String()
-	result.precedence = resultPrecedence
-	result.kind = resultKind
-	return
+	return filterTranslatorResult{
+		sql:        buffer.String(),
+		precedence: precedence,
+		kind:       kind,
+	}
 }
 
 func (t *FilterTranslator[O]) translateNot(value ast.Expr) (result filterTranslatorResult, err error) {

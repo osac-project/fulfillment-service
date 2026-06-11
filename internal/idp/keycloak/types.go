@@ -272,21 +272,6 @@ type keycloakIdentityProvider struct {
 	Config      map[string]string `json:"config,omitempty"` // Provider-specific configuration
 }
 
-// Conversion functions for identity providers
-func toKeycloakIdentityProvider(idpProvider *idp.IdentityProvider) *keycloakIdentityProvider {
-	if idpProvider == nil {
-		return nil
-	}
-
-	return &keycloakIdentityProvider{
-		Alias:       idpProvider.Alias,
-		DisplayName: idpProvider.DisplayName,
-		ProviderID:  idpProvider.Type,
-		Enabled:     idpProvider.Enabled,
-		Config:      idpProvider.Config,
-	}
-}
-
 func fromKeycloakIdentityProvider(kcIdp *keycloakIdentityProvider) *idp.IdentityProvider {
 	if kcIdp == nil {
 		return nil

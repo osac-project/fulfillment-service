@@ -236,8 +236,8 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 
 	// Create and return the response:
 	response = &ListResponse[O]{
-		size:  int32(len(items)),
-		total: int32(total),
+		size:  int32(len(items)), // #nosec G115 -- bounded by MaxLimit
+		total: int32(total),      // #nosec G115 -- bounded by MaxLimit
 		items: items,
 	}
 	return

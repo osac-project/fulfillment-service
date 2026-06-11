@@ -372,15 +372,15 @@ var _ = Describe("Manager", func() {
 
 			result1, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result1.SessionCtx.Err()).To(BeNil())
+			Expect(result1.SessionCtx.Err()).To(Succeed())
 
 			result2, err := mgr.Connect(ctx, target, "user1", "client-abc")
 			Expect(err).NotTo(HaveOccurred())
 
 			// Eviction should have cancelled the old session context.
-			Expect(result1.SessionCtx.Err()).NotTo(BeNil())
+			Expect(result1.SessionCtx.Err()).NotTo(Succeed())
 			// New session context should still be active.
-			Expect(result2.SessionCtx.Err()).To(BeNil())
+			Expect(result2.SessionCtx.Err()).To(Succeed())
 
 			result1.Conn.Close()
 			result2.Conn.Close()

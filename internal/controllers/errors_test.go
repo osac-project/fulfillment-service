@@ -26,7 +26,7 @@ var _ = Describe("ClassifyHubError", func() {
 	Context("with nil error", func() {
 		It("should return nil", func() {
 			result := ClassifyHubError(nil)
-			Expect(result).To(BeNil())
+			Expect(result).ToNot(HaveOccurred())
 		})
 	})
 
@@ -47,7 +47,7 @@ var _ = Describe("ClassifyHubError", func() {
 			result := ClassifyHubError(grpcErr)
 
 			Expect(errors.Is(result, ErrHubNotFound)).To(BeFalse())
-			Expect(result).ToNot(BeNil())
+			Expect(result).To(HaveOccurred())
 		})
 
 		It("should return original error for DeadlineExceeded", func() {
@@ -56,7 +56,7 @@ var _ = Describe("ClassifyHubError", func() {
 			result := ClassifyHubError(grpcErr)
 
 			Expect(errors.Is(result, ErrHubNotFound)).To(BeFalse())
-			Expect(result).ToNot(BeNil())
+			Expect(result).To(HaveOccurred())
 		})
 
 		It("should return original error for Internal", func() {
@@ -65,7 +65,7 @@ var _ = Describe("ClassifyHubError", func() {
 			result := ClassifyHubError(grpcErr)
 
 			Expect(errors.Is(result, ErrHubNotFound)).To(BeFalse())
-			Expect(result).ToNot(BeNil())
+			Expect(result).To(HaveOccurred())
 		})
 	})
 
@@ -90,7 +90,7 @@ var _ = Describe("ClassifyHubError", func() {
 			result := ClassifyHubError(grpcErr)
 
 			Expect(errors.Is(result, ErrHubNotFound)).To(BeFalse())
-			Expect(result).ToNot(BeNil())
+			Expect(result).To(HaveOccurred())
 			Expect(result).To(Equal(grpcErr))
 		})
 
@@ -103,7 +103,7 @@ var _ = Describe("ClassifyHubError", func() {
 			result := ClassifyHubError(grpcErr)
 
 			Expect(errors.Is(result, ErrHubNotFound)).To(BeFalse())
-			Expect(result).ToNot(BeNil())
+			Expect(result).To(HaveOccurred())
 			Expect(result).To(Equal(grpcErr))
 		})
 	})

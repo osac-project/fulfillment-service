@@ -46,10 +46,17 @@ func (e *ErrNotFound) Error() string {
 type ErrAlreadyExists struct {
 	// ID is the identifier of the object that already exists.
 	ID string
+
+	// Name is set when the violation is caused by a name uniqueness constraint rather than a primary key
+	// collision. When set, error messages should reference the name instead of the identifier.
+	Name string
 }
 
 // Error returns the error message.
 func (e *ErrAlreadyExists) Error() string {
+	if e.Name != "" {
+		return fmt.Sprintf("object with name '%s' already exists", e.Name)
+	}
 	return fmt.Sprintf("object with identifier '%s' already exists", e.ID)
 }
 

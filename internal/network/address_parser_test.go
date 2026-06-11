@@ -38,7 +38,7 @@ var _ = Describe("AddressParser", func() {
 	})
 
 	DescribeTable(
-		"Successfull parsing",
+		"Successful parsing",
 		func(input string, expectedAddress string, expectedPlaintext bool) {
 			parser, err := NewAddressParser().
 				SetLogger(logger).

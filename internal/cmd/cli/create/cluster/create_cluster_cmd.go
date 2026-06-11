@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -216,21 +217,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.clustersClient = publicv1.NewClustersClient(conn)
 
 	// Resolve credentials before branching (used in both catalog-item and template paths):
-	pullSecret := c.args.pullSecret
-	if c.args.pullSecretFile != "" {
-		data, readErr := os.ReadFile(c.args.pullSecretFile)
-		if readErr != nil {
-			return fmt.Errorf("failed to read pull secret file '%s': %w", c.args.pullSecretFile, readErr)
-		}
-		pullSecret = strings.TrimSpace(string(data))
-	}
-	sshPublicKey := c.args.sshPublicKey
-	if c.args.sshPublicKeyFile != "" {
-		data, readErr := os.ReadFile(c.args.sshPublicKeyFile)
-		if readErr != nil {
-			return fmt.Errorf("failed to read SSH public key file '%s': %w", c.args.sshPublicKeyFile, readErr)
-		}
-		sshPublicKey = strings.TrimSpace(string(data))
+	pullSecret, sshPublicKey, err := c.resolveCredentials()
+	if err != nil {
+		return err
 	}
 
 	if c.args.catalogItem != "" {
@@ -238,43 +227,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		specBuilder := publicv1.ClusterSpec_builder{
 			CatalogItem: c.args.catalogItem,
 		}
-		if pullSecret != "" {
-			specBuilder.PullSecret = &pullSecret
-		}
-		if sshPublicKey != "" {
-			specBuilder.SshPublicKey = &sshPublicKey
-		}
-		if c.args.releaseImage != "" {
-			specBuilder.ReleaseImage = &c.args.releaseImage
-		}
-		if c.args.podCIDR != "" || c.args.serviceCIDR != "" {
-			networkBuilder := publicv1.ClusterNetwork_builder{}
-			if c.args.podCIDR != "" {
-				networkBuilder.PodCidr = &c.args.podCIDR
-			}
-			if c.args.serviceCIDR != "" {
-				networkBuilder.ServiceCidr = &c.args.serviceCIDR
-			}
-			specBuilder.Network = networkBuilder.Build()
-		}
-
-		cluster := publicv1.Cluster_builder{
-			Metadata: publicv1.Metadata_builder{
-				Name: c.args.name,
-			}.Build(),
-			Spec: specBuilder.Build(),
-		}.Build()
-
-		response, err := c.clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
-			Object: cluster,
-		}.Build())
-		if err != nil {
-			return fmt.Errorf("failed to create cluster: %w", err)
-		}
-
-		cluster = response.Object
-		c.console.Infof(ctx, "Created cluster '%s'.\n", cluster.Id)
-		return nil
+		c.applyOptionalSpecFields(&specBuilder, pullSecret, sshPublicKey)
+		return c.createCluster(ctx, specBuilder.Build())
 	}
 
 	// Legacy template path (existing code continues below):
@@ -305,6 +259,38 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		Template:           template.GetId(),
 		TemplateParameters: templateParameterValues,
 	}
+	c.applyOptionalSpecFields(&specBuilder, pullSecret, sshPublicKey)
+	return c.createCluster(ctx, specBuilder.Build())
+}
+
+// resolveCredentials reads pull secret and SSH public key from file flags when specified.
+func (c *runnerContext) resolveCredentials() (pullSecret, sshPublicKey string, err error) {
+	pullSecret = c.args.pullSecret
+	if c.args.pullSecretFile != "" {
+		data, readErr := os.ReadFile(c.args.pullSecretFile)
+		if readErr != nil {
+			err = fmt.Errorf("failed to read pull secret file '%s': %w", c.args.pullSecretFile, readErr)
+			return
+		}
+		pullSecret = strings.TrimSpace(string(data))
+	}
+	sshPublicKey = c.args.sshPublicKey
+	if c.args.sshPublicKeyFile != "" {
+		data, readErr := os.ReadFile(c.args.sshPublicKeyFile)
+		if readErr != nil {
+			err = fmt.Errorf("failed to read SSH public key file '%s': %w", c.args.sshPublicKeyFile, readErr)
+			return
+		}
+		sshPublicKey = strings.TrimSpace(string(data))
+	}
+	return
+}
+
+// applyOptionalSpecFields sets pull secret, SSH public key, release image, and network CIDRs
+// on the spec builder when their corresponding flags are provided.
+func (c *runnerContext) applyOptionalSpecFields(
+	specBuilder *publicv1.ClusterSpec_builder, pullSecret, sshPublicKey string,
+) {
 	if pullSecret != "" {
 		specBuilder.PullSecret = &pullSecret
 	}
@@ -324,27 +310,24 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		}
 		specBuilder.Network = networkBuilder.Build()
 	}
+}
 
-	// Prepare the cluster:
+// createCluster creates a cluster with the given spec and prints the result.
+func (c *runnerContext) createCluster(ctx context.Context, spec *publicv1.ClusterSpec) error {
 	cluster := publicv1.Cluster_builder{
 		Metadata: publicv1.Metadata_builder{
 			Name: c.args.name,
 		}.Build(),
-		Spec: specBuilder.Build(),
+		Spec: spec,
 	}.Build()
-
-	// Create the cluster:
 	response, err := c.clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
 		Object: cluster,
 	}.Build())
 	if err != nil {
 		return fmt.Errorf("failed to create cluster: %w", err)
 	}
-
-	// Display the result:
 	cluster = response.Object
 	c.console.Infof(ctx, "Created cluster '%s'.\n", cluster.Id)
-
 	return nil
 }
 
@@ -526,7 +509,7 @@ func (c *runnerContext) parseTemplateParameters(ctx context.Context,
 			)
 			continue
 		}
-		data, err := os.ReadFile(file)
+		data, err := os.ReadFile(filepath.Clean(file))
 		if errors.Is(err, os.ErrNotExist) {
 			issues = append(
 				issues, fmt.Sprintf(

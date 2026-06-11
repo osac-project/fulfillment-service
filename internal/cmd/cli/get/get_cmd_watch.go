@@ -15,6 +15,7 @@ package get
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -49,7 +50,7 @@ func (c *runnerContext) watch(ctx context.Context, keys []string) error {
 	// Process events
 	for {
 		response, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {

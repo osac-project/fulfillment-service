@@ -331,7 +331,13 @@ func (l *Listener) processNotification(ctx context.Context, notification *pgconn
 			)
 		}
 		var object any
-		json.Unmarshal(data, &object)
+		if err := json.Unmarshal(data, &object); err != nil {
+			l.logger.DebugContext(
+				ctx,
+				"Failed to unmarshal payload for debug logging",
+				slog.Any("error", err),
+			)
+		}
 
 	}
 	if l.logger.Enabled(ctx, slog.LevelDebug) {

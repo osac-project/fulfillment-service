@@ -119,7 +119,7 @@ func (m *ResourceManager) CreateProjectAuthorizationResource(ctx context.Context
 				slog.String("resource_id", createdResource.ID),
 				slog.Any("cleanup_error", cleanupErr),
 			)
-			return "", fmt.Errorf("failed to create authorization groups: %w (cleanup also failed: %v)", err, cleanupErr)
+			return "", fmt.Errorf("failed to create authorization groups: %w (cleanup also failed: %w)", err, cleanupErr)
 		}
 		return "", fmt.Errorf("failed to create authorization groups: %w", err)
 	}
@@ -166,7 +166,7 @@ func (m *ResourceManager) createProjectAuthorizationGroups(ctx context.Context, 
 				slog.Any("get_error", getErr),
 			)
 			// Return composite error including lookup failure
-			return fmt.Errorf("failed to create managers group: %w (rollback also failed to lookup viewers group: %v)", err, getErr)
+			return fmt.Errorf("failed to create managers group: %w (rollback also failed to lookup viewers group: %w)", err, getErr)
 		}
 		if viewersGroupID != "" {
 			if cleanupErr := m.client.DeleteAuthorizationGroup(ctx, organizationName, viewersGroupID); cleanupErr != nil {
@@ -175,7 +175,7 @@ func (m *ResourceManager) createProjectAuthorizationGroups(ctx context.Context, 
 					slog.String("group_path", viewersGroupPath),
 					slog.Any("cleanup_error", cleanupErr),
 				)
-				return fmt.Errorf("failed to create managers group: %w (rollback also failed to delete viewers group: %v)", err, cleanupErr)
+				return fmt.Errorf("failed to create managers group: %w (rollback also failed to delete viewers group: %w)", err, cleanupErr)
 			}
 		}
 		return fmt.Errorf("failed to create managers group: %w", err)

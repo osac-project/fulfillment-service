@@ -456,7 +456,7 @@ var _ = Describe("addFinalizer", func() {
 
 		Expect(added).To(BeFalse())
 		Expect(hasFinalizer(t.publicIPAttachment)).To(BeTrue())
-		Expect(len(t.publicIPAttachment.GetMetadata().GetFinalizers())).To(Equal(1))
+		Expect(t.publicIPAttachment.GetMetadata().GetFinalizers()).To(HaveLen(1))
 	})
 
 	It("should create metadata if it doesn't exist", func() {

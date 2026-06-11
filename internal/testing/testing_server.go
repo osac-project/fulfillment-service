@@ -59,7 +59,7 @@ func NewTLSServer() *Server {
 	}
 }
 
-// Adress returns the address where the server is listening.
+// Address returns the address where the server is listening.
 func (s *Server) Address() string {
 	return s.listener.Addr().String()
 }

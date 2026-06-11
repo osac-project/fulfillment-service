@@ -157,7 +157,7 @@ func (s *PublicIPPoolsServer) List(ctx context.Context,
 	}
 
 	// Apply offset and limit in Go after filtering.
-	total := int32(len(eligible))
+	total := int32(len(eligible)) // #nosec G115 -- bounded by pool size
 	offset := request.GetOffset()
 	limit := request.GetLimit()
 	if offset < 0 || limit < 0 {
@@ -167,7 +167,7 @@ func (s *PublicIPPoolsServer) List(ctx context.Context,
 		offset = total
 	}
 	paged := eligible[offset:]
-	if limit > 0 && int32(len(paged)) > limit {
+	if limit > 0 && int32(len(paged)) > limit { // #nosec G115 -- bounded by pool size
 		paged = paged[:limit]
 	}
 
@@ -183,7 +183,7 @@ func (s *PublicIPPoolsServer) List(ctx context.Context,
 	}
 
 	response = &publicv1.PublicIPPoolsListResponse{}
-	response.SetSize(int32(len(publicItems)))
+	response.SetSize(int32(len(publicItems))) // #nosec G115 -- bounded by pool size
 	response.SetTotal(total)
 	response.SetItems(publicItems)
 	return

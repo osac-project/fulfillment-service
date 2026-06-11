@@ -16,6 +16,7 @@ package auth
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -166,7 +167,7 @@ var _ = Describe("Authorization rules", Ordered, func() {
 		for {
 			var doc map[string]any
 			err = decoder.Decode(&doc)
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			Expect(err).ToNot(HaveOccurred())

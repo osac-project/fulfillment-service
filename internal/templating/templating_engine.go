@@ -137,7 +137,7 @@ func (b *EngineBuilder) Build() (result *Engine, err error) {
 	// Discover template names from all filesystems without parsing them yet. Templates will be
 	// loaded and parsed on demand when they are first used.
 	for _, filesystem := range b.fsys {
-		var fsys fs.FS = filesystem
+		var fsys = filesystem
 		if b.dir != "" {
 			fsys, err = fs.Sub(filesystem, b.dir)
 			if err != nil {
@@ -232,14 +232,14 @@ func (e *Engine) Execute(writer io.Writer, name string, data any) error {
 
 // Names returns the names of the templates.
 func (e *Engine) Names() []string {
-	return slices.Clone(e.names)
+	return slices.Clone(e.names) //nolint:govet // inline: Go compiler doesn't support type param inference for inlining yet
 }
 
 // AddFS adds one or more filesystems to the engine and discovers templates from them. The templates
 // will be loaded and parsed on demand when they are first used.
 func (e *Engine) AddFS(values ...fs.FS) error {
 	for _, filesystem := range values {
-		var fsys fs.FS = filesystem
+		var fsys = filesystem
 		var err error
 		if e.dir != "" {
 			fsys, err = fs.Sub(filesystem, e.dir)
@@ -371,7 +371,7 @@ func (e *Engine) uuidFunc() string {
 }
 
 // dataFunc is a template function that creates a map with the keys and values passed as parameters. The parameters
-// should be a set of name/value pairs: values witn even indexes should be the names and values with odd indexes the
+// should be a set of name/value pairs: values with even indexes should be the names and values with odd indexes the
 // values. For example, the following template:
 //
 //	{{ range $name, $value := data "X" 123 "Y 456 }}

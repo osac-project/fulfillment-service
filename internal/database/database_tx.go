@@ -20,7 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Tx is a database transaction automatically started and automatically commited or rolled back.
+// Tx is a database transaction automatically started and automatically committed or rolled back.
 //
 //go:generate mockgen -destination=database_tx_mock.go -package=database . Tx
 type Tx interface {
@@ -37,8 +37,8 @@ type Tx interface {
 	Exec(ctx context.Context, query string, args ...any) (tag pgconn.CommandTag, err error)
 
 	// ReportError adds a error that the transaction manager will use to determine if the transaction should be
-	// commited or rolled back. The default behaviour is that if there are no errors reported, or if they are all
-	// nil then the transaction will be commited. Otherwise it will be rolled back.
+	// committed or rolled back. The default behaviour is that if there are no errors reported, or if they are all
+	// nil then the transaction will be committed. Otherwise it will be rolled back.
 	//
 	// The recommended way to use this is with the defer mechanism:
 	//

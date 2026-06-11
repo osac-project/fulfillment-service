@@ -33,18 +33,18 @@ jobs:
         persist-credentials: false
     - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
     - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
+      with:
+        extra_args: -c .pre-commit-config-ci.yaml
 
-  check-code-format:
-    name: Check code format
+  check-lint:
+    name: Check lint
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
       with:
         persist-credentials: false
     - uses: ./.github/actions/setup-go
-    - run: |
-        gofmt -s -l -w .
-        git diff --exit-code
+    - run: make lint
 
   check-generated-code:
     name: Check generated code

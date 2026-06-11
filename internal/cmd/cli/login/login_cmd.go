@@ -371,7 +371,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 				Name: caFile,
 			})
 		} else {
-			caContent, err := os.ReadFile(caFile)
+			caContent, err := os.ReadFile(filepath.Clean(caFile))
 			if err != nil {
 				return fmt.Errorf("failed to read CA file '%s': %w", caFile, err)
 			}

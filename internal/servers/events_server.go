@@ -130,7 +130,7 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 }
 
 func (b *EventsServerBuilder) createCelEnv() (result *cel.Env, err error) {
-	// Declare contants for the enum types of the package:
+	// Declare constants for the enum types of the package:
 	var options []cel.EnvOption
 	protoregistry.GlobalTypes.RangeEnums(func(enumType protoreflect.EnumType) bool {
 		enumDesc := enumType.Descriptor()

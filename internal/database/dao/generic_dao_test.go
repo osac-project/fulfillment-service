@@ -1422,6 +1422,7 @@ var _ = Describe("Generic DAO", func() {
 			updateResponse, err := generic.Update().
 				SetObject(object).
 				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			object = updateResponse.GetObject()
 			Expect(object.GetMetadata().GetFinalizers()).To(Equal([]string{"your-finalizer"}))
 
@@ -1450,7 +1451,7 @@ var _ = Describe("Generic DAO", func() {
 			updateResponse, err := generic.Update().
 				SetObject(object).
 				Do(ctx)
-
+			Expect(err).ToNot(HaveOccurred())
 			object = updateResponse.GetObject()
 			Expect(object.GetMetadata().GetTenant()).To(Equal("your-tenant"))
 
@@ -1706,7 +1707,7 @@ var _ = Describe("Generic DAO", func() {
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				items := response.GetItems()
-				Expect(items).To(HaveLen(0))
+				Expect(items).To(BeEmpty())
 			})
 
 			It("Filters by timestamp in the future", func() {
@@ -2149,7 +2150,7 @@ var _ = Describe("Generic DAO", func() {
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				items = response.GetItems()
-				Expect(items).To(HaveLen(0))
+				Expect(items).To(BeEmpty())
 			})
 
 			It("Filters by label key", func() {

@@ -247,7 +247,7 @@ func (t *task) checkCircularDependency(ctx context.Context, parent *privatev1.Pr
 
 		// Check if we've seen this parent before (circular dependency)
 		if visited[nextParentID] {
-			return fmt.Errorf("Circular dependency detected in project hierarchy")
+			return fmt.Errorf("circular dependency detected in project hierarchy")
 		}
 		visited[nextParentID] = true
 
@@ -267,7 +267,7 @@ func (t *task) checkCircularDependency(ctx context.Context, parent *privatev1.Pr
 	}
 
 	// If we hit max depth, treat it as a circular dependency
-	return fmt.Errorf("Project hierarchy exceeds maximum depth of %d", maxDepth)
+	return fmt.Errorf("project hierarchy exceeds maximum depth of %d", maxDepth)
 }
 
 // delete performs the deletion cleanup for a project.

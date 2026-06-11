@@ -639,9 +639,9 @@ func (h *ObjectHelper) List(ctx context.Context, options ListOptions) (result Li
 		result.Items[i] = list.Get(i).Message().Interface()
 	}
 	if h.list.total != nil {
-		result.Total = int32(response.ProtoReflect().Get(h.list.total).Int())
+		result.Total = int32(response.ProtoReflect().Get(h.list.total).Int()) // #nosec G115 -- proto int32 field
 	} else {
-		result.Total = int32(len(result.Items))
+		result.Total = int32(len(result.Items)) // #nosec G115 -- bounded by MaxLimit
 	}
 	return
 }

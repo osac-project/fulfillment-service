@@ -380,12 +380,13 @@ func (r *TableRenderer) renderCell(ctx context.Context, col *columnLayout, val r
 func (r *TableRenderer) renderCellEnum(val types.Int, enumDesc protoreflect.EnumDescriptor) error {
 	// Get the text of the name of the enum value:
 	valueDescs := enumDesc.Values()
-	valueDesc := valueDescs.ByNumber(protoreflect.EnumNumber(val))
+	valueDesc := valueDescs.ByNumber(protoreflect.EnumNumber(val)) // #nosec G115 -- proto enum fits int32
 	if valueDesc == nil {
 		_, err := fmt.Fprintf(r.writer, "UNKNOWN:%d", val)
 		if err != nil {
 			return err
 		}
+		return nil
 	}
 	valueTxt := string(valueDesc.Name())
 

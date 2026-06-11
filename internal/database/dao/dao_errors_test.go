@@ -22,7 +22,7 @@ var _ = Describe("Errors", func() {
 	Describe("ErrNotFound", func() {
 		It("Implements the error interface", func() {
 			var err error = &ErrNotFound{IDs: []string{"123"}}
-			Expect(err).ToNot(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Returns generic message when there are no identifiers", func() {
@@ -49,7 +49,7 @@ var _ = Describe("Errors", func() {
 	Describe("ErrAlreadyExists", func() {
 		It("Implements the error interface", func() {
 			var err error = &ErrAlreadyExists{ID: "123"}
-			Expect(err).ToNot(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Returns expected error message", func() {
@@ -65,7 +65,7 @@ var _ = Describe("Errors", func() {
 					"metadata.name",
 				},
 			}
-			Expect(err).ToNot(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Returns expected message for a zero fields", func() {
@@ -117,7 +117,7 @@ var _ = Describe("Errors", func() {
 	Describe("ErrDenied", func() {
 		It("Implements the error interface", func() {
 			var err error = &ErrDenied{Reason: "not allowed"}
-			Expect(err).ToNot(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Returns the Reason field as the error message", func() {
@@ -136,7 +136,7 @@ var _ = Describe("Errors", func() {
 			var err error = &ErrReference{
 				Reason: "tenant 'my-tenant' doesn't exist",
 			}
-			Expect(err).ToNot(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Returns the reason field as the error message", func() {

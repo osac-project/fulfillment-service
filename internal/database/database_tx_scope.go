@@ -39,7 +39,7 @@ func WithNewTx[T any](ctx context.Context, fn func(context.Context) (T, error)) 
 		if p := recover(); p != nil {
 			panicErr := fmt.Errorf("panic: %v", p)
 			tx.ReportError(&panicErr)
-			tx.End(ctx)
+			_ = tx.End(ctx)
 			panic(p)
 		}
 		endErr := tx.End(ctx)

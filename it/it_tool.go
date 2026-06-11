@@ -1202,7 +1202,8 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 	}
 
 	// Create the 'admin' client in the master realm:
-	code, body, err := sendRequest(
+	var body []byte
+	code, _, err := sendRequest(
 		http.MethodPost,
 		"/clients",
 		map[string]any{
@@ -1287,7 +1288,7 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 	}
 
 	// Assign the 'admin' role to the service account user:
-	code, body, err = sendRequest(
+	code, _, err = sendRequest(
 		http.MethodPost,
 		fmt.Sprintf("/users/%s/role-mappings/realm", adminUserId),
 		[]any{

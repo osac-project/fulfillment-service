@@ -158,9 +158,8 @@ var _ = Describe("Version", func() {
 	})
 
 	It("Matches after get", func() {
-		// Create the object and get the version:
+		// Create the object:
 		object := createCluster()
-		version := object.GetMetadata().GetVersion()
 
 		// Perform an update and record the version from the response:
 		updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
@@ -178,7 +177,7 @@ var _ = Describe("Version", func() {
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		object = updateResponse.GetObject()
-		version = object.GetMetadata().GetVersion()
+		version := object.GetMetadata().GetVersion()
 
 		// Get and verify that the version from the get response is greater than or equal to the version from
 		// the update response:

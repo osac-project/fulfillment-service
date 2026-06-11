@@ -165,7 +165,7 @@ func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) erro
 		return fmt.Errorf("failed to create cache directory '%s': %w", cacheDir, err)
 	}
 
-	// By the default the logger is configured to write to the log file, and only errors. This Will be overriden by
+	// By the default the logger is configured to write to the log file, and only errors. This Will be overridden by
 	// the command line flags.
 	logFile := filepath.Join(cacheDir, c.binaryName+".log")
 	logger, err := logging.NewLogger().

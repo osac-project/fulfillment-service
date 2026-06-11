@@ -222,7 +222,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load the potentiall modified file:
-	data, err = os.ReadFile(tmpFile)
+	data, err = os.ReadFile(filepath.Clean(tmpFile))
 	if err != nil {
 		return fmt.Errorf("failed to read back temporary file '%s': %w", tmpFile, err)
 	}

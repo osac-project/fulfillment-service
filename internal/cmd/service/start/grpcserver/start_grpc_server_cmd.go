@@ -143,7 +143,7 @@ type runnerContext struct {
 }
 
 // run runs the `start grpc-server` command.
-func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
+func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:gocyclo
 	// Get the context and create a cancellable version:
 	ctx, cancel := context.WithCancel(cmd.Context())
 
@@ -1131,8 +1131,12 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		slog.String("address", metricsListener.Addr().String()),
 	)
 	metricsServer := &http.Server{
-		Addr:    metricsListener.Addr().String(),
-		Handler: promhttp.Handler(),
+		Addr:              metricsListener.Addr().String(),
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	shutdown.AddHttpServer(network.MetricsListenerName, 0, metricsServer)
 	go func() {

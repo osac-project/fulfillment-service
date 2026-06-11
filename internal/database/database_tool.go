@@ -283,7 +283,7 @@ func (b *ToolBuilder) readURLDirectory(dir string) (url string, parameters map[s
 		}
 		path := filepath.Join(dir, name)
 		if name == "url" {
-			data, readErr := os.ReadFile(path)
+			data, readErr := os.ReadFile(filepath.Clean(path))
 			if readErr != nil {
 				err = fmt.Errorf("failed to read 'url' from file '%s': %w", path, readErr)
 				return
@@ -292,7 +292,7 @@ func (b *ToolBuilder) readURLDirectory(dir string) (url string, parameters map[s
 		} else if slices.Contains(toolFilePathParameters, name) {
 			parameters[name] = path
 		} else {
-			data, readErr := os.ReadFile(path)
+			data, readErr := os.ReadFile(filepath.Clean(path))
 			if readErr != nil {
 				err = fmt.Errorf(
 					"failed to read parameter '%s' from file '%s': %w", name, path, readErr,
@@ -387,15 +387,15 @@ func (t *tool) Migrate(ctx context.Context, desiredVersion uint) error {
 
 	// Show the schema version before running the migrations:
 	version, dirty, err := migrations.Version()
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		t.logger.InfoContext(
 			ctx,
 			"Version before running migrations",
 			slog.Uint64("version", uint64(version)),
 			slog.Bool("dirty", dirty),
 		)
-	case migrate.ErrNilVersion:
+	case errors.Is(err, migrate.ErrNilVersion):
 		t.logger.InfoContext(
 			ctx,
 			"Schema hasn't been created yet, will create it now",
@@ -410,13 +410,13 @@ func (t *tool) Migrate(ctx context.Context, desiredVersion uint) error {
 	} else {
 		err = migrations.Migrate(desiredVersion)
 	}
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		t.logger.InfoContext(
 			ctx,
 			"Migrations executed successfully",
 		)
-	case migrate.ErrNoChange:
+	case errors.Is(err, migrate.ErrNoChange):
 		t.logger.InfoContext(
 			ctx,
 			"Migrations don't need to be executed",

@@ -22,39 +22,6 @@ const realmManagementClientID = "realm-management"
 // This client manages authorization resources for Projects and other protected resources.
 const authorizationClientID = "osac-authorization"
 
-// keycloakRealmManagementRoles are the standard Keycloak administrative roles.
-//
-// NOTE: These are CLIENT roles (Keycloak client roles), not organization roles.
-// Keycloak implements administrative permissions as client-level roles on the built-in
-// "realm-management" client that exists by default in every realm. There is no
-// organization-level role equivalent for these admin permissions - they must be assigned
-// using AssignClientRolesToUser with clientID "realm-management".
-var keycloakRealmManagementRoles = []string{
-	"manage-realm",
-	"manage-users",
-	"manage-clients",
-	"manage-identity-providers",
-	"manage-authorization",
-	"manage-events",
-	"view-realm",
-	"view-users",
-	"view-clients",
-	"view-identity-providers",
-	"view-authorization",
-	"view-events",
-}
-
-// keycloakIdpManagerRoles are the limited Keycloak roles for the break-glass account.
-// This account can manage users and identity providers but cannot modify realm settings,
-// clients, or other critical configuration.
-var keycloakIdpManagerRoles = []string{
-	"manage-users",
-	"view-users",
-	"manage-identity-providers",
-	"view-identity-providers",
-	"view-realm",
-}
-
 // Authorization resource type constants define the types of protected resources.
 const (
 	// ResourceTypeProject is the type identifier for Project authorization resources

@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime/debug"
 	"sort"
@@ -292,7 +293,7 @@ func (b *LoggerBuilder) openWriter() (result io.Writer, err error) {
 }
 
 func (b *LoggerBuilder) openFile(file string) (result io.Writer, err error) {
-	result, err = os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
+	result, err = os.OpenFile(filepath.Clean(file), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	return
 }
 
@@ -422,10 +423,7 @@ func (h *loggerHelper) dumpStack(stack []byte, dump *errorDump) {
 	// Skip all the stack frames till we find the first that isn't inside this logging package or the 'slog'
 	// package, as those are of no interest in most cases.
 	frames := goroutine.Stack
-	for {
-		if len(frames) == 0 {
-			break
-		}
+	for len(frames) != 0 {
 		frame := frames[0]
 		if !h.isInternalFunction(frame.Func) {
 			break

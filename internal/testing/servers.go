@@ -81,7 +81,7 @@ func fetchCACertificate(network, address string) string {
 	Expect(err).ToNot(HaveOccurred())
 	certs := conn.ConnectionState().PeerCertificates
 	Expect(certs).ToNot(BeNil())
-	Expect(len(certs)).To(BeNumerically(">=", 1))
+	Expect(certs).ToNot(BeEmpty())
 	cert := certs[len(certs)-1]
 	Expect(cert).ToNot(BeNil())
 

@@ -183,7 +183,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Write the Swagger UI landing page:
 	indexFile := filepath.Join(filepath.Dir(c.outputDir), "index.html")
 	c.console.Infof(ctx, "Writing Swagger UI to '%s'\n", indexFile)
-	err = os.WriteFile(indexFile, swaggerUiHtml, 0644)
+	err = os.WriteFile(indexFile, swaggerUiHtml, 0644) // #nosec G306 -- generated docs, needs world-read
 	if err != nil {
 		return fmt.Errorf("failed to write Swagger UI file '%s': %w", indexFile, err)
 	}
@@ -235,7 +235,7 @@ func (c *runnerContext) generateModule(ctx context.Context, moduleDir string) er
 	}
 
 	// Run 'buf generate' to generate version 2 of the OpenAPI specification:
-	bufCmd := exec.CommandContext(
+	bufCmd := exec.CommandContext( // #nosec G204 -- binary resolved via exec.LookPath
 		ctx,
 		c.bufPath,
 		"generate",
@@ -270,7 +270,7 @@ func (c *runnerContext) generateModule(ctx context.Context, moduleDir string) er
 	if err != nil {
 		return err
 	}
-	swaggerCmd := exec.CommandContext(
+	swaggerCmd := exec.CommandContext( // #nosec G204 -- binary resolved via exec.LookPath
 		ctx,
 		c.javaPath,
 		"-jar", c.swaggerCodegenCliPath,
@@ -334,7 +334,7 @@ func (c *runnerContext) generateModule(ctx context.Context, moduleDir string) er
 }
 
 func (r *runnerContext) copyFile(ctx context.Context, src, dst string) error {
-	srcStream, err := os.Open(src)
+	srcStream, err := os.Open(filepath.Clean(src))
 	if err != nil {
 		return err
 	}
@@ -349,7 +349,7 @@ func (r *runnerContext) copyFile(ctx context.Context, src, dst string) error {
 			)
 		}
 	}()
-	dstStream, err := os.Create(dst)
+	dstStream, err := os.Create(filepath.Clean(dst))
 	if err != nil {
 		return err
 	}
@@ -369,7 +369,7 @@ func (r *runnerContext) copyFile(ctx context.Context, src, dst string) error {
 }
 
 func (r *runnerContext) setSpecMetadata(path, moduleName string) error {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return err
 	}
@@ -389,7 +389,7 @@ func (r *runnerContext) setSpecMetadata(path, moduleName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal OpenAPI spec: %w", err)
 	}
-	return os.WriteFile(path, out, 0644)
+	return os.WriteFile(filepath.Clean(path), out, 0644) // #nosec G306 -- generated docs, needs world-read
 }
 
 func removeDefaultServers(spec map[string]any) {
@@ -412,14 +412,14 @@ func removeDefaultServers(spec map[string]any) {
 // with '...StreamResult'. This is necessary because some tools (for example 'oq') do not support schema names with
 // with spaces.
 func (r *runnerContext) fixStreamingResultSchemaNames(path string) error {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return err
 	}
 	text := string(content)
 	text = streamResultRe.ReplaceAllString(text, `${1}StreamResult`)
 	content = []byte(text)
-	return os.WriteFile(path, content, 0600)
+	return os.WriteFile(filepath.Clean(path), content, 0600) // #nosec G703 -- content taint from ReadFile, not a path traversal
 }
 
 // downloadFileArgs contains the arguments for the downloadFile method.
@@ -489,7 +489,7 @@ func (r *runnerContext) downloadFile(ctx context.Context, args downloadFileArgs)
 	// We use 'curl' to download files because it supports redirection and other details that we do not wish to
 	// implement ourselves.
 	r.console.Infof(ctx, "Downloading file from '%s' to '%s'\n", args.Url, cacheFile)
-	curlCmd := exec.CommandContext(
+	curlCmd := exec.CommandContext( // #nosec G204 -- binary resolved via exec.LookPath
 		ctx,
 		r.curlPath,
 		"--location",
@@ -517,7 +517,7 @@ func (r *runnerContext) downloadFile(ctx context.Context, args downloadFileArgs)
 
 	// Make the file executable:
 	if args.Executable {
-		err = os.Chmod(cacheFile, 0700)
+		err = os.Chmod(cacheFile, 0700) // #nosec G302 -- making downloaded tool executable
 		if err != nil {
 			err = fmt.Errorf("failed to set executable permission on file '%s': %w", cacheFile, err)
 			return
@@ -533,7 +533,7 @@ func (r *runnerContext) downloadFile(ctx context.Context, args downloadFileArgs)
 func (r *runnerContext) verifyChecksum(ctx context.Context, path, sum string) error {
 	sumBuf := &bytes.Buffer{}
 	fmt.Fprintf(sumBuf, "%s %s\n", sum, path)
-	sumCmd := exec.CommandContext(ctx, r.sha256sumPath, "--check")
+	sumCmd := exec.CommandContext(ctx, r.sha256sumPath, "--check") // #nosec G204 -- binary resolved via exec.LookPath
 	sumCmd.Dir = filepath.Dir(path)
 	sumCmd.Stdin = sumBuf
 	sumCmd.Stdout = r.console

@@ -426,5 +426,117 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("database connection lost"))
 		})
+
+		It("Rejects duplicate name within same tenant", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "dev-sandbox",
+					}.Build(),
+					Title:    "First CI catalog item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "dev-sandbox",
+					}.Build(),
+					Title:    "Second CI catalog item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			Expect(status.Message()).To(ContainSubstring("dev-sandbox"))
+		})
+
+		It("Allows same name across different tenants", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "dev-sandbox",
+						Tenant: "system",
+					}.Build(),
+					Title:    "CI catalog item for system tenant",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "dev-sandbox",
+						Tenant: "shared",
+					}.Build(),
+					Title:    "CI catalog item for shared tenant",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Rejects update to duplicate name within same tenant", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "first-item",
+					}.Build(),
+					Title:    "First CI catalog item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			secondResponse, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "second-item",
+					}.Build(),
+					Title:    "Second CI catalog item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Update(ctx, privatev1.ComputeInstanceCatalogItemsUpdateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Id: secondResponse.GetObject().GetId(),
+					Metadata: privatev1.Metadata_builder{
+						Name: "first-item",
+					}.Build(),
+					Title:    "Second CI catalog item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+			Expect(status.Message()).To(ContainSubstring("first-item"))
+		})
+
+		It("Allows empty name without conflict", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "First unnamed CI item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Second unnamed CI item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
 	})
 })

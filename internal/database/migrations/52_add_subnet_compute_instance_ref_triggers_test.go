@@ -15,6 +15,7 @@ package migrations
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
@@ -107,8 +108,7 @@ var _ = DescribeMigration("Add subnet compute instance ref triggers", func() {
 			`update subnets set deletion_timestamp = now() where id = 'subnet-1'`)
 		Expect(err).To(HaveOccurred())
 		var pgErr *pgconn.PgError
-		Expect(err).To(BeAssignableToTypeOf(&pgconn.PgError{}))
-		pgErr = err.(*pgconn.PgError)
+		Expect(errors.As(err, &pgErr)).To(BeTrue())
 		Expect(pgErr.Code).To(Equal("Z0003"))
 		Expect(pgErr.Message).To(ContainSubstring("subnet-1"))
 		Expect(pgErr.Message).To(ContainSubstring("ci-1"))
@@ -167,8 +167,7 @@ var _ = DescribeMigration("Add subnet compute instance ref triggers", func() {
 			`update subnets set deletion_timestamp = now() where id = 'subnet-sg'`)
 		Expect(err).To(HaveOccurred())
 		var pgErr *pgconn.PgError
-		Expect(err).To(BeAssignableToTypeOf(&pgconn.PgError{}))
-		pgErr = err.(*pgconn.PgError)
+		Expect(errors.As(err, &pgErr)).To(BeTrue())
 		Expect(pgErr.Code).To(Equal("Z0003"))
 		Expect(pgErr.Message).To(ContainSubstring("subnet-sg"))
 		Expect(pgErr.Message).To(ContainSubstring("ci-sg"))
@@ -230,8 +229,7 @@ var _ = DescribeMigration("Add subnet compute instance ref triggers", func() {
 			`{"spec":{"network_attachments":[{"subnet":"no-such-subnet"}]}}`)
 		Expect(err).To(HaveOccurred())
 		var pgErr *pgconn.PgError
-		Expect(err).To(BeAssignableToTypeOf(&pgconn.PgError{}))
-		pgErr = err.(*pgconn.PgError)
+		Expect(errors.As(err, &pgErr)).To(BeTrue())
 		Expect(pgErr.Code).To(Equal("Z0002"))
 		Expect(pgErr.Message).To(ContainSubstring("no-such-subnet"))
 	})
@@ -263,8 +261,7 @@ var _ = DescribeMigration("Add subnet compute instance ref triggers", func() {
 			`{"spec":{"network_attachments":[{"subnet":"subnet-deleted"}]}}`)
 		Expect(err).To(HaveOccurred())
 		var pgErr *pgconn.PgError
-		Expect(err).To(BeAssignableToTypeOf(&pgconn.PgError{}))
-		pgErr = err.(*pgconn.PgError)
+		Expect(errors.As(err, &pgErr)).To(BeTrue())
 		Expect(pgErr.Code).To(Equal("Z0002"))
 		Expect(pgErr.Message).To(ContainSubstring("subnet-deleted"))
 	})

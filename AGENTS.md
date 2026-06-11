@@ -28,6 +28,9 @@ ginkgo run -v internal/servers
 # Skip tests matching a pattern
 ginkgo run -r internal --skip="database"
 
+# Lint
+make lint
+
 # Proto: lint and generate
 buf lint
 buf generate

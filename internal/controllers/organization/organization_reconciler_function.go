@@ -207,7 +207,7 @@ func (t *task) setDefaults() {
 // validateTenant verifies that the organization has a tenant assigned.
 func (t *task) validateTenant() error {
 	if !t.organization.HasMetadata() || t.organization.GetMetadata().GetTenant() == "" {
-		return errors.New("Organization must have a tenant assigned")
+		return errors.New("Organization must have a tenant assigned") //nolint:staticcheck // ST1005: Organization is an API resource name
 	}
 	return nil
 }

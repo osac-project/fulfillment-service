@@ -123,10 +123,9 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 	)
 	err = b.registerer.Register(requestCount)
 	if err != nil {
-		registered, ok := err.(prometheus.AlreadyRegisteredError)
-		if ok {
+		var registered prometheus.AlreadyRegisteredError
+		if errors.As(err, &registered) {
 			requestCount = registered.ExistingCollector.(*prometheus.CounterVec)
-			err = nil
 		} else {
 			return
 		}
@@ -144,10 +143,9 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 	)
 	err = b.registerer.Register(requestDuration)
 	if err != nil {
-		registered, ok := err.(prometheus.AlreadyRegisteredError)
-		if ok {
+		var registered prometheus.AlreadyRegisteredError
+		if errors.As(err, &registered) {
 			requestDuration = registered.ExistingCollector.(*prometheus.HistogramVec)
-			err = nil
 		} else {
 			return
 		}
@@ -164,10 +162,9 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 	)
 	err = b.registerer.Register(streamCount)
 	if err != nil {
-		registered, ok := err.(prometheus.AlreadyRegisteredError)
-		if ok {
+		var registered prometheus.AlreadyRegisteredError
+		if errors.As(err, &registered) {
 			streamCount = registered.ExistingCollector.(*prometheus.CounterVec)
-			err = nil
 		} else {
 			return
 		}
@@ -185,10 +182,9 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 	)
 	err = b.registerer.Register(streamDuration)
 	if err != nil {
-		registered, ok := err.(prometheus.AlreadyRegisteredError)
-		if ok {
+		var registered prometheus.AlreadyRegisteredError
+		if errors.As(err, &registered) {
 			streamDuration = registered.ExistingCollector.(*prometheus.HistogramVec)
-			err = nil
 		} else {
 			return
 		}
@@ -205,10 +201,9 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 	)
 	err = b.registerer.Register(streamMessagesSent)
 	if err != nil {
-		registered, ok := err.(prometheus.AlreadyRegisteredError)
-		if ok {
+		var registered prometheus.AlreadyRegisteredError
+		if errors.As(err, &registered) {
 			streamMessagesSent = registered.ExistingCollector.(*prometheus.CounterVec)
-			err = nil
 		} else {
 			return
 		}
@@ -225,8 +220,8 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 	)
 	err = b.registerer.Register(streamMessagesReceived)
 	if err != nil {
-		registered, ok := err.(prometheus.AlreadyRegisteredError)
-		if ok {
+		var registered prometheus.AlreadyRegisteredError
+		if errors.As(err, &registered) {
 			streamMessagesReceived = registered.ExistingCollector.(*prometheus.CounterVec)
 			err = nil
 		} else {

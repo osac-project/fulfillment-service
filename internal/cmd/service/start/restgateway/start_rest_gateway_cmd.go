@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"net/http"
 	"syscall"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/pkg/errors"
@@ -26,8 +27,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -106,6 +105,8 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	gwListener, err := network.NewListener().
 		SetLogger(c.logger).
 		SetFlags(c.flags, network.HttpListenerName).
+		AddTLSProtocol("h2").
+		AddTLSProtocol("http/1.1").
 		Build()
 	if err != nil {
 		return err
@@ -152,158 +153,8 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		}),
 	)
 
-	// Register the public API service handlers:
-	err = publicv1.RegisterCapabilitiesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterClusterTemplatesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterClusterCatalogItemsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterClustersHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterHostTypesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterComputeInstanceTemplatesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterComputeInstanceCatalogItemsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterComputeInstancesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterNetworkClassesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterVirtualNetworksHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterSubnetsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterSecurityGroupsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterPublicIPPoolsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterPublicIPsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterPublicIPAttachmentsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterRolesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterRoleBindingsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterConsoleSessionsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = publicv1.RegisterJsonWebKeySetHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-
-	// Register the private API service handlers:
-	err = privatev1.RegisterCapabilitiesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterClusterTemplatesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterClusterCatalogItemsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterClustersHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterEventsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterHostTypesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterHubsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterComputeInstanceTemplatesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterComputeInstanceCatalogItemsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterComputeInstancesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterNetworkClassesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterVirtualNetworksHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterSubnetsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterSecurityGroupsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterPublicIPPoolsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterPublicIPsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterPublicIPAttachmentsHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterRolesHandler(ctx, gatewayMux, c.grpcClient)
-	if err != nil {
-		return err
-	}
-	err = privatev1.RegisterRoleBindingsHandler(ctx, gatewayMux, c.grpcClient)
+	// Register the public and private API service handlers:
+	err = c.registerHandlers(ctx, gatewayMux)
 	if err != nil {
 		return err
 	}
@@ -343,8 +194,12 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		slog.String("address", metricsListener.Addr().String()),
 	)
 	metricsServer := &http.Server{
-		Addr:    metricsListener.Addr().String(),
-		Handler: promhttp.Handler(),
+		Addr:              metricsListener.Addr().String(),
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
 		err := metricsServer.Serve(metricsListener)
@@ -364,10 +219,15 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		"Start serving",
 		slog.String("address", gwListener.Addr().String()),
 	)
-	http2Server := &http2.Server{}
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetHTTP2(true)
+	protocols.SetUnencryptedHTTP2(true)
 	http1Server := &http.Server{
-		Addr:    gwListener.Addr().String(),
-		Handler: h2c.NewHandler(handler, http2Server),
+		Addr:              gwListener.Addr().String(),
+		Handler:           handler,
+		Protocols:         &protocols,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
 		err := http1Server.Serve(gwListener)
@@ -408,6 +268,62 @@ func (c *runnerContext) handleHealth(
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// handlerRegistrar is the common signature shared by all generated grpc-gateway Register*Handler functions.
+type handlerRegistrar func(context.Context, *runtime.ServeMux, *grpc.ClientConn) error
+
+// registerHandlers registers all public and private API service handlers on the gateway mux.
+func (c *runnerContext) registerHandlers(ctx context.Context, mux *runtime.ServeMux) error {
+	handlers := []handlerRegistrar{
+		// Public API:
+		publicv1.RegisterCapabilitiesHandler,
+		publicv1.RegisterClusterTemplatesHandler,
+		publicv1.RegisterClusterCatalogItemsHandler,
+		publicv1.RegisterClustersHandler,
+		publicv1.RegisterHostTypesHandler,
+		publicv1.RegisterComputeInstanceTemplatesHandler,
+		publicv1.RegisterComputeInstanceCatalogItemsHandler,
+		publicv1.RegisterComputeInstancesHandler,
+		publicv1.RegisterNetworkClassesHandler,
+		publicv1.RegisterVirtualNetworksHandler,
+		publicv1.RegisterSubnetsHandler,
+		publicv1.RegisterSecurityGroupsHandler,
+		publicv1.RegisterPublicIPPoolsHandler,
+		publicv1.RegisterPublicIPsHandler,
+		publicv1.RegisterPublicIPAttachmentsHandler,
+		publicv1.RegisterRolesHandler,
+		publicv1.RegisterRoleBindingsHandler,
+		publicv1.RegisterConsoleSessionsHandler,
+		publicv1.RegisterJsonWebKeySetHandler,
+
+		// Private API:
+		privatev1.RegisterCapabilitiesHandler,
+		privatev1.RegisterClusterTemplatesHandler,
+		privatev1.RegisterClusterCatalogItemsHandler,
+		privatev1.RegisterClustersHandler,
+		privatev1.RegisterEventsHandler,
+		privatev1.RegisterHostTypesHandler,
+		privatev1.RegisterHubsHandler,
+		privatev1.RegisterComputeInstanceTemplatesHandler,
+		privatev1.RegisterComputeInstanceCatalogItemsHandler,
+		privatev1.RegisterComputeInstancesHandler,
+		privatev1.RegisterNetworkClassesHandler,
+		privatev1.RegisterVirtualNetworksHandler,
+		privatev1.RegisterSubnetsHandler,
+		privatev1.RegisterSecurityGroupsHandler,
+		privatev1.RegisterPublicIPPoolsHandler,
+		privatev1.RegisterPublicIPsHandler,
+		privatev1.RegisterPublicIPAttachmentsHandler,
+		privatev1.RegisterRolesHandler,
+		privatev1.RegisterRoleBindingsHandler,
+	}
+	for _, register := range handlers {
+		if err := register(ctx, mux, c.grpcClient); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // userAgent is the user agent string for the REST gateway.

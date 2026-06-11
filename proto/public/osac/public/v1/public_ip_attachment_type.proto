@@ -99,7 +99,7 @@ message PublicIPAttachmentStatus {
 
 // Lifecycle states for PublicIPAttachment resources.
 //
-// State transitions: UNSPECIFIED -> PENDING -> READY.
+// State transitions: UNSPECIFIED -> PENDING -> READY. On deletion: any state -> DELETING.
 // FAILED can occur from PENDING and retries automatically via the provisioning lifecycle.
 enum PublicIPAttachmentState {
   // State is unknown or has not been determined yet.
@@ -120,4 +120,11 @@ enum PublicIPAttachmentState {
   //
   // The provisioning lifecycle retries automatically with exponential backoff.
   PUBLIC_IP_ATTACHMENT_STATE_FAILED = 3;
+
+  // The attachment is being deprovisioned (detach workflow in progress).
+  //
+  // Triggered by deletion of the PublicIPAttachment resource. The system unbinds the
+  // address from the target and moves the MetalLB Service back to the parking namespace.
+  // On completion, the parent PublicIP's status.attached is set to false.
+  PUBLIC_IP_ATTACHMENT_STATE_DELETING = 4;
 }

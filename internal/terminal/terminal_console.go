@@ -253,7 +253,9 @@ func (c *Console) RenderJson(ctx context.Context, data any) {
 		return
 	}
 	text := string(bytes) + "\n"
-	c.renderColored(ctx, text, "json")
+	if err := c.renderColored(ctx, text, "json"); err != nil {
+		c.logger.ErrorContext(ctx, "Failed to render JSON", slog.Any("error", err))
+	}
 }
 
 // RenderYaml renders the given data as YAML to stdout. If the terminal supports color, the output will be colorized
@@ -272,7 +274,9 @@ func (c *Console) RenderYaml(ctx context.Context, data any) {
 		return
 	}
 	encoder.Close()
-	c.renderColored(ctx, buffer.String(), "yaml")
+	if err := c.renderColored(ctx, buffer.String(), "yaml"); err != nil {
+		c.logger.ErrorContext(ctx, "Failed to render YAML", slog.Any("error", err))
+	}
 }
 
 // renderColored renders the given text to stdout with syntax highlighting using the specified lexer. If the terminal

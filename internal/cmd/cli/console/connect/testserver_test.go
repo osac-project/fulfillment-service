@@ -17,6 +17,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -142,7 +143,7 @@ func drainHandler(_ context.Context, _ context.CancelFunc, stream grpc.BidiStrea
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
@@ -220,7 +221,7 @@ func (s *echoConsoleProxyServer) Connect(stream publicv1.ConsoleProxy_ConnectSer
 	for {
 		req, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err

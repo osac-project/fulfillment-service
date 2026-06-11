@@ -271,7 +271,7 @@ func (t *task) setConditionDefaults(value privatev1.ComputeInstanceConditionType
 
 func (t *task) validateTenant() error {
 	if !t.computeInstance.HasMetadata() || t.computeInstance.GetMetadata().GetTenant() == "" {
-		return errors.New("Compute instance must have a tenant assigned")
+		return errors.New("ComputeInstance must have a tenant assigned")
 	}
 	return nil
 }
@@ -565,7 +565,7 @@ func (t *task) buildSpecNetworkAttachments(ctx context.Context, spec *osacv1alph
 				i, subnetID, err)
 		}
 		if subnetCR == nil {
-			return fmt.Errorf(
+			return fmt.Errorf( //nolint:staticcheck // ST1005: Subnet is an API resource name
 				"Subnet CR not found for network_attachments[%d] subnet %s",
 				i, subnetID)
 		}

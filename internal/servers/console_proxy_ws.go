@@ -166,7 +166,7 @@ func (h *ConsoleProxyWSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 			// Phase 4: Relay with sessionCtx: cancelled on eviction, timeout,
 			// or client disconnect. Relay logs errors internally.
-			h.core.Relay(sessionCtx, ws, backendConn)
+			_ = h.core.Relay(sessionCtx, ws, backendConn)
 		},
 	}
 	wsServer.ServeHTTP(w, r)

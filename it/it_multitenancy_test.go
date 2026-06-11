@@ -194,7 +194,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 					response := listClusters(ctx, conn)
 					Expect(response).ToNot(BeNil())
-					Expect(len(response.Items)).To(Equal(len(tenantUserMapping[tenant])))
+					Expect(response.Items).To(HaveLen(len(tenantUserMapping[tenant])))
 
 					// Check that each cluster appears under expected tenant
 					for _, cluster := range response.GetItems() {
@@ -213,7 +213,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 					response := listClusters(ctx, conn)
 					Expect(response).ToNot(BeNil())
-					Expect(len(response.Items)).To(Equal(len(tenantUserMapping[tenant])))
+					Expect(response.Items).To(HaveLen(len(tenantUserMapping[tenant])))
 
 					// Check that each cluster is isolated between tenants
 					for _, cluster := range response.GetItems() {
@@ -425,7 +425,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 					response := listClusters(ctx, conn)
 					Expect(response).ToNot(BeNil())
 
-					Expect(len(response.Items)).To(Equal(calculateResponseSize(tenantClusterMapping, tenants)))
+					Expect(response.Items).To(HaveLen(calculateResponseSize(tenantClusterMapping, tenants)))
 
 					// Check that each cluster appears under expected tenant
 					for _, cluster := range response.GetItems() {
@@ -444,7 +444,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 					response := listClusters(ctx, conn)
 					Expect(response).ToNot(BeNil())
-					Expect(len(response.Items)).To(Equal(calculateResponseSize(tenantClusterMapping, tenants)))
+					Expect(response.Items).To(HaveLen(calculateResponseSize(tenantClusterMapping, tenants)))
 
 					// Check that each cluster is isolated between tenants
 					for _, cluster := range response.GetItems() {

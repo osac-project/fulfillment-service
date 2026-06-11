@@ -387,7 +387,7 @@ var _ = Describe("Virtual networks server", func() {
 			// Create the object via the private server:
 			privateObj := createVirtualNetwork()
 
-			// Add a finalizer, as otherwise the object will be immediatelly deleted and archived and it
+			// Add a finalizer, as otherwise the object will be immediately deleted and archived and it
 			// won't be possible to verify the deletion timestamp. This can't be done using the server
 			// because this is a public object, and public objects don't have the finalizers field.
 			tx, err := database.TxFromContext(ctx)

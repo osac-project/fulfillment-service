@@ -365,7 +365,9 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	c.logger.InfoContext(ctx, "Waiting for shutdown sequence to complete")
 	shutdownDone := make(chan struct{})
 	go func() {
-		shutdown.Wait()
+		if err := shutdown.Wait(); err != nil {
+			c.logger.ErrorContext(ctx, "Shutdown sequence failed", slog.Any("error", err))
+		}
 		close(shutdownDone)
 	}()
 	select {

@@ -190,7 +190,7 @@ func vncURI(host string, port int) string {
 // waited on to detect when the viewer window closes.
 func launchViewer(v *viewer, addr string) (*exec.Cmd, error) {
 	args := v.argsFunc(addr)
-	cmd := exec.Command(args[0], args[1:]...)
+	cmd := exec.Command(args[0], args[1:]...) // #nosec G204 -- viewer binary is auto-detected or user-specified
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {

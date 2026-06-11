@@ -141,7 +141,11 @@ func (c *runnerContext) proxyIO(ctx context.Context, cancel context.CancelFunc, 
 		if err != nil {
 			return fmt.Errorf("failed to set raw mode: %w", err)
 		}
-		defer term.Restore(fd, oldState)
+		defer func() {
+			if err := term.Restore(fd, oldState); err != nil {
+				slog.Debug("Failed to restore terminal", "error", err)
+			}
+		}()
 	}
 
 	escape := newEscapeDetector()
@@ -153,7 +157,11 @@ func (c *runnerContext) proxyIO(ctx context.Context, cancel context.CancelFunc, 
 			if err := os.Stdin.SetReadDeadline(time.Now()); err != nil {
 				slog.Debug("SetReadDeadline failed", "error", err)
 			}
-			return func() { os.Stdin.SetReadDeadline(time.Time{}) }
+			return func() {
+				if err := os.Stdin.SetReadDeadline(time.Time{}); err != nil {
+					slog.Debug("SetReadDeadline reset failed", "error", err)
+				}
+			}
 		},
 		InputFilter: func(data []byte) bool {
 			if escape.feed(data) {

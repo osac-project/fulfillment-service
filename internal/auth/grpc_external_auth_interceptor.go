@@ -317,7 +317,7 @@ func (i *GrpcExternalAuthInterceptor) handleCheckResponse(ctx context.Context, m
 	}
 
 	// Deny access if the external service denied it:
-	code := grpccodes.Code(status.GetCode())
+	code := grpccodes.Code(status.GetCode()) // #nosec G115 -- gRPC status codes are small positive ints
 	logger = logger.With(
 		slog.String("code", code.String()),
 		slog.String("message", status.GetMessage()),

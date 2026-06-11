@@ -581,7 +581,7 @@ var _ = Describe("Validation and Activation", func() {
 			err := task.validateAndActivate(ctx)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(task.project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_FAILED))
-			Expect(task.project.GetStatus().GetMessage()).To(ContainSubstring("Circular dependency detected"))
+			Expect(task.project.GetStatus().GetMessage()).To(ContainSubstring("circular dependency detected"))
 		})
 
 		It("should detect indirect circular dependency", func() {
@@ -634,7 +634,7 @@ var _ = Describe("Validation and Activation", func() {
 			err := task.validateAndActivate(ctx)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(task.project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_FAILED))
-			Expect(task.project.GetStatus().GetMessage()).To(ContainSubstring("Circular dependency detected"))
+			Expect(task.project.GetStatus().GetMessage()).To(ContainSubstring("circular dependency detected"))
 		})
 	})
 

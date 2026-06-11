@@ -68,7 +68,7 @@ var _ = Describe("Transaction manager", func() {
 
 		It("Should create a new managed transaction", func() {
 			tx, err := manager.Begin(ctx)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(tx).NotTo(BeNil())
 		})
 	})

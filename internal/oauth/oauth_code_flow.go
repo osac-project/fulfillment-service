@@ -267,8 +267,9 @@ func (f *codeFlow) startServer(ctx context.Context) (server *http.Server, redire
 
 	// Create and start the server:
 	server = &http.Server{
-		Handler: http.HandlerFunc(f.serve),
-		Addr:    actualAddress,
+		Handler:           http.HandlerFunc(f.serve),
+		Addr:              actualAddress,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
 		err := server.Serve(listener)

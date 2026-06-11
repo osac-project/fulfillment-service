@@ -14,7 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -27,11 +26,6 @@ import (
 
 	"github.com/osac-project/fulfillment-service/internal/console"
 )
-
-// pipeRWC wraps a net.Conn as io.ReadWriteCloser for testing.
-type pipeRWC struct {
-	net.Conn
-}
 
 var _ = Describe("ConsoleProxyCore", func() {
 	Describe("Relay", func() {
@@ -206,7 +200,7 @@ var _ = Describe("ConsoleProxyCore", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(conn).NotTo(BeNil())
 			Expect(sessionCtx).NotTo(BeNil())
-			Expect(sessionCtx.Err()).To(BeNil())
+			Expect(sessionCtx.Err()).To(Succeed())
 			conn.Close()
 
 			target := mockBackend.getLastTarget()
@@ -330,13 +324,3 @@ func (r *blockingReader) Close() error {
 
 // Verify interface compliance for test helpers.
 var _ io.ReadWriteCloser = (*failingRWC)(nil)
-
-// bufferRWC wraps a bytes.Buffer as io.ReadWriteCloser. Useful for tests that
-// need to inspect written data without network I/O.
-type bufferRWC struct {
-	*bytes.Buffer
-}
-
-func (b *bufferRWC) Close() error {
-	return nil
-}

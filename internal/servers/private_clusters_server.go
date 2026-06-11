@@ -336,14 +336,14 @@ func (s *PrivateClustersServer) validateNoDuplicateConditions(object *privatev1.
 	conditionTypes := &bitset.BitSet{}
 	for _, condition := range conditions {
 		conditionType := condition.GetType()
-		if conditionTypes.Test(uint(conditionType)) {
+		if conditionTypes.Test(uint(conditionType)) { // #nosec G115 -- proto enum, non-negative
 			return grpcstatus.Errorf(
 				grpccodes.InvalidArgument,
 				"condition '%s' is duplicated",
 				conditionType.String(),
 			)
 		}
-		conditionTypes.Set(uint(conditionType))
+		conditionTypes.Set(uint(conditionType)) // #nosec G115 -- proto enum, non-negative
 	}
 	return nil
 }
@@ -523,7 +523,7 @@ func (s *PrivateClustersServer) validateTemplateImmutability(ctx context.Context
 		templateParamsEqual := func(first, second *anypb.Any) bool {
 			return proto.Equal(first, second)
 		}
-		if !maps.EqualFunc(existingSpec.GetTemplateParameters(), newSpec.GetTemplateParameters(), templateParamsEqual) {
+		if !maps.EqualFunc(existingSpec.GetTemplateParameters(), newSpec.GetTemplateParameters(), templateParamsEqual) { //nolint:govet // inline: Go compiler doesn't support type param inference for inlining yet
 			return grpcstatus.Errorf(
 				grpccodes.InvalidArgument,
 				"cannot change spec.template_parameters: template parameters are immutable",
@@ -570,7 +570,58 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 	}
 
 	// Check that the host types given in the cluster and the template exist, and index them by identifier and
-	// name, so tha it will be easier to look them up later..
+	// name, so that it will be easier to look them up later.
+	hostTypes, err := s.lookupAndIndexHostTypes(ctx, template)
+	if err != nil {
+		return err
+	}
+
+	// Validate node sets against the template:
+	templateNodeSets := template.GetNodeSets()
+	clusterNodeSets := cluster.GetSpec().GetNodeSets()
+	if err = s.validateNodeSets(clusterNodeSets, templateNodeSets, hostTypes, templateRef); err != nil {
+		return err
+	}
+
+	// Replace the node sets given in the cluster with those from the template, taking only the size from cluster:
+	mergeNodeSetsWithTemplate(cluster, templateNodeSets, clusterNodeSets)
+
+	// Validate template parameters:
+	clusterParameters := cluster.GetSpec().GetTemplateParameters()
+	err = utils.ValidateClusterTemplateParameters(template, clusterParameters)
+	if err != nil {
+		return err
+	}
+
+	// Set default values for template parameters:
+	actualClusterParameters := utils.ProcessTemplateParametersWithDefaults(
+		utils.ClusterTemplateAdapter{ClusterTemplate: template},
+		clusterParameters,
+	)
+	cluster.GetSpec().SetTemplateParameters(actualClusterParameters)
+
+	// Validate network CIDRs if provided:
+	if err = validateNetworkCIDRs(cluster.GetSpec()); err != nil {
+		return err
+	}
+
+	// Make sure that the template and the host types of the node sets are referenced by their identifiers, as
+	// that is what we want to save to the database.
+	cluster.GetSpec().SetTemplate(template.GetId())
+	for _, clusterNodeSet := range cluster.GetSpec().GetNodeSets() {
+		hostTypeRef := clusterNodeSet.GetHostType()
+		hostType := hostTypes[hostTypeRef]
+		clusterNodeSet.SetHostType(hostType.GetId())
+	}
+
+	return nil
+}
+
+// lookupAndIndexHostTypes fetches host types referenced by the template's node sets and indexes them
+// by both identifier and name.
+func (s *PrivateClustersServer) lookupAndIndexHostTypes(
+	ctx context.Context, template *privatev1.ClusterTemplate,
+) (map[string]*privatev1.HostType, error) {
 	hostTypes := map[string]*privatev1.HostType{}
 	for _, nodeSet := range template.GetNodeSets() {
 		hostTypeRef := nodeSet.GetHostType()
@@ -579,7 +630,7 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 		}
 		hostType, err := s.lookupHostType(ctx, hostTypeRef)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		hostTypeName := hostType.GetMetadata().GetName()
 		if hostTypeName != "" {
@@ -588,23 +639,17 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 		hostTypeId := hostType.GetId()
 		hostTypes[hostTypeId] = hostType
 	}
-	for _, nodeSet := range template.GetNodeSets() {
-		hostTypeRef := nodeSet.GetHostType()
-		hostType, err := s.lookupHostType(ctx, hostTypeRef)
-		if err != nil {
-			return err
-		}
-		hostTypeName := hostType.GetMetadata().GetName()
-		if hostTypeName != "" {
-			hostTypes[hostTypeName] = hostType
-		}
-		hostTypeId := hostType.GetId()
-		hostTypes[hostTypeId] = hostType
-	}
+	return hostTypes, nil
+}
 
+// validateNodeSets checks membership, host-type consistency, and positive size for cluster node sets.
+func (s *PrivateClustersServer) validateNodeSets(
+	clusterNodeSets map[string]*privatev1.ClusterNodeSet,
+	templateNodeSets map[string]*privatev1.ClusterTemplateNodeSet,
+	hostTypes map[string]*privatev1.HostType,
+	templateRef string,
+) error {
 	// Check that all the node sets given in the cluster correspond to node sets that exist in the template:
-	templateNodeSets := template.GetNodeSets()
-	clusterNodeSets := cluster.GetSpec().GetNodeSets()
 	for clusterNodeSetKey := range clusterNodeSets {
 		templateNodeSet := templateNodeSets[clusterNodeSetKey]
 		if templateNodeSet == nil {
@@ -673,7 +718,16 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 		}
 	}
 
-	// Replace the node sets given in the cluster with those from the template, taking only the size from cluster:
+	return nil
+}
+
+// mergeNodeSetsWithTemplate replaces the cluster's node sets with template-derived sets, keeping only
+// the size from the cluster.
+func mergeNodeSetsWithTemplate(
+	cluster *privatev1.Cluster,
+	templateNodeSets map[string]*privatev1.ClusterTemplateNodeSet,
+	clusterNodeSets map[string]*privatev1.ClusterNodeSet,
+) {
 	actualNodeSets := map[string]*privatev1.ClusterNodeSet{}
 	for templateNodeSetKey, templateNodeSet := range templateNodeSets {
 		var actualNodeSetSize int32
@@ -689,47 +743,26 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 		}.Build()
 	}
 	cluster.GetSpec().SetNodeSets(actualNodeSets)
+}
 
-	// Validate template parameters:
-	clusterParameters := cluster.GetSpec().GetTemplateParameters()
-	err = utils.ValidateClusterTemplateParameters(template, clusterParameters)
-	if err != nil {
-		return err
+// validateNetworkCIDRs validates pod and service CIDR formats if provided.
+func validateNetworkCIDRs(spec *privatev1.ClusterSpec) error {
+	if !spec.HasNetwork() {
+		return nil
 	}
-
-	// Set default values for template parameters:
-	actualClusterParameters := utils.ProcessTemplateParametersWithDefaults(
-		utils.ClusterTemplateAdapter{ClusterTemplate: template},
-		clusterParameters,
-	)
-	cluster.GetSpec().SetTemplateParameters(actualClusterParameters)
-
-	// Validate network CIDRs if provided:
-	if cluster.GetSpec().HasNetwork() {
-		network := cluster.GetSpec().GetNetwork()
-		if network.HasPodCidr() {
-			if _, _, err := net.ParseCIDR(network.GetPodCidr()); err != nil {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"invalid pod_cidr format '%s': %v", network.GetPodCidr(), err)
-			}
-		}
-		if network.HasServiceCidr() {
-			if _, _, err := net.ParseCIDR(network.GetServiceCidr()); err != nil {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"invalid service_cidr format '%s': %v", network.GetServiceCidr(), err)
-			}
+	network := spec.GetNetwork()
+	if network.HasPodCidr() {
+		if _, _, err := net.ParseCIDR(network.GetPodCidr()); err != nil {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"invalid pod_cidr format '%s': %v", network.GetPodCidr(), err)
 		}
 	}
-
-	// Make sure that the templte and the host types of the node sets are reference by their identifiers, as that
-	// is what we want to save to the database.
-	cluster.GetSpec().SetTemplate(template.GetId())
-	for _, clusterNodeSet := range cluster.GetSpec().GetNodeSets() {
-		hostTypeRef := clusterNodeSet.GetHostType()
-		hostType := hostTypes[hostTypeRef]
-		clusterNodeSet.SetHostType(hostType.GetId())
+	if network.HasServiceCidr() {
+		if _, _, err := net.ParseCIDR(network.GetServiceCidr()); err != nil {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"invalid service_cidr format '%s': %v", network.GetServiceCidr(), err)
+		}
 	}
-
 	return nil
 }
 

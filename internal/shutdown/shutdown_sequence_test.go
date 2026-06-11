@@ -393,7 +393,7 @@ var _ = Describe("Shutdown sequence", func() {
 			start := time.Now()
 			sequence.Start(0)
 
-			// Verify that this took approximately the specifed timeout. Note that this will never be exact, because the
+			// Verify that this took approximately the specified timeout. Note that this will never be exact, because the
 			// shutdown sequence takes additional time to do its work, that is the reason for the 20 milliseconds of
 			// margin.
 			elapsed := time.Since(start)
@@ -563,7 +563,7 @@ var _ = Describe("Shutdown sequence", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify that the context is not cancelled before the shutdown sequence starts:
-			Expect(ctx.Err()).To(BeNil())
+			Expect(ctx.Err()).To(Succeed())
 
 			// Start the shutdown sequence:
 			sequence.Start(0)

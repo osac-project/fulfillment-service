@@ -36,11 +36,12 @@ func (e *escapeDetector) feed(data []byte) bool {
 				e.state = 1
 			}
 		case 1:
-			if b == '~' {
+			switch b {
+			case '~':
 				e.state = 2
-			} else if b == '\r' || b == '\n' {
+			case '\r', '\n':
 				e.state = 1
-			} else {
+			default:
 				e.state = 0
 			}
 		case 2:

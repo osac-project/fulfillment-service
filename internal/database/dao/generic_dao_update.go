@@ -152,7 +152,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		return
 	}
 	if err != nil {
-		err = r.translateError(ctx, id, tenant, err)
+		err = r.translateError(ctx, id, name, tenant, err)
 		return
 	}
 
@@ -216,13 +216,19 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 }
 
 // translateError translates raw PostgreSQL errors into domain-specific error types.
-func (r *UpdateRequest[O]) translateError(ctx context.Context, id, tenant string, err error) error {
+func (r *UpdateRequest[O]) translateError(ctx context.Context, id, name, tenant string, err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		return err
 	}
 	switch pgErr.Code {
 	case pgerrcode.UniqueViolation:
+		if strings.Contains(pgErr.ConstraintName, "_unique_name_") {
+			return &ErrAlreadyExists{
+				ID:   id,
+				Name: name,
+			}
+		}
 		return &ErrAlreadyExists{
 			ID: id,
 		}

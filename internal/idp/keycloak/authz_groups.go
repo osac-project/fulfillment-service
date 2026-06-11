@@ -105,23 +105,6 @@ func (c *Client) DeleteAuthorizationGroup(ctx context.Context, organizationName,
 
 // Helper methods
 
-// ensureGroupHierarchy creates all groups in the path hierarchy if they don't exist.
-//
-// Examples:
-//
-//   - For path "/web-app/viewers":
-//     1. /web-app exists (create if missing)
-//     2. /web-app/viewers exists (create under /web-app if missing)
-//
-//   - For path "/web-app/api/viewers":
-//     1. /web-app exists (create if missing)
-//     2. /web-app/api exists (create under /web-app if missing)
-//     3. /web-app/api/viewers exists (create under /web-app/api if missing)
-func (c *Client) ensureGroupHierarchy(ctx context.Context, orgID, groupPath string) error {
-	cache := make(map[string]string)
-	return c.ensureGroupHierarchyWithCache(ctx, orgID, groupPath, cache)
-}
-
 func (c *Client) ensureGroupHierarchyWithCache(ctx context.Context, orgID, groupPath string, cache map[string]string) error {
 	// Split path into segments (removing leading slash)
 	// "/web-app/viewers" -> ["web-app", "viewers"]
@@ -266,17 +249,6 @@ func (c *Client) getGroupIDByPathWithOrgID(ctx context.Context, orgID, groupPath
 		return "", fmt.Errorf("organization group not found: %s", groupPath)
 	}
 
-	return groupID, nil
-}
-
-// getGroupIDByPathNoError returns the group ID for a path, or empty string if not found (no error).
-// This is only used as a fallback when handling 409 conflicts.
-func (c *Client) getGroupIDByPathNoError(ctx context.Context, orgID, groupPath string) (string, error) {
-	groupID, err := c.getGroupIDByPath(ctx, orgID, groupPath)
-	if err != nil {
-		// If not found, return empty string instead of error
-		return "", nil
-	}
 	return groupID, nil
 }
 

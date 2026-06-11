@@ -438,7 +438,7 @@ var _ = Describe("addFinalizer", func() {
 		Expect(added).To(BeFalse())
 		Expect(hasFinalizer(t.publicIP)).To(BeTrue())
 		// Should not duplicate
-		Expect(len(t.publicIP.GetMetadata().GetFinalizers())).To(Equal(1))
+		Expect(t.publicIP.GetMetadata().GetFinalizers()).To(HaveLen(1))
 	})
 
 	It("should create metadata if it doesn't exist", func() {

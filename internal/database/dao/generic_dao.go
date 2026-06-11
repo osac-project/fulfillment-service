@@ -123,13 +123,13 @@ func (b *GenericDAOBuilder[O]) SetLogger(value *slog.Logger) *GenericDAOBuilder[
 // SetDefaultLimit sets the default number of items returned. It will be used when the value of the limit parameter
 // of the list request is zero. This is optional, and the default is 100.
 func (b *GenericDAOBuilder[O]) SetDefaultLimit(value int) *GenericDAOBuilder[O] {
-	b.defaultLimit = int32(value)
+	b.defaultLimit = int32(value) // #nosec G115 -- small pagination constant
 	return b
 }
 
 // SetMaxLimit sets the maximum number of items returned. This is optional and the default value is 1000.
 func (b *GenericDAOBuilder[O]) SetMaxLimit(value int) *GenericDAOBuilder[O] {
-	b.maxLimit = int32(value)
+	b.maxLimit = int32(value) // #nosec G115 -- small pagination constant
 	return b
 }
 

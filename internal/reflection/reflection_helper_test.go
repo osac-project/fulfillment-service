@@ -556,8 +556,8 @@ var _ = Describe("Reflection helper", func() {
 			names := multiPackageHelper.Names()
 
 			// Verify that private types come before public types:
-			var lastPrivateIndex int = -1
-			var firstPublicIndex int = -1
+			var lastPrivateIndex = -1
+			var firstPublicIndex = -1
 			for i, name := range names {
 				if strings.HasPrefix(name, packages.PrivateV1) {
 					lastPrivateIndex = i
@@ -628,8 +628,8 @@ var _ = Describe("Reflection helper", func() {
 			names := multiPackageHelper.Names()
 
 			// Verify that private types come before public types:
-			var lastPrivateIndex int = -1
-			var firstPublicIndex int = -1
+			var lastPrivateIndex = -1
+			var firstPublicIndex = -1
 			for i, name := range names {
 				if strings.HasPrefix(name, packages.PrivateV1) {
 					lastPrivateIndex = i

@@ -127,7 +127,7 @@ var _ = Describe("Compute Instance E2E", func() {
 		// Step 4: List instances again (should have 2 now)
 		listResp, err = instanceClient.List(ctx, &publicv1.ComputeInstancesListRequest{})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(len(listResp.Items)).To(Equal(initialCount + 1))
+		Expect(listResp.Items).To(HaveLen(initialCount + 1))
 
 		// Step 5: Get the created instance by ID
 		getResp, err := instanceClient.Get(ctx, &publicv1.ComputeInstancesGetRequest{
@@ -146,7 +146,7 @@ var _ = Describe("Compute Instance E2E", func() {
 		// Step 7: List instances again (should be back to initial count)
 		listResp, err = instanceClient.List(ctx, &publicv1.ComputeInstancesListRequest{})
 		Expect(err).ToNot(HaveOccurred())
-		Expect(len(listResp.Items)).To(Equal(initialCount))
+		Expect(listResp.Items).To(HaveLen(initialCount))
 
 		// Step 8: Verify the instance was deleted (Get should fail)
 		_, err = instanceClient.Get(ctx, &publicv1.ComputeInstancesGetRequest{

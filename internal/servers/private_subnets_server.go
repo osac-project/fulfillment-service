@@ -433,7 +433,7 @@ func cidrsOverlap(cidrA, cidrB string) (bool, error) {
 	_, netB, errB := net.ParseCIDR(cidrB)
 	if errA != nil || errB != nil {
 		return false, fmt.Errorf(
-			"failed to parse CIDRs: %q: %v, %q: %v",
+			"failed to parse CIDRs: %q: %w, %q: %w",
 			cidrA, errA, cidrB, errB,
 		)
 	}

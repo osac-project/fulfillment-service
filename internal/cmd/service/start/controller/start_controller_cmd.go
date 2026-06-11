@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -182,7 +183,7 @@ type runnerContext struct {
 }
 
 // run runs the `start controllers` command.
-func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
+func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:gocyclo
 	var err error
 
 	// Get the context:
@@ -833,7 +834,11 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		slog.String("address", metricsListener.Addr().String()),
 	)
 	metricsServer := &http.Server{
-		Handler: promhttp.Handler(),
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
 		err := metricsServer.Serve(metricsListener)
@@ -1062,7 +1067,7 @@ func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPo
 
 // readTrimmedFile reads the content of the given file and returns it with all leading and trailing whitespace removed.
 func (r *runnerContext) readTrimmedFile(file string) (result string, err error) {
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(filepath.Clean(file))
 	if err != nil {
 		return
 	}

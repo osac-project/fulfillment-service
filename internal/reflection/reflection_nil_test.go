@@ -27,9 +27,9 @@ var _ = Describe("Normalize nil", func() {
 	})
 
 	It("Returns nil for a typed-nil pointer", func() {
-		var f *fake
-		var n any = f
-		Expect(n != nil).To(BeTrue(), "interface itself is not nil")
+		var f *fake                                                  //nolint:staticcheck // SA4023: intentional typed-nil test
+		var n any = f                                                //nolint:staticcheck // SA4023: intentional typed-nil test
+		Expect(n != nil).To(BeTrue(), "interface itself is not nil") //nolint:ginkgolinter,staticcheck // intentional typed-nil test
 		Expect(NormalizeNil(n)).To(BeNil())
 	})
 
