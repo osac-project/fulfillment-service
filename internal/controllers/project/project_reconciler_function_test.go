@@ -222,6 +222,24 @@ var _ = Describe("Validation and Activation", func() {
 				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/test-project/managers").
 				Return(nil)
 
+			// Expect policies and permissions creation
+			mockIdpClient.EXPECT().
+				CreateGroupPolicy(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPolicy{ID: "viewers-policy-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateGroupPolicy(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPolicy{ID: "managers-policy-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateScopePermission(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPermission{ID: "viewers-permission-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateScopePermission(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPermission{ID: "managers-permission-id"}, nil).
+				Times(1)
+
 			task := &task{
 				r:       functionObj,
 				project: project,
@@ -265,6 +283,24 @@ var _ = Describe("Validation and Activation", func() {
 			mockIdpClient.EXPECT().
 				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/test-project/managers").
 				Return(nil)
+
+			// Expect policies and permissions creation
+			mockIdpClient.EXPECT().
+				CreateGroupPolicy(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPolicy{ID: "viewers-policy-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateGroupPolicy(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPolicy{ID: "managers-policy-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateScopePermission(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPermission{ID: "viewers-permission-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateScopePermission(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPermission{ID: "managers-permission-id"}, nil).
+				Times(1)
 
 			task := &task{
 				r:       functionObj,
@@ -328,6 +364,24 @@ var _ = Describe("Validation and Activation", func() {
 			mockIdpClient.EXPECT().
 				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/child-project/managers").
 				Return(nil)
+
+			// Expect policies and permissions creation
+			mockIdpClient.EXPECT().
+				CreateGroupPolicy(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPolicy{ID: "viewers-policy-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateGroupPolicy(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPolicy{ID: "managers-policy-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateScopePermission(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPermission{ID: "viewers-permission-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateScopePermission(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPermission{ID: "managers-permission-id"}, nil).
+				Times(1)
 
 			task := &task{
 				r:       functionObj,
@@ -403,6 +457,24 @@ var _ = Describe("Validation and Activation", func() {
 			mockIdpClient.EXPECT().
 				CreateAuthorizationGroup(gomock.Any(), "acme", "managers", "/child-project/managers").
 				Return(nil)
+
+			// Expect policies and permissions creation
+			mockIdpClient.EXPECT().
+				CreateGroupPolicy(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPolicy{ID: "viewers-policy-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateGroupPolicy(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPolicy{ID: "managers-policy-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateScopePermission(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPermission{ID: "viewers-permission-id"}, nil).
+				Times(1)
+			mockIdpClient.EXPECT().
+				CreateScopePermission(gomock.Any(), gomock.Any()).
+				Return(&idp.AuthorizationPermission{ID: "managers-permission-id"}, nil).
+				Times(1)
 
 			task := &task{
 				r:       functionObj,

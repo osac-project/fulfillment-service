@@ -267,6 +267,40 @@ func (m *mockClient) GetGroupIDByPath(ctx context.Context, organizationName, gro
 	return "test-group-id", nil
 }
 
+func (m *mockClient) CreateGroupPolicy(ctx context.Context, policy *AuthorizationPolicy) (*AuthorizationPolicy, error) {
+	// Return the policy with an ID assigned
+	return &AuthorizationPolicy{
+		ID:               "test-policy-id",
+		Name:             policy.Name,
+		Type:             policy.Type,
+		Logic:            policy.Logic,
+		DecisionStrategy: policy.DecisionStrategy,
+		GroupsClaim:      policy.GroupsClaim,
+	}, nil
+}
+
+func (m *mockClient) DeletePolicy(ctx context.Context, policyID string) error {
+	return nil
+}
+
+func (m *mockClient) CreateScopePermission(ctx context.Context, permission *AuthorizationPermission) (*AuthorizationPermission, error) {
+	// Return the permission with an ID assigned
+	return &AuthorizationPermission{
+		ID:               "test-permission-id",
+		Name:             permission.Name,
+		Type:             permission.Type,
+		Logic:            permission.Logic,
+		DecisionStrategy: permission.DecisionStrategy,
+		ResourceID:       permission.ResourceID,
+		Scopes:           permission.Scopes,
+		Policies:         permission.Policies,
+	}, nil
+}
+
+func (m *mockClient) DeletePermission(ctx context.Context, permissionID string) error {
+	return nil
+}
+
 var _ = Describe("OrganizationManager", func() {
 	var (
 		ctx     context.Context

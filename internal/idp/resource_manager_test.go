@@ -106,6 +106,68 @@ var _ = Describe("ResourceManager", func() {
 				CreateAuthorizationGroup(ctx, "acme", "managers", "/web-app/managers").
 				Return(nil)
 
+			// Expect viewers policy creation
+			mockClient.EXPECT().
+				CreateGroupPolicy(ctx, gomock.Any()).
+				DoAndReturn(func(ctx context.Context, policy *AuthorizationPolicy) (*AuthorizationPolicy, error) {
+					Expect(policy.Name).To(Equal("web-app-viewers-policy"))
+					Expect(policy.Type).To(Equal("group"))
+					Expect(policy.Logic).To(Equal("POSITIVE"))
+					return &AuthorizationPolicy{
+						ID:    "viewers-policy-id",
+						Name:  policy.Name,
+						Type:  policy.Type,
+						Logic: policy.Logic,
+					}, nil
+				})
+
+			// Expect managers policy creation
+			mockClient.EXPECT().
+				CreateGroupPolicy(ctx, gomock.Any()).
+				DoAndReturn(func(ctx context.Context, policy *AuthorizationPolicy) (*AuthorizationPolicy, error) {
+					Expect(policy.Name).To(Equal("web-app-managers-policy"))
+					Expect(policy.Type).To(Equal("group"))
+					Expect(policy.Logic).To(Equal("POSITIVE"))
+					return &AuthorizationPolicy{
+						ID:    "managers-policy-id",
+						Name:  policy.Name,
+						Type:  policy.Type,
+						Logic: policy.Logic,
+					}, nil
+				})
+
+			// Expect viewers permission creation (VIEW_PROJECT scope)
+			mockClient.EXPECT().
+				CreateScopePermission(ctx, gomock.Any()).
+				DoAndReturn(func(ctx context.Context, permission *AuthorizationPermission) (*AuthorizationPermission, error) {
+					Expect(permission.Name).To(Equal("web-app-view-permission"))
+					Expect(permission.Type).To(Equal("scope"))
+					Expect(permission.Scopes).To(ConsistOf(ScopeViewProject))
+					return &AuthorizationPermission{
+						ID:         "viewers-permission-id",
+						Name:       permission.Name,
+						Type:       permission.Type,
+						ResourceID: permission.ResourceID,
+						Scopes:     permission.Scopes,
+					}, nil
+				})
+
+			// Expect managers permission creation (MANAGE_PROJECT scope)
+			mockClient.EXPECT().
+				CreateScopePermission(ctx, gomock.Any()).
+				DoAndReturn(func(ctx context.Context, permission *AuthorizationPermission) (*AuthorizationPermission, error) {
+					Expect(permission.Name).To(Equal("web-app-manage-permission"))
+					Expect(permission.Type).To(Equal("scope"))
+					Expect(permission.Scopes).To(ConsistOf(ScopeManageProject))
+					return &AuthorizationPermission{
+						ID:         "managers-permission-id",
+						Name:       permission.Name,
+						Type:       permission.Type,
+						ResourceID: permission.ResourceID,
+						Scopes:     permission.Scopes,
+					}, nil
+				})
+
 			resourceID, err := manager.CreateProjectAuthorizationResource(ctx, testProjectID, testTenant, testProject, testScopes)
 
 			Expect(err).ToNot(HaveOccurred())

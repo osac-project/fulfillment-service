@@ -226,6 +226,37 @@ type keycloakAuthorizationResource struct {
 	Attributes map[string][]string          `json:"attributes,omitempty"`
 }
 
+// keycloakGroupPolicy represents a group-based authorization policy.
+type keycloakGroupPolicy struct {
+	ID               string                    `json:"id,omitempty"`
+	Name             string                    `json:"name,omitempty"`
+	Type             string                    `json:"type,omitempty"`
+	Logic            string                    `json:"logic,omitempty"`
+	DecisionStrategy string                    `json:"decisionStrategy,omitempty"`
+	GroupsClaim      string                    `json:"groupsClaim,omitempty"`
+	Groups           []keycloakGroupDefinition `json:"groups,omitempty"`
+}
+
+// keycloakGroupDefinition represents a group reference in a group policy.
+type keycloakGroupDefinition struct {
+	ID             string `json:"id,omitempty"`
+	Path           string `json:"path,omitempty"`
+	ExtendChildren bool   `json:"extendChildren,omitempty"`
+}
+
+// keycloakScopePermission represents a scope-based permission.
+type keycloakScopePermission struct {
+	ID               string   `json:"id,omitempty"`
+	Name             string   `json:"name,omitempty"`
+	Type             string   `json:"type,omitempty"`
+	Logic            string   `json:"logic,omitempty"`
+	DecisionStrategy string   `json:"decisionStrategy,omitempty"`
+	ResourceID       string   `json:"resource,omitempty"`
+	Resources        []string `json:"resources,omitempty"`
+	Scopes           []string `json:"scopes,omitempty"`
+	Policies         []string `json:"policies,omitempty"`
+}
+
 // Conversion functions for authorization resources
 func toKeycloakAuthorizationResource(resource *idp.AuthorizationResource) *keycloakAuthorizationResource {
 	scopes := make([]keycloakAuthorizationScope, len(resource.Scopes))
@@ -283,5 +314,88 @@ func fromKeycloakIdentityProvider(kcIdp *keycloakIdentityProvider) *idp.Identity
 		Type:        kcIdp.ProviderID,
 		Enabled:     kcIdp.Enabled,
 		Config:      kcIdp.Config,
+	}
+}
+
+// Conversion functions for authorization policies and permissions
+
+func toKeycloakGroupPolicy(policy *idp.AuthorizationPolicy) *keycloakGroupPolicy {
+	if policy == nil {
+		return nil
+	}
+
+	// Convert group paths to GroupDefinition objects
+	groupDefs := make([]keycloakGroupDefinition, len(policy.Groups))
+	for i, groupPath := range policy.Groups {
+		groupDefs[i] = keycloakGroupDefinition{
+			Path:           groupPath,
+			ExtendChildren: false, // Don't extend to child groups by default
+		}
+	}
+
+	return &keycloakGroupPolicy{
+		ID:               policy.ID,
+		Name:             policy.Name,
+		Type:             "group",
+		Logic:            policy.Logic,
+		DecisionStrategy: policy.DecisionStrategy,
+		GroupsClaim:      policy.GroupsClaim,
+		Groups:           groupDefs,
+	}
+}
+
+func fromKeycloakGroupPolicy(kcPolicy *keycloakGroupPolicy) *idp.AuthorizationPolicy {
+	if kcPolicy == nil {
+		return nil
+	}
+
+	// Extract group paths from GroupDefinition objects
+	groupPaths := make([]string, len(kcPolicy.Groups))
+	for i, groupDef := range kcPolicy.Groups {
+		groupPaths[i] = groupDef.Path
+	}
+
+	return &idp.AuthorizationPolicy{
+		ID:               kcPolicy.ID,
+		Name:             kcPolicy.Name,
+		Type:             kcPolicy.Type,
+		Logic:            kcPolicy.Logic,
+		DecisionStrategy: kcPolicy.DecisionStrategy,
+		GroupsClaim:      kcPolicy.GroupsClaim,
+		Groups:           groupPaths,
+	}
+}
+
+func toKeycloakScopePermission(permission *idp.AuthorizationPermission) *keycloakScopePermission {
+	if permission == nil {
+		return nil
+	}
+
+	return &keycloakScopePermission{
+		ID:               permission.ID,
+		Name:             permission.Name,
+		Type:             "scope",
+		Logic:            permission.Logic,
+		DecisionStrategy: permission.DecisionStrategy,
+		ResourceID:       permission.ResourceID,
+		Scopes:           permission.Scopes,
+		Policies:         permission.Policies,
+	}
+}
+
+func fromKeycloakScopePermission(kcPermission *keycloakScopePermission) *idp.AuthorizationPermission {
+	if kcPermission == nil {
+		return nil
+	}
+
+	return &idp.AuthorizationPermission{
+		ID:               kcPermission.ID,
+		Name:             kcPermission.Name,
+		Type:             kcPermission.Type,
+		Logic:            kcPermission.Logic,
+		DecisionStrategy: kcPermission.DecisionStrategy,
+		ResourceID:       kcPermission.ResourceID,
+		Scopes:           kcPermission.Scopes,
+		Policies:         kcPermission.Policies,
 	}
 }
