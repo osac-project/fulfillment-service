@@ -8,6 +8,12 @@ GO_VERSION ?= $(shell sed -n 's/^go //p' go.mod)
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.12.2
 
+GINKGO = $(LOCALBIN)/ginkgo
+GINKGO_VERSION ?= 2.29.0
+
+BUF = $(LOCALBIN)/buf
+BUF_VERSION ?= v1.50.0
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
@@ -32,3 +38,38 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef
+
+.PHONY: fmt
+fmt:
+	gofmt -s -l -w .
+
+.PHONY: $(GINKGO)
+$(GINKGO): $(LOCALBIN)
+	$(call go-install-tool,$(GINKGO),github.com/onsi/ginkgo/v2/ginkgo,$(GINKGO_VERSION))
+
+.PHONY: $(BUF)
+$(BUF): $(LOCALBIN)
+	$(call go-install-tool,$(BUF),github.com/bufbuild/buf/cmd/buf,$(BUF_VERSION))
+
+.PHONY: unit-test
+unit-test: $(GINKGO)
+	$(GINKGO) run --timeout 1h -r internal 
+
+.PHONY: run-buf
+run-buf: buf-lint buf-generate
+
+.PHONY: buf-lint
+buf-lint: $(BUF)
+	$(BUF) lint
+
+.PHONY: buf-generate
+buf-generate: $(BUF)
+	$(BUF) generate
+
+.PHONY: build
+build:
+	go build ./...
+
+.PHONY: test-integration
+test-integration: $(GINKGO)
+	$(GINKGO) run --label-filter setup it
