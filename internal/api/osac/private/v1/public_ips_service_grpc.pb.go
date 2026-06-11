@@ -50,7 +50,7 @@ type PublicIPsClient interface {
 	Get(ctx context.Context, in *PublicIPsGetRequest, opts ...grpc.CallOption) (*PublicIPsGetResponse, error)
 	// Creates a new public IP. The spec.pool field determines which PublicIPPool the address is allocated from.
 	Create(ctx context.Context, in *PublicIPsCreateRequest, opts ...grpc.CallOption) (*PublicIPsCreateResponse, error)
-	// Updates an existing public IP. The spec.pool field is immutable; only metadata and compute_instance can change.
+	// Updates an existing public IP. The spec.pool field is immutable; only metadata can change.
 	Update(ctx context.Context, in *PublicIPsUpdateRequest, opts ...grpc.CallOption) (*PublicIPsUpdateResponse, error)
 	// Deletes a public IP. The allocated address is returned to the parent pool's available capacity.
 	Delete(ctx context.Context, in *PublicIPsDeleteRequest, opts ...grpc.CallOption) (*PublicIPsDeleteResponse, error)
@@ -136,7 +136,7 @@ type PublicIPsServer interface {
 	Get(context.Context, *PublicIPsGetRequest) (*PublicIPsGetResponse, error)
 	// Creates a new public IP. The spec.pool field determines which PublicIPPool the address is allocated from.
 	Create(context.Context, *PublicIPsCreateRequest) (*PublicIPsCreateResponse, error)
-	// Updates an existing public IP. The spec.pool field is immutable; only metadata and compute_instance can change.
+	// Updates an existing public IP. The spec.pool field is immutable; only metadata can change.
 	Update(context.Context, *PublicIPsUpdateRequest) (*PublicIPsUpdateResponse, error)
 	// Deletes a public IP. The allocated address is returned to the parent pool's available capacity.
 	Delete(context.Context, *PublicIPsDeleteRequest) (*PublicIPsDeleteResponse, error)
