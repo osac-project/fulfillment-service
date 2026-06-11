@@ -127,7 +127,7 @@ service PublicIPs {
     };
   }
 
-  // Updates an existing public IP. Allows modifying spec.compute_instance and metadata (labels, annotations).
+  // Updates an existing public IP. Allows modifying metadata (labels, annotations).
   rpc Update(PublicIPsUpdateRequest) returns (PublicIPsUpdateResponse) {
     option (google.api.http) = {
       patch: "/api/fulfillment/v1/public_ips/{object.id}"
