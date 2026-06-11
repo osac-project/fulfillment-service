@@ -133,7 +133,7 @@ service PublicIPs {
     };
   }
 
-  // Updates an existing public IP. The spec.pool field is immutable; only metadata and compute_instance can change.
+  // Updates an existing public IP. The spec.pool field is immutable; only metadata can change.
   rpc Update(PublicIPsUpdateRequest) returns (PublicIPsUpdateResponse) {
     option (google.api.http) = {
       patch: "/api/private/v1/public_ips/{object.id}"
