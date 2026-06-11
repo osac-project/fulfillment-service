@@ -379,8 +379,8 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			panicInterceptor.UnaryServer,
 			metricsInterceptor.UnaryServer,
 			loggingInterceptor.UnaryServer,
-			authUnaryInterceptor,
 			txInterceptor.UnaryServer,
+			authUnaryInterceptor,
 		),
 		grpc.ChainStreamInterceptor(
 			panicInterceptor.StreamServer,
