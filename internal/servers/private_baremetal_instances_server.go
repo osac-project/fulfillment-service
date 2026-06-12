@@ -292,4 +292,3 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 
 	return nil
 }
-
