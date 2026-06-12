@@ -241,10 +241,9 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx contex
 func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Context,
 	request *privatev1.BareMetalInstancesUpdateRequest) error {
 	mask := request.GetUpdateMask()
-	fullReplace := mask == nil || len(mask.GetPaths()) == 0
-	updatingCatalogItem := fullReplace || hasMaskPrefix(mask, "spec.catalog_item")
-	updatingSshKey := fullReplace || hasMaskPrefix(mask, "spec.ssh_key")
-	updatingUserData := fullReplace || hasMaskPrefix(mask, "spec.user_data")
+	updatingCatalogItem := updateIncludesField(mask, "spec.catalog_item")
+	updatingSshKey := updateIncludesField(mask, "spec.ssh_key")
+	updatingUserData := updateIncludesField(mask, "spec.user_data")
 
 	bmi := request.GetObject()
 	if bmi == nil {
