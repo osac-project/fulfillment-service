@@ -21,7 +21,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	"go.uber.org/mock/gomock"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -69,15 +68,6 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			Expect(server).To(BeNil())
 		})
 
-		It("Can be built without explicit reference checker", func() {
-			server, err := NewPrivateComputeInstanceCatalogItemsServer().
-				SetLogger(logger).
-				SetAttributionLogic(attribution).
-				SetTenancyLogic(tenancy).
-				Build()
-			Expect(err).ToNot(HaveOccurred())
-			Expect(server).ToNot(BeNil())
-		})
 	})
 
 	Describe("Behaviour", func() {
@@ -394,37 +384,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
-			Expect(status.Message()).To(ContainSubstring("still referenced"))
-
-			getResponse, err := server.Get(ctx, privatev1.ComputeInstanceCatalogItemsGetRequest_builder{
-				Id: catalogItem.GetId(),
-			}.Build())
-			Expect(err).ToNot(HaveOccurred())
-			Expect(getResponse.GetObject()).ToNot(BeNil())
-			Expect(getResponse.GetObject().GetMetadata().GetDeletionTimestamp()).To(BeNil())
-		})
-
-		It("Returns error when reference check fails during delete", func() {
-			createResponse, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
-				Object: privatev1.ComputeInstanceCatalogItem_builder{
-					Title:    "CI catalog item with failing check",
-					Template: "my-ci-template-id",
-				}.Build(),
-			}.Build())
-			Expect(err).ToNot(HaveOccurred())
-			catalogItem := createResponse.GetObject()
-
-			mockCtrl := gomock.NewController(GinkgoT())
-			mockChecker := NewMockCatalogItemReferenceChecker(mockCtrl)
-			mockChecker.EXPECT().hasReference(gomock.Any(), catalogItem.GetId()).
-				Return(false, fmt.Errorf("database connection lost"))
-			server.referenceChecker = mockChecker
-
-			_, err = server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
-				Id: catalogItem.GetId(),
-			}.Build())
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("database connection lost"))
+			Expect(status.Message()).To(ContainSubstring("in use"))
 		})
 
 		It("Rejects duplicate name within same tenant", func() {

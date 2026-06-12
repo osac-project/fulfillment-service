@@ -18,13 +18,14 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Compute instance catalog items server", func() {
@@ -229,12 +230,25 @@ var _ = Describe("Compute instance catalog items server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			catalogItemID := createResponse.GetObject().GetId()
 
-			mockCtrl := gomock.NewController(GinkgoT())
-			mockChecker := NewMockCatalogItemReferenceChecker(mockCtrl)
-			mockChecker.EXPECT().hasReference(gomock.Any(), catalogItemID).Return(true, nil)
-			originalChecker := server.referenceChecker
-			server.referenceChecker = mockChecker
-			DeferCleanup(func() { server.referenceChecker = originalChecker })
+			// Create a compute instance that references the unpublished catalog item:
+			ciDao, err := dao.NewGenericDAO[*privatev1.ComputeInstance]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			_, err = ciDao.Create().SetObject(
+				privatev1.ComputeInstance_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "ref-ci",
+						Tenant: "system",
+					}.Build(),
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+						Template:    "my-ci-template-id",
+					}.Build(),
+				}.Build(),
+			).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
 
 			getResponse, err := server.Get(ctx, publicv1.ComputeInstanceCatalogItemsGetRequest_builder{
 				Id: catalogItemID,

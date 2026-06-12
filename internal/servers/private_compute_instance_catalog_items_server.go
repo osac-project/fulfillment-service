@@ -20,12 +20,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	grpccodes "google.golang.org/grpc/codes"
-	grpcstatus "google.golang.org/grpc/status"
-
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
@@ -35,16 +31,14 @@ type PrivateComputeInstanceCatalogItemsServerBuilder struct {
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
-	referenceChecker  catalogItemReferenceChecker
 }
 
 var _ privatev1.ComputeInstanceCatalogItemsServer = (*PrivateComputeInstanceCatalogItemsServer)(nil)
 
 type PrivateComputeInstanceCatalogItemsServer struct {
 	privatev1.UnimplementedComputeInstanceCatalogItemsServer
-	logger           *slog.Logger
-	generic          *GenericServer[*privatev1.ComputeInstanceCatalogItem]
-	referenceChecker catalogItemReferenceChecker
+	logger  *slog.Logger
+	generic *GenericServer[*privatev1.ComputeInstanceCatalogItem]
 }
 
 func NewPrivateComputeInstanceCatalogItemsServer() *PrivateComputeInstanceCatalogItemsServerBuilder {
@@ -77,11 +71,6 @@ func (b *PrivateComputeInstanceCatalogItemsServerBuilder) SetMetricsRegisterer(v
 	return b
 }
 
-func (b *PrivateComputeInstanceCatalogItemsServerBuilder) SetReferenceChecker(value catalogItemReferenceChecker) *PrivateComputeInstanceCatalogItemsServerBuilder {
-	b.referenceChecker = value
-	return b
-}
-
 func (b *PrivateComputeInstanceCatalogItemsServerBuilder) Build() (result *PrivateComputeInstanceCatalogItemsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
@@ -103,24 +92,9 @@ func (b *PrivateComputeInstanceCatalogItemsServerBuilder) Build() (result *Priva
 		return
 	}
 
-	refChecker := b.referenceChecker
-	if refChecker == nil {
-		ciDao, daoErr := dao.NewGenericDAO[*privatev1.ComputeInstance]().
-			SetLogger(b.logger).
-			SetTenancyLogic(b.tenancyLogic).
-			SetMetricsRegisterer(b.metricsRegisterer).
-			Build()
-		if daoErr != nil {
-			err = daoErr
-			return
-		}
-		refChecker = &daoReferenceChecker[*privatev1.ComputeInstance]{resourceDao: ciDao}
-	}
-
 	result = &PrivateComputeInstanceCatalogItemsServer{
-		logger:           b.logger,
-		generic:          generic,
-		referenceChecker: refChecker,
+		logger:  b.logger,
+		generic: generic,
 	}
 	return
 }
@@ -151,18 +125,6 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Update(ctx context.Context,
 
 func (s *PrivateComputeInstanceCatalogItemsServer) Delete(ctx context.Context,
 	request *privatev1.ComputeInstanceCatalogItemsDeleteRequest) (response *privatev1.ComputeInstanceCatalogItemsDeleteResponse, err error) {
-	hasRef, err := s.referenceChecker.hasReference(ctx, request.GetId())
-	if err != nil {
-		return
-	}
-	if hasRef {
-		err = grpcstatus.Errorf(
-			grpccodes.FailedPrecondition,
-			"cannot delete catalog item '%s': it is still referenced by one or more compute instances",
-			request.GetId(),
-		)
-		return
-	}
 	err = s.generic.Delete(ctx, request, &response)
 	return
 }

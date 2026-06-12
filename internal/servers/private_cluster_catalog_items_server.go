@@ -20,12 +20,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	grpccodes "google.golang.org/grpc/codes"
-	grpcstatus "google.golang.org/grpc/status"
-
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
@@ -35,16 +31,14 @@ type PrivateClusterCatalogItemsServerBuilder struct {
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
-	referenceChecker  catalogItemReferenceChecker
 }
 
 var _ privatev1.ClusterCatalogItemsServer = (*PrivateClusterCatalogItemsServer)(nil)
 
 type PrivateClusterCatalogItemsServer struct {
 	privatev1.UnimplementedClusterCatalogItemsServer
-	logger           *slog.Logger
-	generic          *GenericServer[*privatev1.ClusterCatalogItem]
-	referenceChecker catalogItemReferenceChecker
+	logger  *slog.Logger
+	generic *GenericServer[*privatev1.ClusterCatalogItem]
 }
 
 func NewPrivateClusterCatalogItemsServer() *PrivateClusterCatalogItemsServerBuilder {
@@ -77,11 +71,6 @@ func (b *PrivateClusterCatalogItemsServerBuilder) SetMetricsRegisterer(value pro
 	return b
 }
 
-func (b *PrivateClusterCatalogItemsServerBuilder) SetReferenceChecker(value catalogItemReferenceChecker) *PrivateClusterCatalogItemsServerBuilder {
-	b.referenceChecker = value
-	return b
-}
-
 func (b *PrivateClusterCatalogItemsServerBuilder) Build() (result *PrivateClusterCatalogItemsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
@@ -103,24 +92,9 @@ func (b *PrivateClusterCatalogItemsServerBuilder) Build() (result *PrivateCluste
 		return
 	}
 
-	refChecker := b.referenceChecker
-	if refChecker == nil {
-		clustersDao, daoErr := dao.NewGenericDAO[*privatev1.Cluster]().
-			SetLogger(b.logger).
-			SetTenancyLogic(b.tenancyLogic).
-			SetMetricsRegisterer(b.metricsRegisterer).
-			Build()
-		if daoErr != nil {
-			err = daoErr
-			return
-		}
-		refChecker = &daoReferenceChecker[*privatev1.Cluster]{resourceDao: clustersDao}
-	}
-
 	result = &PrivateClusterCatalogItemsServer{
-		logger:           b.logger,
-		generic:          generic,
-		referenceChecker: refChecker,
+		logger:  b.logger,
+		generic: generic,
 	}
 	return
 }
@@ -151,18 +125,6 @@ func (s *PrivateClusterCatalogItemsServer) Update(ctx context.Context,
 
 func (s *PrivateClusterCatalogItemsServer) Delete(ctx context.Context,
 	request *privatev1.ClusterCatalogItemsDeleteRequest) (response *privatev1.ClusterCatalogItemsDeleteResponse, err error) {
-	hasRef, err := s.referenceChecker.hasReference(ctx, request.GetId())
-	if err != nil {
-		return
-	}
-	if hasRef {
-		err = grpcstatus.Errorf(
-			grpccodes.FailedPrecondition,
-			"cannot delete catalog item '%s': it is still referenced by one or more clusters",
-			request.GetId(),
-		)
-		return
-	}
 	err = s.generic.Delete(ctx, request, &response)
 	return
 }
