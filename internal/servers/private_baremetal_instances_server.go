@@ -21,7 +21,6 @@ import (
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ssh"
 
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -295,14 +294,3 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 	return nil
 }
 
-// validateOpenSSHPublicKey checks that the provided string is a valid OpenSSH public key.
-func validateOpenSSHPublicKey(key string) error {
-	_, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(key))
-	if err != nil {
-		return fmt.Errorf("invalid OpenSSH public key: %w", err)
-	}
-	if len(rest) > 0 {
-		return fmt.Errorf("invalid OpenSSH public key: unexpected trailing content")
-	}
-	return nil
-}
