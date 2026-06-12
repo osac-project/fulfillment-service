@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
@@ -236,15 +235,25 @@ func (s *PrivateVirtualNetworksServer) validateVirtualNetwork(ctx context.Contex
 
 	// VN-VAL-01: Validate IPv4 CIDR format
 	if spec.GetIpv4Cidr() != "" {
-		if err = validateCIDR(spec.GetIpv4Cidr(), "IPv4"); err != nil {
+		var canonical string
+		canonical, err = parseAndValidateCIDR(spec.GetIpv4Cidr(), "IPv4")
+		if err != nil {
 			return
+		}
+		if existingVN == nil {
+			spec.SetIpv4Cidr(canonical)
 		}
 	}
 
 	// VN-VAL-02: Validate IPv6 CIDR format
 	if spec.GetIpv6Cidr() != "" {
-		if err = validateCIDR(spec.GetIpv6Cidr(), "IPv6"); err != nil {
+		var canonical string
+		canonical, err = parseAndValidateCIDR(spec.GetIpv6Cidr(), "IPv6")
+		if err != nil {
 			return
+		}
+		if existingVN == nil {
+			spec.SetIpv6Cidr(canonical)
 		}
 	}
 
@@ -259,28 +268,6 @@ func (s *PrivateVirtualNetworksServer) validateVirtualNetwork(ctx context.Contex
 	}
 
 	return
-}
-
-// validateCIDR validates a CIDR string and checks if it matches the expected IP version.
-func validateCIDR(cidrStr string, ipVersion string) error {
-	_, network, err := net.ParseCIDR(cidrStr)
-	if err != nil {
-		return grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"invalid %s CIDR format '%s': %v", ipVersion, cidrStr, err)
-	}
-
-	// Validate IP version matches field name
-	isIPv4 := network.IP.To4() != nil
-	if ipVersion == "IPv4" && !isIPv4 {
-		return grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"field 'ipv4_cidr' contains IPv6 address: %s", cidrStr)
-	}
-	if ipVersion == "IPv6" && isIPv4 {
-		return grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"field 'ipv6_cidr' contains IPv4 address: %s", cidrStr)
-	}
-
-	return nil
 }
 
 // validateImmutableFields validates that immutable fields have not been changed.

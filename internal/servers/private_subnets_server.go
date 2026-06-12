@@ -228,15 +228,23 @@ func (s *PrivateSubnetsServer) validateSubnet(ctx context.Context,
 
 	// SUB-VAL-01: Validate IPv4 CIDR format
 	if spec.GetIpv4Cidr() != "" {
-		if err := validateCIDR(spec.GetIpv4Cidr(), "IPv4"); err != nil {
+		canonical, err := parseAndValidateCIDR(spec.GetIpv4Cidr(), "IPv4")
+		if err != nil {
 			return err
+		}
+		if existingSubnet == nil {
+			spec.SetIpv4Cidr(canonical)
 		}
 	}
 
 	// SUB-VAL-02: Validate IPv6 CIDR format
 	if spec.GetIpv6Cidr() != "" {
-		if err := validateCIDR(spec.GetIpv6Cidr(), "IPv6"); err != nil {
+		canonical, err := parseAndValidateCIDR(spec.GetIpv6Cidr(), "IPv6")
+		if err != nil {
 			return err
+		}
+		if existingSubnet == nil {
+			spec.SetIpv6Cidr(canonical)
 		}
 	}
 
