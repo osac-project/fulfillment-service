@@ -18,6 +18,15 @@ The `dev/` package is organized as follows:
   GitHub release pages.
 - `dev/lint.py` - The `lint` command.
 
+The `setup` command downloads tool binaries from GitHub and verifies their integrity using SHA-256
+checksums stored in `dev/tools.py`. The verification is a two-stage process: first the checksums
+manifest published alongside the release is checked against the hash committed in `dev/tools.py`,
+then the downloaded artifact is checked against the hash extracted from that manifest. If either
+check fails the command raises an exception (non-zero exit) and logs the expected vs. actual
+checksums so developers can investigate. This detects tampering or corruption in transit, but
+ultimately relies on trusting the upstream release that published the manifest. When updating a tool
+version, replace the corresponding entry in `dev/tools.py` with the new checksums.
+
 To add a new command, create a new module in `dev/` (e.g. `dev/build.py`), define a Click command
 in it, register it in `dev/__init__.py`, and add it to the CLI group in `dev.py`. Follow the
 existing modules as examples.
