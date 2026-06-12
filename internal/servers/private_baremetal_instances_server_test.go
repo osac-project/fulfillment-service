@@ -71,36 +71,59 @@ var _ = Describe("Private bare metal instances server", func() {
 	})
 
 	Describe("Behaviour", func() {
-		var server *PrivateBareMetalInstancesServer
+		var (
+			server        *PrivateBareMetalInstancesServer
+			catalogServer *PrivateBareMetalInstanceCatalogItemsServer
+			catalogItemID string
+		)
 
 		BeforeEach(func() {
 			var err error
+
+			catalogServer, err = NewPrivateBareMetalInstanceCatalogItemsServer().
+				SetLogger(logger).
+				SetAttributionLogic(attribution).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
 			server, err = NewPrivateBareMetalInstancesServer().
 				SetLogger(logger).
 				SetAttributionLogic(attribution).
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
+
+			// Create a published catalog item for use in tests.
+			catalogResp, err := catalogServer.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:     "Test catalog item",
+					Template:  "test-template",
+					Published: true,
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			catalogItemID = catalogResp.GetObject().GetId()
 		})
 
 		It("Creates object with minimal spec", func() {
 			response, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetObject().GetId()).ToNot(BeEmpty())
-			Expect(response.GetObject().GetSpec().GetCatalogItem()).To(Equal("my-catalog-item"))
+			Expect(response.GetObject().GetSpec().GetCatalogItem()).To(Equal(catalogItemID))
 		})
 
 		It("Creates object with valid SSH key", func() {
 			response, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 						SshKey:      new(testSSHPublicKey),
 					}.Build(),
 				}.Build(),
@@ -109,11 +132,53 @@ var _ = Describe("Private bare metal instances server", func() {
 			Expect(response.GetObject().GetSpec().GetSshKey()).To(Equal(testSSHPublicKey))
 		})
 
+		It("Rejects nonexistent catalog item", func() {
+			_, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: "does-not-exist",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.NotFound))
+			Expect(status.Message()).To(ContainSubstring("does-not-exist"))
+		})
+
+		It("Rejects unpublished catalog item", func() {
+			unpubResp, err := catalogServer.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:     "Unpublished item",
+					Template:  "test-template",
+					Published: false,
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			unpubID := unpubResp.GetObject().GetId()
+
+			_, err = server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: unpubID,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.NotFound))
+			Expect(status.Message()).To(ContainSubstring("not published"))
+		})
+
+		// validateSpec runs before catalog item lookup, so invalid SSH key/user data
+		// fail with InvalidArgument before the catalog item is checked.
 		It("Rejects invalid SSH key at create time", func() {
 			_, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 						SshKey:      new("not-a-valid-ssh-key"),
 					}.Build(),
 				}.Build(),
@@ -130,7 +195,7 @@ var _ = Describe("Private bare metal instances server", func() {
 			_, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 						UserData:    new(bigData),
 					}.Build(),
 				}.Build(),
@@ -148,7 +213,7 @@ var _ = Describe("Private bare metal instances server", func() {
 			_, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 						UserData:    new(exactData),
 					}.Build(),
 				}.Build(),
@@ -160,18 +225,28 @@ var _ = Describe("Private bare metal instances server", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "original-catalog-item",
+						CatalogItem: catalogItemID,
 					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 
+			secondResp, err := catalogServer.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:     "Second catalog item",
+					Template:  "test-template",
+					Published: true,
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			secondID := secondResp.GetObject().GetId()
+
 			_, err = server.Update(ctx, privatev1.BareMetalInstancesUpdateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Id: object.GetId(),
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "new-catalog-item",
+						CatalogItem: secondID,
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -189,7 +264,7 @@ var _ = Describe("Private bare metal instances server", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 						SshKey:      new(testSSHPublicKey),
 					}.Build(),
 				}.Build(),
@@ -202,7 +277,7 @@ var _ = Describe("Private bare metal instances server", func() {
 				Object: privatev1.BareMetalInstance_builder{
 					Id: object.GetId(),
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 						SshKey:      new(otherKey),
 					}.Build(),
 				}.Build(),
@@ -222,7 +297,7 @@ var _ = Describe("Private bare metal instances server", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 						UserData:    new(userData),
 					}.Build(),
 				}.Build(),
@@ -235,7 +310,7 @@ var _ = Describe("Private bare metal instances server", func() {
 				Object: privatev1.BareMetalInstance_builder{
 					Id: object.GetId(),
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 						UserData:    new(newData),
 					}.Build(),
 				}.Build(),
@@ -254,9 +329,8 @@ var _ = Describe("Private bare metal instances server", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem:    "my-catalog-item",
-						RunStrategy:    new(privatev1.BareMetalInstanceRunStrategy_BARE_METAL_INSTANCE_RUN_STRATEGY_ALWAYS),
-						RestartTrigger: 0,
+						CatalogItem: catalogItemID,
+						RunStrategy: new(privatev1.BareMetalInstanceRunStrategy_BARE_METAL_INSTANCE_RUN_STRATEGY_ALWAYS),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -281,7 +355,7 @@ var _ = Describe("Private bare metal instances server", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -292,7 +366,7 @@ var _ = Describe("Private bare metal instances server", func() {
 				Object: privatev1.BareMetalInstance_builder{
 					Id: object.GetId(),
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -303,7 +377,7 @@ var _ = Describe("Private bare metal instances server", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
-						CatalogItem: "my-catalog-item",
+						CatalogItem: catalogItemID,
 					}.Build(),
 				}.Build(),
 			}.Build())

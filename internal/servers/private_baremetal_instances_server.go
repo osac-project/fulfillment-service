@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ssh"
@@ -45,8 +46,9 @@ var _ privatev1.BareMetalInstancesServer = (*PrivateBareMetalInstancesServer)(ni
 
 type PrivateBareMetalInstancesServer struct {
 	privatev1.UnimplementedBareMetalInstancesServer
-	logger  *slog.Logger
-	generic *GenericServer[*privatev1.BareMetalInstance]
+	logger          *slog.Logger
+	generic         *GenericServer[*privatev1.BareMetalInstance]
+	catalogItemsDao *dao.GenericDAO[*privatev1.BareMetalInstanceCatalogItem]
 }
 
 func NewPrivateBareMetalInstancesServer() *PrivateBareMetalInstancesServerBuilder {
@@ -88,6 +90,15 @@ func (b *PrivateBareMetalInstancesServerBuilder) Build() (result *PrivateBareMet
 		return
 	}
 
+	catalogItemsDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceCatalogItem]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	generic, err := NewGenericServer[*privatev1.BareMetalInstance]().
 		SetLogger(b.logger).
 		SetService(privatev1.BareMetalInstances_ServiceDesc.ServiceName).
@@ -101,8 +112,9 @@ func (b *PrivateBareMetalInstancesServerBuilder) Build() (result *PrivateBareMet
 	}
 
 	result = &PrivateBareMetalInstancesServer{
-		logger:  b.logger,
-		generic: generic,
+		logger:          b.logger,
+		generic:         generic,
+		catalogItemsDao: catalogItemsDao,
 	}
 	return
 }
@@ -122,6 +134,9 @@ func (s *PrivateBareMetalInstancesServer) Get(ctx context.Context,
 func (s *PrivateBareMetalInstancesServer) Create(ctx context.Context,
 	request *privatev1.BareMetalInstancesCreateRequest) (response *privatev1.BareMetalInstancesCreateResponse, err error) {
 	if err = s.validateSpec(request.GetObject()); err != nil {
+		return
+	}
+	if err = s.validateAndApplyCatalogItem(ctx, request.GetObject()); err != nil {
 		return
 	}
 	err = s.generic.Create(ctx, request, &response)
@@ -178,6 +193,46 @@ func (s *PrivateBareMetalInstancesServer) validateSpec(bmi *privatev1.BareMetalI
 	}
 
 	return nil
+}
+
+// validateAndApplyCatalogItem verifies the referenced catalog item exists, is accessible,
+// and applies its field definitions to the spec.
+func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx context.Context,
+	bmi *privatev1.BareMetalInstance) error {
+	if bmi == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "bare metal instance is mandatory")
+	}
+	ref := bmi.GetSpec().GetCatalogItem()
+	if ref == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "spec.catalog_item is mandatory")
+	}
+
+	response, err := s.catalogItemsDao.List().
+		SetFilter(fmt.Sprintf("this.id == %[1]s || this.metadata.name == %[1]s", strconv.Quote(ref))).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		var deniedErr *dao.ErrDenied
+		if errors.As(err, &deniedErr) {
+			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+		}
+		s.logger.ErrorContext(ctx, "Failed to lookup bare metal instance catalog item",
+			slog.String("ref", ref),
+			slog.Any("error", err))
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item")
+	}
+	items := response.GetItems()
+	if len(items) == 0 {
+		return grpcstatus.Errorf(grpccodes.NotFound,
+			"there is no catalog item with identifier or name '%s'", ref)
+	}
+	item := items[0]
+
+	if err := validateCatalogItemAccess(item, ref); err != nil {
+		return err
+	}
+
+	return applyFieldDefinitions(bmi.GetSpec(), item.GetFieldDefinitions())
 }
 
 // validateImmutability ensures catalog_item, ssh_key, and user_data cannot be changed after creation.
