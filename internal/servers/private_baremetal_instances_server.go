@@ -15,7 +15,6 @@ package servers
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -283,12 +282,12 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 			existingSpec.GetCatalogItem(), newSpec.GetCatalogItem())
 	}
 
-	if updatingSshKey && subtle.ConstantTimeCompare([]byte(existingSpec.GetSshKey()), []byte(newSpec.GetSshKey())) != 1 {
+	if updatingSshKey && existingSpec.GetSshKey() != newSpec.GetSshKey() {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"cannot change spec.ssh_key: ssh_key is immutable after creation")
 	}
 
-	if updatingUserData && subtle.ConstantTimeCompare([]byte(existingSpec.GetUserData()), []byte(newSpec.GetUserData())) != 1 {
+	if updatingUserData && existingSpec.GetUserData() != newSpec.GetUserData() {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"cannot change spec.user_data: user_data is immutable after creation")
 	}
