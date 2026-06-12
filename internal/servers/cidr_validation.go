@@ -20,6 +20,11 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 )
 
+const (
+	cidrIPv4 = "IPv4"
+	cidrIPv6 = "IPv6"
+)
+
 // parseAndValidateCIDR parses cidrStr, validates it matches the expected IP version,
 // and returns the canonical CIDR notation.
 func parseAndValidateCIDR(cidrStr string, ipVersion string) (string, error) {
@@ -30,11 +35,11 @@ func parseAndValidateCIDR(cidrStr string, ipVersion string) (string, error) {
 	}
 
 	isIPv4 := network.IP.To4() != nil
-	if ipVersion == "IPv4" && !isIPv4 {
+	if ipVersion == cidrIPv4 && !isIPv4 {
 		return "", grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"field 'ipv4_cidr' contains IPv6 address: %s", cidrStr)
 	}
-	if ipVersion == "IPv6" && isIPv4 {
+	if ipVersion == cidrIPv6 && isIPv4 {
 		return "", grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"field 'ipv6_cidr' contains IPv4 address: %s", cidrStr)
 	}

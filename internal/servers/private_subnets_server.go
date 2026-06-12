@@ -228,10 +228,11 @@ func (s *PrivateSubnetsServer) validateSubnet(ctx context.Context,
 
 	// SUB-VAL-01: Validate IPv4 CIDR format
 	if spec.GetIpv4Cidr() != "" {
-		canonical, err := parseAndValidateCIDR(spec.GetIpv4Cidr(), "IPv4")
+		canonical, err := parseAndValidateCIDR(spec.GetIpv4Cidr(), cidrIPv4)
 		if err != nil {
 			return err
 		}
+		// Canonicalize on Create only; Update must not rewrite immutable CIDR fields (SUB-VAL-11+).
 		if existingSubnet == nil {
 			spec.SetIpv4Cidr(canonical)
 		}
@@ -239,10 +240,11 @@ func (s *PrivateSubnetsServer) validateSubnet(ctx context.Context,
 
 	// SUB-VAL-02: Validate IPv6 CIDR format
 	if spec.GetIpv6Cidr() != "" {
-		canonical, err := parseAndValidateCIDR(spec.GetIpv6Cidr(), "IPv6")
+		canonical, err := parseAndValidateCIDR(spec.GetIpv6Cidr(), cidrIPv6)
 		if err != nil {
 			return err
 		}
+		// Canonicalize on Create only; Update must not rewrite immutable CIDR fields (SUB-VAL-11+).
 		if existingSubnet == nil {
 			spec.SetIpv6Cidr(canonical)
 		}
@@ -339,7 +341,7 @@ func (s *PrivateSubnetsServer) validateVirtualNetworkReference(ctx context.Conte
 				"subnet has IPv4 CIDR but parent VirtualNetwork does not support IPv4")
 		}
 		// SUB-VAL-06: Validate IPv4 CIDR is subset of parent
-		if err := validateCIDRSubset(spec.GetIpv4Cidr(), parentSpec.GetIpv4Cidr(), "IPv4"); err != nil {
+		if err := validateCIDRSubset(spec.GetIpv4Cidr(), parentSpec.GetIpv4Cidr(), cidrIPv4); err != nil {
 			return err
 		}
 	}
@@ -351,7 +353,7 @@ func (s *PrivateSubnetsServer) validateVirtualNetworkReference(ctx context.Conte
 				"subnet has IPv6 CIDR but parent VirtualNetwork does not support IPv6")
 		}
 		// SUB-VAL-06: Validate IPv6 CIDR is subset of parent
-		if err := validateCIDRSubset(spec.GetIpv6Cidr(), parentSpec.GetIpv6Cidr(), "IPv6"); err != nil {
+		if err := validateCIDRSubset(spec.GetIpv6Cidr(), parentSpec.GetIpv6Cidr(), cidrIPv6); err != nil {
 			return err
 		}
 	}

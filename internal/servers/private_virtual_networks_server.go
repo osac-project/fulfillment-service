@@ -236,10 +236,11 @@ func (s *PrivateVirtualNetworksServer) validateVirtualNetwork(ctx context.Contex
 	// VN-VAL-01: Validate IPv4 CIDR format
 	if spec.GetIpv4Cidr() != "" {
 		var canonical string
-		canonical, err = parseAndValidateCIDR(spec.GetIpv4Cidr(), "IPv4")
+		canonical, err = parseAndValidateCIDR(spec.GetIpv4Cidr(), cidrIPv4)
 		if err != nil {
 			return
 		}
+		// Canonicalize on Create only; Update must not rewrite immutable CIDR fields (VN-VAL-11/12).
 		if existingVN == nil {
 			spec.SetIpv4Cidr(canonical)
 		}
@@ -248,10 +249,11 @@ func (s *PrivateVirtualNetworksServer) validateVirtualNetwork(ctx context.Contex
 	// VN-VAL-02: Validate IPv6 CIDR format
 	if spec.GetIpv6Cidr() != "" {
 		var canonical string
-		canonical, err = parseAndValidateCIDR(spec.GetIpv6Cidr(), "IPv6")
+		canonical, err = parseAndValidateCIDR(spec.GetIpv6Cidr(), cidrIPv6)
 		if err != nil {
 			return
 		}
+		// Canonicalize on Create only; Update must not rewrite immutable CIDR fields (VN-VAL-11/12).
 		if existingVN == nil {
 			spec.SetIpv6Cidr(canonical)
 		}
