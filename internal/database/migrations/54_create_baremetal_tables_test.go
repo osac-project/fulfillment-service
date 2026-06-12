@@ -15,7 +15,9 @@ package migrations
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 )
@@ -27,22 +29,24 @@ var _ = DescribeMigration("Create baremetal tables", func() {
 			err := tool.Migrate(ctx, 54)
 			Expect(err).ToNot(HaveOccurred())
 
+			quotedTable := pgx.Identifier{table}.Sanitize()
+
 			_, err = conn.Exec(ctx,
-				`insert into `+table+` (id, tenant, data) values ($1, $2, $3)`,
+				fmt.Sprintf(`insert into %s (id, tenant, data) values ($1, $2, $3)`, quotedTable),
 				"test-id", "system", `{}`,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
 			var count int
 			err = conn.QueryRow(ctx,
-				`select count(*) from `+table+` where id = $1`,
+				fmt.Sprintf(`select count(*) from %s where id = $1`, quotedTable),
 				"test-id",
 			).Scan(&count)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(count).To(Equal(1))
 
 			_, err = conn.Exec(ctx,
-				`insert into `+table+` (id, tenant, data) values ($1, $2, $3)`,
+				fmt.Sprintf(`insert into %s (id, tenant, data) values ($1, $2, $3)`, quotedTable),
 				"bad-tenant-id", "no-such-tenant", `{}`,
 			)
 			Expect(err).To(HaveOccurred())

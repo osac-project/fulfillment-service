@@ -15,6 +15,7 @@ package servers
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -221,7 +222,6 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx contex
 			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
 		}
 		s.logger.ErrorContext(ctx, "Failed to lookup bare metal instance catalog item",
-			slog.String("ref", ref),
 			slog.Any("error", err))
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item")
 	}
@@ -268,7 +268,6 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 			return grpcstatus.Errorf(grpccodes.NotFound, "bare metal instance '%s' not found", id)
 		}
 		s.logger.ErrorContext(ctx, "Failed to fetch bare metal instance for immutability check",
-			slog.String("id", id),
 			slog.Any("error", err))
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to fetch bare metal instance")
 	}
@@ -284,12 +283,12 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 			existingSpec.GetCatalogItem(), newSpec.GetCatalogItem())
 	}
 
-	if updatingSshKey && existingSpec.GetSshKey() != newSpec.GetSshKey() {
+	if updatingSshKey && subtle.ConstantTimeCompare([]byte(existingSpec.GetSshKey()), []byte(newSpec.GetSshKey())) != 1 {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"cannot change spec.ssh_key: ssh_key is immutable after creation")
 	}
 
-	if updatingUserData && existingSpec.GetUserData() != newSpec.GetUserData() {
+	if updatingUserData && subtle.ConstantTimeCompare([]byte(existingSpec.GetUserData()), []byte(newSpec.GetUserData())) != 1 {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"cannot change spec.user_data: user_data is immutable after creation")
 	}
