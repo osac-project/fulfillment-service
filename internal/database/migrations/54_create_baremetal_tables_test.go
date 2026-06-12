@@ -40,6 +40,12 @@ var _ = DescribeMigration("Create baremetal tables", func() {
 			).Scan(&count)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(count).To(Equal(1))
+
+			_, err = conn.Exec(ctx,
+				`insert into `+table+` (id, tenant, data) values ($1, $2, $3)`,
+				"bad-tenant-id", "no-such-tenant", `{}`,
+			)
+			Expect(err).To(HaveOccurred())
 		},
 		Entry("bare_metal_instance_templates", "bare_metal_instance_templates"),
 		Entry("bare_metal_instance_catalog_items", "bare_metal_instance_catalog_items"),

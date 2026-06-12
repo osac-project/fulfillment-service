@@ -169,5 +169,20 @@ var _ = Describe("Private bare metal instance templates server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(getResponse.GetObject().GetMetadata().GetDeletionTimestamp()).ToNot(BeNil())
 		})
+
+		It("Signals object", func() {
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstanceTemplatesCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceTemplate_builder{
+					Title: "My template",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			_, err = server.Signal(ctx, privatev1.BareMetalInstanceTemplatesSignalRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
 	})
 })

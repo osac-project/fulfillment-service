@@ -90,6 +90,10 @@ func (b *PrivateBareMetalInstanceCatalogItemsServerBuilder) Build() (result *Pri
 		err = errors.New("tenancy logic is mandatory")
 		return
 	}
+	if b.attributionLogic == nil {
+		err = errors.New("attribution logic is mandatory")
+		return
+	}
 
 	generic, err := NewGenericServer[*privatev1.BareMetalInstanceCatalogItem]().
 		SetLogger(b.logger).

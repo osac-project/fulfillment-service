@@ -89,6 +89,10 @@ func (b *PrivateBareMetalInstancesServerBuilder) Build() (result *PrivateBareMet
 		err = errors.New("tenancy logic is mandatory")
 		return
 	}
+	if b.attributionLogic == nil {
+		err = errors.New("attribution logic is mandatory")
+		return
+	}
 
 	catalogItemsDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceCatalogItem]().
 		SetLogger(b.logger).
@@ -239,17 +243,18 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx contex
 func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Context,
 	request *privatev1.BareMetalInstancesUpdateRequest) error {
 	mask := request.GetUpdateMask()
-	updatingCatalogItem := hasMaskPrefix(mask, "spec.catalog_item")
-	updatingSshKey := hasMaskPrefix(mask, "spec.ssh_key")
-	updatingUserData := hasMaskPrefix(mask, "spec.user_data")
-
-	if !updatingCatalogItem && !updatingSshKey && !updatingUserData {
-		return nil
-	}
+	fullReplace := mask == nil || len(mask.GetPaths()) == 0
+	updatingCatalogItem := fullReplace || hasMaskPrefix(mask, "spec.catalog_item")
+	updatingSshKey := fullReplace || hasMaskPrefix(mask, "spec.ssh_key")
+	updatingUserData := fullReplace || hasMaskPrefix(mask, "spec.user_data")
 
 	bmi := request.GetObject()
 	if bmi == nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "bare metal instance is mandatory")
+	}
+	newSpec := bmi.GetSpec()
+	if newSpec == nil && (updatingCatalogItem || updatingSshKey || updatingUserData) {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "bare metal instance spec is mandatory")
 	}
 	id := bmi.GetId()
 	if id == "" {
@@ -269,7 +274,9 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 	}
 	existing := getResponse.GetObject()
 	existingSpec := existing.GetSpec()
-	newSpec := bmi.GetSpec()
+	if existingSpec == nil {
+		return grpcstatus.Errorf(grpccodes.Internal, "stored bare metal instance is missing spec")
+	}
 
 	if updatingCatalogItem && existingSpec.GetCatalogItem() != newSpec.GetCatalogItem() {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
