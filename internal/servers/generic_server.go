@@ -1229,6 +1229,7 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 			s.logger.WarnContext(
 				ctx,
 				"User is trying to assign a tenant that is invisible to them",
+				slog.String("requested", requestTenant),
 			)
 			err = grpcstatus.Errorf(
 				grpccodes.PermissionDenied,
@@ -1241,6 +1242,7 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 			s.logger.WarnContext(
 				ctx,
 				"User is trying to assign a tenant that is unassignable",
+				slog.String("requested", requestTenant),
 			)
 			err = grpcstatus.Errorf(
 				grpccodes.PermissionDenied,
