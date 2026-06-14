@@ -43,9 +43,11 @@ var _ privatev1.VirtualNetworksServer = (*PrivateVirtualNetworksServer)(nil)
 type PrivateVirtualNetworksServer struct {
 	privatev1.UnimplementedVirtualNetworksServer
 
-	logger          *slog.Logger
-	generic         *GenericServer[*privatev1.VirtualNetwork]
-	networkClassDao *dao.GenericDAO[*privatev1.NetworkClass]
+	logger           *slog.Logger
+	generic          *GenericServer[*privatev1.VirtualNetwork]
+	networkClassDao  *dao.GenericDAO[*privatev1.NetworkClass]
+	subnetDao        *dao.GenericDAO[*privatev1.Subnet]
+	securityGroupDao *dao.GenericDAO[*privatev1.SecurityGroup]
 }
 
 func NewPrivateVirtualNetworksServer() *PrivateVirtualNetworksServerBuilder {
@@ -100,6 +102,26 @@ func (b *PrivateVirtualNetworksServerBuilder) Build() (result *PrivateVirtualNet
 		return
 	}
 
+	// Create the Subnet DAO for child reference checks on delete:
+	subnetDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
+	// Create the SecurityGroup DAO for child reference checks on delete:
+	securityGroupDao, err := dao.NewGenericDAO[*privatev1.SecurityGroup]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	// Create the generic server:
 	generic, err := NewGenericServer[*privatev1.VirtualNetwork]().
 		SetLogger(b.logger).
@@ -115,9 +137,11 @@ func (b *PrivateVirtualNetworksServerBuilder) Build() (result *PrivateVirtualNet
 
 	// Create and populate the object:
 	result = &PrivateVirtualNetworksServer{
-		logger:          b.logger,
-		generic:         generic,
-		networkClassDao: networkClassDao,
+		logger:           b.logger,
+		generic:          generic,
+		networkClassDao:  networkClassDao,
+		subnetDao:        subnetDao,
+		securityGroupDao: securityGroupDao,
 	}
 	return
 }
@@ -186,10 +210,60 @@ func (s *PrivateVirtualNetworksServer) Update(ctx context.Context,
 	return
 }
 
+// Delete removes a VirtualNetwork after verifying no child Subnets or SecurityGroups reference it.
+// Returns FailedPrecondition when references exist.
 func (s *PrivateVirtualNetworksServer) Delete(ctx context.Context,
 	request *privatev1.VirtualNetworksDeleteRequest) (response *privatev1.VirtualNetworksDeleteResponse, err error) {
+	if err = s.checkNoChildReferences(ctx, request.GetId()); err != nil {
+		return
+	}
+
 	err = s.generic.Delete(ctx, request, &response)
 	return
+}
+
+// checkNoChildReferences returns nil when no Subnets or SecurityGroups reference virtualNetworkID.
+// Returns FailedPrecondition when child resources exist, or Internal when the reference query fails.
+func (s *PrivateVirtualNetworksServer) checkNoChildReferences(ctx context.Context, virtualNetworkID string) error {
+	if virtualNetworkID == "" {
+		return nil
+	}
+
+	filter := fmt.Sprintf("this.spec.virtual_network == %q", virtualNetworkID)
+
+	subnetResponse, err := s.subnetDao.List().
+		SetFilter(filter).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "Failed to check subnet references",
+			slog.String("virtual_network_id", virtualNetworkID),
+			slog.Any("error", err))
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to check child references")
+	}
+	if subnetResponse.GetTotal() > 0 {
+		return grpcstatus.Errorf(grpccodes.FailedPrecondition,
+			"cannot delete VirtualNetwork '%s': %d Subnet(s) still reference it",
+			virtualNetworkID, subnetResponse.GetTotal())
+	}
+
+	sgResponse, err := s.securityGroupDao.List().
+		SetFilter(filter).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "Failed to check security group references",
+			slog.String("virtual_network_id", virtualNetworkID),
+			slog.Any("error", err))
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to check child references")
+	}
+	if sgResponse.GetTotal() > 0 {
+		return grpcstatus.Errorf(grpccodes.FailedPrecondition,
+			"cannot delete VirtualNetwork '%s': %d SecurityGroup(s) still reference it",
+			virtualNetworkID, sgResponse.GetTotal())
+	}
+
+	return nil
 }
 
 func (s *PrivateVirtualNetworksServer) Signal(ctx context.Context,
