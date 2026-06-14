@@ -91,23 +91,28 @@ spec:
 
           # Get the subject's tenant(s) from JWT claims or service account namespace
           # For JWT users, this comes from the "organization" scope which is in defaultClientScopes.
-          # The organization claim is required for tenant admins and IdP managers.
-          # For regular users without organization claim, fall back to groups.
+          # JWT users without an organization claim will have an empty tenant list.
+          # For service accounts, groups are used as tenants.
           default subject_tenants = []
+
+          # Extract tenant names from organization array (simple format: ["org-name"])
           subject_tenants = input.auth.identity.organization if {
             input.auth.identity.authnMethod == "jwt"
-            input.auth.identity.organization
+            is_array(input.auth.identity.organization)
           }
-          subject_tenants = input.auth.identity.organizations if {
+
+          # Extract tenant names from organization object (Keycloak format: {"org-name": {"groups": [...]}})
+          subject_tenants = [org_name | input.auth.identity.organization[org_name]] if {
             input.auth.identity.authnMethod == "jwt"
-            input.auth.identity.organizations
+            is_object(input.auth.identity.organization)
           }
-          # Fallback to groups for JWT users without organization claim
+
+          # Fallback to groups for JWT users without organization claim (backwards compatibility)
           subject_tenants = subject_groups if {
             input.auth.identity.authnMethod == "jwt"
             not input.auth.identity.organization
-            not input.auth.identity.organizations
           }
+
           # For service accounts, use groups as tenants
           subject_tenants = subject_groups if {
             input.auth.identity.authnMethod == "serviceaccount"
@@ -119,6 +124,25 @@ spec:
             input.auth.identity.authnMethod == "jwt"
             input.auth.identity.realm_access
             input.auth.identity.realm_access.roles
+          }
+
+          # Organization dictionary extraction
+          default subject_org_groups = {}
+
+          # If organization is an object with groups, use it directly
+          subject_org_groups := input.auth.identity.organization if {
+            input.auth.identity.authnMethod == "jwt"
+            is_object(input.auth.identity.organization)
+          }
+
+          # If organization is an array, build org groups from top-level groups claim
+          # This creates a structure: {"org-name": {"groups": ["group1", "group2"]}}
+          subject_org_groups := {tenant: {"groups": input.auth.identity.groups} |
+            some tenant in input.auth.identity.organization
+          } if {
+            input.auth.identity.authnMethod == "jwt"
+            is_array(input.auth.identity.organization)
+            input.auth.identity.groups
           }
 
           # Check if an account is an admin account:
@@ -268,6 +292,45 @@ spec:
           # Allow everything to admins:
           allow if {
             is_admin
+          }
+          # Project authorization
+          # Tenant admins can create projects
+          allow if {
+            is_tenant_admin
+            grpc_method == "/osac.public.v1.Projects/Create"
+          }
+
+          # All authenticated users with client permissions can list projects
+          # (application layer filters results based on actual project memberships)
+          allow if {
+            has_client_permissions
+            grpc_method == "/osac.public.v1.Projects/List"
+          }
+
+          # Project Get authorization - allow viewers or managers
+          allow if {
+            grpc_method == "/osac.public.v1.Projects/Get"
+            tenant := input.context.context_extensions.tenant
+            name := input.context.context_extensions.name
+            input.auth.identity.authnMethod == "jwt"
+            some group in subject_org_groups[tenant].groups
+            group in {
+              sprintf("/%s/viewers", [name]),
+              sprintf("/%s/managers", [name]),
+            }
+          }
+
+          # Project Update/Delete authorization via organization groups
+          allow if {
+            grpc_method in {
+              "/osac.public.v1.Projects/Update",
+              "/osac.public.v1.Projects/Delete",
+            }
+            tenant := input.context.context_extensions.tenant
+            name := input.context.context_extensions.name
+            input.auth.identity.authnMethod == "jwt"
+            some group in subject_org_groups[tenant].groups
+            group == sprintf("/%s/managers", [name])
           }
   response:
     success:

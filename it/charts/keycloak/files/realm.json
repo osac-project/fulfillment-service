@@ -829,8 +829,18 @@
         "userinfo.token.claim" : "true",
         "id.token.claim" : "true",
         "access.token.claim" : "true",
-        "claim.name" : "organization",
-        "jsonType.label" : "String"
+        "claim.name" : "organization"
+      }
+    }, {
+      "id" : "org-group-membership-001",
+      "name" : "organization-groups",
+      "protocol" : "openid-connect",
+      "protocolMapper" : "oidc-organization-group-membership-mapper",
+      "consentRequired" : false,
+      "config" : {
+        "id.token.claim" : "true",
+        "access.token.claim" : "true",
+        "userinfo.token.claim" : "true"
       }
     } ]
   }, {
