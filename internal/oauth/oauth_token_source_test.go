@@ -83,11 +83,12 @@ var _ = Describe("Token source", func() {
 		)
 
 		// Create CA pool with the server's certificate
-		caPool, err = network.NewCertPool().
+		certPool, err := network.NewCertPool().
 			SetLogger(logger).
 			AddFile(caFile).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
+		caPool = certPool.Pool()
 
 	})
 
@@ -626,11 +627,12 @@ var _ = Describe("Token source", func() {
 		})
 
 		// Create CA pool with the discovery server's certificate
-		caPool, err := network.NewCertPool().
+		certPool, err := network.NewCertPool().
 			SetLogger(logger).
 			AddFile(caFile).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
+		caPool := certPool.Pool()
 
 		// Create the server that doesn't respond to discovery requests:
 		source, err := NewTokenSource().
@@ -667,11 +669,12 @@ var _ = Describe("Token source", func() {
 			err := os.Remove(caFile)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		caPool, err := network.NewCertPool().
+		certPool, err := network.NewCertPool().
 			SetLogger(logger).
 			AddFile(caFile).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
+		caPool := certPool.Pool()
 		count := 0
 		server.RouteToHandler(
 			http.MethodGet,
@@ -752,11 +755,12 @@ var _ = Describe("Token source", func() {
 			err := os.Remove(caFile)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		caPool, err := network.NewCertPool().
+		certPool, err := network.NewCertPool().
 			SetLogger(logger).
 			AddFile(caFile).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
+		caPool := certPool.Pool()
 		server.RouteToHandler(
 			http.MethodGet,
 			"/.well-known/oauth-authorization-server",
@@ -818,11 +822,12 @@ var _ = Describe("Token source", func() {
 			err := os.Remove(caFile)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		caPool, err := network.NewCertPool().
+		certPool, err := network.NewCertPool().
 			SetLogger(logger).
 			AddFile(caFile).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
+		caPool := certPool.Pool()
 		server.RouteToHandler(
 			http.MethodGet,
 			"/.well-known/oauth-authorization-server",
@@ -884,11 +889,12 @@ var _ = Describe("Token source", func() {
 			err := os.Remove(caFile)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		caPool, err := network.NewCertPool().
+		certPool, err := network.NewCertPool().
 			SetLogger(logger).
 			AddFile(caFile).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
+		caPool := certPool.Pool()
 		server.RouteToHandler(
 			http.MethodGet,
 			"/.well-known/oauth-authorization-server",
@@ -951,11 +957,12 @@ var _ = Describe("Token source", func() {
 			err := os.Remove(caFile)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		caPool, err := network.NewCertPool().
+		certPool, err := network.NewCertPool().
 			SetLogger(logger).
 			AddFile(caFile).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
+		caPool := certPool.Pool()
 		server.RouteToHandler(
 			http.MethodGet,
 			"/.well-known/oauth-authorization-server",

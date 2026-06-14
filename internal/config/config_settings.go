@@ -597,14 +597,18 @@ func (c *Settings) createCaPool(ctx context.Context) error {
 	}
 
 	// Create the CA pool:
-	c.caPool, err = network.NewCertPool().
+	certPool, err := network.NewCertPool().
 		SetLogger(c.logger).
 		AddSystemFiles(true).
 		AddKubernetesFiles(true).
 		AddFile(contentDir).
 		AddFiles(otherFiles...).
 		Build()
-	return err
+	if err != nil {
+		return err
+	}
+	c.caPool = certPool.Pool()
+	return nil
 }
 
 // settingsTokenStore is a token source that loads and saves tokens from/to the secret settings.

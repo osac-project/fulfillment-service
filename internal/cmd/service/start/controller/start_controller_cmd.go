@@ -243,13 +243,14 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 
 	// Load the trusted CA certificates:
 	r.logger.InfoContext(ctx, "Loading trusted CA certificates")
-	caPool, err := network.NewCertPool().
+	certPool, err := network.NewCertPool().
 		SetLogger(r.logger).
 		AddFiles(r.args.caFiles...).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to load trusted CA certificates: %w", err)
 	}
+	caPool := certPool.Pool()
 
 	// Create the token source:
 	r.logger.InfoContext(ctx, "Creating token source")

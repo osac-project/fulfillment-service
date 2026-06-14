@@ -284,7 +284,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create the CA pool:
-	c.caPool, err = network.NewCertPool().
+	certPool, err := network.NewCertPool().
 		SetLogger(c.logger).
 		AddSystemFiles(true).
 		AddKubernetesFiles(true).
@@ -293,6 +293,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create CA pool: %w", err)
 	}
+	c.caPool = certPool.Pool()
 
 	// Create an anonymous gRPC client that we will use to fetch the metadata:
 	grpcConn, err := network.NewGrpcClient().
