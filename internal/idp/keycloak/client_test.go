@@ -2000,14 +2000,9 @@ var _ = Describe("Keycloak Client", func() {
 						}
 						return
 					}
-					// Second request: search organization groups
+					// Second request: list organization groups (no search parameter - returns all groups)
 					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
-						// Verify search query is present with the expected path
-						expectedSearch := "search=%2Fweb-app%2Fviewers" // URL-encoded "/web-app/viewers"
-						if !strings.Contains(r.URL.RawQuery, expectedSearch) {
-							w.WriteHeader(http.StatusBadRequest)
-							return
-						}
+						// Return all groups - implementation searches recursively through the list
 						groups := []struct {
 							ID   string `json:"id"`
 							Path string `json:"path"`
@@ -2093,7 +2088,7 @@ var _ = Describe("Keycloak Client", func() {
 				Expect(err.Error()).To(ContainSubstring("organization group not found"))
 			})
 
-			It("should return error when search fails", func() {
+			It("should return error when list fails", func() {
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					// First request: get organization
 					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" {
@@ -2108,7 +2103,7 @@ var _ = Describe("Keycloak Client", func() {
 						}
 						return
 					}
-					// Second request: search fails
+					// Second request: list fails
 					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
 						w.WriteHeader(http.StatusInternalServerError)
 						return
@@ -2120,7 +2115,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/web-app/viewers")
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failed to search organization groups"))
+				Expect(err.Error()).To(ContainSubstring("failed to list organization groups"))
 			})
 		})
 	})

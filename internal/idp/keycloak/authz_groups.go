@@ -208,11 +208,7 @@ type groupNode struct {
 
 // getGroupIDByPathWithOrgID returns the group ID for a path using orgID directly (not organization name).
 // This is used internally when we already have the orgID to avoid an extra lookup.
-// Lists all groups and recursively searches the hierarchy since the search parameter is unreliable
-// for recently-created groups.
 func (c *Client) getGroupIDByPathWithOrgID(ctx context.Context, orgID, groupPath string) (string, error) {
-	// List ALL organization groups (without search parameter)
-	// The search parameter is unreliable for recently-created groups
 	path := fmt.Sprintf("/admin/realms/%s/organizations/%s/groups",
 		url.PathEscape(c.realmName),
 		url.PathEscape(orgID),
@@ -229,27 +225,31 @@ func (c *Client) getGroupIDByPathWithOrgID(ctx context.Context, orgID, groupPath
 		return "", fmt.Errorf("failed to decode organization groups: %w", err)
 	}
 
-	// Recursively search through the hierarchy
-	var findGroupByPath func([]groupNode, string) string
-	findGroupByPath = func(groupList []groupNode, targetPath string) string {
-		for _, group := range groupList {
-			if group.Path == targetPath {
-				return group.ID
-			}
-			// Search in subgroups recursively
-			if id := findGroupByPath(group.SubGroups, targetPath); id != "" {
-				return id
-			}
+	// Search recursively through the group hierarchy
+	for _, group := range groups {
+		if id := searchGroupRecursively(group, groupPath); id != "" {
+			return id, nil
 		}
-		return ""
 	}
 
-	groupID := findGroupByPath(groups, groupPath)
-	if groupID == "" {
-		return "", fmt.Errorf("organization group not found: %s", groupPath)
-	}
+	c.logger.WarnContext(ctx, "Group not found in listed groups",
+		slog.String("target_path", groupPath),
+		slog.Int("total_groups", len(groups)),
+	)
+	return "", fmt.Errorf("organization group not found: %s", groupPath)
+}
 
-	return groupID, nil
+// searchGroupRecursively searches for a group by path in the group hierarchy.
+func searchGroupRecursively(group groupNode, targetPath string) string {
+	if group.Path == targetPath {
+		return group.ID
+	}
+	for _, subGroup := range group.SubGroups {
+		if id := searchGroupRecursively(subGroup, targetPath); id != "" {
+			return id
+		}
+	}
+	return ""
 }
 
 // GetGroupIDByPath gets a Keycloak organization group ID by its path.
@@ -265,34 +265,7 @@ func (c *Client) getGroupIDByPath(ctx context.Context, organizationName, groupPa
 		return "", fmt.Errorf("failed to get organization: %w", err)
 	}
 
-	// Search for organization group by path
-	// Note: Keycloak doesn't have a direct "get by path" API, so we search by name
-	// and verify the path matches
-	path := fmt.Sprintf("/admin/realms/%s/organizations/%s/groups?search=%s",
-		url.PathEscape(c.realmName),
-		url.PathEscape(org.ID),
-		url.QueryEscape(groupPath),
-	)
-
-	response, err := c.httpClient.DoRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to search organization groups: %w", err)
-	}
-	defer response.Body.Close()
-
-	var groups []struct {
-		ID   string `json:"id"`
-		Path string `json:"path"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&groups); err != nil {
-		return "", fmt.Errorf("failed to decode organization groups: %w", err)
-	}
-
-	for _, group := range groups {
-		if group.Path == groupPath {
-			return group.ID, nil
-		}
-	}
-
-	return "", fmt.Errorf("organization group not found: %s", groupPath)
+	// Use getGroupIDByPathWithOrgID which lists all groups instead of using the search parameter.
+	// The search parameter is unreliable for recently-created groups.
+	return c.getGroupIDByPathWithOrgID(ctx, org.ID, groupPath)
 }

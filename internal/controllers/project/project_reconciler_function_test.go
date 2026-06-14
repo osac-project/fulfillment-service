@@ -750,24 +750,14 @@ var _ = Describe("Deletion Cleanup", func() {
 				Size: 0,
 			}, nil)
 
-		// Expect viewers group ID lookup
+		// Expect parent project group ID lookup
 		mockIdpClient.EXPECT().
-			GetGroupIDByPath(gomock.Any(), "acme", "/test-project/viewers").
-			Return("viewers-group-id", nil)
+			GetGroupIDByPath(gomock.Any(), "acme", "/test-project").
+			Return("project-group-id", nil)
 
-		// Expect viewers group deletion
+		// Expect parent project group deletion (cascades to delete viewers and managers subgroups)
 		mockIdpClient.EXPECT().
-			DeleteAuthorizationGroup(gomock.Any(), "acme", "viewers-group-id").
-			Return(nil)
-
-		// Expect managers group ID lookup
-		mockIdpClient.EXPECT().
-			GetGroupIDByPath(gomock.Any(), "acme", "/test-project/managers").
-			Return("managers-group-id", nil)
-
-		// Expect managers group deletion
-		mockIdpClient.EXPECT().
-			DeleteAuthorizationGroup(gomock.Any(), "acme", "managers-group-id").
+			DeleteAuthorizationGroup(gomock.Any(), "acme", "project-group-id").
 			Return(nil)
 
 		task := &task{
@@ -797,14 +787,9 @@ var _ = Describe("Deletion Cleanup", func() {
 				Size: 0,
 			}, nil)
 
-		// Expect viewers group ID lookup to fail
+		// Expect parent project group ID lookup to fail
 		mockIdpClient.EXPECT().
-			GetGroupIDByPath(gomock.Any(), "acme", "/test-project/viewers").
-			Return("", status.Error(codes.NotFound, "group not found"))
-
-		// Expect managers group ID lookup to fail
-		mockIdpClient.EXPECT().
-			GetGroupIDByPath(gomock.Any(), "acme", "/test-project/managers").
+			GetGroupIDByPath(gomock.Any(), "acme", "/test-project").
 			Return("", status.Error(codes.NotFound, "group not found"))
 
 		task := &task{
