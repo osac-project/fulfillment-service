@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"go.uber.org/mock/gomock"
 	grpccodes "google.golang.org/grpc/codes"
@@ -300,6 +301,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 							Path:        "spec.memory_gib",
 							DisplayName: "Memory (GiB)",
 							Editable:    false,
+							Default:     structpb.NewNumberValue(16),
 						}.Build(),
 					},
 				}.Build(),
@@ -519,6 +521,62 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
 			Expect(status.Message()).To(ContainSubstring("first-item"))
+		})
+
+		It("Rejects non-editable field definition without default value", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Bad CI catalog item",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.pull_secret",
+							Editable: false,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("pull_secret"))
+			Expect(status.Message()).To(ContainSubstring("default value"))
+		})
+
+		It("Accepts non-editable field definition with default value", func() {
+			response, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Good CI catalog item",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.pull_secret",
+							Editable: false,
+							Default:  structpb.NewStringValue("my-secret"),
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.GetObject()).ToNot(BeNil())
+		})
+
+		It("Accepts editable field definition without default value", func() {
+			response, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Editable no default",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.pull_secret",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.GetObject()).ToNot(BeNil())
 		})
 
 		It("Allows empty name without conflict", func() {

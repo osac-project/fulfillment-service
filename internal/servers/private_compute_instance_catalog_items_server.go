@@ -139,6 +139,11 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Get(ctx context.Context,
 
 func (s *PrivateComputeInstanceCatalogItemsServer) Create(ctx context.Context,
 	request *privatev1.ComputeInstanceCatalogItemsCreateRequest) (response *privatev1.ComputeInstanceCatalogItemsCreateResponse, err error) {
+	if object := request.GetObject(); object != nil {
+		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
+			return
+		}
+	}
 	err = s.generic.Create(ctx, request, &response)
 	return
 }
