@@ -42,31 +42,14 @@ func (e *ErrAmbiguous) Error() string {
 	return fmt.Sprintf("multiple %ss match %q, use the ID instead", e.Kind, e.Ref)
 }
 
-// NotDeletedFilter is the CEL expression that excludes soft-deleted objects.
-const NotDeletedFilter = "!has(this.metadata.deletion_timestamp)"
-
-// FindOptions configures the behavior of Find.
-type FindOptions struct {
-	IncludeDeleted bool
-}
-
 // Find resolves a name-or-ID reference to exactly one object.
 // It builds the CEL filter "this.id == ref || this.metadata.name == ref", calls list, and returns matching object.
-// When opts.IncludeDeleted is false the filter also excludes soft-deleted objects.
-func Find[T any](ref, kind string, opts FindOptions, list ListFunc[T]) (result T, err error) {
+func Find[T any](ref, kind string, list ListFunc[T]) (result T, err error) {
 	if ref == "" {
 		err = fmt.Errorf("%s name or ID must not be empty", kind)
 		return
 	}
-	var filter string
-	if opts.IncludeDeleted {
-		filter = fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
-	} else {
-		filter = fmt.Sprintf(
-			`%[1]s && (this.id == %[2]q || this.metadata.name == %[2]q)`,
-			NotDeletedFilter, ref,
-		)
-	}
+	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
 	items, err := list(filter, 2)
 	if err != nil {
 		return

@@ -85,7 +85,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	defer conn.Close()
 
 	poolClient := publicv1.NewPublicIPPoolsClient(conn)
-	pool, err := lookup.Find(c.args.pool, "public IP pool", lookup.FindOptions{}, func(filter string, limit int32) ([]*publicv1.PublicIPPool, error) {
+	pool, err := lookup.Find(c.args.pool, "public IP pool", func(filter string, limit int32) ([]*publicv1.PublicIPPool, error) {
 		resp, err := poolClient.List(ctx, publicv1.PublicIPPoolsListRequest_builder{
 			Filter: proto.String(filter),
 			Limit:  proto.Int32(limit),

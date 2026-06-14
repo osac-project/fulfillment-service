@@ -85,7 +85,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	ciClient := publicv1.NewComputeInstancesClient(conn)
 	attachClient := publicv1.NewPublicIPAttachmentsClient(conn)
 
-	pip, err := lookup.Find(c.args.publicIP, "public IP", lookup.FindOptions{}, func(filter string, limit int32) ([]*publicv1.PublicIP, error) {
+	pip, err := lookup.Find(c.args.publicIP, "public IP", func(filter string, limit int32) ([]*publicv1.PublicIP, error) {
 		resp, err := pipClient.List(ctx, publicv1.PublicIPsListRequest_builder{
 			Filter: proto.String(filter),
 			Limit:  proto.Int32(limit),
@@ -99,7 +99,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ci, err := lookup.Find(c.args.computeInstance, "compute instance", lookup.FindOptions{}, func(filter string, limit int32) ([]*publicv1.ComputeInstance, error) {
+	ci, err := lookup.Find(c.args.computeInstance, "compute instance", func(filter string, limit int32) ([]*publicv1.ComputeInstance, error) {
 		resp, err := ciClient.List(ctx, publicv1.ComputeInstancesListRequest_builder{
 			Filter: proto.String(filter),
 			Limit:  proto.Int32(limit),

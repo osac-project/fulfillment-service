@@ -66,12 +66,6 @@ func Cmd() *cobra.Command {
 		outputFormatYaml,
 		outputFlagHelp,
 	)
-	flags.BoolVar(
-		&runner.includeDeleted,
-		"include-deleted",
-		false,
-		"Include soft-deleted objects in resolution.",
-	)
 	return result
 }
 
@@ -79,7 +73,6 @@ type runnerContext struct {
 	logger         *slog.Logger
 	console        *terminal.Console
 	format         string
-	includeDeleted bool
 	conn           *grpc.ClientConn
 	marshalOptions protojson.MarshalOptions
 	helper         *reflection.ObjectHelper
@@ -159,7 +152,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	key := args[1]
 
 	// Find the object by identifier or name:
-	object, err := c.helper.FindObject(ctx, key, c.includeDeleted, c.console)
+	object, err := c.helper.FindObject(ctx, key, c.console)
 	if err != nil {
 		return err
 	}

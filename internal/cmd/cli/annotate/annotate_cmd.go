@@ -129,7 +129,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find the object by identifier or name:
-	object, err := c.helper.FindObject(ctx, ref, false, c.console)
+	object, err := c.helper.FindObject(ctx, ref, c.console)
 	if err != nil {
 		return err
 	}

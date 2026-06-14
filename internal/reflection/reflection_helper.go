@@ -33,7 +33,6 @@ import (
 	// they will be visible only if they are explicitly used in some part of the code.
 	_ "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	_ "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
-	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 )
 
 // Frequently used names:
@@ -602,9 +601,8 @@ func (h *ObjectHelper) Plural() string {
 }
 
 type ListOptions struct {
-	Filter         string
-	Limit          int32
-	IncludeDeleted bool
+	Filter string
+	Limit  int32
 }
 
 type ListResult struct {
@@ -614,13 +612,6 @@ type ListResult struct {
 
 func (h *ObjectHelper) List(ctx context.Context, options ListOptions) (result ListResult, err error) {
 	filter := options.Filter
-	if !options.IncludeDeleted {
-		if filter != "" {
-			filter = fmt.Sprintf("%s && (%s)", lookup.NotDeletedFilter, filter)
-		} else {
-			filter = lookup.NotDeletedFilter
-		}
-	}
 	request := proto.Clone(h.list.request)
 	if filter != "" {
 		request.ProtoReflect().Set(h.list.filter, protoreflect.ValueOfString(filter))

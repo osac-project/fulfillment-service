@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/packages"
@@ -123,5 +124,58 @@ var _ = Describe("Table renderer", func() {
 				"OpenShift Virt VM",
 			),
 		)
+	})
+
+	Describe("DELETING column", func() {
+		renderSubnets := func(items []*publicv1.Subnet) string {
+			server.Start()
+
+			var buf bytes.Buffer
+			renderer, err := NewTableRenderer().
+				SetLogger(logger).
+				SetHelper(helper).
+				SetWriter(&buf).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			err = renderer.Render(ctx, items)
+			Expect(err).ToNot(HaveOccurred())
+			return buf.String()
+		}
+
+		It("always includes the DELETING header", func() {
+			output := renderSubnets([]*publicv1.Subnet{
+				publicv1.Subnet_builder{
+					Id:       "subnet-1",
+					Metadata: publicv1.Metadata_builder{Name: "active-subnet"}.Build(),
+				}.Build(),
+			})
+			Expect(output).To(ContainSubstring("DELETING"))
+		})
+
+		It("shows dash for non-deleting objects", func() {
+			output := renderSubnets([]*publicv1.Subnet{
+				publicv1.Subnet_builder{
+					Id:       "subnet-1",
+					Metadata: publicv1.Metadata_builder{Name: "active-subnet"}.Build(),
+				}.Build(),
+			})
+			Expect(output).To(MatchRegexp(`DELETING.*\n.*-`))
+		})
+
+		It("shows Yes for deleting objects", func() {
+			ts := timestamppb.Now()
+			output := renderSubnets([]*publicv1.Subnet{
+				publicv1.Subnet_builder{
+					Id: "subnet-2",
+					Metadata: publicv1.Metadata_builder{
+						Name:              "deleting-subnet",
+						DeletionTimestamp: ts,
+					}.Build(),
+				}.Build(),
+			})
+			Expect(output).To(ContainSubstring("DELETING"))
+			Expect(output).To(MatchRegexp(`subnet-2\s+Yes\s`))
+		})
 	})
 })

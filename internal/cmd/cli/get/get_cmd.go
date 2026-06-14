@@ -80,12 +80,6 @@ func Cmd() *cobra.Command {
 		"",
 		filterFlagHelp,
 	)
-	flags.BoolVar(
-		&runner.args.includeDeleted,
-		"include-deleted",
-		false,
-		includeDeletedFlagHelp,
-	)
 	flags.BoolVarP(
 		&runner.args.watch,
 		"watch",
@@ -98,10 +92,9 @@ func Cmd() *cobra.Command {
 
 type runnerContext struct {
 	args struct {
-		format         string
-		filter         string
-		includeDeleted bool
-		watch          bool
+		format string
+		filter string
+		watch  bool
 	}
 	ctx            context.Context
 	logger         *slog.Logger
@@ -230,8 +223,6 @@ func (c *runnerContext) list(ctx context.Context, keys []string) (results []prot
 		}
 	}
 
-	options.IncludeDeleted = c.args.includeDeleted
-
 	listResult, err := c.objectHelper.List(ctx, options)
 	if err != nil {
 		return
@@ -252,7 +243,6 @@ func (c *runnerContext) renderTable(ctx context.Context, objects []proto.Message
 		SetLogger(c.logger).
 		SetHelper(c.globalHelper).
 		SetWriter(c.console).
-		SetIncludeDeleted(c.args.includeDeleted).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create table renderer: %w", err)
@@ -375,10 +365,6 @@ _FORMAT_ - Output format. Must be one of {{ bt }}table{{ bt }}, {{ bt }}json{{ b
 const filterFlagHelp = `
 _EXPRESSION_ - CEL expression used for filtering results. The expression is evaluated against each object and only those
 for which it returns true are included in the output.
-`
-
-const includeDeletedFlagHelp = `
-_[BOOLEAN]_ - Include objects that have been marked for deletion but have not yet been fully removed.
 `
 
 const watchFlagHelp = `

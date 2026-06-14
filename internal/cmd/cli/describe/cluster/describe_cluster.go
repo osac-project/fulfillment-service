@@ -40,18 +40,11 @@ func Cmd() *cobra.Command {
 		Args:                  cobra.ExactArgs(1),
 		RunE:                  runner.run,
 	}
-	result.Flags().BoolVar(
-		&runner.includeDeleted,
-		"include-deleted",
-		false,
-		"Include soft-deleted objects in resolution.",
-	)
 	return result
 }
 
 type runnerContext struct {
-	console        *terminal.Console
-	includeDeleted bool
+	console *terminal.Console
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -74,7 +67,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewClustersClient(conn)
 
-	matched, err := lookup.Find(ref, "cluster", lookup.FindOptions{IncludeDeleted: c.includeDeleted}, func(filter string, limit int32) ([]*publicv1.Cluster, error) {
+	matched, err := lookup.Find(ref, "cluster", func(filter string, limit int32) ([]*publicv1.Cluster, error) {
 		resp, err := client.List(ctx, publicv1.ClustersListRequest_builder{
 			Filter: proto.String(filter),
 			Limit:  proto.Int32(limit),

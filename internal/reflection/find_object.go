@@ -35,12 +35,11 @@ type Renderer interface {
 // Expected templates (looked up in the console's registered template set):
 //   - "no_matches.txt"       vars: Object (string), Ref (string)
 //   - "multiple_matches.txt" vars: Matches ([]proto.Message), Object (string), Ref (string), Total (int32)
-func (h *ObjectHelper) FindObject(ctx context.Context, ref string, includeDeleted bool, console Renderer) (result proto.Message, err error) {
+func (h *ObjectHelper) FindObject(ctx context.Context, ref string, console Renderer) (result proto.Message, err error) {
 	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
 	response, err := h.List(ctx, ListOptions{
-		Filter:         filter,
-		Limit:          2,
-		IncludeDeleted: includeDeleted,
+		Filter: filter,
+		Limit:  2,
 	})
 	if err != nil {
 		err = fmt.Errorf(

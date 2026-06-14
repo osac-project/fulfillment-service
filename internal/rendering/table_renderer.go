@@ -79,20 +79,18 @@ type columnLayout struct {
 // TableRendererBuilder is used to create table renderers. Don't create instances of this type directly, use the
 // NewTableRenderer function instead.
 type TableRendererBuilder struct {
-	logger         *slog.Logger
-	helper         *reflection.Helper
-	writer         io.Writer
-	includeDeleted bool
+	logger *slog.Logger
+	helper *reflection.Helper
+	writer io.Writer
 }
 
 // TableRenderer is responsible for rendering protocol buffer messages as tables. Don't create instances of this type
 // directly, use the NewTableRenderer function instead.
 type TableRenderer struct {
-	logger         *slog.Logger
-	helper         *reflection.Helper
-	writer         *tabwriter.Writer
-	cache          map[protoreflect.FullName]map[string]string
-	includeDeleted bool
+	logger *slog.Logger
+	helper *reflection.Helper
+	writer *tabwriter.Writer
+	cache  map[protoreflect.FullName]map[string]string
 }
 
 // NewTableRenderer creates a new builder for table renderers.
@@ -115,12 +113,6 @@ func (b *TableRendererBuilder) SetHelper(value *reflection.Helper) *TableRendere
 // SetWriter sets the writer that the renderer will use to write messages to the console. This is mandatory.
 func (b *TableRendererBuilder) SetWriter(value io.Writer) *TableRendererBuilder {
 	b.writer = value
-	return b
-}
-
-// SetIncludeDeleted sets whether to include the DELETED column in the output.
-func (b *TableRendererBuilder) SetIncludeDeleted(value bool) *TableRendererBuilder {
-	b.includeDeleted = value
 	return b
 }
 
@@ -148,11 +140,10 @@ func (b *TableRendererBuilder) Build() (result *TableRenderer, err error) {
 
 	// Create and populate the object:
 	result = &TableRenderer{
-		logger:         b.logger,
-		helper:         b.helper,
-		writer:         writer,
-		cache:          cache,
-		includeDeleted: b.includeDeleted,
+		logger: b.logger,
+		helper: b.helper,
+		writer: writer,
+		cache:  cache,
 	}
 	return
 }
@@ -194,14 +185,13 @@ func (r *TableRenderer) Render(ctx context.Context, objects any) error {
 		table = r.defaultTable()
 	}
 
-	// If the user has asked to include deleted objects then add the deletion timestamp column:
-	if r.includeDeleted {
-		deletedCol := &columnLayout{
-			Header: "DELETED",
-			Value:  "has(this.metadata.deletion_timestamp)? string(this.metadata.deletion_timestamp): '-'",
-		}
-		table.Columns = slices.Insert(table.Columns, 1, deletedCol)
+	// Always show a DELETING column so users can see objects being torn down.
+	// TODO: remove this column once all resource types have DELETING in their state enum.
+	deletingCol := &columnLayout{
+		Header: "DELETING",
+		Value:  "has(this.metadata.deletion_timestamp)? 'Yes': '-'",
 	}
+	table.Columns = slices.Insert(table.Columns, 1, deletingCol)
 
 	// Get the descriptor for the object type:
 	thisDesc := helper.Descriptor()
