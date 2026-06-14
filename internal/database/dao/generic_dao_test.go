@@ -2225,6 +2225,55 @@ var _ = Describe("Generic DAO", func() {
 				Expect(items[0].GetId()).To(Equal("object_without_label"))
 			})
 
+			It("Filters by enum field", func() {
+				_, err := generic.Create().
+					SetObject(
+						testsv1.Object_builder{
+							Metadata: testsv1.Metadata_builder{
+								Name:   "enum-a",
+								Tenant: "my-tenant",
+							}.Build(),
+							Spec: testsv1.Spec_builder{
+								SpecEnum: testsv1.MyEnum_MY_ENUM_VALUE_A,
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = generic.Create().
+					SetObject(
+						testsv1.Object_builder{
+							Metadata: testsv1.Metadata_builder{
+								Name:   "enum-b",
+								Tenant: "my-tenant",
+							}.Build(),
+							Spec: testsv1.Spec_builder{
+								SpecEnum: testsv1.MyEnum_MY_ENUM_VALUE_B,
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				response, err := generic.List().
+					SetFilter(fmt.Sprintf("this.spec.spec_enum == %d",
+						int32(testsv1.MyEnum_MY_ENUM_VALUE_A))).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				items := response.GetItems()
+				Expect(items).To(HaveLen(1))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("enum-a"))
+
+				response, err = generic.List().
+					SetFilter(fmt.Sprintf("this.spec.spec_enum != %d",
+						int32(testsv1.MyEnum_MY_ENUM_VALUE_A))).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				items = response.GetItems()
+				Expect(items).To(HaveLen(1))
+				Expect(items[0].GetMetadata().GetName()).To(Equal("enum-b"))
+			})
+
 			It("Filters by boolean field", func() {
 				// Create two objects, one with the boolean set to 'true' and one with the boolean set to 'false':
 				_, err := generic.Create().

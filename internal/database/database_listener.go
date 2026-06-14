@@ -265,9 +265,9 @@ func (l *Listener) waitLoop(ctx context.Context) error {
 
 // wait waits for one notification and processes it.
 func (l *Listener) wait(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, l.waitTimeout)
+	waitCtx, cancel := context.WithTimeout(ctx, l.waitTimeout)
 	defer cancel()
-	notification, err := l.conn.WaitForNotification(ctx)
+	notification, err := l.conn.WaitForNotification(waitCtx)
 	if err != nil {
 		return err
 	}

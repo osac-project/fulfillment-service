@@ -17,6 +17,13 @@ package osac.tests.v1;
 
 import "google/protobuf/timestamp.proto";
 
+enum MyEnum {
+  MY_ENUM_UNSPECIFIED = 0;
+  MY_ENUM_VALUE_A = 1;
+  MY_ENUM_VALUE_B = 2;
+  MY_ENUM_VALUE_C = 3;
+}
+
 // This is an object type used in unit tests.
 message Object {
   // Unique identifier of the object.
@@ -77,6 +84,7 @@ message Spec {
   Object spec_msg = 10;
   repeated Object spec_list = 11;
   map<string, Object> spec_map = 12;
+  MyEnum spec_enum = 13;
 }
 
 message Status {
