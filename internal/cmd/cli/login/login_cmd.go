@@ -257,6 +257,12 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load templates: %w", err)
 	}
 
+	// Infer the OAuth flow from other flags when it hasn't been explicitly set:
+	err = c.inferFlow(ctx)
+	if err != nil {
+		return err
+	}
+
 	// The address used to be specified with a command line flag, but now we also take it from the arguments:
 	c.address = c.args.address
 	if c.address == "" {
@@ -539,6 +545,29 @@ func (c *runnerContext) createTokenSource(ctx context.Context, tokenIssuer strin
 	return
 }
 
+// inferFlow infers the OAuth flow from other command line flags when the user hasn't explicitly set the '--flow' flag.
+// If '--client-secret' is provided, the flow is inferred to be 'credentials'. If '--user' or '--password' is provided,
+// the flow is inferred to be 'password'. If both sets of flags are present without an explicit '--flow', an error is
+// returned asking the user to disambiguate.
+func (c *runnerContext) inferFlow(ctx context.Context) error {
+	if c.flags.Changed("flow") || c.flags.Changed("oauth-flow") {
+		return nil
+	}
+	credentialsHint := c.flags.Changed("client-secret") || c.flags.Changed("oauth-client-secret")
+	passwordHint := c.flags.Changed("user") || c.flags.Changed("oauth-user") || c.flags.Changed("password") ||
+		c.flags.Changed("oauth-password")
+	if credentialsHint && passwordHint {
+		c.console.Render(ctx, "ambiguous_flow.txt", nil)
+		return exit.Error(1)
+	}
+	if credentialsHint {
+		c.args.flow = string(oauth.CredentialsFlow)
+	} else if passwordHint {
+		c.args.flow = string(oauth.PasswordFlow)
+	}
+	return nil
+}
+
 type oauthFlowListener struct {
 	runner *runnerContext
 }
@@ -676,6 +705,11 @@ _URL_ - OAuth issuer URL. This is optional; by default, the issuer advertised by
 const flowFlagHelp = `
 _FLOW_ - OAuth flow to use. Must be one of {{ bt }}code{{ bt }}, {{ bt }}device{{ bt }}, {{ bt }}credentials{{ bt }} or
 {{ bt }}password{{ bt }}.
+
+When this flag is omitted, the flow is inferred from other flags. If {{ bt }}--client-secret{{ bt }} is provided, the
+flow is set to {{ bt }}credentials{{ bt }}. If {{ bt }}--user{{ bt }} or {{ bt }}--password{{ bt }} is provided, the
+flow is set to {{ bt }}password{{ bt }}. If both {{ bt }}--client-secret{{ bt }} and {{ bt }}--user{{ bt }} or {{ bt
+}}--password{{ bt }} are provided, the flow cannot be inferred and this flag must be set explicitly.
 `
 
 const clientIdFlagHelp = `
