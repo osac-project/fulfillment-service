@@ -211,7 +211,6 @@ var _ = Describe("Public IP pools server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(getResp.GetObject().GetId()).To(Equal(pool.GetId()))
 			Expect(getResp.GetObject().GetMetadata().GetName()).To(Equal("my-pool"))
-			Expect(getResp.GetObject().GetSpec().GetCidrs()).To(ConsistOf("192.168.1.0/24"))
 			Expect(getResp.GetObject().GetSpec().GetIpFamily()).To(Equal(publicv1.IPFamily_IP_FAMILY_IPV4))
 		})
 

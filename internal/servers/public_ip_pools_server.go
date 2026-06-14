@@ -99,7 +99,7 @@ func (b *PublicIPPoolsServerBuilder) Build() (result *PublicIPPoolsServer, err e
 		return
 	}
 
-	// SetStrict(false): private type has extra fields (spec.implementation_strategy, status.*) not in public type.
+	// SetStrict(false): private type has extra fields (spec.cidrs, spec.implementation_strategy, status.*) not in public type.
 	outMapper, err := NewGenericMapper[*privatev1.PublicIPPool, *publicv1.PublicIPPool]().
 		SetLogger(b.logger).
 		SetStrict(false).

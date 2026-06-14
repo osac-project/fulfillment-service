@@ -39,10 +39,8 @@ message PublicIPPool {
 
 // Defines the configuration of a PublicIPPool.
 message PublicIPPoolSpec {
-  // Field 1 is reserved for future use.
-
-  // CIDR ranges for this pool. Immutable after creation.
-  repeated string cidrs = 2 [(google.api.field_behavior) = IMMUTABLE];
+  // Fields 1–2 are reserved for internal use.
+  reserved 2;
 
   // IP address family for this pool. Immutable after creation.
   IPFamily ip_family = 3 [(google.api.field_behavior) = IMMUTABLE];
