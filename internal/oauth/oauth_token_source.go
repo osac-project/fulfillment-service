@@ -409,7 +409,8 @@ func (b *TokenSourceBuilder) resolveDefaults() (cfg resolvedConfig, err error) {
 	// Set the default CA pool if needed:
 	cfg.caPool = b.caPool
 	if cfg.caPool == nil {
-		cfg.caPool, err = network.NewCertPool().
+		var certPool *network.CertPool
+		certPool, err = network.NewCertPool().
 			SetLogger(b.logger).
 			AddSystemFiles(true).
 			AddKubernetesFiles(true).
@@ -418,6 +419,7 @@ func (b *TokenSourceBuilder) resolveDefaults() (cfg resolvedConfig, err error) {
 			err = fmt.Errorf("failed to build CA pool: %w", err)
 			return
 		}
+		cfg.caPool = certPool.Pool()
 	}
 
 	// Create HTTP client with optional insecure TLS configuration:

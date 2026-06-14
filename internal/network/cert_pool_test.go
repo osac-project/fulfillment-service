@@ -241,6 +241,131 @@ var _ = Describe("Certificate pool", func() {
 			Expect(err.Error()).To(ContainSubstring("doesn't contain any CA certificate"))
 			Expect(pool).To(BeNil())
 		})
+
+		It("Can be created with a single certificate from bytes", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(caPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with a single certificate from a string", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(string(caPem)).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with a single certificate from X.509 object", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(myCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with multiple certificates from bytes", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+			myPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			yourPem, err := os.ReadFile(yourCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificates(myPem, yourPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with multiple certificates from strings", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+			myPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			yourPem, err := os.ReadFile(yourCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificates(string(myPem), string(yourPem)).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with multiple certificates from X.509 objects", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificates(myCerts.caCert, yourCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Fails with invalid byte content", func() {
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate([]byte("junk")).
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to add certificate"))
+			Expect(pool).To(BeNil())
+		})
+
+		It("Fails with invalid string content", func() {
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate("not a valid certificate").
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to add certificate"))
+			Expect(pool).To(BeNil())
+		})
+
+		It("Fails with unsupported type", func() {
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(12345).
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(
+				"invalid certificate type 'int', should be 'string', '[]byte' or '*x509.Certificate'",
+			))
+			Expect(pool).To(BeNil())
+		})
 	})
 
 	Describe("Behavior", func() {
@@ -259,7 +384,7 @@ var _ = Describe("Certificate pool", func() {
 
 			// Verify the TLS certificate using the pool:
 			opts := x509.VerifyOptions{
-				Roots: pool,
+				Roots: pool.Pool(),
 			}
 			chains, err := myCerts.tlsCert.Verify(opts)
 			Expect(err).ToNot(HaveOccurred())
@@ -282,7 +407,7 @@ var _ = Describe("Certificate pool", func() {
 
 			// Verify both TLS certificates using the pool:
 			opts := x509.VerifyOptions{
-				Roots: pool,
+				Roots: pool.Pool(),
 			}
 			_, err = myCerts.tlsCert.Verify(opts)
 			Expect(err).ToNot(HaveOccurred())
@@ -329,7 +454,7 @@ var _ = Describe("Certificate pool", func() {
 
 			// Verify both TLS certificates using the pool:
 			opts := x509.VerifyOptions{
-				Roots: pool,
+				Roots: pool.Pool(),
 			}
 			_, err = myCerts.tlsCert.Verify(opts)
 			Expect(err).ToNot(HaveOccurred())
@@ -372,7 +497,7 @@ var _ = Describe("Certificate pool", func() {
 
 			// Verify the first TLS certificate (should succeed - CA was loaded):
 			opts := x509.VerifyOptions{
-				Roots: pool,
+				Roots: pool.Pool(),
 			}
 			_, err = myCerts.tlsCert.Verify(opts)
 			Expect(err).ToNot(HaveOccurred())
@@ -410,7 +535,7 @@ var _ = Describe("Certificate pool", func() {
 
 			// Verify the TLS certificate using the pool:
 			opts := x509.VerifyOptions{
-				Roots: pool,
+				Roots: pool.Pool(),
 			}
 			_, err = kubeCerts.tlsCert.Verify(opts)
 			Expect(err).ToNot(HaveOccurred())
@@ -443,9 +568,157 @@ var _ = Describe("Certificate pool", func() {
 
 			// Verify the TLS certificate using the pool:
 			opts := x509.VerifyOptions{
-				Roots: pool,
+				Roots: pool.Pool(),
 			}
 			_, err = serviceCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Can verify certificates loaded from a byte slice", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificate(caPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificate using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool.Pool(),
+			}
+			chains, err := myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(chains).ToNot(BeEmpty())
+		})
+
+		It("Can verify certificates loaded from a string", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificate(string(caPem)).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificate using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool.Pool(),
+			}
+			chains, err := myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(chains).ToNot(BeEmpty())
+		})
+
+		It("Can verify certificates loaded from an X.509 object", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificate(myCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificate using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool.Pool(),
+			}
+			chains, err := myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(chains).ToNot(BeEmpty())
+		})
+
+		It("Can verify certificates from multiple CAs loaded from byte slices", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+			myPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			yourPem, err := os.ReadFile(yourCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificates(myPem, yourPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificates using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool.Pool(),
+			}
+			_, err = myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = yourCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Can verify certificates from multiple CAs loaded from X.509 objects", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificates(myCerts.caCert, yourCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificates using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool.Pool(),
+			}
+			_, err = myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = yourCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Can mix byte slices and X.509 objects in the same pool", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+			myPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificates(myPem, yourCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificates using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool.Pool(),
+			}
+			_, err = myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = yourCerts.tlsCert.Verify(opts)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -462,7 +735,7 @@ var _ = Describe("Certificate pool", func() {
 			client := http.Client{
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{
-						RootCAs: pool,
+						RootCAs: pool.Pool(),
 					},
 				},
 			}
@@ -472,6 +745,108 @@ var _ = Describe("Certificate pool", func() {
 			Expect(err).To(HaveOccurred())
 			message := err.Error()
 			Expect(message).To(ContainSubstring("certificate signed by unknown authority"))
+		})
+
+		It("Returns empty list when no files are loaded", func() {
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool.Files()).To(BeEmpty())
+		})
+
+		It("Returns the path of a single loaded file", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddFile(myCerts.caCertFile).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool.Files()).To(ConsistOf(myCerts.caCertFile))
+		})
+
+		It("Returns the paths of multiple loaded files", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddFiles(myCerts.caCertFile, yourCerts.caCertFile).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool.Files()).To(ConsistOf(myCerts.caCertFile, yourCerts.caCertFile))
+		})
+
+		It("Returns files loaded from a directory", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+
+			// Create a directory containing the certificate files:
+			certDir := filepath.Join(tmpDir, "files-dir")
+			err := os.MkdirAll(certDir, 0755)
+			Expect(err).ToNot(HaveOccurred())
+			myData, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			myFile := filepath.Join(certDir, "my.pem")
+			err = os.WriteFile(myFile, myData, 0600)
+			Expect(err).ToNot(HaveOccurred())
+			yourData, err := os.ReadFile(yourCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			yourFile := filepath.Join(certDir, "your.pem")
+			err = os.WriteFile(yourFile, yourData, 0600)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddFile(certDir).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool.Files()).To(ConsistOf(myFile, yourFile))
+		})
+
+		It("Returns absolute paths even when files are added with relative paths", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+
+			// Compute a relative path to the certificate file from the current working directory:
+			workDir, err := os.Getwd()
+			Expect(err).ToNot(HaveOccurred())
+			relPath, err := filepath.Rel(workDir, myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(filepath.IsAbs(relPath)).To(BeFalse())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddFile(relPath).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			for _, file := range pool.Files() {
+				Expect(filepath.IsAbs(file)).To(BeTrue())
+			}
+		})
+
+		It("Does not include files added as inline certificates", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(caPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool.Files()).To(BeEmpty())
 		})
 	})
 })

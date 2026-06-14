@@ -76,13 +76,14 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	c.flags = cmd.Flags()
 
 	// Load the trusted CA certificates:
-	caPool, err := network.NewCertPool().
+	certPool, err := network.NewCertPool().
 		SetLogger(c.logger).
 		AddFiles(c.args.caFiles...).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to load trusted CA certificates: %w", err)
 	}
+	caPool := certPool.Pool()
 
 	// Calculate the user agent:
 	userAgent := fmt.Sprintf("%s/%s", userAgent, version.Get())

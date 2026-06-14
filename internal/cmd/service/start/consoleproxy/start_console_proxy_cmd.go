@@ -119,7 +119,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	}
 
 	// Load the trusted CA certificates:
-	caPool, err := network.NewCertPool().
+	certPool, err := network.NewCertPool().
 		SetLogger(c.logger).
 		AddSystemFiles(true).
 		AddFiles(c.args.caFiles...).
@@ -127,6 +127,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load trusted CA certificates: %w", err)
 	}
+	caPool := certPool.Pool()
 
 	// Validate required token flags:
 	if c.args.tokenIssuer == "" {

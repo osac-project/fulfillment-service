@@ -284,7 +284,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create the CA pool:
-	c.caPool, err = network.NewCertPool().
+	certPool, err := network.NewCertPool().
 		SetLogger(c.logger).
 		AddSystemFiles(true).
 		AddKubernetesFiles(true).
@@ -293,6 +293,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create CA pool: %w", err)
 	}
+	c.caPool = certPool.Pool()
 
 	// Create an anonymous gRPC client that we will use to fetch the metadata:
 	grpcConn, err := network.NewGrpcClient().
@@ -362,24 +363,18 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	cfg.SetAddress(c.address)
 	cfg.SetPrivate(c.args.private)
 
-	// For CA files that are absolute we need to store only the path, but for those that are relative we need to
-	// save the content because otherwise we will not be able to use them when the command is executed from a
-	// different directory.
-	for _, caFile := range c.args.caFiles {
-		if filepath.IsAbs(caFile) {
-			cfg.AddCaFile(config.CaFile{
-				Name: caFile,
-			})
-		} else {
-			caContent, err := os.ReadFile(filepath.Clean(caFile))
-			if err != nil {
-				return fmt.Errorf("failed to read CA file '%s': %w", caFile, err)
-			}
-			cfg.AddCaFile(config.CaFile{
-				Name:    caFile,
-				Content: string(caContent),
-			})
+	// Always store both the absolute path and the content of the CA files. The absolute path allows the certificate
+	// to be reloaded from disk when it is still accessible (e.g. after rotation), and the stored content provides a
+	// fallback when the file is no longer available.
+	for _, caPath := range certPool.Files() {
+		caContent, err := os.ReadFile(filepath.Clean(caPath))
+		if err != nil {
+			return fmt.Errorf("failed to read CA file '%s': %w", caPath, err)
 		}
+		cfg.AddCaFile(config.CaFile{
+			Name:    caPath,
+			Content: string(caContent),
+		})
 	}
 
 	// Save the authenticatoin configuration. Note that the OAuth settings are only saved when they are actually

@@ -107,14 +107,17 @@ func (b *DiscoveryToolBuilder) Build() (result *DiscoveryTool, err error) {
 	// Set the default CA pool if needed:
 	caPool := b.caPool
 	if caPool == nil {
-		caPool, err = network.NewCertPool().
+		var certPool *network.CertPool
+		certPool, err = network.NewCertPool().
 			SetLogger(b.logger).
 			AddSystemFiles(true).
 			AddKubernetesFiles(true).
 			Build()
 		if err != nil {
-			return nil, fmt.Errorf("failed to build CA pool: %w", err)
+			err = fmt.Errorf("failed to build CA pool: %w", err)
+			return
 		}
+		caPool = certPool.Pool()
 	}
 
 	// Create the HTTP client:

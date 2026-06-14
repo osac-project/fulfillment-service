@@ -174,13 +174,14 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 
 	// Load the trusted CA certificates:
-	caPool, err := network.NewCertPool().
+	certPool, err := network.NewCertPool().
 		SetLogger(c.logger).
 		AddFiles(c.args.caFiles...).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to load trusted CA certificates: %w", err)
 	}
+	caPool := certPool.Pool()
 
 	// Wait till the database is available:
 	dbTool, err := database.NewTool().

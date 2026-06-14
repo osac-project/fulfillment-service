@@ -682,13 +682,14 @@ func (t *Tool) loadCaBundle(ctx context.Context) error {
 	}
 
 	// Create the CA pool:
-	t.caPool, err = network.NewCertPool().
+	certPool, err := network.NewCertPool().
 		SetLogger(t.logger).
 		AddFiles(caFiles...).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create CA pool: %w", err)
 	}
+	t.caPool = certPool.Pool()
 	return nil
 }
 

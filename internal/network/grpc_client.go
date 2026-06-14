@@ -288,7 +288,8 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 	// Set the default CA pool:
 	caPool := b.caPool
 	if caPool == nil {
-		caPool, err = NewCertPool().
+		var certPool *CertPool
+		certPool, err = NewCertPool().
 			SetLogger(b.logger).
 			AddSystemFiles(true).
 			AddKubernetesFiles(true).
@@ -297,6 +298,7 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 			err = fmt.Errorf("failed to build CA pool: %w", err)
 			return
 		}
+		caPool = certPool.Pool()
 	}
 
 	// Set the TLS options:
