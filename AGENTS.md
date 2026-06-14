@@ -138,6 +138,24 @@ Uses `pgx/v5` with a generic DAO pattern:
 - CEL filter expressions translated to SQL WHERE clauses via `FilterTranslator`
 - Migrations in `internal/database/migrations/` (numbered `*.up.sql` files)
 
+### Introducing New Object Types
+
+When a migration needs to introduce a new kind of object, use the `create_object_schema` stored
+procedure instead of writing the boilerplate DDL by hand. The procedure receives the plural table
+name and creates the object table with all standard DAO columns, the corresponding archive table,
+the standard indexes on `name`, `creator`, `tenant`, and `labels`, and the tenant foreign key
+constraint referencing the `organizations` table. For example:
+
+```sql
+call create_object_schema('widgets');
+```
+
+This single call is equivalent to manually creating the `widgets` and `archived_widgets` tables, the
+four indexes (`widgets_by_name`, `widgets_by_creator`, `widgets_by_tenant`, `widgets_by_label`), and
+the `widgets_tenant_fk` foreign key. Any resource-specific extras such as additional indexes,
+immutability triggers, or materialized helper tables should be added in the same migration after the
+procedure call.
+
 ### Enforcing Cross-Object Constraints
 
 Because objects are stored as JSON-serialized protobuf in a single `data` column, the database
