@@ -21,6 +21,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/muesli/cancelreader"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/console/connect"
 	"github.com/osac-project/fulfillment-service/internal/config"
@@ -148,20 +149,25 @@ func (c *runnerContext) proxyIO(ctx context.Context, cancel context.CancelFunc, 
 		}()
 	}
 
+	stdinReader, err := cancelreader.NewReader(os.Stdin)
+	if err != nil {
+		return fmt.Errorf("failed to create cancelable stdin reader: %w", err)
+	}
+	defer func() {
+		if err := stdinReader.Close(); err != nil {
+			c.logger.DebugContext(ctx, "Failed to close stdin reader", "error", err)
+		}
+	}()
+
 	escape := newEscapeDetector()
 	return connect.Proxy(ctx, cancel, stream, connect.ProxyOptions{
-		Reader: os.Stdin,
+		Reader: stdinReader,
 		Writer: os.Stdout,
 		InterruptRead: func() func() {
-			// Should never happen: stdin is a TTY, which supports deadlines.
-			if err := os.Stdin.SetReadDeadline(time.Now()); err != nil {
-				slog.Debug("SetReadDeadline failed", "error", err)
+			if !stdinReader.Cancel() {
+				c.logger.WarnContext(ctx, "Failed to cancel stdin reader, proxy cleanup may block")
 			}
-			return func() {
-				if err := os.Stdin.SetReadDeadline(time.Time{}); err != nil {
-					slog.Debug("SetReadDeadline reset failed", "error", err)
-				}
-			}
+			return func() {}
 		},
 		InputFilter: func(data []byte) bool {
 			if escape.feed(data) {

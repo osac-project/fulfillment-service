@@ -14,9 +14,12 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
+	"github.com/coder/websocket"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -77,61 +80,6 @@ var _ = Describe("extractTicket", func() {
 	})
 })
 
-var _ = Describe("checkOrigin", func() {
-	var handler *ConsoleProxyWSHandler
-
-	It("should accept any non-empty origin with wildcard", func() {
-		handler = &ConsoleProxyWSHandler{allowedOrigins: []string{"*"}}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Origin", "https://evil.com")
-		Expect(handler.checkOrigin(req)).To(BeTrue())
-	})
-
-	It("should accept exact match", func() {
-		handler = &ConsoleProxyWSHandler{allowedOrigins: []string{"https://console.example.com"}}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Origin", "https://console.example.com")
-		Expect(handler.checkOrigin(req)).To(BeTrue())
-	})
-
-	It("should reject non-matching origin", func() {
-		handler = &ConsoleProxyWSHandler{allowedOrigins: []string{"https://console.example.com"}}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Origin", "https://evil.com")
-		Expect(handler.checkOrigin(req)).To(BeFalse())
-	})
-
-	It("should reject empty origin even with wildcard", func() {
-		handler = &ConsoleProxyWSHandler{allowedOrigins: []string{"*"}}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		Expect(handler.checkOrigin(req)).To(BeFalse())
-	})
-
-	It("should match case-insensitively", func() {
-		handler = &ConsoleProxyWSHandler{allowedOrigins: []string{"https://Console.Example.COM"}}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Origin", "https://console.example.com")
-		Expect(handler.checkOrigin(req)).To(BeTrue())
-	})
-
-	It("should check multiple allowed origins", func() {
-		handler = &ConsoleProxyWSHandler{allowedOrigins: []string{
-			"https://a.example.com",
-			"https://b.example.com",
-		}}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Origin", "https://b.example.com")
-		Expect(handler.checkOrigin(req)).To(BeTrue())
-	})
-
-	It("should reject all origins when allowed list is empty", func() {
-		handler = &ConsoleProxyWSHandler{allowedOrigins: []string{}}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Origin", "https://any.com")
-		Expect(handler.checkOrigin(req)).To(BeFalse())
-	})
-})
-
 var _ = Describe("ServeHTTP Origin enforcement", func() {
 	It("should return 403 for cookie auth without Origin header", func() {
 		handler := &ConsoleProxyWSHandler{
@@ -146,39 +94,7 @@ var _ = Describe("ServeHTTP Origin enforcement", func() {
 		Expect(w.Body.String()).To(ContainSubstring("origin not allowed"))
 	})
 
-	It("should return 403 for cookie auth with disallowed Origin", func() {
-		handler := &ConsoleProxyWSHandler{
-			core:           &ConsoleProxyCore{logger: logger},
-			allowedOrigins: []string{"https://good.com"},
-		}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.AddCookie(&http.Cookie{Name: "console-ticket", Value: "some-jwt"})
-		req.Header.Set("Origin", "https://evil.com")
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-		Expect(w.Code).To(Equal(http.StatusForbidden))
-	})
-
-	It("should skip Origin check for Bearer auth", func() {
-		handler := &ConsoleProxyWSHandler{
-			core:           &ConsoleProxyCore{logger: logger},
-			allowedOrigins: []string{"https://good.com"},
-		}
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Authorization", "Bearer some-token")
-		req.Header.Set("Origin", "https://evil.com")
-		w := httptest.NewRecorder()
-		// Handler will panic at Opener.Open (nil) after passing Origin.
-		// Recover so we can inspect the recorder -- a panic proves we got
-		// past Origin validation without writing 403.
-		func() {
-			defer func() { recover() }()
-			handler.ServeHTTP(w, req)
-		}()
-		Expect(w.Code).NotTo(Equal(http.StatusForbidden))
-	})
-
-	It("should pass cookie auth with allowed Origin to ticket verification", func() {
+	It("should pass cookie auth with Origin to ticket verification", func() {
 		handler := &ConsoleProxyWSHandler{
 			core:           &ConsoleProxyCore{logger: logger},
 			allowedOrigins: []string{"https://good.com"},
@@ -187,37 +103,54 @@ var _ = Describe("ServeHTTP Origin enforcement", func() {
 		req.AddCookie(&http.Cookie{Name: "console-ticket", Value: "some-jwt"})
 		req.Header.Set("Origin", "https://good.com")
 		w := httptest.NewRecorder()
-		// Origin passes; handler panics at nil Opener -- not a 403.
+		// Origin is present so the pre-check passes; handler panics at
+		// nil Opener -- not a 403. Origin pattern matching happens later
+		// inside websocket.Accept.
 		func() {
 			defer func() { recover() }()
 			handler.ServeHTTP(w, req)
 		}()
 		Expect(w.Code).NotTo(Equal(http.StatusForbidden))
 	})
-})
 
-var _ = Describe("handoffConn", func() {
-	It("should close connection if not taken", func() {
-		conn := newMockConn("")
-		h := newHandoffConn(conn)
+	It("should reject cookie auth with disallowed Origin during upgrade", func() {
+		// This test exercises the library's OriginPatterns rejection inside
+		// websocket.Accept. It requires a real HTTP server (not httptest.NewRecorder)
+		// because Accept needs a hijackable connection.
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Simulate the handler's origin pre-check: Origin is present, so
+			// the empty-Origin guard passes. Accept should reject the mismatch.
+			// Accept writes the HTTP error response itself, so we just return.
+			_, _ = websocket.Accept(w, r, &websocket.AcceptOptions{
+				OriginPatterns: []string{"https://good.com"},
+			})
+		})
+		srv := httptest.NewServer(handler)
+		defer srv.Close()
 
-		h.CloseIfNotTaken()
-		Expect(conn.closed).To(BeTrue())
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _, err := websocket.Dial(ctx, "ws"+srv.URL[len("http"):], &websocket.DialOptions{
+			HTTPHeader: http.Header{"Origin": []string{"https://evil.com"}},
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("403"))
 	})
 
-	It("should not close connection after Take", func() {
-		conn := newMockConn("")
-		h := newHandoffConn(conn)
-
-		taken := h.Take()
-		Expect(taken).NotTo(BeNil())
-
-		h.CloseIfNotTaken()
-		Expect(conn.closed).To(BeFalse())
-	})
-
-	It("should be safe to call CloseIfNotTaken with nil conn", func() {
-		h := &handoffConn{}
-		Expect(func() { h.CloseIfNotTaken() }).NotTo(Panic())
+	It("should skip empty-Origin check for Bearer auth", func() {
+		handler := &ConsoleProxyWSHandler{
+			core:           &ConsoleProxyCore{logger: logger},
+			allowedOrigins: []string{"https://good.com"},
+		}
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer some-token")
+		w := httptest.NewRecorder()
+		// Bearer auth with no Origin -- the pre-check only fires for cookie
+		// auth, so this proceeds to ticket verification (panic at nil Opener).
+		func() {
+			defer func() { recover() }()
+			handler.ServeHTTP(w, req)
+		}()
+		Expect(w.Code).NotTo(Equal(http.StatusForbidden))
 	})
 })

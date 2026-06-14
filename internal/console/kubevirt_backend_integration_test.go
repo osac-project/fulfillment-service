@@ -15,11 +15,14 @@ package console
 
 import (
 	"context"
+	"fmt"
+	"net"
+	"net/http"
 	"time"
 
+	"github.com/coder/websocket"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"golang.org/x/net/websocket"
 )
 
 var _ = Describe("KubeVirt Backend Integration", func() {
@@ -80,11 +83,10 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 
 	It("should handle server-side connection close gracefully", func() {
 		// Create a mock WS server that sends banner then closes the WebSocket.
-		closeServer, err := newMockWSServerWithHandler(func(ws *websocket.Conn) {
-			ws.PayloadType = websocket.BinaryFrame
-			ws.Write([]byte("goodbye\r\n"))
+		closeServer, err := newMockWSServerWithHandler(func(ctx context.Context, conn *websocket.Conn) {
+			conn.Write(ctx, websocket.MessageBinary, []byte("goodbye\r\n"))
 			// Close the WebSocket connection immediately after banner.
-			ws.Close()
+			conn.Close(websocket.StatusNormalClosure, "")
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(closeServer.Close)
@@ -149,14 +151,9 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 
 	It("should send bearer token in Authorization header to the server", func() {
 		receivedAuth := make(chan string, 1)
-		authServer, err := newMockWSServerWithHandler(func(ws *websocket.Conn) {
-			receivedAuth <- ws.Request().Header.Get("Authorization")
-			ws.PayloadType = websocket.BinaryFrame
-			ws.Write([]byte("authenticated\r\n"))
-			ws.Close()
-		})
+		authListener, err := newMockWSServerWithAuthCapture(receivedAuth)
 		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(authServer.Close)
+		DeferCleanup(authListener.Close)
 
 		backend, err := NewKubeVirtBackend().
 			SetLogger(logger).
@@ -167,7 +164,7 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		defer cancel()
 
 		conn, err := backend.Connect(ctx, Target{
-			BackendURI:   "ws://" + authServer.Addr() + "/apis/console.osac.openshift.io/v1alpha1/namespaces/test-ns/computeinstances/test-vm/console",
+			BackendURI:   "ws://" + authListener.Addr() + "/apis/console.osac.openshift.io/v1alpha1/namespaces/test-ns/computeinstances/test-vm/console",
 			BackendToken: "test-token-123",
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -180,3 +177,34 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		Expect(receivedAuth).To(Receive(Equal("Bearer test-token-123")))
 	})
 })
+
+// newMockWSServerWithAuthCapture creates a mock WS server that captures the
+// Authorization header from the HTTP upgrade request into a channel.
+func newMockWSServerWithAuthCapture(authCh chan<- string) (*mockWSServer, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen: %w", err)
+	}
+
+	m := &mockWSServer{listener: listener}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/apis/console.osac.openshift.io/v1alpha1/namespaces/", func(w http.ResponseWriter, r *http.Request) {
+		authCh <- r.Header.Get("Authorization")
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		conn.SetReadLimit(-1)
+		conn.Write(r.Context(), websocket.MessageBinary, []byte("authenticated\r\n"))
+		conn.Close(websocket.StatusNormalClosure, "")
+	})
+
+	m.server = &http.Server{Handler: mux}
+	go m.server.Serve(listener)
+
+	return m, nil
+}

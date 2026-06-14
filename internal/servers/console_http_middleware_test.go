@@ -14,15 +14,16 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/coder/websocket"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"golang.org/x/net/websocket"
 
 	osactesting "github.com/osac-project/fulfillment-service/internal/testing"
 )
@@ -58,8 +59,9 @@ var _ = Describe("ConsoleMetrics middleware", func() {
 			Expect(metrics).NotTo(osactesting.MatchLine(`console_websocket_connection_duration_seconds_count`))
 		})
 
-		It("should count hijacked connection as success", func() {
+		It("should count 101 Switching Protocols as success", func() {
 			handler := ConsoleMetrics(metricsServer.Registry(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusSwitchingProtocols)
 				conn, _, err := w.(http.Hijacker).Hijack()
 				Expect(err).NotTo(HaveOccurred())
 				conn.Close()
@@ -85,6 +87,7 @@ var _ = Describe("ConsoleMetrics middleware", func() {
 					http.Error(w, "unauthorized", http.StatusUnauthorized)
 					return
 				}
+				w.WriteHeader(http.StatusSwitchingProtocols)
 				conn, _, err := w.(http.Hijacker).Hijack()
 				Expect(err).NotTo(HaveOccurred())
 				conn.Close()
@@ -159,6 +162,7 @@ var _ = Describe("ConsoleMetrics middleware", func() {
 		It("should use the type set by the inner handler", func() {
 			handler := ConsoleMetrics(metricsServer.Registry(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				setConsoleType(r.Context(), "vnc")
+				w.WriteHeader(http.StatusSwitchingProtocols)
 				conn, _, err := w.(http.Hijacker).Hijack()
 				Expect(err).NotTo(HaveOccurred())
 				conn.Close()
@@ -212,10 +216,14 @@ var _ = Describe("ConsoleMetrics middleware", func() {
 	})
 
 	Describe("real WebSocket upgrade", func() {
-		It("should detect x/net/websocket hijack as success", func() {
-			wsHandler := websocket.Handler(func(ws *websocket.Conn) {
-				setConsoleType(ws.Request().Context(), "serial")
-				ws.Close()
+		It("should detect coder/websocket upgrade as success", func() {
+			wsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				setConsoleType(r.Context(), "serial")
+				ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+					InsecureSkipVerify: true,
+				})
+				Expect(err).NotTo(HaveOccurred())
+				ws.CloseNow()
 			})
 			handler := ConsoleMetrics(metricsServer.Registry(), wsHandler)
 
@@ -223,9 +231,11 @@ var _ = Describe("ConsoleMetrics middleware", func() {
 			defer srv.Close()
 
 			wsURL := "ws" + srv.URL[len("http"):]
-			ws, err := websocket.Dial(wsURL, "", srv.URL)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			ws, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			ws.Close()
+			ws.CloseNow()
 
 			Eventually(func() []string {
 				return metricsServer.Metrics()

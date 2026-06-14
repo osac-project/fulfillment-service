@@ -28,7 +28,6 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/pflag"
-	"golang.org/x/net/http2"
 
 	"github.com/osac-project/fulfillment-service/internal/testing"
 )
@@ -421,10 +420,11 @@ var _ = Describe("Listener", func() {
 			ok := cas.AppendCertsFromPEM(crtPEM)
 			Expect(ok).To(BeTrue())
 			client := http.Client{
-				Transport: &http2.Transport{
+				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{
 						RootCAs: cas,
 					},
+					ForceAttemptHTTP2: true,
 				},
 			}
 			response, err := client.Get("https://" + listener.Addr().String())
