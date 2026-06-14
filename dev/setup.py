@@ -74,8 +74,9 @@ def install_golangci_lint() -> None:
 
     # Extract the checksum of the artifact from the downloaded checksums:
     artifact_name = f"golangci-lint-{tool.version}-{os_name}-{arch_name}.tar.gz"
+    artifact_pattern = re.escape(artifact_name)
     artifact_match = re.search(
-        pattern=fr'^(?P<checksum>[0-9a-fA-F]+)\s+{artifact_name}$',
+        pattern=fr'^(?P<checksum>[0-9a-fA-F]+)\s+{artifact_pattern}$',
         string=checksums_content.decode("utf-8"),
         flags=re.MULTILINE,
     )
@@ -165,3 +166,4 @@ def is_installed(tool: tools.Tool) -> bool:
             f"instead of '{tool.version}'"
         )
         return False
+    return False
