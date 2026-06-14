@@ -24,7 +24,7 @@ import (
 
 func main() {
 	err := run()
-	exitErr, ok := errors.AsType[*exit.Error](err)
+	exitErr, ok := errors.AsType[exit.Error](err)
 	if ok {
 		os.Exit(exitErr.Code())
 	}
