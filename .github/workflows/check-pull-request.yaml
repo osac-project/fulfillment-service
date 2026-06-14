@@ -43,7 +43,7 @@ jobs:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
       with:
         persist-credentials: false
-    - uses: ./.github/actions/setup-python
+    - uses: ./.github/actions/setup-dev
     - run: uv run ruff check
 
   check-go-code:
@@ -53,11 +53,8 @@ jobs:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
       with:
         persist-credentials: false
-    - uses: ./.github/actions/setup-go
-    - uses: ./.github/actions/setup-python
-    - run: |
-        uv run dev.py setup
-        uv run dev.py lint
+    - uses: ./.github/actions/setup-dev
+    - run: uv run dev.py lint
 
   check-generated-code:
     name: Check generated code
@@ -81,9 +78,8 @@ jobs:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
       with:
         persist-credentials: false
-    - uses: ./.github/actions/setup-go
-    - run: |
-        ginkgo run --timeout 1h -r internal
+    - uses: ./.github/actions/setup-dev
+    - run: ginkgo run --timeout 1h -r internal
 
   build-binaries:
     name: Build binaries
@@ -92,7 +88,7 @@ jobs:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
       with:
         persist-credentials: false
-    - uses: ./.github/actions/setup-go
+    - uses: ./.github/actions/setup-dev
     - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89  # v7
       with:
         args: build --snapshot --clean
@@ -104,7 +100,7 @@ jobs:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
       with:
         persist-credentials: false
-    - uses: ./.github/actions/setup-go
+    - uses: ./.github/actions/setup-dev
     - run: |
         echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
         echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
@@ -124,7 +120,7 @@ jobs:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
       with:
         persist-credentials: false
-    - uses: ./.github/actions/setup-go
+    - uses: ./.github/actions/setup-dev
     - run: |
         echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
         echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
