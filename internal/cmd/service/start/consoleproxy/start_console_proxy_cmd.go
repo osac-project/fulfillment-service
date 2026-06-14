@@ -122,6 +122,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	caPool, err := network.NewCertPool().
 		SetLogger(c.logger).
 		AddSystemFiles(true).
+		AddKubernetesFiles(true).
 		AddFiles(c.args.caFiles...).
 		Build()
 	if err != nil {

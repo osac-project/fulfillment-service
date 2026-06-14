@@ -17,7 +17,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
-	"fmt"
 	"math/big"
 	"time"
 
@@ -63,8 +62,9 @@ func MakeClaims() jwt.MapClaims {
 // MakeTokenString generates a token issued by the default OpenID server and with the given type and with the given
 // life. If the life is zero the token will never expire. If the life is positive the token will be valid, and expire
 // after that time. If the life is negative the token will be already expired that time ago.
-func MakeTokenString(typ string, life time.Duration) string {
+func MakeTokenString(iss, typ string, life time.Duration) string {
 	claims := jwt.MapClaims{}
+	claims["iss"] = iss
 	claims["typ"] = typ
 	if life != 0 {
 		claims["exp"] = time.Now().Add(life).Unix()
@@ -74,22 +74,26 @@ func MakeTokenString(typ string, life time.Duration) string {
 }
 
 // DefaultJWKS generates the JSON web key set used for tests.
-func DefaultJWKS() []byte {
+func MakeJwksObject() any {
 	bigE := big.NewInt(int64(jwtPublicKey.E))
 	bigN := jwtPublicKey.N
-	return []byte(fmt.Sprintf(
-		`{
-			"keys": [{
+	return map[string]any{
+		"keys": []any{
+			map[string]any{
 				"kid": "123",
 				"kty": "RSA",
 				"alg": "RS256",
-				"e": "%s",
-				"n": "%s"
-			}]
-		}`,
-		base64.RawURLEncoding.EncodeToString(bigE.Bytes()),
-		base64.RawURLEncoding.EncodeToString(bigN.Bytes()),
-	))
+				"e":   base64.RawURLEncoding.EncodeToString(bigE.Bytes()),
+				"n":   base64.RawURLEncoding.EncodeToString(bigN.Bytes()),
+			},
+		},
+	}
+}
+
+// JwtPublicKey returns the RSA public key used to verify test tokens. This is the counterpart of the private key used
+// by MakeTokenObject and MakeTokenString to sign tokens.
+func JwtPublicKey() *rsa.PublicKey {
+	return jwtPublicKey
 }
 
 // Public and private key that will be used to sign and verify tokens in the tests:

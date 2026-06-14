@@ -40,7 +40,7 @@ var _ = Describe("Multitenancy authentication error handling", Label("multitenan
 				// Verify that error is returned in the response body:
 				body, err := io.ReadAll(response.Body)
 				g.Expect(err).ToNot(HaveOccurred())
-				g.Expect(body).To(ContainSubstring("permission denied"))
+				g.Expect(body).To(ContainSubstring("token is not valid"))
 			}).Should(Succeed())
 		},
 		Entry("clusters", "/api/fulfillment/v1/clusters"),
@@ -68,7 +68,7 @@ var _ = Describe("Multitenancy authentication error handling", Label("multitenan
 				// Verify that error is returned in the response body:
 				body, err := io.ReadAll(resp.Body)
 				g.Expect(err).ToNot(HaveOccurred())
-				g.Expect(body).To(ContainSubstring("permission denied"))
+				g.Expect(body).To(ContainSubstring("requires authentication"))
 			}).Should(Succeed())
 		},
 		Entry("Clusters", "/api/fulfillment/v1/clusters"),

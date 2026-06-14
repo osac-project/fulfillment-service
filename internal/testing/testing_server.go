@@ -50,7 +50,9 @@ func NewTLSServer() *Server {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	Expect(err).ToNot(HaveOccurred())
 	tlsListener := tls.NewListener(listener, &tls.Config{
-		Certificates: []tls.Certificate{LocalhostCertificate()},
+		Certificates: []tls.Certificate{
+			LocalhostCertificate(),
+		},
 	})
 	server := grpc.NewServer()
 	return &Server{

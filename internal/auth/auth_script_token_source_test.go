@@ -197,7 +197,7 @@ var _ = Describe("Script token source", func() {
 		It("Returns the stored token if it is a JWT that hasn't expired", func() {
 			// Prepare a store that returns a token that is a JWT and hasn't expired:
 			stored := &Token{
-				Access: MakeTokenString("Bearer", 5*time.Minute),
+				Access: MakeTokenString("https://example.com/auth/realms/my", "Bearer", 5*time.Minute),
 			}
 			store, err := NewMemoryTokenStore().
 				SetLogger(logger).
@@ -230,7 +230,7 @@ var _ = Describe("Script token source", func() {
 
 			// Create the source:
 			generated := &Token{
-				Access: MakeTokenString("Bearer", 5*time.Minute),
+				Access: MakeTokenString("https://example.com/auth/realms/my", "Bearer", 5*time.Minute),
 			}
 			script := fmt.Sprintf("echo '%s'", generated.Access)
 			source, err := NewScriptTokenSource().
@@ -254,13 +254,13 @@ var _ = Describe("Script token source", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			err = store.Save(ctx, &Token{
-				Access: MakeTokenString("Bearer", -5*time.Minute),
+				Access: MakeTokenString("https://example.com/auth/realms/my", "Bearer", -5*time.Minute),
 			})
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create the source:
 			generated := &Token{
-				Access: MakeTokenString("Bearer", 5*time.Minute),
+				Access: MakeTokenString("https://example.com/auth/realms/my", "Bearer", 5*time.Minute),
 			}
 			script := fmt.Sprintf("echo '%s'", generated.Access)
 			source, err := NewScriptTokenSource().
@@ -308,7 +308,7 @@ var _ = Describe("Script token source", func() {
 
 			// Create the source:
 			generated := &Token{
-				Access: MakeTokenString("Bearer", 5*time.Minute),
+				Access: MakeTokenString("https://example.com/auth/realms/my", "Bearer", 5*time.Minute),
 			}
 			script := fmt.Sprintf("echo '%s'", generated.Access)
 			source, err := NewScriptTokenSource().

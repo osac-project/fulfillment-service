@@ -66,7 +66,7 @@ func (b *CertPoolBuilder) AddSystemFiles(value bool) *CertPoolBuilder {
 	return b
 }
 
-// AddKubernetesFiles adds the Kubernetes CA files to the pool. The default is to add them.
+// AddKubernetesFiles adds the Kubernetes CA files to the pool. The default is to not add them.
 func (b *CertPoolBuilder) AddKubernetesFiles(value bool) *CertPoolBuilder {
 	b.kubernetesFiles = value
 	return b
@@ -218,7 +218,7 @@ func (b *CertPoolBuilder) loadFile(pool *x509.CertPool, caFile string) error {
 			fileExt := filepath.Ext(fileName)
 			if !b.validExt(fileExt) {
 				b.logger.Info(
-					"Igoring file because it doesn't have a valid extension",
+					"Ignoring file because it doesn't have a valid extension",
 					slog.String("directory", caFile),
 					slog.String("file", fileName),
 					slog.String("ext", fileExt),

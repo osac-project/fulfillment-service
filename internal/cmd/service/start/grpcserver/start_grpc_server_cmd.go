@@ -19,7 +19,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"strings"
 	"syscall"
 	"time"
 
@@ -51,7 +50,6 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/recovery"
 	"github.com/osac-project/fulfillment-service/internal/servers"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
-	"github.com/osac-project/fulfillment-service/internal/version"
 )
 
 // Cmd creates and returns the `start grpc-server` command.
@@ -72,15 +70,18 @@ func Cmd() *cobra.Command {
 	flags.StringVar(
 		&runner.args.authType,
 		"grpc-authn-type",
-		auth.GrpcGuestAuthType,
+		"guest",
 		grpcAuthnTypeFlagHelp,
 	)
+	_ = flags.MarkDeprecated("grpc-authn-type", "this flag is ignored, authentication is now always enabled")
 	flags.StringVar(
 		&runner.args.externalAuthAddress,
 		"grpc-authn-external-address",
 		"",
 		grpcAuthnExternalAddressFlagHelp,
 	)
+	_ = flags.MarkDeprecated("grpc-authn-external-address",
+		"this flag is ignored, external authentication via Authorino is no longer used")
 	flags.StringSliceVar(
 		&runner.args.caFiles,
 		"ca-file",
@@ -176,6 +177,8 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	// Load the trusted CA certificates:
 	caPool, err := network.NewCertPool().
 		SetLogger(c.logger).
+		AddSystemFiles(true).
+		AddKubernetesFiles(true).
 		AddFiles(c.args.caFiles...).
 		Build()
 	if err != nil {
@@ -230,8 +233,55 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return err
 	}
 
-	// Calculate the user agent:
-	userAgent := fmt.Sprintf("%s/%s", grpcServerUserAgent, version.Get())
+	// Create metadata fetcher for project authorization
+	metadataFetcher, err := dao.NewMetadataFetcher().
+		SetLogger(c.logger).
+		SetTable("projects").
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create metadata fetcher: %w", err)
+	}
+
+	// Prepare the authentication interceptor:
+	c.logger.InfoContext(ctx, "Creating JWKS cache")
+	jwksCache, err := auth.NewJwksCache().
+		SetLogger(c.logger).
+		SetCaPool(caPool).
+		AddIssuers(c.args.trustedTokenIssuers...).
+		AddKubernetesIssuer(true).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create JWKS cache: %w", err)
+	}
+	c.logger.InfoContext(ctx, "Creating JWT validator")
+	jwtValidator, err := auth.NewJwtValidator().
+		SetLogger(c.logger).
+		SetJwksCache(jwksCache).
+		SetExpirationLeeway(10 * time.Second).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create JWT validator: %w", err)
+	}
+	c.logger.InfoContext(ctx, "Creating authentication interceptor")
+	authnInterceptor, err := auth.NewGrpcAuthnInterceptor().
+		SetLogger(c.logger).
+		SetJwtValidator(jwtValidator).
+		AddAnonymousMethodRegex(anonymousMethodsRegex).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create authentication interceptor: %w", err)
+	}
+
+	// Prepare the authorization interceptor:
+	c.logger.InfoContext(ctx, "Creating Rego authorization interceptor")
+	authzInterceptor, err := auth.NewGrpcAuthzInterceptor().
+		SetLogger(c.logger).
+		AddAnonymousMethodRegex(anonymousMethodsRegex).
+		SetMetadataFetcher(metadataFetcher).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create Rego authorization interceptor: %w", err)
+	}
 
 	// Create the tenancy logic:
 	c.logger.InfoContext(
@@ -240,26 +290,11 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		slog.String("type", c.args.tenancyLogic),
 	)
 	var tenancyLogic auth.TenancyLogic
-	switch strings.ToLower(c.args.tenancyLogic) {
-	case "default":
-		tenancyLogic, err = auth.NewDefaultTenancyLogic().
-			SetLogger(c.logger).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create default tenancy logic: %w", err)
-		}
-	case "guest":
-		tenancyLogic, err = auth.NewGuestTenancyLogic().
-			SetLogger(c.logger).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create guest tenancy logic: %w", err)
-		}
-	default:
-		return fmt.Errorf(
-			"unknown tenancy logic '%s', valid values are 'default' and 'guest'",
-			c.args.tenancyLogic,
-		)
+	tenancyLogic, err = auth.NewDefaultTenancyLogic().
+		SetLogger(c.logger).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create default tenancy logic: %w", err)
 	}
 
 	// Prepare the transactions manager:
@@ -270,69 +305,6 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create transactions manager: %w", err)
-	}
-
-	// Prepare the auth interceptor:
-	c.logger.InfoContext(
-		ctx,
-		"Creating auth interceptor",
-		slog.String("type", c.args.authType),
-	)
-	var authUnaryInterceptor grpc.UnaryServerInterceptor
-	var authStreamInterceptor grpc.StreamServerInterceptor
-	switch strings.ToLower(c.args.authType) {
-	case auth.GrpcGuestAuthType:
-		guestAuthInterceptor, err := auth.NewGrpcGuestAuthInterceptor().
-			SetLogger(c.logger).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create guest auth interceptor: %w", err)
-		}
-		authUnaryInterceptor = guestAuthInterceptor.UnaryServer
-		authStreamInterceptor = guestAuthInterceptor.StreamServer
-	case auth.GrpcExternalAuthType:
-		if c.args.externalAuthAddress == "" {
-			return fmt.Errorf(
-				"external auth address is required when auth type is '%s'",
-				auth.GrpcExternalAuthType,
-			)
-		}
-		externalAuthClient, err := network.NewGrpcClient().
-			SetLogger(c.logger).
-			SetAddress(c.args.externalAuthAddress).
-			SetCaPool(caPool).
-			SetUserAgent(userAgent).
-			SetMetricsSubsystem("outbound").
-			SetMetricsRegisterer(metricsRegisterer).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create external auth client: %w", err)
-		}
-		// Create metadata fetcher for project authorization
-		metadataFetcher, err := dao.NewMetadataFetcher().
-			SetLogger(c.logger).
-			SetTable("projects").
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create metadata fetcher: %w", err)
-		}
-
-		externalAuthInterceptor, err := auth.NewGrpcExternalAuthInterceptor().
-			SetLogger(c.logger).
-			SetGrpcClient(externalAuthClient).
-			AddPublicMethodRegex(publicMethodRegex).
-			SetMetadataFetcher(metadataFetcher).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create external auth interceptor: %w", err)
-		}
-		authUnaryInterceptor = externalAuthInterceptor.UnaryServer
-		authStreamInterceptor = externalAuthInterceptor.StreamServer
-	default:
-		return fmt.Errorf(
-			"unknown auth type '%s', valid values are '%s' and '%s'",
-			c.args.authType, auth.GrpcGuestAuthType, auth.GrpcExternalAuthType,
-		)
 	}
 
 	// Prepare the panic interceptor:
@@ -379,14 +351,16 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			panicInterceptor.UnaryServer,
 			metricsInterceptor.UnaryServer,
 			loggingInterceptor.UnaryServer,
-			authUnaryInterceptor,
 			txInterceptor.UnaryServer,
+			authnInterceptor.UnaryServer,
+			authzInterceptor.UnaryServer,
 		),
 		grpc.ChainStreamInterceptor(
 			panicInterceptor.StreamServer,
 			metricsInterceptor.StreamServer,
 			loggingInterceptor.StreamServer,
-			authStreamInterceptor,
+			authnInterceptor.StreamServer,
+			authzInterceptor.StreamServer,
 		),
 	)
 	shutdown.AddGrpcServer(network.GrpcListenerName, 0, grpcServer)
@@ -1186,12 +1160,9 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	return shutdown.Wait()
 }
 
-// publicMethodRegex is regular expression for the methods that are considered public, including the capabilities,
+// anonymousMethodsRegex is regular expression for the methods that are considered public, including the capabilities,
 // JWKS, reflection, and health methods. These will skip authentication and authorization.
-const publicMethodRegex = `^/(osac\.public\.v1\.(Capabilities/|JsonWebKeySet/)|grpc\.(reflection|health)\.).*$`
-
-// grpcServerUserAgent is the user agent string for the gRPC server.
-const grpcServerUserAgent = "fulfillment-grpc-server"
+const anonymousMethodsRegex = `^/(osac\.public\.v1\.(Capabilities/|JsonWebKeySet/)|grpc\.(reflection|health)\.).*$`
 
 const shortHelp = `Starts the gRPC server`
 
@@ -1200,14 +1171,17 @@ Starts the gRPC server.
 `
 
 const grpcAuthnTypeFlagHelp = `
-_TYPE_ - Type of authentication. Valid values are {{ bt }}guest{{ bt }}
-and {{ bt }}external{{ bt }}.
+_TYPE_ - **Deprecated and ignored.** The service now always uses
+the built-in JWKS authentication and Rego authorization. This flag
+is accepted for backward compatibility but has no effect.
 `
 
 const grpcAuthnExternalAddressFlagHelp = `
-_ADDRESS_ - Address of the external auth service using the
-Envoy ext_authz gRPC protocol. Required when {{ bt }}--grpc-authn-type{{ bt }}
-is set to {{ bt }}external{{ bt }}.
+_ADDRESS_ - **Deprecated and ignored.** External authentication via
+Authorino is no longer used. The service now validates JWT tokens
+directly using JWKS endpoints discovered from the trusted token
+issuers. This flag is accepted for backward compatibility but has
+no effect.
 `
 
 const caFileFlagHelp = `

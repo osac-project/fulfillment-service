@@ -17,6 +17,8 @@ package auth
 
 import (
 	"context"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // contextKey is the type used to store the authentication information in the context.
@@ -24,6 +26,7 @@ type contextKey int
 
 const (
 	subjectContextKey contextKey = iota
+	tokenContextKey   contextKey = iota
 )
 
 // ContextWithSubject creates a new context containing the given subject.
@@ -41,4 +44,22 @@ func SubjectFromContext(ctx context.Context) *Subject {
 	default:
 		panic("failed to get subject from context")
 	}
+}
+
+// ContextWithToken creates a new context containing the given validated JWT token.
+func ContextWithToken(parent context.Context, token *jwt.Token) context.Context {
+	return context.WithValue(parent, tokenContextKey, token)
+}
+
+// TokenFromContext extracts the validated JWT token from the context. Returns nil if there is no token in the context.
+func TokenFromContext(ctx context.Context) *jwt.Token {
+	value := ctx.Value(tokenContextKey)
+	if value == nil {
+		return nil
+	}
+	token, ok := value.(*jwt.Token)
+	if !ok {
+		return nil
+	}
+	return token
 }
