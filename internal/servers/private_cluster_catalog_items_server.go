@@ -139,6 +139,11 @@ func (s *PrivateClusterCatalogItemsServer) Get(ctx context.Context,
 
 func (s *PrivateClusterCatalogItemsServer) Create(ctx context.Context,
 	request *privatev1.ClusterCatalogItemsCreateRequest) (response *privatev1.ClusterCatalogItemsCreateResponse, err error) {
+	if object := request.GetObject(); object != nil {
+		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
+			return
+		}
+	}
 	err = s.generic.Create(ctx, request, &response)
 	return
 }
