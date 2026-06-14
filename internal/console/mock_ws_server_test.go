@@ -14,11 +14,12 @@ language governing permissions and limitations under the License.
 package console
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
 
-	"golang.org/x/net/websocket"
+	"github.com/coder/websocket"
 )
 
 // mockWSServer simulates the console subresource endpoint.
@@ -45,7 +46,7 @@ func newMockWSServer() (*mockWSServer, error) {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/apis/console.osac.openshift.io/v1alpha1/namespaces/", websocket.Handler(m.handleConsole))
+	mux.HandleFunc("/apis/console.osac.openshift.io/v1alpha1/namespaces/", m.handleConsole)
 
 	m.server = &http.Server{Handler: mux}
 	go m.server.Serve(listener)
@@ -53,8 +54,11 @@ func newMockWSServer() (*mockWSServer, error) {
 	return m, nil
 }
 
+// mockWSHandler is a function that handles a WebSocket connection in mock servers.
+type mockWSHandler func(ctx context.Context, conn *websocket.Conn)
+
 // newMockWSServerWithHandler creates a mock WebSocket server with a custom handler.
-func newMockWSServerWithHandler(handler func(ws *websocket.Conn)) (*mockWSServer, error) {
+func newMockWSServerWithHandler(handler mockWSHandler) (*mockWSServer, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen: %w", err)
@@ -63,7 +67,17 @@ func newMockWSServerWithHandler(handler func(ws *websocket.Conn)) (*mockWSServer
 	m := &mockWSServer{listener: listener}
 
 	mux := http.NewServeMux()
-	mux.Handle("/apis/console.osac.openshift.io/v1alpha1/namespaces/", websocket.Handler(handler))
+	mux.HandleFunc("/apis/console.osac.openshift.io/v1alpha1/namespaces/", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		conn.SetReadLimit(-1)
+		handler(r.Context(), conn)
+	})
 
 	m.server = &http.Server{Handler: mux}
 	go m.server.Serve(listener)
@@ -83,25 +97,35 @@ func (m *mockWSServer) Close() error {
 
 // handleConsole handles WebSocket connections to the console subresource.
 // It sends a banner, then echoes all received data back with a prefix.
-func (m *mockWSServer) handleConsole(ws *websocket.Conn) {
-	ws.PayloadType = websocket.BinaryFrame
+func (m *mockWSServer) handleConsole(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer conn.CloseNow()
+	conn.SetReadLimit(-1)
+
+	ctx := r.Context()
 
 	// Send banner.
 	if m.banner != "" {
-		ws.Write([]byte(m.banner))
+		if err := conn.Write(ctx, websocket.MessageBinary, []byte(m.banner)); err != nil {
+			return
+		}
 	}
 
 	// Echo loop.
-	buf := make([]byte, 4096)
 	for {
-		n, err := ws.Read(buf)
+		_, data, err := conn.Read(ctx)
 		if err != nil {
 			return
 		}
-		if n > 0 {
-			response := m.echoPrefix + string(buf[:n])
-			_, err = ws.Write([]byte(response))
-			if err != nil {
+		if len(data) > 0 {
+			response := m.echoPrefix + string(data)
+			if err := conn.Write(ctx, websocket.MessageBinary, []byte(response)); err != nil {
 				return
 			}
 		}

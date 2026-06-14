@@ -274,7 +274,7 @@ static_resources:
                 route:
                   cluster: console-proxy-grpc
                   timeout: 0s
-                  idle_timeout: 0s
+                  idle_timeout: 1800s
 
               # This route is for gRPC unary requests.
               - name: grpc-server

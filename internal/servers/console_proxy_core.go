@@ -142,13 +142,13 @@ func (c *ConsoleProxyCore) Relay(ctx context.Context, client, backend io.ReadWri
 
 	// Backend -> client.
 	go func() {
-		_, err := io.Copy(client, backend)
+		_, err := io.CopyBuffer(client, backend, make([]byte, 64*1024))
 		errCh <- err
 	}()
 
 	// Client -> backend.
 	go func() {
-		_, err := io.Copy(backend, client)
+		_, err := io.CopyBuffer(backend, client, make([]byte, 64*1024))
 		errCh <- err
 	}()
 

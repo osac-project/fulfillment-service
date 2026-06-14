@@ -15,36 +15,13 @@ package servers
 
 import (
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 
-	"golang.org/x/net/websocket"
+	"github.com/coder/websocket"
+
+	"github.com/osac-project/fulfillment-service/internal/console"
 )
-
-// handoffConn wraps a backend connection for ownership transfer across
-// the WebSocket upgrade boundary. If the upgrade fails, the deferred
-// CloseIfNotTaken() releases the connection and its Manager session.
-type handoffConn struct {
-	conn  io.ReadWriteCloser
-	taken bool
-}
-
-func newHandoffConn(conn io.ReadWriteCloser) *handoffConn {
-	return &handoffConn{conn: conn}
-}
-
-func (h *handoffConn) Take() io.ReadWriteCloser {
-	h.taken = true
-	return h.conn
-}
-
-func (h *handoffConn) CloseIfNotTaken() {
-	if !h.taken && h.conn != nil {
-		h.conn.Close()
-	}
-}
 
 // ConsoleProxyWSHandler serves WebSocket console connections.
 // Auth is verified BEFORE upgrade -- invalid tickets get HTTP 401.
@@ -54,31 +31,14 @@ type ConsoleProxyWSHandler struct {
 }
 
 // NewConsoleProxyWSHandler creates a new WebSocket console proxy handler.
-// The allowedOrigins list controls which Origins are accepted for cookie-based
-// authentication. A wildcard "*" permits all origins.
+// The allowedOrigins list is passed to the library's OriginPatterns and controls
+// which Origins are accepted during WebSocket upgrade. A wildcard "*" permits
+// all origins. Cookie-based auth additionally requires a non-empty Origin.
 func NewConsoleProxyWSHandler(core *ConsoleProxyCore, allowedOrigins []string) *ConsoleProxyWSHandler {
 	return &ConsoleProxyWSHandler{
 		core:           core,
 		allowedOrigins: allowedOrigins,
 	}
-}
-
-// checkOrigin validates the request's Origin header against the allowed origins list.
-// Returns false if the Origin header is empty or not in the allow-list.
-func (h *ConsoleProxyWSHandler) checkOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return false
-	}
-	for _, allowed := range h.allowedOrigins {
-		if allowed == "*" {
-			return true
-		}
-		if strings.EqualFold(origin, allowed) {
-			return true
-		}
-	}
-	return false
 }
 
 // extractTicket gets the ticket from Authorization header or console-ticket cookie.
@@ -99,14 +59,12 @@ func extractTicket(r *http.Request) (string, error) {
 func (h *ConsoleProxyWSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Cookie-based auth (no Authorization header) requires Origin validation
-	// to prevent cross-site WebSocket hijacking (CSWSH). Bearer-authenticated
-	// requests skip this check because non-browser clients may omit Origin.
-	if r.Header.Get("Authorization") == "" {
-		if !h.checkOrigin(r) {
-			http.Error(w, "origin not allowed", http.StatusForbidden)
-			return
-		}
+	// Cookie-based auth (no Authorization header) requires a non-empty Origin
+	// for CSWSH protection. The library's OriginPatterns auto-passes empty
+	// Origin, so we must reject it ourselves for cookie auth.
+	if r.Header.Get("Authorization") == "" && r.Header.Get("Origin") == "" {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
 	}
 
 	// Phase 1: Extract and verify ticket BEFORE upgrade.
@@ -133,41 +91,32 @@ func (h *ConsoleProxyWSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Wrap for ownership transfer across the upgrade boundary.
-	handoff := newHandoffConn(backend)
-	defer handoff.CloseIfNotTaken()
-
 	// Phase 3: Upgrade to WebSocket.
-	wsServer := websocket.Server{
-		Handshake: func(config *websocket.Config, r *http.Request) error {
-			// Defense-in-depth: validate Origin during WebSocket handshake
-			// for cookie-authenticated requests.
-			if r.Header.Get("Authorization") == "" {
-				if !h.checkOrigin(r) {
-					return errors.New("origin not allowed")
-				}
-			}
-			for _, proto := range config.Protocol {
-				if strings.EqualFold(proto, "binary") {
-					config.Protocol = []string{"binary"}
-					return nil
-				}
-			}
-			// Accept without subprotocol for generic clients.
-			config.Protocol = nil
-			return nil
-		},
-		Handler: func(ws *websocket.Conn) {
-			// Take ownership -- deferred CloseIfNotTaken becomes a no-op.
-			// Relay owns closing backendConn via its own defer.
-			backendConn := handoff.Take()
-
-			ws.PayloadType = websocket.BinaryFrame
-
-			// Phase 4: Relay with sessionCtx: cancelled on eviction, timeout,
-			// or client disconnect. Relay logs errors internally.
-			_ = h.core.Relay(sessionCtx, ws, backendConn)
-		},
+	// OriginPatterns delegates origin validation to the library, which matches
+	// each pattern via path.Match against scheme://host (if pattern contains "://")
+	// or host alone. The library also auto-passes when r.Host == Origin host
+	// (same-origin requests) and when Origin is empty.
+	wsLogger := h.core.logger.With(slog.String("component", "client_ws"))
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: h.allowedOrigins,
+		Subprotocols:   []string{"binary"},
+		OnPingReceived: console.PingReceivedHandler(wsLogger, sessionCtx),
+		OnPongReceived: console.PongReceivedHandler(wsLogger, sessionCtx),
+	})
+	if err != nil {
+		h.core.logger.ErrorContext(ctx, "Failed to accept WebSocket connection",
+			slog.Any("error", err),
+		)
+		backend.Close()
+		return
 	}
-	wsServer.ServeHTTP(w, r)
+	defer func() { _ = ws.CloseNow() }()
+
+	// Start a ping goroutine to keep the client-facing WebSocket alive.
+	console.StartPing(sessionCtx, ws, wsLogger)
+
+	// Phase 4: Relay with sessionCtx: cancelled on eviction, timeout,
+	// or client disconnect. Relay logs errors internally.
+	clientConn := websocket.NetConn(sessionCtx, ws, websocket.MessageBinary)
+	_ = h.core.Relay(sessionCtx, clientConn, backend)
 }
