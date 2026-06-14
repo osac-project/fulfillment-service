@@ -18,7 +18,7 @@ import logging
 import click
 
 from . import commands
-from . import tools
+from . import setup
 
 
 @click.command()
@@ -27,7 +27,8 @@ def lint() -> None:
     Runs the linter.
     """
     logging.info("Running linter")
+    setup.install_golangci_lint()
     commands.run(
-        args=[tools.GOLANGCI_LINT.name, "run"],
+        args=["golangci-lint", "run"],
         check=True,
     )

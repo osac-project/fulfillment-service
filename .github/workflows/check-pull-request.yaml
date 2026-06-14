@@ -56,7 +56,6 @@ jobs:
     - uses: ./.github/actions/setup-go
     - uses: ./.github/actions/setup-python
     - run: |
-        uv run dev.py setup
         uv run dev.py lint
 
   check-generated-code:

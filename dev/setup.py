@@ -140,28 +140,38 @@ def install_golangci_lint() -> None:
 
 def is_installed(tool: tools.Tool) -> bool:
     """
-    Checks if the given tool is already installed.
+    Checks if the given tool is already installed. It first looks in the project's bin directory,
+    then falls back to the system PATH.
     """
-    installed_path = shutil.which(tool.name)
-    if installed_path is not None:
-        tool_code, tool_out = commands.eval(args=tool.version_command)
-        if tool_code != 0:
-            raise Exception(f"Failed to find version of installed '{tool.name}'")
-        version_match = re.search(
-            pattern=tool.version_pattern,
-            string=tool_out,
-            flags=re.MULTILINE,
-        )
-        if version_match is None:
-            raise Exception(f"Failed to find version of installed '{tool.name}'")
-        installed_version = version_match.group("version")
-        if installed_version == tool.version:
-            logging.info(
-                f"Version {tool.version} of '{tool.name}' is already installed at '{installed_path}'"
-            )
-            return True
-        logging.info(
-            f"Found '{tool.name}' already installed at '{installed_path}', but version is '{installed_version}' "
-            f"instead of '{tool.version}'"
-        )
+    # Check the project bin directory first, then the system path:
+    bin_path = dirs.bin() / tool.name
+    if bin_path.exists():
+        installed_path = str(bin_path)
+    else:
+        installed_path = shutil.which(tool.name)
+    if installed_path is None:
         return False
+
+    # Build the version command using the resolved path so we check the right binary:
+    version_command = [installed_path] + tool.version_command[1:]
+    tool_code, tool_out = commands.eval(args=version_command)
+    if tool_code != 0:
+        raise Exception(f"Failed to find version of installed '{tool.name}'")
+    version_match = re.search(
+        pattern=tool.version_pattern,
+        string=tool_out,
+        flags=re.MULTILINE,
+    )
+    if version_match is None:
+        raise Exception(f"Failed to find version of installed '{tool.name}'")
+    installed_version = version_match.group("version")
+    if installed_version == tool.version:
+        logging.info(
+            f"Version {tool.version} of '{tool.name}' is already installed at '{installed_path}'"
+        )
+        return True
+    logging.info(
+        f"Found '{tool.name}' already installed at '{installed_path}', but version is '{installed_version}' "
+        f"instead of '{tool.version}'"
+    )
+    return False
