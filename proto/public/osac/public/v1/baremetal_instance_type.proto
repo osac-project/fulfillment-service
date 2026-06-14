@@ -15,6 +15,7 @@ syntax = "proto3";
 
 package osac.public.v1;
 
+import "google/api/field_behavior.proto";
 import "google/protobuf/timestamp.proto";
 import "osac/public/v1/condition_status_type.proto";
 import "osac/public/v1/metadata_type.proto";
@@ -35,16 +36,16 @@ message BareMetalInstance {
 // The spec contains the details of a bare metal instance as desired by the user.
 message BareMetalInstanceSpec {
   // Reference to the BareMetalInstanceCatalogItem. Required on create; immutable after creation.
-  string catalog_item = 1;
+  string catalog_item = 1 [(google.api.field_behavior) = IMMUTABLE];
 
   // SSH public key injected into the OS at provisioning time. Immutable after creation.
   // Must be a valid SSH public key in OpenSSH format (ssh-rsa, ssh-ed25519, etc.).
   // Invalid keys are rejected at create time with a 400 error.
-  optional string ssh_key = 2;
+  optional string ssh_key = 2 [(google.api.field_behavior) = IMMUTABLE];
 
   // User data (e.g. cloud-init). Passed to the OS at first boot. Immutable after creation.
   // Maximum size: 64 KB.
-  optional string user_data = 3;
+  optional string user_data = 3 [(google.api.field_behavior) = IMMUTABLE];
 
   // Run strategy controls the power state of the bare metal instance.
   // An enum is used rather than a boolean to leave room for future states (e.g. suspended backends).
