@@ -27,7 +27,7 @@ import (
 )
 
 var _ = Describe("buildSpec", func() {
-	It("Includes virtualNetwork and rules", func() {
+	It("Includes virtualNetwork, implementationStrategy, and rules", func() {
 		portFrom := int32(80)
 		portTo := int32(443)
 		ipv4 := "10.0.0.0/8"
@@ -37,7 +37,8 @@ var _ = Describe("buildSpec", func() {
 			securityGroup: privatev1.SecurityGroup_builder{
 				Id: "sg-test-123",
 				Spec: privatev1.SecurityGroupSpec_builder{
-					VirtualNetwork: "vnet-123",
+					VirtualNetwork:         "vnet-123",
+					ImplementationStrategy: "network_policy",
 					Ingress: []*privatev1.SecurityRule{
 						privatev1.SecurityRule_builder{
 							Protocol: privatev1.Protocol_PROTOCOL_TCP,
@@ -59,6 +60,7 @@ var _ = Describe("buildSpec", func() {
 		spec := t.buildSpec()
 
 		Expect(spec.VirtualNetwork).To(Equal("vnet-123"))
+		Expect(spec.ImplementationStrategy).To(Equal("network_policy"))
 
 		Expect(spec.IngressRules).To(HaveLen(1))
 		Expect(string(spec.IngressRules[0].Protocol)).To(Equal("tcp"))
@@ -73,7 +75,7 @@ var _ = Describe("buildSpec", func() {
 		Expect(spec.EgressRules[0].PortTo).To(BeNil())
 	})
 
-	It("Omits empty rule lists", func() {
+	It("Omits empty rule lists and empty implementationStrategy", func() {
 		t := &task{
 			securityGroup: privatev1.SecurityGroup_builder{
 				Id: "sg-test-456",
@@ -86,6 +88,7 @@ var _ = Describe("buildSpec", func() {
 		spec := t.buildSpec()
 
 		Expect(spec.VirtualNetwork).To(Equal("vnet-456"))
+		Expect(spec.ImplementationStrategy).To(BeEmpty())
 		Expect(spec.IngressRules).To(BeEmpty())
 		Expect(spec.EgressRules).To(BeEmpty())
 	})

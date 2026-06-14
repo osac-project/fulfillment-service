@@ -1,6 +1,6 @@
 module github.com/osac-project/fulfillment-service
 
-go 1.26.0
+go 1.26.3
 
 require (
 	charm.land/glamour/v2 v2.0.0
@@ -23,7 +23,7 @@ require (
 	github.com/mattn/go-isatty v0.0.22
 	github.com/neilotoole/jsoncolor v0.9.1
 	github.com/open-policy-agent/opa v1.17.0
-	github.com/osac-project/osac-operator/api v0.0.3
+	github.com/osac-project/osac-operator/api v0.0.4
 	github.com/prometheus/client_golang v1.23.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966

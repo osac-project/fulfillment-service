@@ -39,9 +39,6 @@ import (
 // objectPrefix is the prefix that will be used in the `generateName` field of the resources created in the hub.
 const objectPrefix = "securitygroup-"
 
-// implementationStrategyAnnotation is the annotation key for the implementation strategy.
-const implementationStrategyAnnotation = "osac.openshift.io/implementation-strategy"
-
 // FunctionBuilder contains the data and logic needed to build a function that reconciles security groups.
 type FunctionBuilder struct {
 	logger     *slog.Logger
@@ -190,17 +187,8 @@ func (t *task) update(ctx context.Context) error {
 	// Prepare the changes to the spec:
 	spec := t.buildSpec()
 
-	// Get the implementation strategy annotation from the parent VirtualNetwork CR:
-	implStrategy := t.getImplementationStrategy(ctx, parentVN)
-
 	// Create or update the Kubernetes object:
 	if object == nil {
-		sgAnnotations := map[string]string{
-			annotations.Tenant: t.securityGroup.GetMetadata().GetTenant(),
-		}
-		if implStrategy != "" {
-			sgAnnotations[implementationStrategyAnnotation] = implStrategy
-		}
 		object := &osacv1alpha1.SecurityGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:    t.hubNamespace,
@@ -208,7 +196,9 @@ func (t *task) update(ctx context.Context) error {
 				Labels: map[string]string{
 					labels.SecurityGroupUuid: t.securityGroup.GetId(),
 				},
-				Annotations: sgAnnotations,
+				Annotations: map[string]string{
+					annotations.Tenant: t.securityGroup.GetMetadata().GetTenant(),
+				},
 			},
 			Spec: spec,
 		}
@@ -268,39 +258,6 @@ func (t *task) getParentVirtualNetwork(ctx context.Context) (*privatev1.VirtualN
 		return nil, fmt.Errorf("failed to get parent virtual network '%s': %w", vnID, err)
 	}
 	return response.GetObject(), nil
-}
-
-func (t *task) getImplementationStrategy(ctx context.Context, parentVN *privatev1.VirtualNetwork) string {
-	// Try to get the implementation strategy from the parent VirtualNetwork K8s CR annotation:
-	vnCR, err := t.getParentVNKubeObject(ctx, parentVN.GetId())
-	if err == nil && vnCR != nil {
-		anns := vnCR.GetAnnotations()
-		if strategy, ok := anns[implementationStrategyAnnotation]; ok {
-			return strategy
-		}
-	}
-
-	// Fall back to the implementation strategy from the parent VN spec:
-	return parentVN.GetSpec().GetImplementationStrategy()
-}
-
-func (t *task) getParentVNKubeObject(ctx context.Context, vnID string) (result *osacv1alpha1.VirtualNetwork, err error) {
-	list := &osacv1alpha1.VirtualNetworkList{}
-	err = t.hubClient.List(
-		ctx, list,
-		clnt.InNamespace(t.hubNamespace),
-		clnt.MatchingLabels{
-			labels.VirtualNetworkUuid: vnID,
-		},
-	)
-	if err != nil {
-		return
-	}
-	items := list.Items
-	if len(items) > 0 {
-		result = &items[0]
-	}
-	return
 }
 
 func (t *task) delete(ctx context.Context) (err error) {
@@ -440,6 +397,12 @@ func (t *task) removeFinalizer() {
 func (t *task) buildSpec() osacv1alpha1.SecurityGroupSpec {
 	spec := osacv1alpha1.SecurityGroupSpec{
 		VirtualNetwork: t.securityGroup.GetSpec().GetVirtualNetwork(),
+	}
+
+	// Add implementation strategy if present:
+	implStrategy := t.securityGroup.GetSpec().GetImplementationStrategy()
+	if implStrategy != "" {
+		spec.ImplementationStrategy = implStrategy
 	}
 
 	// Add ingress rules if present:
