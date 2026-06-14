@@ -559,50 +559,68 @@ func (c *Settings) CaPool(ctx context.Context) (result *x509.CertPool, err error
 }
 
 func (c *Settings) createCaPool(ctx context.Context) error {
-	// Create a temporary directory for the CA files that we have content for. Those will usually be the CA files
-	// that were specified with relative paths when the configuration was saved. The rest of the CA files, the ones with
-	// absolute paths, will be loaded from the filesystem.
+	// Classify configured CA entries into certificate content and directory paths.
+	//
+	// Entries with a relative path are ignored because the tool may be invoked from a different working directory.
+	// This is acceptable because the CLI always calculates absolute paths at configuration time.
+	//
+	// Entries with an absolute path and stored content represent regular files whose content was captured by the
+	// CLI at configuration time. We try to re-read the file from disk so that rotated certificates are picked up
+	// automatically; if the file is no longer accessible we fall back to the stored content.
+	//
+	// Entries with an absolute path but no stored content represent directories. These are passed through to the
+	// certifiacte pool builder so that their contents are scanned on every invocation, allowing the user to add or
+	// remove certificate files inside the directory.
 	var (
-		contentFiles []CaFile
-		otherFiles   []string
+		caCerts []any
+		caFiles []string
 	)
 	for _, caFile := range c.general.CaFiles {
-		if caFile.Content != "" {
-			contentFiles = append(contentFiles, caFile)
-		} else {
-			otherFiles = append(otherFiles, caFile.Name)
-		}
-	}
-	contentDir, err := os.MkdirTemp("", "ca-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary directory for CA files: %w", err)
-	}
-	defer func() {
-		err := os.RemoveAll(contentDir)
-		if err != nil {
-			c.logger.ErrorContext(
+		caPath := filepath.Clean(caFile.Name)
+		caContent := caFile.Content
+		if !filepath.IsAbs(caPath) {
+			c.logger.WarnContext(
 				ctx,
-				"Failed to remove temporary directory for CA files",
-				slog.Any("error", err),
+				"Ignoring CA entry with relative path",
+				slog.String("file", caPath),
 			)
+			continue
 		}
-	}()
-	for i, contentFile := range contentFiles {
-		contentName := fmt.Sprintf("%d-%s", i, filepath.Base(contentFile.Name))
-		contentPath := filepath.Join(contentDir, contentName)
-		err = os.WriteFile(contentPath, []byte(contentFile.Content), 0600)
-		if err != nil {
-			return fmt.Errorf("failed to write CA file to temporary directory: %w", err)
+		if caContent != "" {
+			caBytes, err := os.ReadFile(caPath)
+			if err != nil {
+				c.logger.WarnContext(
+					ctx,
+					"CA file is not readable, using stored content",
+					slog.String("file", caPath),
+					slog.String("error", err.Error()),
+				)
+				caCerts = append(caCerts, caContent)
+			} else {
+				caCerts = append(caCerts, caBytes)
+			}
+		} else {
+			caInfo, err := os.Stat(caPath)
+			if err != nil || !caInfo.IsDir() {
+				c.logger.WarnContext(
+					ctx,
+					"CA entry without stored content is not an accessible directory",
+					slog.String("file", caPath),
+				)
+				continue
+			}
+			caFiles = append(caFiles, caPath)
 		}
 	}
 
 	// Create the CA pool:
+	var err error
 	c.caPool, err = network.NewCertPool().
 		SetLogger(c.logger).
 		AddSystemFiles(true).
 		AddKubernetesFiles(true).
-		AddFile(contentDir).
-		AddFiles(otherFiles...).
+		AddCertificates(caCerts...).
+		AddFiles(caFiles...).
 		Build()
 	return err
 }

@@ -15,7 +15,12 @@ package config
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"time"
@@ -29,16 +34,10 @@ import (
 )
 
 var _ = Describe("Settings", func() {
-	var (
-		ctx context.Context
-		tmp string
-	)
+	var tmp string
 
 	BeforeEach(func() {
 		var err error
-
-		// Create a context:
-		ctx = context.Background()
 
 		// Create a temporary directory:
 		tmp, err = os.MkdirTemp("", "*.test")
@@ -69,7 +68,7 @@ var _ = Describe("Settings", func() {
 			keyring.MockInit()
 		})
 
-		It("Loads general settings from the config file", func() {
+		It("Loads general settings from the config file", func(ctx context.Context) {
 			// Create the config file:
 			file := filepath.Join(tmp, "config.json")
 			content := []byte(`{
@@ -103,7 +102,7 @@ var _ = Describe("Settings", func() {
 			Expect(settings.Private()).To(BeTrue())
 		})
 
-		It("Saves general settings in the config file", func() {
+		It("Saves general settings in the config file", func(ctx context.Context) {
 			// Create the settings and save them:
 			settings, err := NewSettings().
 				SetLogger(logger).
@@ -135,7 +134,7 @@ var _ = Describe("Settings", func() {
 			}`))
 		})
 
-		It("Returns empty settings when no file exists", func() {
+		It("Returns empty settings when no file exists", func(ctx context.Context) {
 			settings, err := NewSettings().
 				SetLogger(logger).
 				SetDir(tmp).
@@ -152,7 +151,7 @@ var _ = Describe("Settings", func() {
 			Expect(settings.Private()).To(BeFalse())
 		})
 
-		It("Returns nil token when no access token is present", func() {
+		It("Returns nil token when no access token is present", func(ctx context.Context) {
 			settings, err := NewSettings().
 				SetLogger(logger).
 				SetDir(tmp).
@@ -164,7 +163,7 @@ var _ = Describe("Settings", func() {
 			Expect(token).To(BeNil())
 		})
 
-		It("Skips save when tokens have not changed", func() {
+		It("Skips save when tokens have not changed", func(ctx context.Context) {
 			cfg, err := NewSettings().
 				SetLogger(logger).
 				SetDir(tmp).
@@ -189,7 +188,7 @@ var _ = Describe("Settings", func() {
 			keyring.MockInit()
 		})
 
-		It("Saves secrets in the keyring, not in the config file", func() {
+		It("Saves secrets in the keyring, not in the config file", func(ctx context.Context) {
 			// Create the settings and save them:
 			settings, err := NewSettings().
 				SetLogger(logger).
@@ -226,7 +225,7 @@ var _ = Describe("Settings", func() {
 			Expect(content).To(MatchJSON(`{}`))
 		})
 
-		It("Persists tokens when saving through the token store", func() {
+		It("Persists tokens when saving through the token store", func(ctx context.Context) {
 			// Create the settings and save them:
 			settings, err := NewSettings().
 				SetLogger(logger).
@@ -261,7 +260,7 @@ var _ = Describe("Settings", func() {
 			keyring.MockInitWithError(fmt.Errorf("keyring backend not available"))
 		})
 
-		It("Saves secrets in the secrets file, not in the keyring", func() {
+		It("Saves secrets in the secrets file, not in the keyring", func(ctx context.Context) {
 			// Create the settings and save them:
 			settings, err := NewSettings().
 				SetLogger(logger).
@@ -293,7 +292,7 @@ var _ = Describe("Settings", func() {
 			}`))
 		})
 
-		It("Persists tokens when saving through the token store", func() {
+		It("Persists tokens when saving through the token store", func(ctx context.Context) {
 			// Create the settings and save them:
 			settings, err := NewSettings().
 				SetLogger(logger).
@@ -321,6 +320,128 @@ var _ = Describe("Settings", func() {
 				"refresh_token": "new-refresh",
 				"token_expiry": "2026-07-01T12:00:00Z"
 			}`))
+		})
+	})
+
+	Describe("CA pool creation", func() {
+		var pemBytes []byte
+
+		BeforeEach(func() {
+			keyring.MockInit()
+
+			// Generate a test CA certificate:
+			key, err := rsa.GenerateKey(rand.Reader, 2048)
+			Expect(err).ToNot(HaveOccurred())
+			now := time.Now()
+			template := &x509.Certificate{
+				SerialNumber:          big.NewInt(1),
+				NotBefore:             now.Add(-time.Hour),
+				NotAfter:              now.Add(time.Hour),
+				IsCA:                  true,
+				BasicConstraintsValid: true,
+			}
+			derBytes, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+			Expect(err).ToNot(HaveOccurred())
+			pemBytes = pem.EncodeToMemory(&pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: derBytes,
+			})
+		})
+
+		It("Ignores entries with relative paths", func(ctx context.Context) {
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			settings.AddCaFile(CaFile{
+				Name:    "relative/path/ca.pem",
+				Content: string(pemBytes),
+			})
+			pool, err := settings.CaPool(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Reads file from disk when absolute path and content are both set", func(ctx context.Context) {
+			pemFile := filepath.Join(tmp, "ca.pem")
+			err := os.WriteFile(pemFile, pemBytes, 0600)
+			Expect(err).ToNot(HaveOccurred())
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			settings.AddCaFile(CaFile{
+				Name:    pemFile,
+				Content: string(pemBytes),
+			})
+			pool, err := settings.CaPool(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Falls back to stored content when file is not readable", func(ctx context.Context) {
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			settings.AddCaFile(CaFile{
+				Name:    "/nonexistent/ca.pem",
+				Content: string(pemBytes),
+			})
+			pool, err := settings.CaPool(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Adds CA files when absolute path without content is a directory", func(ctx context.Context) {
+			caDir := filepath.Join(tmp, "ca")
+			err := os.MkdirAll(caDir, 0755)
+			Expect(err).ToNot(HaveOccurred())
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			settings.AddCaFile(CaFile{
+				Name: caDir,
+			})
+			pool, err := settings.CaPool(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Ignores CA files when absolute path without content does not exist", func(ctx context.Context) {
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			settings.AddCaFile(CaFile{
+				Name: "/nonexistent/directory",
+			})
+			pool, err := settings.CaPool(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Ignores absolute path without content that is a regular file", func(ctx context.Context) {
+			pemFile := filepath.Join(tmp, "not-a-dir.pem")
+			err := os.WriteFile(pemFile, pemBytes, 0600)
+			Expect(err).ToNot(HaveOccurred())
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			settings.AddCaFile(CaFile{
+				Name: pemFile,
+			})
+			pool, err := settings.CaPool(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
 		})
 	})
 

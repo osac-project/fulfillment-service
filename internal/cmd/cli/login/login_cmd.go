@@ -368,21 +368,31 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	cfg.SetAddress(c.address)
 	cfg.SetPrivate(c.args.private)
 
-	// For CA files that are absolute we need to store only the path, but for those that are relative we need to
-	// save the content because otherwise we will not be able to use them when the command is executed from a
-	// different directory.
+	// Store the CA entries. For regular files we save both the absolute path and the content so that the
+	// certificate can be reloaded from disk after rotation, with the stored content as a fallback. For directories
+	// we only store the absolute path so that their contents are scanned on every invocation, allowing files to be
+	// added or removed inside the directory.
 	for _, caFile := range c.args.caFiles {
-		if filepath.IsAbs(caFile) {
+		caPath := filepath.Clean(caFile)
+		caPath, err = filepath.Abs(caPath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve absolute path for '%s': %w", caFile, err)
+		}
+		caInfo, err := os.Stat(caPath)
+		if err != nil {
+			return fmt.Errorf("CA path '%s' is not accessible: %w", caPath, err)
+		}
+		if caInfo.IsDir() {
 			cfg.AddCaFile(config.CaFile{
-				Name: caFile,
+				Name: caPath,
 			})
 		} else {
-			caContent, err := os.ReadFile(filepath.Clean(caFile))
+			caContent, err := os.ReadFile(caPath)
 			if err != nil {
-				return fmt.Errorf("failed to read CA file '%s': %w", caFile, err)
+				return fmt.Errorf("failed to read CA file '%s': %w", caPath, err)
 			}
 			cfg.AddCaFile(config.CaFile{
-				Name:    caFile,
+				Name:    caPath,
 				Content: string(caContent),
 			})
 		}
