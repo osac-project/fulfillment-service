@@ -559,40 +559,30 @@ func (c *Settings) CaPool(ctx context.Context) (result *x509.CertPool, err error
 }
 
 func (c *Settings) createCaPool(ctx context.Context) error {
-	// Create a temporary directory for the CA files that we have content for. Those will usually be the CA files
-	// that were specified with relative paths when the configuration was saved. The rest of the CA files, the ones with
-	// absolute paths, will be loaded from the filesystem.
+	// Separate CA certificates into those that can be loaded from disk and those whose content is used directly. If
+	// the file has an absolute path and is readable on disk we prefer loading it from the filesystem so that
+	// rotated certificates are picked up without rewriting the configuration. Otherwise we fall back to the stored
+	// content.
 	var (
-		contentFiles []CaFile
-		otherFiles   []string
+		caCerts []any
+		caFiles []string
 	)
 	for _, caFile := range c.general.CaFiles {
-		if caFile.Content != "" {
-			contentFiles = append(contentFiles, caFile)
-		} else {
-			otherFiles = append(otherFiles, caFile.Name)
-		}
-	}
-	contentDir, err := os.MkdirTemp("", "ca-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary directory for CA files: %w", err)
-	}
-	defer func() {
-		err := os.RemoveAll(contentDir)
-		if err != nil {
-			c.logger.ErrorContext(
+		if filepath.IsAbs(caFile.Name) {
+			_, err := os.Stat(caFile.Name)
+			if err == nil {
+				caFiles = append(caFiles, caFile.Name)
+				continue
+			}
+			c.logger.WarnContext(
 				ctx,
-				"Failed to remove temporary directory for CA files",
-				slog.Any("error", err),
+				"CA file is not accessible",
+				slog.String("file", caFile.Name),
+				slog.String("error", err.Error()),
 			)
 		}
-	}()
-	for i, contentFile := range contentFiles {
-		contentName := fmt.Sprintf("%d-%s", i, filepath.Base(contentFile.Name))
-		contentPath := filepath.Join(contentDir, contentName)
-		err = os.WriteFile(contentPath, []byte(contentFile.Content), 0600)
-		if err != nil {
-			return fmt.Errorf("failed to write CA file to temporary directory: %w", err)
+		if caFile.Content != "" {
+			caCerts = append(caCerts, caFile.Content)
 		}
 	}
 
@@ -601,8 +591,8 @@ func (c *Settings) createCaPool(ctx context.Context) error {
 		SetLogger(c.logger).
 		AddSystemFiles(true).
 		AddKubernetesFiles(true).
-		AddFile(contentDir).
-		AddFiles(otherFiles...).
+		AddCertificates(caCerts...).
+		AddFiles(caFiles...).
 		Build()
 	if err != nil {
 		return err
