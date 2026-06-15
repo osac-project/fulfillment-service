@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -54,6 +55,12 @@ func Cmd() *cobra.Command {
 		"",
 		namespaceFlagHelp,
 	)
+	flags.StringVar(
+		&runner.tenant,
+		"tenant",
+		auth.SharedTenant,
+		tenantFlagHelp,
+	)
 	return result
 }
 
@@ -62,6 +69,7 @@ type runnerContext struct {
 	id         string
 	kubeconfig string
 	namespace  string
+	tenant     string
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -87,8 +95,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if c.kubeconfig == "" {
 		return fmt.Errorf("kubeconfig file is required")
 	}
-	if c.namespace == "" {
-		return fmt.Errorf("namespace name is required")
+	if c.tenant == "" {
+		return fmt.Errorf("tenant is required")
 	}
 
 	// Create the gRPC connection from the configuration:
@@ -110,6 +118,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Prepare the hub:
 	hub := privatev1.Hub_builder{
 		Id: c.id,
+		Metadata: privatev1.Metadata_builder{
+			Tenant: c.tenant,
+		}.Build(),
 		Spec: privatev1.HubSpec_builder{
 			Kubeconfig: kubeconfig,
 			Namespace:  c.namespace,
@@ -148,4 +159,8 @@ API.
 
 const namespaceFlagHelp = `
 _NAMESPACE_ - Namespace where cluster orders will be created.
+`
+
+const tenantFlagHelp = `
+_TENANT_ - Tenant that owns the hub. Defaults to the shared tenant.
 `
