@@ -28,6 +28,7 @@ and configure the necessary mappings and authorization rules.
 7. [Authorization Configuration](#authorization-configuration)
 8. [Authorization Flow](#authorization-flow)
 9. [Verification](#verification)
+10. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -150,8 +151,37 @@ The Helm chart includes a pre-configured realm named `osac` with the following s
 The realm includes the **osac-cli** (Public) client:
    - Client ID: `osac-cli`
    - Type: Public client (no client secret required)
-   - Enabled flows: Standard flow (authorization code)
-   - Use case: Command-line interface authentication
+   - Enabled flows: Standard flow (authorization code), Direct access grants, Device authorization
+   - PKCE: S256
+   - Use case: Command-line interface authentication (via `osac login`)
+   - Default client scopes: `groups`, `basic`, `username`, `organization`, `roles`, `osac-api`
+
+### Pre-configured Realm Roles
+
+The realm includes the following roles used by the authorization policy:
+
+| Role | Description |
+|------|-------------|
+| `tenant-admin` | Tenant administrator with full user and IdP management permissions |
+| `tenant-user-manager` | Tenant user manager with user management permissions |
+| `tenant-idp-manager` | Tenant IdP manager with IdP configuration and role assignment permissions |
+
+Assign these roles to users via the Keycloak Admin Console under **Users** → Select user →
+**Role mapping** tab.
+
+### Token Audience (`aud` Claim)
+
+The realm includes an `osac-api` client scope that adds a custom audience claim to access tokens
+using an `oidc-audience-mapper`. This ensures tokens issued for the `osac-cli` client contain
+`"aud": "osac-api"` in their payload. The scope is included in the `osac-cli` client's default
+scopes, so no additional configuration is needed.
+
+### Keycloak Organizations
+
+The realm has Keycloak Organizations enabled (`organizationsEnabled: true`). When organizations are
+configured, the `organization` claim is included in JWT tokens via the `oidc-organization-membership-mapper`.
+This claim is used by the authorization policy to determine the user's tenant (see [Subject Resolution
+in Authorino](#subject-resolution-in-authorino)).
 
 ### Accessing Keycloak Admin Console
 
@@ -292,23 +322,71 @@ see:
 
 ```yaml
 - --grpc-authn-trusted-token-issuers=https://keycloak.keycloak.svc.cluster.local:8000/realms/osac
+- --grpc-authn-type=external
+- --grpc-authn-external-address=authorino-authorino-authorization:50051
+- --tenancy-logic=default
 ```
 
-### 5. Trusted vs Advertised Token Issuers
+### 5. Configure Controller Credentials
 
-The fulfillment service maintains two separate lists of token issuers:
+The fulfillment service controller authenticates to the API using the OAuth client credentials flow.
+Configure the controller credentials in the Helm chart values:
 
-1. **Trusted Token Issuers**: These are the advertised trusted issuers. This list is configured in:
-   - Authorino AuthConfig (for HTTP/gRPC gateway authentication)
-   - Server command-line flag `--grpc-authn-trusted-token-issuers` (for direct gRPC authentication)
+```yaml
+auth:
+  controllerCredentials:
+  - secret:
+      name: fulfillment-controller-credentials
+      items:
+      - key: client-id
+        param: client-id
+      - key: client-secret
+        param: client-secret
+```
 
-2. **Advertised Token Issuers**: These are the issuers that the service advertises to clients
-   (primarily for CLI usage). This allows clients to discover which issuers they can use without
-   explicitly specifying them. The advertised issuers are returned via the metadata API and may or
-   may not be the same as the trusted issuers.
+The controller's service account (`service-account-osac-controller`) is listed as an admin service
+account in the authorization policy, granting it full access to all API methods.
 
-   The advertised issuers are configured via the
-   `--grpc-authn-trusted-token-issuers` flag
+> **Note**: The fulfillment service no longer uses Kubernetes service accounts (`controller` or
+> `client`) for internal authentication. All service-to-service communication now uses OAuth client
+> credentials.
+
+### 6. Configure Identity Provider (IDP) Management
+
+The fulfillment service manages organizations in the identity provider via the organization
+reconciler. This requires a separate set of credentials with IDP admin permissions:
+
+```yaml
+idp:
+  provider: keycloak
+  url: https://keycloak.keycloak.svc.cluster.local:8000
+  credentials:
+  - secret:
+      name: fulfillment-controller-credentials
+      items:
+      - key: client-id
+        param: client-id
+      - key: client-secret
+        param: client-secret
+```
+
+The IDP credentials must have sufficient privileges to manage organizations and users (for
+Keycloak, this means the `realm-management` client roles: `manage-realm`, `manage-users`,
+`view-realm`, `view-users`). You can reuse the same credentials as `auth.controllerCredentials`
+if the service account has both API access and IDP management permissions.
+
+### 7. Trusted Token Issuers
+
+The fulfillment service maintains a single list of trusted token issuers, configured via the
+`--grpc-authn-trusted-token-issuers` server flag. This same list is used in two places:
+
+1. **Server-side authentication**: The server validates that incoming JWT tokens were issued by one
+   of the trusted issuers. The Authorino AuthConfig also references this issuer URL for gateway
+   authentication.
+
+2. **Client discovery**: The Capabilities API (`Capabilities/Get`) returns the trusted issuers list
+   in the `authn.trusted_token_issuers` field. Clients like `osac login` use this to auto-select
+   which OAuth issuer to authenticate against, without requiring the user to specify one explicitly.
 
 ## User and Group Mapping
 
@@ -326,19 +404,27 @@ and tenant concepts. This mapping is configured in the Authorino AuthConfig reso
 ### Subject Resolution in Authorino
 
 The mapping from authentication details to the fulfillment service's internal `user` and `tenants`
-fields is performed entirely by Authorino, using CEL expressions in the `AuthConfig` resource.
-Authorino resolves both JWT users and Kubernetes service accounts into a uniform `x-subject`
-response header, so the fulfillment service itself does not need to distinguish between
+fields is performed entirely by Authorino, using CEL expressions and Rego rules in the `AuthConfig`
+resource. Authorino resolves both JWT users and Kubernetes service accounts into a uniform
+`x-subject` response header, so the fulfillment service itself does not need to distinguish between
 authentication methods.
 
-For JWT-authenticated users, the `user` is taken from the `username` claim and the `tenants` from
-the `groups` claim. For Kubernetes service accounts, the namespace is used as the tenant and the
-short service account name as the user.
+For JWT-authenticated users, the `user` is taken from the `username` claim. The `tenants` are
+resolved in the following priority order:
 
-The CEL expressions that perform this mapping are defined in
+1. **`organization` claim** — from Keycloak Organizations (when the user belongs to an organization)
+2. **`organizations` claim** — plural form (alternative format)
+3. **`groups` claim** — fallback when neither organization claim is present
+
+For Kubernetes service accounts, the namespace is used as the tenant and the short service account
+name as the user.
+
+For admin users (those matching `emergency_service_accounts`, `admin_service_accounts`, or
+`admin_groups`), the tenants are set to `["*"]` (universal), granting visibility to all tenants.
+
+The Rego rules and CEL expressions that perform this mapping are defined in
 `charts/service/templates/grpc-server/authconfig.yaml`. To customize which claims are used (for
-example, to use `preferred_username` instead of `username`, or `realm_access.roles` instead of
-`groups`), edit the expressions in that file.
+example, to use `preferred_username` instead of `username`), edit the expressions in that file.
 
 ### Configuring Keycloak to Include Groups in Tokens
 
@@ -401,11 +487,15 @@ fulfillment service. Valid values are `default` and `guest`.
    This is useful for templates, shared configurations, or other resources that should be accessible
    across all tenants.
 
-2. **Multi-Tenant Users**: A user can belong to multiple tenants. This is configured in Keycloak by
+2. **System Tenant**: The `system` tenant is a special tenant used for objects that are only visible
+   to the system itself. Resources assigned to the `system` tenant are not visible to regular users.
+   This is used internally for system-level resources.
+
+3. **Multi-Tenant Users**: A user can belong to multiple tenants. This is configured in Keycloak by
    assigning the user to multiple groups. The fulfillment service will reflect this in the
    assignable and visible tenant sets. However, each resource is assigned to exactly one tenant.
 
-3. **Tenant Assignment**: When a user creates a resource:
+4. **Tenant Assignment**: When a user creates a resource:
 
    - The user is recorded in the `metadata.creator` field of the object, and is purely informative.
      The system doesn't currently use it to make any authorization or visibility decisions.
@@ -415,7 +505,7 @@ fulfillment service. Valid values are `default` and `guest`.
    - Tenant assignment is recorded in the `metadata.tenant` field and is used by the server to make
      visibility decisions.
 
-4. **Tenant Visibility**: When a user queries resources, the visible tenants determine what they can
+5. **Tenant Visibility**: When a user queries resources, the visible tenants determine what they can
    see. A user can only see a resource if the resource's assigned tenant is one of the user's
    visible tenants.
 
@@ -432,8 +522,11 @@ both JWT-authenticated users and Kubernetes service accounts because Authorino r
 the same `tenants` field before the request reaches the service.
 
 - **Assignable Tenants**: All tenants from the subject
-- **Default Tenant**: First tenant from the subject
-- **Visible Tenants**: All subject's tenants plus the `shared` tenant
+- **Default Tenant**: First tenant from the subject. When the subject has access to all tenants
+  (e.g., an admin with the universal set `["*"]`), the default tenant is `shared` because a
+  universal set cannot be stored as the tenant of an object.
+- **Visible Tenants**: All subject's tenants plus the `shared` tenant. For admins with the
+  universal set, all tenants are visible.
 
 Example with a JWT user:
 - User `alice` belongs to groups: `["team-a", "team-b"]`
@@ -509,13 +602,26 @@ according to the different needs.
 
 ### Authorization Rules Overview
 
-The authorization policy distinguishes between two types of subjects:
+The authorization policy distinguishes between the following subject categories:
 
-1. **Admin Subjects**: Service accounts with administrative privileges
-   - `system:serviceaccount:<namespace>:admin`
+1. **Admin Subjects**: Users with full access to all API methods. An account is considered admin if
+   it matches any of:
+   - **Emergency service accounts**: Kubernetes service accounts for emergency access when the
+     identity provider is unavailable (e.g., `system:serviceaccount:<namespace>:admin`)
+   - **Admin service accounts**: OAuth service accounts registered as admins
+     (e.g., `service-account-osac-admin`, `service-account-osac-controller`)
+   - **Admin groups**: Users belonging to admin groups (e.g., the `admins` group)
 
-2. **Client Subjects**: All other authenticated users (JWT tokens
-   from Keycloak or other service accounts)
+2. **Tenant Admin Subjects**: Users with the `tenant-admin` or `tenant-user-manager` realm role.
+   They inherit all client permissions **plus** access to user management methods
+   (`Users/Create`, `Users/Get`, `Users/List`, `Users/Update`, `Users/Delete`).
+
+3. **Tenant IdP Manager Subjects**: Users with the `tenant-admin` or `tenant-idp-manager` realm
+   role. They inherit all client permissions. When IdP management APIs are implemented, they will
+   also gain access to those methods.
+
+4. **Client Subjects**: All other authenticated users (JWT tokens from Keycloak or other service
+   accounts that are not admin, tenant-admin, or tenant-idp-manager).
 
 ### Authorization Logic
 
@@ -526,18 +632,31 @@ The authorization policy allows:
    - gRPC reflection endpoints (`/grpc.reflection.*`)
    - Health check endpoints (`/grpc.health.*`)
 
-2. **Client Users** (non-admin):
+2. **Client Users** (and tenant admins / IdP managers who inherit client permissions):
    - Specific gRPC methods for:
-     - Events: `Watch`
-     - Cluster Templates: `Get`, `List`
      - Clusters: `Create`, `Delete`, `Get`, `GetKubeconfig`,
        `GetKubeconfigViaHttp`, `GetPassword`,
        `GetPasswordViaHttp`, `List`, `Update`
-     - Host Types: `Get`, `List`
-     - Compute Instance Templates: `Get`, `List`
+     - Cluster Templates: `Get`, `List`
+     - Cluster Catalog Items: `Get`, `List`
      - Compute Instances: `Create`, `Delete`, `Get`, `List`, `Update`
+     - Compute Instance Templates: `Get`, `List`
+     - Console Sessions: `Create`
+     - Events: `Watch`
+     - Host Types: `Get`, `List`
+     - Network Classes: `Create`, `Delete`, `Get`, `List`, `Update`
+     - Public IP Attachments: `Create`, `Delete`, `Get`, `List`, `Update`
+     - Public IPs: `Create`, `Delete`, `Get`, `List`, `Update`
+     - Role Bindings: `Get`, `List`
+     - Roles: `Get`, `List`
+     - Security Groups: `Create`, `Delete`, `Get`, `List`, `Update`
+     - Subnets: `Create`, `Delete`, `Get`, `List`, `Update`
+     - Virtual Networks: `Create`, `Delete`, `Get`, `List`, `Update`
 
-3. **Admin Users**:
+3. **Tenant Admins** (in addition to client permissions):
+   - Users: `Create`, `Get`, `List`, `Update`, `Delete`
+
+4. **Admin Users**:
    - All methods (full access)
 
 ### Customizing Authorization Rules
@@ -548,11 +667,11 @@ is located in:
 - Template: `charts/service/templates/grpc-server/authconfig.yaml`
 - Base manifest: `manifests/base/grpc-server/authconfig.yaml`
 
-Example: To add a new allowed method for client users, add it to the list in the `is_client` rule:
+Example: To add a new allowed method for client users, add it to the `has_client_permissions` rule:
 
 ```rego
 allow {
-  is_client
+  has_client_permissions
   grpc_method in {
     # ... existing methods ...
     "/osac.public.v1.NewService/NewMethod",
@@ -560,12 +679,22 @@ allow {
 }
 ```
 
-Example: To add a new admin subject, add it to the `admin_subjects` set:
+Example: To add a new emergency service account:
 
 ```rego
-admin_subjects := {
+emergency_service_accounts := {
   "system:serviceaccount:osac:admin",
-  "system:serviceaccount:osac:new-admin",  # New admin
+  "system:serviceaccount:osac:new-admin",
+}
+```
+
+Example: To add a new admin OAuth service account:
+
+```rego
+admin_service_accounts := {
+  "service-account-osac-admin",
+  "service-account-osac-controller",
+  "service-account-new-admin",
 }
 ```
 
@@ -664,11 +793,13 @@ The fulfillment service uses a two-level authorization approach:
 ### Step-by-Step Authorization Process
 
 1. **User Authentication**:
-   - User logs in through Keycloak (OAuth IDP)
+   - User logs in through Keycloak (OAuth IDP) using `osac login`
    - Receives a JWT access token containing:
      - Username (`username` claim)
-     - Groups (`groups` claim) — Authorino maps these to tenants
-     - Roles (if configured)
+     - Organization (`organization` claim) — used as tenant when present
+     - Groups (`groups` claim) — fallback tenant source when no organization claim
+     - Realm roles (`realm_access.roles`) — used for tenant-admin / IdP-manager authorization
+     - Audience (`aud: "osac-api"`) — API audience claim
 
 2. **Request Initiation**:
    - User makes a request to the fulfillment service API
@@ -737,14 +868,29 @@ The fulfillment service uses a two-level authorization approach:
 
 #### Scenario 3: Admin User Accessing Any Method
 
-1. Service account `system:serviceaccount:osac:admin` sends request with service account token
+1. Service account `service-account-osac-admin` sends request with OAuth client credentials token
 2. **Authorino checks**:
    - Is service account authenticated? ✅ Yes
-   - Is the subject in `admin_subjects`? ✅ Yes
+   - Is the subject in `admin_service_accounts`? ✅ Yes
    - **Result**: Authorized ✅ (admins can access everything)
 3. **Fulfillment Service**:
-   - Processes the request with full access
+   - Reads `x-subject` with tenants: `["*"]` (universal)
+   - Processes the request with full access to all tenants
    - **Result**: Operation succeeds ✅
+
+#### Scenario 3b: Tenant Admin Managing Users
+
+1. User `bob` (realm roles: `["tenant-admin"]`, organization: `["team-a"]`) sends:
+   `POST /osac.public.v1.Users/Create` with JWT token
+2. **Authorino checks**:
+   - Is `bob` authenticated? ✅ Yes
+   - Does `bob` have `tenant-admin` role? ✅ Yes → `is_tenant_admin = true`
+   - Is `Users/Create` allowed for tenant admins? ✅ Yes
+   - **Result**: Authorized ✅
+3. **Fulfillment Service**:
+   - Reads user: `bob`, tenants: `["team-a"]` from `x-subject`
+   - Validates that `bob` can only manage users within tenant `team-a`
+   - **Result**: User created in tenant `team-a` ✅
 
 #### Scenario 4: User Viewing Resources (Tenancy Filtering)
 
@@ -761,41 +907,41 @@ The fulfillment service uses a two-level authorization approach:
 
 ### Roles and Permissions
 
-The fulfillment service does not have an explicit "role" concept, but it distinguishes between:
+The fulfillment service uses Keycloak realm roles for role-based authorization. The Rego policy
+reads roles from the `realm_access.roles` claim in JWT tokens.
 
 1. **Admin Users**:
-   - Defined by service account names in the Rego policy
-   - Currently: `system:serviceaccount:<namespace>:admin`
+   - Emergency K8s service accounts (e.g., `system:serviceaccount:<namespace>:admin`)
+   - OAuth admin service accounts (e.g., `service-account-osac-admin`, `service-account-osac-controller`)
+   - Users in admin groups (e.g., the `admins` group)
    - Have full access to all operations
 
-2. **Client Users**:
-   - All other authenticated users (JWT tokens from Keycloak or other service accounts)
+2. **Tenant Admin Users**:
+   - Users with the `tenant-admin` or `tenant-user-manager` realm role
+   - Have all client permissions plus user management (`Users/Create`, `Get`, `List`, `Update`, `Delete`)
+   - Access is restricted by tenancy (can only manage users within their tenants)
+
+3. **Tenant IdP Manager Users**:
+   - Users with the `tenant-admin` or `tenant-idp-manager` realm role
+   - Have all client permissions (IdP management APIs will be added in the future)
+
+4. **Client Users**:
+   - All other authenticated users
    - Have access to a specific list of operations (defined in the Rego policy)
    - Access is further restricted by tenancy (can only see resources from their tenants)
 
 ### Applying Roles in Keycloak
 
-While the fulfillment service doesn't have explicit roles, you can use Keycloak roles for:
+The pre-configured realm includes the roles needed by the authorization policy. To assign roles:
 
-1. **Keycloak-Level Authorization**: Use Keycloak roles to control who can authenticate or which
-   clients they can use
-2. **Future Integration**: If role-based authorization is added to the fulfillment service, Keycloak
-   roles can be included in tokens and used in the Rego policy
-
-To add roles in Keycloak:
-
-1. **Create Realm Roles**:
-   - Go to **Realm roles** → **Create role**
-   - Examples: `tenant-admin`, `tenant-user`, `viewer`, `editor`
-
-2. **Assign Roles to Users**:
+1. **Assign Roles to Users**:
    - Go to **Users** → Select user → **Role mapping** tab
-   - Assign realm roles to the user
+   - Click **Assign role**
+   - Select one of: `tenant-admin`, `tenant-user-manager`, `tenant-idp-manager`
 
-3. **Include Roles in Tokens** (if needed for future use):
-   - Configure a **Realm Roles** mapper in the client scope
-   - Set **Token Claim Name**: `roles`
-   - Enable **Add to access token`
+2. **Roles are included in tokens automatically**: The `roles` client scope (included in
+   `osac-cli` default scopes) maps realm roles into the `realm_access.roles` claim in access
+   tokens. No additional mapper configuration is needed.
 
 ## Verification
 
@@ -810,8 +956,9 @@ kubectl get svc -n keycloak
 
 Access the Keycloak Admin Console and verify:
 - The `osac` realm exists
-- The `osac-cli` and `fulfillment-controller` clients are configured
-- The realm is enabled
+- The `osac-cli` client is configured with the correct default scopes
+- Organizations are enabled
+- Realm roles (`tenant-admin`, `tenant-user-manager`, `tenant-idp-manager`) exist
 
 ### 3. Verify Fulfillment Service Configuration
 
@@ -824,14 +971,46 @@ kubectl get authconfig fulfillment-service -n osac -o yaml | grep issuerUrl
 
 ### 4. Test Authentication
 
-#### Test with a Keycloak JWT Token
+#### Test with `osac login` (Recommended)
+
+The `osac` CLI provides a `login` command that handles authentication automatically:
+
+```bash
+# Login using the device flow (default — opens browser for authentication)
+osac login https://fulfillment-api.osac.svc.cluster.local:8000
+
+# Login using password flow (non-interactive)
+osac login https://fulfillment-api.osac.svc.cluster.local:8000 \
+  --user USERNAME --password PASSWORD
+
+# Login using client credentials flow (for service accounts)
+osac login https://fulfillment-api.osac.svc.cluster.local:8000 \
+  --client-id my-service --client-secret MY_SECRET
+
+# Login with a custom CA certificate
+osac login https://fulfillment-api.osac.svc.cluster.local:8000 \
+  --ca-file /path/to/ca.crt
+
+# Login with a token script (for Kubernetes service account tokens)
+osac login https://fulfillment-api.osac.svc.cluster.local:8000 \
+  --token-script 'kubectl create token -n osac client --duration 1h'
+```
+
+After login, the configuration is saved to `~/.config/osac/` and subsequent `osac` commands use the
+stored credentials automatically.
+
+```bash
+# Verify login works
+osac get cluster
+```
+
+#### Test with a Keycloak JWT Token (Manual)
 
 1. **Get a token from Keycloak** (using the osac-cli client):
 
    ```bash
-   # Get token (replace USERNAME and PASSWORD with actual credentials)
    TOKEN=$(curl -k -X POST \
-     https://localhost:8443/realms/osac/protocol/openid-connect/token \
+     https://keycloak.keycloak.svc.cluster.local:8000/realms/osac/protocol/openid-connect/token \
      -d "client_id=osac-cli" \
      -d "username=USERNAME" \
      -d "password=PASSWORD" \
@@ -842,10 +1021,8 @@ kubectl get authconfig fulfillment-service -n osac -o yaml | grep issuerUrl
 2. **Test the API with the token**:
 
    ```bash
-   # Get the service URL
    SERVICE_URL=$(kubectl get route -n osac fulfillment-api -o jsonpath='{.spec.host}')
 
-   # Make a request
    curl -k -H "Authorization: Bearer ${TOKEN}" \
      https://${SERVICE_URL}/api/fulfillment/v1/cluster_templates
    ```
@@ -855,13 +1032,17 @@ kubectl get authconfig fulfillment-service -n osac -o yaml | grep issuerUrl
 Test that authorization rules are working:
 
 1. **Test as a client user** (should have limited access):
-   - Use a Keycloak JWT token from a regular user
-   - Verify access to allowed methods
-   - Verify denial of admin-only methods
+   - Login with a regular Keycloak user: `osac login <address> --user alice --password ...`
+   - Verify access to allowed methods: `osac get cluster`, `osac get computeinstance`
+   - Verify denial of admin-only methods (e.g., hub operations)
 
-2. **Test as an admin** (should have full access):
-   - Use a service account token from the `admin` service account
-   - Verify access to all methods
+2. **Test as a tenant admin** (should have client + user management access):
+   - Login with a user that has the `tenant-admin` realm role
+   - Verify access to user management: `osac get user`
+
+3. **Test as an admin** (should have full access):
+   - Login with an admin service account using client credentials flow
+   - Verify access to all methods including private APIs
 
 ## Troubleshooting
 
