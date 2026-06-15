@@ -655,6 +655,48 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	privatev1.RegisterComputeInstancesServer(grpcServer, privateComputeInstancesServer)
 
+	// Create the private bare metal instance templates server:
+	c.logger.InfoContext(ctx, "Creating private bare metal instance templates server")
+	privateBareMetalInstanceTemplatesServer, err := servers.NewPrivateBareMetalInstanceTemplatesServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private bare metal instance templates server: %w", err)
+	}
+	privatev1.RegisterBareMetalInstanceTemplatesServer(grpcServer, privateBareMetalInstanceTemplatesServer)
+
+	// Create the private bare metal instance catalog items server:
+	c.logger.InfoContext(ctx, "Creating private bare metal instance catalog items server")
+	privateBareMetalInstanceCatalogItemsServer, err := servers.NewPrivateBareMetalInstanceCatalogItemsServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private bare metal instance catalog items server: %w", err)
+	}
+	privatev1.RegisterBareMetalInstanceCatalogItemsServer(grpcServer, privateBareMetalInstanceCatalogItemsServer)
+
+	// Create the private bare metal instances server:
+	c.logger.InfoContext(ctx, "Creating private bare metal instances server")
+	privateBareMetalInstancesServer, err := servers.NewPrivateBareMetalInstancesServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private bare metal instances server: %w", err)
+	}
+	privatev1.RegisterBareMetalInstancesServer(grpcServer, privateBareMetalInstancesServer)
+
 	// Create the private hubs server:
 	c.logger.InfoContext(ctx, "Creating hubs server")
 	privateHubsServer, err := servers.NewPrivateHubsServer().

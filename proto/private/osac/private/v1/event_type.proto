@@ -15,6 +15,9 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+import "osac/private/v1/baremetal_instance_catalog_item_type.proto";
+import "osac/private/v1/baremetal_instance_template_type.proto";
+import "osac/private/v1/baremetal_instance_type.proto";
 import "osac/private/v1/cluster_catalog_item_type.proto";
 import "osac/private/v1/cluster_template_type.proto";
 import "osac/private/v1/cluster_type.proto";
@@ -68,6 +71,9 @@ message Event {
     Project project = 24;
     PublicIPAttachment public_ip_attachment = 25;
     InstanceType instance_type = 26;
+    BareMetalInstance bare_metal_instance = 27;
+    BareMetalInstanceTemplate bare_metal_instance_template = 28;
+    BareMetalInstanceCatalogItem bare_metal_instance_catalog_item = 29;
   }
 }
 
