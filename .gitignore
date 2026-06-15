@@ -15,3 +15,7 @@
 /osac-dev
 __debug_bin*
 __pycache__
+
+# Helm dependency build artifacts
+charts/*/charts/
+charts/*/Chart.lock
