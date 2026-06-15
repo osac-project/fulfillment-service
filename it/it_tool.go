@@ -2099,6 +2099,9 @@ func (t *Tool) registerHub(ctx context.Context) error {
 	_, err = hubsClient.Create(ctx, privatev1.HubsCreateRequest_builder{
 		Object: privatev1.Hub_builder{
 			Id: hubId,
+			Metadata: privatev1.Metadata_builder{
+				Tenant: auth.SharedTenant,
+			}.Build(),
 			Spec: privatev1.HubSpec_builder{
 				Kubeconfig: hubKcBytes,
 				Namespace:  hubNamespace,

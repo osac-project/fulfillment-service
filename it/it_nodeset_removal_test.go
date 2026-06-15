@@ -48,7 +48,8 @@ var _ = Describe("Node set removal", func() {
 		workerHostTypeId = fmt.Sprintf("worker_type_%s", uuid.New())
 		_, err := hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 			Object: privatev1.HostType_builder{
-				Id: workerHostTypeId,
+				Metadata: sharedMetadata(),
+				Id:       workerHostTypeId,
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -57,7 +58,8 @@ var _ = Describe("Node set removal", func() {
 		storageHostTypeId = fmt.Sprintf("storage_type_%s", uuid.New())
 		_, err = hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 			Object: privatev1.HostType_builder{
-				Id: storageHostTypeId,
+				Metadata: sharedMetadata(),
+				Id:       storageHostTypeId,
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -66,6 +68,7 @@ var _ = Describe("Node set removal", func() {
 		templateId = fmt.Sprintf("template_2_nodesets_%s", uuid.New())
 		_, err = templatesClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          templateId,
 				Title:       "Template with 2 node sets",
 				Description: "A template with workers and storage node sets.",

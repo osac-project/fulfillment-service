@@ -75,15 +75,20 @@ func (p *DefaultTenancyLogic) DetermineAssignableTenants(ctx context.Context) (r
 }
 
 // DetermineDefaultTenant extracts the subject from the auth context and returns the tenant that will be assigned
-// by default to objects. When the subject has access to all tenants (e.g. an admin), the default is the shared
-// tenant because a universal set can't be stored as the tenant of an object.
+// by default to objects when the request does not specify one explicitly.
 func (p *DefaultTenancyLogic) DetermineDefaultTenant(ctx context.Context) (result string, err error) {
 	assignable, err := p.DetermineAssignableTenants(ctx)
 	if err != nil {
 		return
 	}
 	if !assignable.Finite() {
-		result = SharedTenant
+		subject := SubjectFromContext(ctx)
+		p.logger.ErrorContext(
+			ctx,
+			"Subject has access to all tenants but no explicit tenant was provided",
+			slog.String("user", subject.User),
+		)
+		err = fmt.Errorf("explicit tenant is required when subject has access to all tenants")
 		return
 	}
 	inclusions := assignable.Inclusions()
@@ -100,7 +105,7 @@ func (p *DefaultTenancyLogic) DetermineVisibleTenants(ctx context.Context) (resu
 	subject := SubjectFromContext(ctx)
 	result = subject.Tenants
 	if result.Finite() {
-		result = SharedTenants.Union(result)
+		result = collections.NewSet(SharedTenant).Union(result)
 	}
 	return
 }

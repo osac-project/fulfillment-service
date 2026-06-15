@@ -300,6 +300,63 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(status.Message()).To(Equal("tenant 'your-tenant' doesn't exist"))
 	})
 
+	It("Uses explicit tenant when subject has access to all tenants", func() {
+		// Create a tenancy logic that represents a universal admin:
+		tenancy := auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
+			Return(auth.AllTenants, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(auth.AllTenants, nil).
+			AnyTimes()
+
+		// Create the template using the DAO:
+		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		_, err = templatesDao.Create().
+			SetObject(
+				privatev1.ClusterTemplate_builder{
+					Id:          "my-template",
+					Title:       "My template",
+					Description: "My template",
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
+				}.Build(),
+			).
+			Do(ctx)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create the clusters server:
+		clustersServer, err := NewClustersServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetScheme(testScheme).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create a cluster with an explicit tenant and verify it succeeds without a default tenant:
+		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Metadata: publicv1.Metadata_builder{
+					Tenant: "my-tenant",
+				}.Build(),
+				Spec: publicv1.ClusterSpec_builder{
+					Template: "my-template",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+
+		cluster := response.GetObject()
+		Expect(cluster).ToNot(BeNil())
+		Expect(cluster.GetMetadata().GetTenant()).To(Equal("my-tenant"))
+	})
+
 	It("Rejects object creation when tenant is visible to the user, but doesn't exist in the database", func() {
 		// Create a tenancy logic that returns visible tenants:
 		tenancy := auth.NewMockTenancyLogic(ctrl)

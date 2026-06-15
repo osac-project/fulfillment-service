@@ -46,8 +46,5 @@ var SystemTenants = collections.NewSet(SystemTenant)
 // SharedTenant is the tenant that is always visible to all users.
 const SharedTenant = "shared"
 
-// SharedTenants is the set of tenants that are always visible to all users.
-var SharedTenants = collections.NewSet(SharedTenant)
-
 // AllTenants is the set of all tenants that are possible.
 var AllTenants = collections.NewUniversalSet[string]()

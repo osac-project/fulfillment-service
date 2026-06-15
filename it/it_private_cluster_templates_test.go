@@ -50,6 +50,7 @@ var _ = Describe("Private cluster templates", func() {
 		id := fmt.Sprintf("my_template_%s", uuid.New())
 		_, err := client.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          id,
 				Title:       "My title",
 				Description: "My description.",
@@ -78,6 +79,7 @@ var _ = Describe("Private cluster templates", func() {
 		id := fmt.Sprintf("my_template_%s", uuid.New())
 		response, err := client.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          id,
 				Title:       "My title",
 				Description: "My description.",
@@ -101,6 +103,7 @@ var _ = Describe("Private cluster templates", func() {
 		id := fmt.Sprintf("my_template_%s", uuid.New())
 		_, err := client.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          id,
 				Title:       "My title",
 				Description: "My description.",
@@ -150,6 +153,7 @@ var _ = Describe("Private cluster templates", func() {
 		id := fmt.Sprintf("my_template_%s", uuid.New())
 		_, err := client.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          id,
 				Title:       "My title",
 				Description: "My description.",

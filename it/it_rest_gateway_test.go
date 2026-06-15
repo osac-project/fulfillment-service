@@ -46,6 +46,7 @@ var _ = Describe("REST gateway", func() {
 		gpuHostTypeID := fmt.Sprintf("gpus_%s", uuid.New())
 		_, err := hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 			Object: privatev1.HostType_builder{
+				Metadata:    sharedMetadata(),
 				Id:          computeHostTypeID,
 				Title:       "Compute",
 				Description: "Compute.",
@@ -60,6 +61,7 @@ var _ = Describe("REST gateway", func() {
 		})
 		_, err = hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 			Object: privatev1.HostType_builder{
+				Metadata:    sharedMetadata(),
 				Id:          gpuHostTypeID,
 				Title:       "GPU",
 				Description: "GPU.",
@@ -87,6 +89,7 @@ var _ = Describe("REST gateway", func() {
 		}
 		_, err = templatesClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          templateID,
 				Title:       "My template",
 				Description: "My template.",
@@ -129,6 +132,7 @@ var _ = Describe("REST gateway", func() {
 		gpuHostTypeID := fmt.Sprintf("gpus_%s", uuid.New())
 		_, err := hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 			Object: privatev1.HostType_builder{
+				Metadata:    sharedMetadata(),
 				Id:          computeHostTypeID,
 				Title:       "Compute",
 				Description: "Compute.",
@@ -143,6 +147,7 @@ var _ = Describe("REST gateway", func() {
 		})
 		_, err = hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 			Object: privatev1.HostType_builder{
+				Metadata:    sharedMetadata(),
 				Id:          gpuHostTypeID,
 				Title:       "GPU",
 				Description: "GPU.",
@@ -170,6 +175,7 @@ var _ = Describe("REST gateway", func() {
 		}
 		_, err = templatesClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          templateID,
 				Title:       "My private template",
 				Description: "My private template.",

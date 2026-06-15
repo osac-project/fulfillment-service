@@ -106,7 +106,8 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				hostTypeId := fmt.Sprintf("sa-isolation-hosttype-%s", uuid.New())
 				_, err := hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 					Object: privatev1.HostType_builder{
-						Id: hostTypeId,
+						Metadata: sharedMetadata(),
+						Id:       hostTypeId,
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -139,7 +140,8 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				templatesClient := privatev1.NewClusterTemplatesClient(tool.InternalView().AdminConn())
 				_, err = templatesClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 					Object: privatev1.ClusterTemplate_builder{
-						Id: templateId,
+						Metadata: sharedMetadata(),
+						Id:       templateId,
 						NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 							"my-node-set": privatev1.ClusterTemplateNodeSet_builder{
 								HostType: hostTypeId,
@@ -350,7 +352,8 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				hostTypesClient := privatev1.NewHostTypesClient(tool.InternalView().AdminConn())
 				_, err := hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 					Object: privatev1.HostType_builder{
-						Id: hostTypeId,
+						Metadata: sharedMetadata(),
+						Id:       hostTypeId,
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -366,7 +369,8 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 				templatesClient := privatev1.NewClusterTemplatesClient(tool.InternalView().AdminConn())
 				_, err = templatesClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 					Object: privatev1.ClusterTemplate_builder{
-						Id: templateId,
+						Metadata: sharedMetadata(),
+						Id:       templateId,
 						NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 							"my-node-set": privatev1.ClusterTemplateNodeSet_builder{
 								HostType: hostTypeId,

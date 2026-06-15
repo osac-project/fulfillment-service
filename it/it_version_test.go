@@ -48,7 +48,8 @@ var _ = Describe("Version", func() {
 		hostTypeId = fmt.Sprintf("my-host-type-%s", uuid.New())
 		_, err := hostTypesClient.Create(ctx, privatev1.HostTypesCreateRequest_builder{
 			Object: privatev1.HostType_builder{
-				Id: hostTypeId,
+				Metadata: sharedMetadata(),
+				Id:       hostTypeId,
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -62,6 +63,7 @@ var _ = Describe("Version", func() {
 		templateId = fmt.Sprintf("my-template-%s", uuid.New())
 		_, err = templatesClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          templateId,
 				Title:       "My template",
 				Description: "My template.",

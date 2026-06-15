@@ -18,6 +18,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/osac-project/fulfillment-service/internal/collections"
 )
 
 var _ = Describe("Guest tenancy logic", func() {
@@ -60,7 +61,7 @@ var _ = Describe("Guest tenancy logic", func() {
 		It("Should return the guest and shared tenants", func() {
 			result, err := logic.DetermineVisibleTenants(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(result.Equal(GuestTenants.Union(SharedTenants))).To(BeTrue())
+			Expect(result.Equal(GuestTenants.Union(collections.NewSet(SharedTenant)))).To(BeTrue())
 		})
 	})
 })

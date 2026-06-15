@@ -43,9 +43,7 @@ var _ = Describe("Role binding reconciler", func() {
 		// Create the role binding and remember to delete it after the test:
 		createResponse, err := client.Create(ctx, privatev1.RoleBindingsCreateRequest_builder{
 			Object: privatev1.RoleBinding_builder{
-				Metadata: privatev1.Metadata_builder{
-					Name: fmt.Sprintf("my-%s", uuid.New()),
-				}.Build(),
+				Metadata: sharedMetadataWithName(fmt.Sprintf("my-%s", uuid.New())),
 				Spec: privatev1.RoleBindingSpec_builder{
 					Role: "my-role",
 					Groups: []string{
@@ -84,9 +82,7 @@ var _ = Describe("Role binding reconciler", func() {
 		// Create the role binding:
 		createResponse, err := client.Create(ctx, privatev1.RoleBindingsCreateRequest_builder{
 			Object: privatev1.RoleBinding_builder{
-				Metadata: privatev1.Metadata_builder{
-					Name: fmt.Sprintf("my-%s", uuid.New()),
-				}.Build(),
+				Metadata: sharedMetadataWithName(fmt.Sprintf("my-%s", uuid.New())),
 				Spec: privatev1.RoleBindingSpec_builder{
 					Role: "my-role",
 					Groups: []string{

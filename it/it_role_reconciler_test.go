@@ -43,9 +43,7 @@ var _ = Describe("Role reconciler", func() {
 		// Create the role and remember to delete it after the test:
 		createResponse, err := client.Create(ctx, privatev1.RolesCreateRequest_builder{
 			Object: privatev1.Role_builder{
-				Metadata: privatev1.Metadata_builder{
-					Name: fmt.Sprintf("my-%s", uuid.New()),
-				}.Build(),
+				Metadata: sharedMetadataWithName(fmt.Sprintf("my-%s", uuid.New())),
 				Spec: privatev1.RoleSpec_builder{
 					Title:       "My role",
 					Description: "My role.",
@@ -80,9 +78,7 @@ var _ = Describe("Role reconciler", func() {
 		// Create the role:
 		createResponse, err := client.Create(ctx, privatev1.RolesCreateRequest_builder{
 			Object: privatev1.Role_builder{
-				Metadata: privatev1.Metadata_builder{
-					Name: fmt.Sprintf("my-%s", uuid.New()),
-				}.Build(),
+				Metadata: sharedMetadataWithName(fmt.Sprintf("my-%s", uuid.New())),
 				Spec: privatev1.RoleSpec_builder{
 					Title:       "My role",
 					Description: "My role.",

@@ -56,6 +56,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		computeInstanceTemplateId = fmt.Sprintf("test-ci-template-%s", uuid.New())
 		_, err := computeInstanceTemplatesClient.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
 			Object: privatev1.ComputeInstanceTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          computeInstanceTemplateId,
 				Title:       "Test CI Template",
 				Description: "Template for compute instance subnet test.",
@@ -66,6 +67,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		// Create NetworkClass
 		ncResp, err := networkClassesClient.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
 			Object: privatev1.NetworkClass_builder{
+				Metadata:               sharedMetadata(),
 				Title:                  "Test CUDN Network Class",
 				ImplementationStrategy: "cudn",
 			}.Build(),
@@ -77,7 +79,8 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		virtualNetworkId = fmt.Sprintf("test-vnet-%s", uuid.New())
 		_, err = virtualNetworksClient.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 			Object: privatev1.VirtualNetwork_builder{
-				Id: virtualNetworkId,
+				Metadata: sharedMetadata(),
+				Id:       virtualNetworkId,
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					NetworkClass: networkClassId,
 					Region:       "us-east-1",
@@ -107,7 +110,8 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		subnetId = fmt.Sprintf("test-subnet-%s", uuid.New())
 		_, err = subnetsClient.Create(ctx, privatev1.SubnetsCreateRequest_builder{
 			Object: privatev1.Subnet_builder{
-				Id: subnetId,
+				Metadata: sharedMetadata(),
+				Id:       subnetId,
 				Spec: privatev1.SubnetSpec_builder{
 					VirtualNetwork: virtualNetworkId,
 					Ipv4Cidr:       new("10.100.1.0/24"),

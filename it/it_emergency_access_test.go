@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
@@ -42,6 +43,7 @@ var _ = Describe("Emergency access", func() {
 		id := fmt.Sprintf("emergency_grpc_%s", uuid.New())
 		_, err := client.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
 			Object: privatev1.ClusterTemplate_builder{
+				Metadata:    sharedMetadata(),
 				Id:          id,
 				Title:       "Emergency gRPC template",
 				Description: "Template created via gRPC using emergency admin service account.",
@@ -63,6 +65,9 @@ var _ = Describe("Emergency access", func() {
 			"id":          id,
 			"title":       "Emergency REST template",
 			"description": "Template created via REST using emergency admin service account.",
+			"metadata": map[string]any{
+				"tenant": auth.SharedTenant,
+			},
 		}
 		requestData, err := json.Marshal(requestBody)
 		Expect(err).ToNot(HaveOccurred())

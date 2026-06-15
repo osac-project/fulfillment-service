@@ -67,7 +67,7 @@ func (p *GuestTenancyLogic) DetermineDefaultTenant(_ context.Context) (result st
 // DetermineVisibleTenants returns a set containing both the guest and shared tenants, allowing guest users to see
 // objects from both tenants.
 func (p *GuestTenancyLogic) DetermineVisibleTenants(_ context.Context) (result collections.Set[string], err error) {
-	result = GuestTenants.Union(SharedTenants)
+	result = GuestTenants.Union(collections.NewSet(SharedTenant))
 	return
 }
 

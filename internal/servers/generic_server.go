@@ -1197,22 +1197,6 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 		return
 	}
 
-	// Determine the default tenant:
-	defaultTenant, err := s.tenancyLogic.DetermineDefaultTenant(ctx)
-	if err != nil {
-		s.logger.ErrorContext(
-			ctx,
-			"Failed to determine default tenant",
-			slog.Any("error", err),
-		)
-		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default tenant")
-		return
-	}
-	if defaultTenant == "" {
-		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there is no default tenant")
-		return
-	}
-
 	// Get the tenant from the request and current object:
 	requestTenant := s.getTenant(requestObject)
 	currentTenant := s.getTenant(currentObject)
@@ -1249,12 +1233,28 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 		return
 	}
 
-	// Fall back to the current tenant or the default:
+	// Fall back to the current tenant when the request does not specify one:
 	if currentTenant != "" {
 		result = currentTenant
-	} else {
-		result = defaultTenant
+		return
 	}
+
+	// Determine the default tenant only when neither request nor current object specify one:
+	defaultTenant, err := s.tenancyLogic.DetermineDefaultTenant(ctx)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine default tenant",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default tenant")
+		return
+	}
+	if defaultTenant == "" {
+		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there is no default tenant")
+		return
+	}
+	result = defaultTenant
 	return
 }
 
