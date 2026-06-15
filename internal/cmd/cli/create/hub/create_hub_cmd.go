@@ -55,12 +55,6 @@ func Cmd() *cobra.Command {
 		"",
 		namespaceFlagHelp,
 	)
-	flags.StringVar(
-		&runner.tenant,
-		"tenant",
-		auth.SharedTenant,
-		tenantFlagHelp,
-	)
 	return result
 }
 
@@ -69,7 +63,6 @@ type runnerContext struct {
 	id         string
 	kubeconfig string
 	namespace  string
-	tenant     string
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -95,9 +88,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if c.kubeconfig == "" {
 		return fmt.Errorf("kubeconfig file is required")
 	}
-	if c.tenant == "" {
-		return fmt.Errorf("tenant is required")
-	}
 
 	// Create the gRPC connection from the configuration:
 	conn, err := cfg.Connect(ctx, cmd.Flags())
@@ -115,11 +105,11 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read kubeconfig file '%s': %w", c.kubeconfig, err)
 	}
 
-	// Prepare the hub:
+	// Platform hubs live in the shared tenant for broad visibility.
 	hub := privatev1.Hub_builder{
 		Id: c.id,
 		Metadata: privatev1.Metadata_builder{
-			Tenant: c.tenant,
+			Tenant: auth.SharedTenant,
 		}.Build(),
 		Spec: privatev1.HubSpec_builder{
 			Kubeconfig: kubeconfig,
@@ -159,8 +149,4 @@ API.
 
 const namespaceFlagHelp = `
 _NAMESPACE_ - Namespace where cluster orders will be created.
-`
-
-const tenantFlagHelp = `
-_TENANT_ - Tenant that owns the hub. Defaults to the shared tenant.
 `
