@@ -357,6 +357,60 @@ var _ = Describe("Tenancy logic", func() {
 		Expect(cluster.GetMetadata().GetTenant()).To(Equal("my-tenant"))
 	})
 
+	It("Rejects create without tenant when subject has access to all tenants", func() {
+		tenancy := auth.NewMockTenancyLogic(ctrl)
+		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
+			Return(auth.AllTenants, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
+			Return(auth.AllTenants, nil).
+			AnyTimes()
+		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+			Return("", auth.ErrExplicitTenantRequired).
+			Times(1)
+
+		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		_, err = templatesDao.Create().
+			SetObject(
+				privatev1.ClusterTemplate_builder{
+					Id:          "my-template",
+					Title:       "My template",
+					Description: "My template",
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
+				}.Build(),
+			).
+			Do(ctx)
+		Expect(err).ToNot(HaveOccurred())
+
+		clustersServer, err := NewClustersServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetScheme(testScheme).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
+					Template: "my-template",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(response).To(BeNil())
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
+		Expect(status.Message()).To(Equal(auth.ErrExplicitTenantRequired.Error()))
+	})
+
 	It("Rejects object creation when tenant is visible to the user, but doesn't exist in the database", func() {
 		// Create a tenancy logic that returns visible tenants:
 		tenancy := auth.NewMockTenancyLogic(ctrl)

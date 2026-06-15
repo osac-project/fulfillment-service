@@ -1242,6 +1242,10 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 	// Determine the default tenant only when neither request nor current object specify one:
 	defaultTenant, err := s.tenancyLogic.DetermineDefaultTenant(ctx)
 	if err != nil {
+		if errors.Is(err, auth.ErrExplicitTenantRequired) {
+			err = grpcstatus.Error(grpccodes.PermissionDenied, err.Error())
+			return
+		}
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to determine default tenant",

@@ -88,7 +88,7 @@ func (p *DefaultTenancyLogic) DetermineDefaultTenant(ctx context.Context) (resul
 			"Subject has access to all tenants but no explicit tenant was provided",
 			slog.String("user", subject.User),
 		)
-		err = fmt.Errorf("explicit tenant is required when subject has access to all tenants")
+		err = ErrExplicitTenantRequired
 		return
 	}
 	inclusions := assignable.Inclusions()

@@ -15,6 +15,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -126,8 +127,8 @@ var _ = Describe("Default tenancy logic", func() {
 			}
 			ctx = ContextWithSubject(ctx, subject)
 			_, err := logic.DetermineDefaultTenant(ctx)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("explicit tenant is required"))
+			Expect(err).To(MatchError(ErrExplicitTenantRequired))
+			Expect(errors.Is(err, ErrExplicitTenantRequired)).To(BeTrue())
 		})
 
 		It("Fails if the subject has an empty tenants set", func() {

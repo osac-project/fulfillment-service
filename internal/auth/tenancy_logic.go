@@ -15,8 +15,15 @@ package auth
 
 import (
 	"context"
+	"errors"
 
 	"github.com/osac-project/fulfillment-service/internal/collections"
+)
+
+// ErrExplicitTenantRequired is returned when a subject with universal tenant access
+// creates or updates an object without specifying a tenant.
+var ErrExplicitTenantRequired = errors.New(
+	"explicit tenant is required when subject has access to all tenants",
 )
 
 // TenancyLogic defines the logic for determining object tenancy and access control.
