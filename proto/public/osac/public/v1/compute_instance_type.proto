@@ -162,6 +162,17 @@ message ComputeInstanceSpec {
   // Reference to a compute instance catalog item. Mutually exclusive with template during the migration period.
   // When set, the server fetches the catalog item and applies its field definitions.
   string catalog_item = 15;
+
+  // Guest OS family for this compute instance (e.g. "linux", "windows").
+  //
+  // If not explicitly set, the fulfillment service will attempt to infer the value
+  // from `image.source_ref` (e.g., images containing "windows" will be detected).
+  //
+  // If inference does not detect a Windows image, the field remains empty, and
+  // downstream consumers (osac-operator, osac-aap) default to "linux".
+  //
+  // This field cannot be modified after the compute instance is created.
+  optional string guest_os_family = 16;
 }
 
 // The status contains the details of the compute instance provided by the system.

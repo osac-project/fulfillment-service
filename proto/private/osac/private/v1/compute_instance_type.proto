@@ -93,6 +93,10 @@ message ComputeInstanceSpec {
   // Reference to a compute instance catalog item. Mutually exclusive with template during the migration period.
   // When set, the server fetches the catalog item and applies its field definitions.
   string catalog_item = 15;
+
+  // Guest OS family (e.g. "linux", "windows").
+  // Inferred from image.source_ref if not set. Immutable after creation.
+  optional string guest_os_family = 16;
 }
 
 message ComputeInstanceStatus {

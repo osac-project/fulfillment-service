@@ -226,6 +226,12 @@ func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 		}
 	}
 
+	// Infer guest_os_family from image path if not explicitly set:
+	utils.InferGuestOSFamily(request.GetObject().GetSpec())
+
+	// Soft-validate guest_os_family (logs warning for unknown values):
+	utils.ValidateGuestOSFamily(ctx, s.logger, request.GetObject().GetSpec().GetGuestOsFamily())
+
 	err = s.generic.Create(ctx, request, &response)
 	return
 }
@@ -261,6 +267,11 @@ func (s *PrivateComputeInstancesServer) Update(ctx context.Context,
 	}
 
 	err = s.validateNetworkAttachmentsImmutability(ctx, request)
+	if err != nil {
+		return
+	}
+
+	err = s.validateGuestOSFamilyImmutability(ctx, request)
 	if err != nil {
 		return
 	}
@@ -488,6 +499,49 @@ func (s *PrivateComputeInstancesServer) validateNetworkAttachmentsImmutability(
 				i, existingSubnet, newSubnet,
 			)
 		}
+	}
+
+	return nil
+}
+
+// validateGuestOSFamilyImmutability ensures that the guest_os_family field cannot be
+// changed after compute instance creation.
+func (s *PrivateComputeInstancesServer) validateGuestOSFamilyImmutability(ctx context.Context,
+	request *privatev1.ComputeInstancesUpdateRequest) error {
+	updateMask := request.GetUpdateMask()
+
+	// Early return if guest_os_family is not in the update mask
+	if !hasMaskPrefix(updateMask, "spec.guest_os_family") {
+		return nil
+	}
+
+	ci := request.GetObject()
+	if ci == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance is mandatory")
+	}
+	id := ci.GetId()
+	if id == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "compute instance id is mandatory")
+	}
+
+	// Fetch the existing compute instance
+	getResponse, err := s.generic.dao.Get().SetId(id).Do(ctx)
+	if err != nil {
+		return err
+	}
+	existingCI := getResponse.GetObject()
+
+	// Compare guest_os_family values
+	existingValue := existingCI.GetSpec().GetGuestOsFamily()
+	newValue := request.GetObject().GetSpec().GetGuestOsFamily()
+
+	if existingValue != newValue {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"cannot change spec.guest_os_family from '%s' to '%s': guest_os_family is immutable",
+			existingValue,
+			newValue,
+		)
 	}
 
 	return nil

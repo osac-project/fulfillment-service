@@ -1850,5 +1850,272 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Message()).To(ContainSubstring("cannot change number"))
 			})
 		})
+
+		Context("guest_os_family", func() {
+			It("Infers guest_os_family='windows' from Windows image on create", func() {
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "containerdisks/windows:2022",
+							}.Build(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ComputeInstanceStatus_builder{
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+				Expect(createResponse.GetObject().GetSpec().GetGuestOsFamily()).To(Equal("windows"))
+			})
+
+			It("Preserves explicit guest_os_family on create", func() {
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "containerdisks/windows:2022",
+							}.Build(),
+							GuestOsFamily: new("linux"),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ComputeInstanceStatus_builder{
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+				Expect(createResponse.GetObject().GetSpec().GetGuestOsFamily()).To(Equal("linux"))
+			})
+
+			It("Leaves guest_os_family empty for non-Windows image on create", func() {
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "containerdisks/fedora:latest",
+							}.Build(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ComputeInstanceStatus_builder{
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+				Expect(createResponse.GetObject().GetSpec().GetGuestOsFamily()).To(Equal(""))
+			})
+
+			It("Persists guest_os_family and returns in Get response", func() {
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "containerdisks/windows:2022",
+							}.Build(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ComputeInstanceStatus_builder{
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Get the object
+				getResponse, err := server.Get(ctx, privatev1.ComputeInstancesGetRequest_builder{
+					Id: id,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse).ToNot(BeNil())
+				Expect(getResponse.GetObject().GetSpec().GetGuestOsFamily()).To(Equal("windows"))
+			})
+
+			It("Rejects changing guest_os_family on update", func() {
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "containerdisks/windows:2022",
+							}.Build(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ComputeInstanceStatus_builder{
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Try to change guest_os_family
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							GuestOsFamily: new("linux"),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.guest_os_family"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(updateResponse).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("guest_os_family is immutable"))
+			})
+
+			It("Allows update when guest_os_family in mask but unchanged", func() {
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "containerdisks/windows:2022",
+							}.Build(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ComputeInstanceStatus_builder{
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Update with same value
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							GuestOsFamily: new("windows"),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.guest_os_family"},
+					},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse).ToNot(BeNil())
+				Expect(updateResponse.GetObject().GetSpec().GetGuestOsFamily()).To(Equal("windows"))
+			})
+
+			It("Filters by guest_os_family in List", func() {
+				// Create a Windows instance
+				createResponse1, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "containerdisks/windows:2022",
+							}.Build(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ComputeInstanceStatus_builder{
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse1).ToNot(BeNil())
+				windowsID := createResponse1.GetObject().GetId()
+
+				// Create a Linux instance (no guest_os_family set, should be empty)
+				createResponse2, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "containerdisks/fedora:latest",
+							}.Build(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ComputeInstanceStatus_builder{
+							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse2).ToNot(BeNil())
+				linuxID := createResponse2.GetObject().GetId()
+
+				// List with filter for Windows
+				listResponse1, err := server.List(ctx, privatev1.ComputeInstancesListRequest_builder{
+					Filter: new("this.spec.guest_os_family == 'windows'"),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(listResponse1).ToNot(BeNil())
+				Expect(listResponse1.GetItems()).To(HaveLen(1))
+				Expect(listResponse1.GetItems()[0].GetId()).To(Equal(windowsID))
+
+				// List with filter for empty (Linux)
+				listResponse2, err := server.List(ctx, privatev1.ComputeInstancesListRequest_builder{
+					Filter: new("this.spec.guest_os_family == ''"),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(listResponse2).ToNot(BeNil())
+				Expect(listResponse2.GetItems()).To(HaveLen(1))
+				Expect(listResponse2.GetItems()[0].GetId()).To(Equal(linuxID))
+			})
+		})
 	})
 })
