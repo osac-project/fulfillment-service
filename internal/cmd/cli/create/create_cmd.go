@@ -29,8 +29,11 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstance"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstancecatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/cluster"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/clustercatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/computeinstance"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/computeinstancecatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/hub"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/instancetype"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/publicip"
@@ -54,8 +57,11 @@ func Cmd() *cobra.Command {
 		RunE:                  runner.run,
 	}
 	result.AddCommand(baremetalinstance.Cmd())
+	result.AddCommand(baremetalinstancecatalogitem.Cmd())
 	result.AddCommand(cluster.Cmd())
+	result.AddCommand(clustercatalogitem.Cmd())
 	result.AddCommand(computeinstance.Cmd())
+	result.AddCommand(computeinstancecatalogitem.Cmd())
 	result.AddCommand(hub.Cmd())
 	result.AddCommand(instancetype.Cmd())
 	result.AddCommand(publicip.Cmd())
