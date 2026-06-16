@@ -24,7 +24,7 @@ import (
 
 var _ = DescribeMigration("Add instance type ref triggers", func() {
 	It("Creates the 'check_instance_type_not_in_use' function", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -42,7 +42,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Adds a trigger to the instance_types table", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -62,7 +62,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Creates the partial index on compute_instances instance_type", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -80,7 +80,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Prevents soft-deleting an instance type that is in use by a compute instance", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenant:
@@ -115,7 +115,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Allows soft-deleting an instance type that is not in use", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenant:
@@ -138,7 +138,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Allows soft-deleting an instance type when the compute instance is already deleted", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenant:
@@ -168,7 +168,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Creates the 'check_compute_instance_instance_type_ref' function", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -186,7 +186,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Adds a trigger to the compute_instances table", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -205,7 +205,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Prevents creating a compute instance referencing a non-existent instance type", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenant:
@@ -228,7 +228,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Prevents creating a compute instance referencing a soft-deleted instance type", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenant:
@@ -260,7 +260,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Allows creating a compute instance with no instance type", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenant:
@@ -278,7 +278,7 @@ var _ = DescribeMigration("Add instance type ref triggers", func() {
 	})
 
 	It("Allows creating a compute instance referencing a valid instance type", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 54)
+		err := tool.Migrate(ctx, 56)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenant:
