@@ -38,8 +38,8 @@ jobs:
         export registry="ghcr.io"
         echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login --username "${{ github.actor }}" --password-stdin "${registry}"
 
-        # Get the git version:
-        export git_version="$(git describe --tags)"
+        # Get the git version from the tag that triggered the workflow:
+        export git_version="${GITHUB_REF_NAME}"
 
         # Update the image reference in the chart:
         export app_version="${git_version}"
