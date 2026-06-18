@@ -44,6 +44,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/baremetalinstance"
 	"github.com/osac-project/fulfillment-service/internal/controllers/cluster"
 	"github.com/osac-project/fulfillment-service/internal/controllers/computeinstance"
+	"github.com/osac-project/fulfillment-service/internal/controllers/identityprovider"
 	"github.com/osac-project/fulfillment-service/internal/controllers/project"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicip"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicipattachment"
@@ -850,6 +851,43 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			r.logger.InfoContext(
 				ctx,
 				"Project reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the identity provider reconciler:
+	r.logger.InfoContext(ctx, "Creating identity provider reconciler")
+	identityProviderReconcilerFunction, err := identityprovider.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create identity provider reconciler function: %w", err)
+	}
+	identityProviderReconciler, err := controllers.NewReconciler[*privatev1.IdentityProvider]().
+		SetLogger(r.logger).
+		SetName("identity_provider").
+		SetClient(r.client).
+		SetFunction(identityProviderReconcilerFunction.Run).
+		SetEventFilter("has(event.identity_provider)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create identity provider reconciler: %w", err)
+	}
+
+	// Start the identity provider reconciler:
+	r.logger.InfoContext(ctx, "Starting identity provider reconciler")
+	go func() {
+		err := identityProviderReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Identity provider reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Identity provider reconciler failed",
 				slog.Any("error", err),
 			)
 		}
