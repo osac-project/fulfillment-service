@@ -85,6 +85,9 @@ auth:
   # mechanisms are not working. The service accounts are expected to be in the namespace where the service is deployed.
   emergencyServiceAccounts:
   - admin
+  - osac-operator
+  - osac-operator-controller-manager
+  - template-publisher
 
 # Logging configuration:
 log:

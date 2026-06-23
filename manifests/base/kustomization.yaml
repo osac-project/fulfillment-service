@@ -21,7 +21,6 @@ labels:
 resources:
 - namespace.yaml
 - database
-- authorino
 - grpc-server
 - console-proxy
 - ingress-proxy
