@@ -32,6 +32,7 @@ def run(
     """
     Runs the given command.
     """
+    kwargs.setdefault("cwd", dirs.project())
     args = resolve(args)
     cmd = ' '.join(map(shlex.quote, args))
     logging.debug(f"Running command '{cmd}'")
@@ -46,6 +47,7 @@ def eval(
     """
     Runs the given command and returns the exit code and the text that it writes to the standard output.
     """
+    kwargs.setdefault("cwd", dirs.project())
     args = resolve(args)
     cmd = ' '.join(map(shlex.quote, args))
     logging.debug(f"Evaluating command '{cmd}'")

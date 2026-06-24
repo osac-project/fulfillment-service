@@ -33,6 +33,7 @@ def cli():
     """
 
 # Add the commands:
+cli.add_command(dev.build)
 cli.add_command(dev.lint)
 cli.add_command(dev.setup)
 

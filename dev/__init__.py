@@ -13,6 +13,7 @@
 # specific language governing permissions and limitations under the License.
 #
 
+from .build import *
 from .formatter import *
 from .lint import *
 from .setup import *
