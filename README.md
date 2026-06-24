@@ -20,6 +20,11 @@ To work with this project you will need the following tools:
 - [jq](https://jqlang.org) - Used by some of the commands in this document.
 - [kind](https://kind.sigs.k8s.io) - Used to create Kubernetes clusters for integration tests.
 - [helm](https://helm.sh/) - Used by default to deploy the service during integration tests.
+- [Python](https://www.python.org) - Used to run the `dev.py` script for development tasks like linting.
+- [uv](https://docs.astral.sh/uv) - Used to run the `dev.py` script without manually managing Python dependencies.
+
+See [dev/README.md](dev/README.md) for more information about the `dev.py` script and how to extend
+it with new commands.
 
 ## Building the binaries
 
