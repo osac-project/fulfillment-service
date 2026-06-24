@@ -26,6 +26,7 @@ import "osac/private/v1/compute_instance_template_type.proto";
 import "osac/private/v1/compute_instance_type.proto";
 import "osac/private/v1/host_type_type.proto";
 import "osac/private/v1/hub_type.proto";
+import "osac/private/v1/identity_provider_type.proto";
 import "osac/private/v1/instance_type_type.proto";
 import "osac/private/v1/network_class_type.proto";
 import "osac/private/v1/organization_type.proto";
@@ -78,6 +79,7 @@ message Event {
     BareMetalInstanceCatalogItem bare_metal_instance_catalog_item = 29;
     StorageBackend storage_backend = 30;
     Tenant tenant = 31;
+    IdentityProvider identity_provider = 32;
   }
 }
 

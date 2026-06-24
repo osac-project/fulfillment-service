@@ -1120,6 +1120,34 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	privatev1.RegisterTenantsServer(grpcServer, privateTenantsServer)
 
+	// Create the public identity providers server:
+	c.logger.InfoContext(ctx, "Creating public identity providers server")
+	publicIdentityProvidersServer, err := servers.NewIdentityProvidersServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(publicAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create public identity providers server: %w", err)
+	}
+	publicv1.RegisterIdentityProvidersServer(grpcServer, publicIdentityProvidersServer)
+
+	// Create the private identity providers server:
+	c.logger.InfoContext(ctx, "Creating private identity providers server")
+	privateIdentityProvidersServer, err := servers.NewPrivateIdentityProvidersServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private identity providers server: %w", err)
+	}
+	privatev1.RegisterIdentityProvidersServer(grpcServer, privateIdentityProvidersServer)
+
 	// Create the public projects server:
 	c.logger.InfoContext(ctx, "Creating public projects server")
 	publicProjectsServer, err := servers.NewProjectsServer().

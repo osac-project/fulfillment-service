@@ -1,0 +1,491 @@
+/*
+Copyright (c) 2026 Red Hat Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+License. You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific
+language governing permissions and limitations under the License.
+*/
+
+package servers
+
+import (
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/database"
+)
+
+const (
+	// Test fixture values for credentials (not real secrets)
+	testLdapBindCredential = "test-bind-credential-fixture"
+	testOidcClientSecret   = "test-client-secret-fixture"
+)
+
+var _ = Describe("Private identity providers server", func() {
+	var privateServer *PrivateIdentityProvidersServer
+
+	BeforeEach(func() {
+		var err error
+
+		// Create server (without notifier for testing):
+		// Note: The default tenant mock returns "system", which is invalid for identity providers.
+		// Each test must explicitly set a valid tenant in the request.
+		privateServer, err = NewPrivateIdentityProvidersServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create an organization to use as a valid tenant for identity providers
+		// This is required because of the foreign key constraint
+		tx, err := database.TxFromContext(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		_, err = tx.Exec(ctx,
+			`insert into tenants (id, name, tenant, creator, data)
+			 values ($1, $2, $3, $4, $5) on conflict do nothing`,
+			"test-org", "Test Organization", "system", "system", "{}")
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("Creates an identity provider", func() {
+		// Create request:
+		request := privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-ldap",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test LDAP",
+					Enabled: true,
+					Ldap: privatev1.LdapConfig_builder{
+						ConnectionUrl:  "ldap://ldap.example.com:389",
+						BindDn:         "cn=admin,dc=example,dc=com",
+						BindCredential: testLdapBindCredential,
+						UsersDn:        "ou=users,dc=example,dc=com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build()
+
+		// Create identity provider:
+		response, err := privateServer.Create(ctx, request)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+		Expect(response.Object).ToNot(BeNil())
+		Expect(response.Object.Id).ToNot(BeEmpty())
+		Expect(response.Object.Metadata.Name).To(Equal("test-ldap"))
+		Expect(response.Object.Spec.Title).To(Equal("Test LDAP"))
+		Expect(response.Object.Spec.Enabled).To(BeTrue())
+		Expect(response.Object.Spec.GetLdap()).ToNot(BeNil())
+		Expect(response.Object.Spec.GetLdap().ConnectionUrl).To(Equal("ldap://ldap.example.com:389"))
+	})
+
+	It("Sets tenant from the request context for identity providers", func() {
+		// Create request with explicit tenant (required for identity providers):
+		request := privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-oidc",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test OIDC",
+					Enabled: true,
+					Oidc: privatev1.OidcConfig_builder{
+						AuthorizationUrl: "https://example.com/auth",
+						TokenUrl:         "https://example.com/token",
+						ClientId:         "client-id",
+						ClientSecret:     testOidcClientSecret,
+						Issuer:           "https://example.com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build()
+
+		// Create identity provider:
+		response, err := privateServer.Create(ctx, request)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+		Expect(response.Object).ToNot(BeNil())
+		// Tenant should be preserved from the request
+		Expect(response.Object.Metadata.Tenant).To(Equal("test-org"))
+	})
+
+	It("Lists identity providers", func() {
+		// Create an identity provider first:
+		createReq := privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-ldap",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test LDAP",
+					Enabled: true,
+					Ldap: privatev1.LdapConfig_builder{
+						ConnectionUrl:  "ldap://ldap.example.com:389",
+						BindDn:         "cn=admin,dc=example,dc=com",
+						BindCredential: testLdapBindCredential,
+						UsersDn:        "ou=users,dc=example,dc=com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build()
+		_, err := privateServer.Create(ctx, createReq)
+		Expect(err).ToNot(HaveOccurred())
+
+		// List identity providers:
+		listResp, err := privateServer.List(ctx, &privatev1.IdentityProvidersListRequest{
+			Filter: new("this.metadata.name == 'test-ldap'"),
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(listResp.Size).To(Equal(int32(1)))
+		Expect(listResp.Items).To(HaveLen(1))
+		Expect(listResp.Items[0].Metadata.Name).To(Equal("test-ldap"))
+	})
+
+	It("Gets an identity provider by ID", func() {
+		// Create an identity provider:
+		createReq := privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-ldap",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test LDAP",
+					Enabled: true,
+					Ldap: privatev1.LdapConfig_builder{
+						ConnectionUrl:  "ldap://ldap.example.com:389",
+						BindDn:         "cn=admin,dc=example,dc=com",
+						BindCredential: testLdapBindCredential,
+						UsersDn:        "ou=users,dc=example,dc=com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build()
+		createResp, err := privateServer.Create(ctx, createReq)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Get the identity provider:
+		getResp, err := privateServer.Get(ctx, privatev1.IdentityProvidersGetRequest_builder{
+			Id: createResp.Object.Id,
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getResp.Object.Id).To(Equal(createResp.Object.Id))
+		Expect(getResp.Object.Metadata.Name).To(Equal("test-ldap"))
+	})
+
+	It("Deletes an identity provider", func() {
+		// Create an identity provider:
+		createReq := privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-ldap",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test LDAP",
+					Enabled: true,
+					Ldap: privatev1.LdapConfig_builder{
+						ConnectionUrl:  "ldap://ldap.example.com:389",
+						BindDn:         "cn=admin,dc=example,dc=com",
+						BindCredential: testLdapBindCredential,
+						UsersDn:        "ou=users,dc=example,dc=com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build()
+		createResp, err := privateServer.Create(ctx, createReq)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Delete the identity provider:
+		_, err = privateServer.Delete(ctx, privatev1.IdentityProvidersDeleteRequest_builder{
+			Id: createResp.Object.Id,
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("Updates an identity provider", func() {
+		// Create an identity provider:
+		createReq := privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-ldap",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test LDAP",
+					Enabled: true,
+					Ldap: privatev1.LdapConfig_builder{
+						ConnectionUrl:  "ldap://ldap.example.com:389",
+						BindDn:         "cn=admin,dc=example,dc=com",
+						BindCredential: testLdapBindCredential,
+						UsersDn:        "ou=users,dc=example,dc=com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build()
+		createResp, err := privateServer.Create(ctx, createReq)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Update the identity provider:
+		updateReq := privatev1.IdentityProvidersUpdateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Id: createResp.Object.Id,
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title: "Updated LDAP Title",
+				}.Build(),
+			}.Build(),
+			UpdateMask: &fieldmaskpb.FieldMask{
+				Paths: []string{
+					"spec.title",
+				},
+			},
+		}.Build()
+		updateResp, err := privateServer.Update(ctx, updateReq)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(updateResp.Object.Spec.Title).To(Equal("Updated LDAP Title"))
+	})
+
+	It("Accepts creation of an identity provider without a name", func() {
+		// Identity providers can have empty names (name is not mandatory)
+		response, err := privateServer.Create(ctx, privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test LDAP",
+					Enabled: true,
+					Ldap: privatev1.LdapConfig_builder{
+						ConnectionUrl:  "ldap://ldap.example.com:389",
+						BindDn:         "cn=admin,dc=example,dc=com",
+						BindCredential: testLdapBindCredential,
+						UsersDn:        "ou=users,dc=example,dc=com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+		// Tenant should be preserved from the request
+		Expect(response.Object.Metadata.Tenant).To(Equal("test-org"))
+	})
+
+	It("Rejects update of the name of an identity provider", func() {
+		createResponse, err := privateServer.Create(ctx, privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-ldap",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test LDAP",
+					Enabled: true,
+					Ldap: privatev1.LdapConfig_builder{
+						ConnectionUrl:  "ldap://ldap.example.com:389",
+						BindDn:         "cn=admin,dc=example,dc=com",
+						BindCredential: testLdapBindCredential,
+						UsersDn:        "ou=users,dc=example,dc=com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		object := createResponse.GetObject()
+		id := object.GetId()
+		updateResponse, err := privateServer.Update(ctx, privatev1.IdentityProvidersUpdateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Id: id,
+				Metadata: privatev1.Metadata_builder{
+					Name: "new-name",
+				}.Build(),
+			}.Build(),
+			UpdateMask: &fieldmaskpb.FieldMask{
+				Paths: []string{
+					"metadata.name",
+				},
+			},
+		}.Build())
+		Expect(err).To(HaveOccurred())
+		Expect(updateResponse).To(BeNil())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		Expect(status.Message()).To(Equal(
+			"field 'metadata.name' is immutable",
+		))
+	})
+
+	It("Rejects update of the tenant of an identity provider", func() {
+		createResponse, err := privateServer.Create(ctx, privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-ldap",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test LDAP",
+					Enabled: true,
+					Ldap: privatev1.LdapConfig_builder{
+						ConnectionUrl:  "ldap://ldap.example.com:389",
+						BindDn:         "cn=admin,dc=example,dc=com",
+						BindCredential: testLdapBindCredential,
+						UsersDn:        "ou=users,dc=example,dc=com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		object := createResponse.GetObject()
+		id := object.GetId()
+		updateResponse, err := privateServer.Update(ctx, privatev1.IdentityProvidersUpdateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Id: id,
+				Metadata: privatev1.Metadata_builder{
+					Tenant: "other-tenant",
+				}.Build(),
+			}.Build(),
+			UpdateMask: &fieldmaskpb.FieldMask{
+				Paths: []string{
+					"metadata.tenant",
+				},
+			},
+		}.Build())
+		Expect(err).To(HaveOccurred())
+		Expect(updateResponse).To(BeNil())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		Expect(status.Message()).To(Equal(
+			"field 'metadata.tenant' is immutable",
+		))
+	})
+
+	It("Creates an OIDC identity provider", func() {
+		// Create request:
+		request := privatev1.IdentityProvidersCreateRequest_builder{
+			Object: privatev1.IdentityProvider_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-oidc",
+					Tenant: "test-org", // Must specify tenant explicitly
+				}.Build(),
+				Spec: privatev1.IdentityProviderSpec_builder{
+					Title:   "Test OIDC",
+					Enabled: true,
+					Oidc: privatev1.OidcConfig_builder{
+						AuthorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+						TokenUrl:         "https://oauth2.googleapis.com/token",
+						ClientId:         "my-client-id",
+						ClientSecret:     testOidcClientSecret,
+						Issuer:           "https://accounts.google.com",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}.Build()
+
+		// Create identity provider:
+		response, err := privateServer.Create(ctx, request)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+		Expect(response.Object).ToNot(BeNil())
+		Expect(response.Object.Id).ToNot(BeEmpty())
+		Expect(response.Object.Metadata.Name).To(Equal("test-oidc"))
+		Expect(response.Object.Spec.GetOidc()).ToNot(BeNil())
+		Expect(response.Object.Spec.GetOidc().Issuer).To(Equal("https://accounts.google.com"))
+	})
+
+	Describe("Tenant Validation", func() {
+		It("Rejects creation when tenant is explicitly set to 'shared'", func() {
+			request := privatev1.IdentityProvidersCreateRequest_builder{
+				Object: privatev1.IdentityProvider_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "test-ldap",
+						Tenant: "shared",
+					}.Build(),
+					Spec: privatev1.IdentityProviderSpec_builder{
+						Title:   "Test LDAP",
+						Enabled: true,
+						Ldap: privatev1.LdapConfig_builder{
+							ConnectionUrl:  "ldap://ldap.example.com:389",
+							BindDn:         "cn=admin,dc=example,dc=com",
+							BindCredential: testLdapBindCredential,
+							UsersDn:        "ou=users,dc=example,dc=com",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build()
+
+			_, err := privateServer.Create(ctx, request)
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("cannot belong to 'shared' tenant"))
+		})
+
+		It("Rejects creation when tenant is explicitly set to 'system'", func() {
+			request := privatev1.IdentityProvidersCreateRequest_builder{
+				Object: privatev1.IdentityProvider_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "test-ldap",
+						Tenant: "system",
+					}.Build(),
+					Spec: privatev1.IdentityProviderSpec_builder{
+						Title:   "Test LDAP",
+						Enabled: true,
+						Ldap: privatev1.LdapConfig_builder{
+							ConnectionUrl:  "ldap://ldap.example.com:389",
+							BindDn:         "cn=admin,dc=example,dc=com",
+							BindCredential: testLdapBindCredential,
+							UsersDn:        "ou=users,dc=example,dc=com",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build()
+
+			_, err := privateServer.Create(ctx, request)
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("cannot belong to 'system' tenant"))
+		})
+	})
+
+	Describe("Assign and Unassign", func() {
+		It("Returns not implemented for Assign", func() {
+			_, err := privateServer.Assign(ctx, &privatev1.IdentityProvidersAssignRequest{
+				Name:       "test-ldap",
+				TenantName: "my-tenant",
+			})
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.Unimplemented))
+		})
+
+		It("Returns not implemented for Unassign", func() {
+			_, err := privateServer.Unassign(ctx, &privatev1.IdentityProvidersUnassignRequest{
+				Name:       "test-ldap",
+				TenantName: "my-tenant",
+			})
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.Unimplemented))
+		})
+	})
+})

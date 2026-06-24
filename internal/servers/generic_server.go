@@ -831,7 +831,7 @@ func (s *GenericServer[O]) notifyEvent(ctx context.Context, e dao.Event) error {
 	return s.notifier.Notify(ctx, event)
 }
 
-func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Message) error {
+func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Message) error { //nolint:gocyclo
 	// TODO: This is the only part of the generic server that depends on specific object types. Is there a way
 	// to avoid that?
 	switch object := object.(type) {
@@ -899,6 +899,19 @@ func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Messa
 			object.GetSpec().GetCredentials().SetPassword("")
 		}
 		event.SetStorageBackend(object)
+	case *privatev1.IdentityProvider:
+		// Redact sensitive fields (client secrets and bind credentials) before publishing
+		object = proto.Clone(object).(*privatev1.IdentityProvider)
+		spec := object.GetSpec()
+		if spec != nil {
+			if oidc := spec.GetOidc(); oidc != nil {
+				oidc.SetClientSecret("")
+			}
+			if ldap := spec.GetLdap(); ldap != nil {
+				ldap.SetBindCredential("")
+			}
+		}
+		event.SetIdentityProvider(object)
 	default:
 		return fmt.Errorf("unknown object type '%T'", object)
 	}
