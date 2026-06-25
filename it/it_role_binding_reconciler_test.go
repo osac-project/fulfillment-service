@@ -15,6 +15,7 @@ package it
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -30,13 +31,76 @@ import (
 
 var _ = Describe("Role binding reconciler", func() {
 	var (
-		ctx    context.Context
-		client privatev1.RoleBindingsClient
+		ctx          context.Context
+		client       privatev1.RoleBindingsClient
+		rolesClient  privatev1.RolesClient
+		testRoleName string
+		testUserID   string
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		client = privatev1.NewRoleBindingsClient(tool.InternalView().AdminConn())
+		rolesClient = privatev1.NewRolesClient(tool.InternalView().AdminConn())
+		testRoleName = fmt.Sprintf("test-role-%s", uuid.New())
+
+		// Create a role in OSAC that will also be created in Keycloak
+		roleResponse, err := rolesClient.Create(ctx, privatev1.RolesCreateRequest_builder{
+			Object: privatev1.Role_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: testRoleName,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+
+		// Clean up the role after the test
+		DeferCleanup(func() {
+			_, _ = rolesClient.Delete(ctx, privatev1.RolesDeleteRequest_builder{
+				Id: roleResponse.GetObject().GetId(),
+			}.Build())
+		})
+
+		// Create the corresponding role in Keycloak
+		rolePayload := map[string]any{
+			"name":        testRoleName,
+			"description": fmt.Sprintf("Test role %s", testRoleName),
+		}
+		code, _, err := tool.KeycloakAdminRequest(ctx, "POST", "/roles", rolePayload)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(code).To(Equal(201)) // HTTP 201 Created
+
+		// Clean up the Keycloak role after the test
+		DeferCleanup(func() {
+			_, _, _ = tool.KeycloakAdminRequest(ctx, "DELETE", fmt.Sprintf("/roles/%s", testRoleName), nil)
+		})
+
+		// Create a test user in Keycloak
+		testUserPayload := map[string]any{
+			"username": "my-user",
+			"enabled":  true,
+		}
+		code, _, err = tool.KeycloakAdminRequest(ctx, "POST", "/users", testUserPayload)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(code).To(Equal(201)) // HTTP 201 Created
+
+		// Get the user ID (UUID) from Keycloak
+		getUserCode, getUserBody, err := tool.KeycloakAdminRequest(ctx, "GET", "/users?username=my-user&exact=true", nil)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getUserCode).To(Equal(200))
+		var users []map[string]any
+		err = json.Unmarshal(getUserBody, &users)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(users).To(HaveLen(1))
+		var ok bool
+		testUserID, ok = users[0]["id"].(string)
+		Expect(ok).To(BeTrue())
+		Expect(testUserID).ToNot(BeEmpty())
+
+		// Clean up the Keycloak user after the test
+		DeferCleanup(func() {
+			_, _, _ = tool.KeycloakAdminRequest(ctx, "DELETE", fmt.Sprintf("/users/%s", testUserID), nil)
+		})
 	})
 
 	It("Adds the finalizer and sets the default state when a role binding is created", func() {
@@ -47,9 +111,9 @@ var _ = Describe("Role binding reconciler", func() {
 					Name: fmt.Sprintf("my-%s", uuid.New()),
 				}.Build(),
 				Spec: privatev1.RoleBindingSpec_builder{
-					Role: "my-role",
+					Role: testRoleName,
 					Users: []string{
-						"my-user",
+						testUserID,
 					},
 				}.Build(),
 			}.Build(),
@@ -62,7 +126,7 @@ var _ = Describe("Role binding reconciler", func() {
 			}.Build())
 		})
 
-		// Verify that reconciler eventually adds the finalizer and sets the default state:
+		// Verify that reconciler eventually adds the finalizer and sets the state to READY after syncing:
 		Eventually(
 			func(g Gomega) {
 				getResponse, err := client.Get(ctx, privatev1.RoleBindingsGetRequest_builder{
@@ -72,7 +136,7 @@ var _ = Describe("Role binding reconciler", func() {
 				object := getResponse.GetObject()
 				g.Expect(object.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
 				g.Expect(object.GetStatus().GetState()).To(
-					Equal(privatev1.RoleBindingState_ROLE_BINDING_STATE_PENDING),
+					Equal(privatev1.RoleBindingState_ROLE_BINDING_STATE_READY),
 				)
 			},
 			time.Minute,
@@ -88,9 +152,9 @@ var _ = Describe("Role binding reconciler", func() {
 					Name: fmt.Sprintf("my-%s", uuid.New()),
 				}.Build(),
 				Spec: privatev1.RoleBindingSpec_builder{
-					Role: "my-role",
+					Role: testRoleName,
 					Users: []string{
-						"my-user",
+						testUserID,
 					},
 				}.Build(),
 			}.Build(),
