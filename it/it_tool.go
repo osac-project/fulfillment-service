@@ -1095,6 +1095,7 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 				"manage-users",
 				"view-realm",
 				"view-users",
+				"view-clients",
 				"manage-identity-providers",
 				"view-identity-providers",
 			},
