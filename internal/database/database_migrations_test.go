@@ -84,15 +84,40 @@ var _ = Describe("Migrations", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(files).ToNot(BeEmpty())
 
-		pattern := regexp.MustCompile(`^(\d+)_[a-z][a-z0-9_]*[a-z0-9]\.(up|down)\.sql$`)
+		legacyPattern := regexp.MustCompile(`^(\d{1,4})_[a-z][a-z0-9_]*[a-z0-9]\.(up|down)\.sql$`)
+		timestampPattern := regexp.MustCompile(`^(\d{14})_[a-z][a-z0-9_]*[a-z0-9]\.(up|down)\.sql$`)
+
+		const lastSequentialMigration = 63
+
 		var violations []string
 		for _, file := range files {
 			base := filepath.Base(file)
-			if !pattern.MatchString(base) {
-				violations = append(violations, base)
+
+			parts := strings.SplitN(base, "_", 2)
+			if len(parts) < 2 {
+				violations = append(violations, fmt.Sprintf("%s: cannot parse prefix", base))
+				continue
+			}
+			n, err := strconv.Atoi(parts[0])
+			if err != nil {
+				violations = append(violations, fmt.Sprintf("%s: prefix is not a number", base))
+				continue
+			}
+
+			if n <= lastSequentialMigration {
+				if !legacyPattern.MatchString(base) {
+					violations = append(violations, fmt.Sprintf("%s: legacy migration must match N_description.(up|down).sql", base))
+				}
+			} else {
+				if !timestampPattern.MatchString(base) {
+					violations = append(violations, fmt.Sprintf(
+						"%s: new migrations (> %d) must use timestamp format YYYYMMDDHHMMSS_description.(up|down).sql — "+
+							"generate with: date +%%Y%%m%%d%%H%%M%%S",
+						base, lastSequentialMigration))
+				}
 			}
 		}
-		Expect(violations).To(BeEmpty(), "migration filenames violate naming convention: %v", violations)
+		Expect(violations).To(BeEmpty(), "migration filenames violate naming convention:\n%s", strings.Join(violations, "\n"))
 	})
 
 	It("Has an up-to-date migrations hash", func() {
@@ -132,35 +157,4 @@ var _ = Describe("Migrations", func() {
 		}
 	})
 
-	It("Has no unexpected gaps in migration numbering", func() {
-		files, err := filepath.Glob("migrations/*.up.sql")
-		Expect(err).ToNot(HaveOccurred())
-		Expect(files).ToNot(BeEmpty())
-
-		knownGaps := map[int]bool{18: true}
-
-		present := map[int]bool{}
-		maxNum := 0
-		for _, file := range files {
-			base := filepath.Base(file)
-			parts := strings.SplitN(base, "_", 2)
-			if len(parts) < 2 {
-				continue
-			}
-			n, err := strconv.Atoi(parts[0])
-			Expect(err).ToNot(HaveOccurred(), "failed to parse migration number from %s", base)
-			present[n] = true
-			if n > maxNum {
-				maxNum = n
-			}
-		}
-
-		var gaps []int
-		for i := 0; i <= maxNum; i++ {
-			if !present[i] && !knownGaps[i] {
-				gaps = append(gaps, i)
-			}
-		}
-		Expect(gaps).To(BeEmpty(), "unexpected gaps in migration numbering: %v", gaps)
-	})
 })
