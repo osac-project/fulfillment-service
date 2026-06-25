@@ -752,6 +752,7 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	roleBindingReconcilerFunction, err := rolebinding.NewFunction().
 		SetLogger(r.logger).
 		SetConnection(r.client).
+		SetIdpClient(idpClient).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create role binding reconciler function: %w", err)

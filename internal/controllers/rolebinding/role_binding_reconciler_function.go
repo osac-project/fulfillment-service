@@ -16,6 +16,7 @@ package rolebinding
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 
@@ -24,6 +25,7 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
+	"github.com/osac-project/fulfillment-service/internal/idp"
 	"github.com/osac-project/fulfillment-service/internal/masks"
 )
 
@@ -31,6 +33,7 @@ import (
 type FunctionBuilder struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
+	idpClient  idp.Client
 }
 
 // NewFunction creates a builder that can be used to configure and create reconciler functions.
@@ -50,6 +53,12 @@ func (b *FunctionBuilder) SetConnection(value *grpc.ClientConn) *FunctionBuilder
 	return b
 }
 
+// SetIdpClient sets the IDP client that the reconciler will use to assign roles to users.
+func (b *FunctionBuilder) SetIdpClient(value idp.Client) *FunctionBuilder {
+	b.idpClient = value
+	return b
+}
+
 // Build uses the data stored in the builder to create and configure a new reconciler function.
 func (b *FunctionBuilder) Build() (result *function, err error) {
 	if b.logger == nil {
@@ -60,10 +69,17 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 		err = errors.New("connection is mandatory")
 		return
 	}
+	if b.idpClient == nil {
+		err = errors.New("IDP client is mandatory")
+		return
+	}
 
 	result = &function{
 		logger:             b.logger,
 		roleBindingsClient: privatev1.NewRoleBindingsClient(b.connection),
+		rolesClient:        privatev1.NewRolesClient(b.connection),
+		usersClient:        privatev1.NewUsersClient(b.connection),
+		idpClient:          b.idpClient,
 		maskCalculator: masks.NewCalculator().
 			Build(),
 	}
@@ -74,6 +90,9 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 type function struct {
 	logger             *slog.Logger
 	roleBindingsClient privatev1.RoleBindingsClient
+	rolesClient        privatev1.RolesClient
+	usersClient        privatev1.UsersClient
+	idpClient          idp.Client
 	maskCalculator     *masks.Calculator
 }
 
@@ -121,21 +140,325 @@ func (t *task) update(ctx context.Context) error {
 
 	t.setDefaults()
 
-	t.r.logger.InfoContext(
-		ctx,
-		"Reconciling role binding",
-		slog.Any("role_binding", t.binding),
+	state := t.binding.GetStatus().GetState()
+
+	// Skip reconciliation for terminal error state
+	if state == privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED {
+		return nil
+	}
+
+	// For READY bindings, check if the user list has changed
+	if state == privatev1.RoleBindingState_ROLE_BINDING_STATE_READY {
+		return t.handleUserListChange(ctx)
+	}
+
+	// Role binding is PENDING, perform initial role assignment
+	return t.syncRoleAssignments(ctx)
+}
+
+// getRoleByNameOrID fetches a role by ID or name. If the provided value is not found as an ID,
+// it attempts to find the role by name.
+func (t *task) getRoleByNameOrID(ctx context.Context, nameOrID string) (*privatev1.Role, error) {
+	// Try fetching by ID first
+	roleResponse, err := t.r.rolesClient.Get(ctx, privatev1.RolesGetRequest_builder{
+		Id: nameOrID,
+	}.Build())
+	if err == nil {
+		return roleResponse.GetObject(), nil
+	}
+
+	// If not found by ID, try listing by name
+	t.r.logger.DebugContext(ctx, "Role not found by ID, trying by name",
+		slog.String("name_or_id", nameOrID),
+	)
+
+	filter := fmt.Sprintf("this.metadata.name == '%s'", nameOrID)
+	listResponse, err := t.r.rolesClient.List(ctx, privatev1.RolesListRequest_builder{
+		Filter: &filter,
+	}.Build())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list roles by name: %w", err)
+	}
+
+	roles := listResponse.GetItems()
+	if len(roles) == 0 {
+		return nil, fmt.Errorf("role with name or ID '%s' not found", nameOrID)
+	}
+	if len(roles) > 1 {
+		return nil, fmt.Errorf("multiple roles found with name '%s'", nameOrID)
+	}
+
+	return roles[0], nil
+}
+
+// handleUserListChange reconciles a READY binding when the user list changes.
+// It computes the difference between desired users (spec.users) and synced users (status.synced_users),
+// then adds roles to new users and removes roles from removed users.
+func (t *task) handleUserListChange(ctx context.Context) error {
+	desiredUsers := t.binding.GetSpec().GetUsers()
+	syncedUsers := t.binding.GetStatus().GetUsers()
+
+	// Convert to sets for efficient comparison
+	desiredSet := make(map[string]bool)
+	for _, u := range desiredUsers {
+		desiredSet[u] = true
+	}
+	syncedSet := make(map[string]bool)
+	for _, u := range syncedUsers {
+		syncedSet[u] = true
+	}
+
+	// Find users to add (in desired but not in synced)
+	var usersToAdd []string
+	for _, u := range desiredUsers {
+		if !syncedSet[u] {
+			usersToAdd = append(usersToAdd, u)
+		}
+	}
+
+	// Find users to remove (in synced but not in desired)
+	var usersToRemove []string
+	for _, u := range syncedUsers {
+		if !desiredSet[u] {
+			usersToRemove = append(usersToRemove, u)
+		}
+	}
+
+	// If no changes, nothing to do
+	if len(usersToAdd) == 0 && len(usersToRemove) == 0 {
+		return nil
+	}
+
+	// Fetch the Role by name or ID
+	role, err := t.getRoleByNameOrID(ctx, t.binding.GetSpec().GetRole())
+	if err != nil {
+		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED)
+		t.binding.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch role: %v", err))
+		return nil
+	}
+
+	roleName := role.GetMetadata().GetName()
+	organizationName := t.binding.GetMetadata().GetTenant()
+
+	// Map OSAC role to Keycloak roles
+	keycloakRoles, clientID := t.mapRoleToKeycloak(roleName)
+	if len(keycloakRoles) == 0 {
+		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED)
+		t.binding.GetStatus().SetMessage(fmt.Sprintf("Role %s has no Keycloak mapping", roleName))
+		return nil
+	}
+
+	// Remove roles from users that were removed from the binding
+	var removalErrors []string
+	for _, userID := range usersToRemove {
+		var err error
+		if clientID != "" {
+			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, organizationName, userID, clientID, keycloakRoles)
+		} else {
+			err = t.r.idpClient.RemoveOrganizationRolesFromUser(ctx, organizationName, userID, keycloakRoles)
+		}
+
+		if err != nil {
+			removalErrors = append(removalErrors, fmt.Sprintf("user %s: %v", userID, err))
+			t.r.logger.ErrorContext(ctx, "Failed to remove role from user",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.String("role", roleName),
+				slog.Any("error", err),
+			)
+		} else {
+			t.r.logger.InfoContext(ctx, "Role removed from user during update",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.String("role", roleName),
+			)
+		}
+	}
+
+	// Assign roles to users that were added to the binding
+	var assignmentErrors []string
+	for _, userID := range usersToAdd {
+		var err error
+		if clientID != "" {
+			err = t.r.idpClient.AssignClientRolesToUser(ctx, organizationName, userID, clientID, keycloakRoles)
+		} else {
+			err = t.r.idpClient.AssignOrganizationRolesToUser(ctx, organizationName, userID, keycloakRoles)
+		}
+
+		if err != nil {
+			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: %v", userID, err))
+			t.r.logger.ErrorContext(ctx, "Failed to assign role to user",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.String("role", roleName),
+				slog.Any("error", err),
+			)
+		}
+	}
+
+	// Update status based on results
+	if len(assignmentErrors) > 0 || len(removalErrors) > 0 {
+		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED)
+		var errorMsg string
+		if len(assignmentErrors) > 0 {
+			errorMsg += fmt.Sprintf("Failed to assign role to some users: %v. ", assignmentErrors)
+		}
+		if len(removalErrors) > 0 {
+			errorMsg += fmt.Sprintf("Failed to remove role from some users: %v", removalErrors)
+		}
+		t.binding.GetStatus().SetMessage(errorMsg)
+	} else {
+		// Update synced_users to reflect current desired state
+		t.binding.GetStatus().SetUsers(desiredUsers)
+		t.binding.GetStatus().SetMessage(fmt.Sprintf("Role %s synced: added %d user(s), removed %d user(s)", roleName, len(usersToAdd), len(usersToRemove)))
+	}
+
+	t.r.logger.InfoContext(ctx, "Role binding user list changed",
+		slog.String("role_binding_id", t.binding.GetId()),
+		slog.String("role", roleName),
+		slog.Int("users_added", len(usersToAdd)),
+		slog.Int("users_removed", len(usersToRemove)),
+		slog.Int("assignment_errors", len(assignmentErrors)),
+		slog.Int("removal_errors", len(removalErrors)),
 	)
 
 	return nil
 }
 
-func (t *task) delete(ctx context.Context) error {
-	t.r.logger.InfoContext(
-		ctx,
-		"Reconciling deleted role binding",
-		slog.Any("role_binding", t.binding),
+// syncRoleAssignments assigns the role to all users in the binding.
+func (t *task) syncRoleAssignments(ctx context.Context) error {
+	// Fetch the Role by name or ID
+	role, err := t.getRoleByNameOrID(ctx, t.binding.GetSpec().GetRole())
+	if err != nil {
+		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED)
+		t.binding.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch role: %v", err))
+		return nil
+	}
+
+	roleName := role.GetMetadata().GetName()
+	organizationName := t.binding.GetMetadata().GetTenant()
+
+	// Map OSAC role to Keycloak roles
+	keycloakRoles, clientID := t.mapRoleToKeycloak(roleName)
+	if len(keycloakRoles) == 0 {
+		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED)
+		t.binding.GetStatus().SetMessage(fmt.Sprintf("Role %s has no Keycloak mapping", roleName))
+		return nil
+	}
+
+	// Assign the roles to each user in the binding
+	var assignmentErrors []string
+	for _, userID := range t.binding.GetSpec().GetUsers() {
+		var err error
+		if clientID != "" {
+			// Client-level role (e.g., realm-management)
+			err = t.r.idpClient.AssignClientRolesToUser(ctx, organizationName, userID, clientID, keycloakRoles)
+		} else {
+			// Organization-level role
+			err = t.r.idpClient.AssignOrganizationRolesToUser(ctx, organizationName, userID, keycloakRoles)
+		}
+
+		if err != nil {
+			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: %v", userID, err))
+			t.r.logger.ErrorContext(ctx, "Failed to assign role to user",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.String("role", roleName),
+				slog.Any("error", err),
+			)
+		}
+	}
+
+	// Update status based on assignment results
+	if len(assignmentErrors) > 0 {
+		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED)
+		t.binding.GetStatus().SetMessage(fmt.Sprintf("Failed to assign role to some users: %v", assignmentErrors))
+	} else {
+		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_READY)
+		t.binding.GetStatus().SetMessage(fmt.Sprintf("Role %s assigned to %d user(s)", roleName, len(t.binding.GetSpec().GetUsers())))
+		// Track which users have been synced so we can detect changes later
+		t.binding.GetStatus().SetUsers(t.binding.GetSpec().GetUsers())
+	}
+
+	t.r.logger.InfoContext(ctx, "Role binding synced",
+		slog.String("role_binding_id", t.binding.GetId()),
+		slog.String("role", roleName),
+		slog.Int("users", len(t.binding.GetSpec().GetUsers())),
+		slog.Int("errors", len(assignmentErrors)),
 	)
+
+	return nil
+}
+
+// mapRoleToKeycloak maps OSAC role names to Keycloak realm-level roles.
+// All OSAC roles map 1:1 to Keycloak realm roles with the same name.
+// Returns the list of Keycloak roles and an empty client ID (realm-level roles are not client-scoped).
+func (t *task) mapRoleToKeycloak(roleName string) ([]*idp.Role, string) {
+	return []*idp.Role{
+		{Name: roleName, ClientRole: false},
+	}, ""
+}
+
+func (t *task) delete(ctx context.Context) error {
+	// Skip if not in ready state (roles not assigned yet)
+	if t.binding.GetStatus().GetState() != privatev1.RoleBindingState_ROLE_BINDING_STATE_READY {
+		t.removeFinalizer()
+		return nil
+	}
+
+	// Fetch the Role by name or ID
+	role, err := t.getRoleByNameOrID(ctx, t.binding.GetSpec().GetRole())
+	if err != nil {
+		t.r.logger.ErrorContext(ctx, "Failed to fetch role for deletion",
+			slog.String("role_binding_id", t.binding.GetId()),
+			slog.Any("error", err),
+		)
+		// Don't block deletion even if we can't fetch the role
+		t.removeFinalizer()
+		return nil
+	}
+
+	roleName := role.GetMetadata().GetName()
+	organizationName := t.binding.GetMetadata().GetTenant()
+
+	// Map OSAC role to Keycloak roles
+	keycloakRoles, clientID := t.mapRoleToKeycloak(roleName)
+	if len(keycloakRoles) == 0 {
+		t.r.logger.WarnContext(ctx, "No Keycloak mapping for role during deletion",
+			slog.String("role_binding_id", t.binding.GetId()),
+			slog.String("role", roleName),
+		)
+		t.removeFinalizer()
+		return nil
+	}
+
+	// Remove the roles from each user in the binding
+	for _, userID := range t.binding.GetSpec().GetUsers() {
+		var err error
+		if clientID != "" {
+			// Client-level role (e.g., realm-management)
+			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, organizationName, userID, clientID, keycloakRoles)
+		} else {
+			// Organization-level role
+			err = t.r.idpClient.RemoveOrganizationRolesFromUser(ctx, organizationName, userID, keycloakRoles)
+		}
+
+		if err != nil {
+			t.r.logger.ErrorContext(ctx, "Failed to remove role from user",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.String("role", roleName),
+				slog.Any("error", err),
+			)
+			// Continue removing from other users even if one fails
+		} else {
+			t.r.logger.InfoContext(ctx, "Role removed from user",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.String("role", roleName),
+			)
+		}
+	}
 
 	t.removeFinalizer()
 	return nil

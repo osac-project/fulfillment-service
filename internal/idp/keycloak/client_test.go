@@ -939,13 +939,187 @@ var _ = Describe("Keycloak Client", func() {
 	})
 
 	Describe("AssignOrganizationRolesToUser", func() {
-		It("is not yet implemented (returns nil)", func() {
+		It("assigns realm roles to a user", func() {
+			clientRole := false
+			role1 := keycloakRole{
+				ID:         "role-id-1",
+				Name:       "admin",
+				ClientRole: &clientRole,
+			}
+			role2 := keycloakRole{
+				ID:         "role-id-2",
+				Name:       "editor",
+				ClientRole: &clientRole,
+			}
+
+			var receivedRoles []keycloakRole
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				// First call: get realm role "admin"
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/admin" {
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode(role1); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Second call: get realm role "editor"
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/editor" {
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode(role2); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Third call: assign roles to user
+				if r.Method == http.MethodPost && r.URL.Path == "/admin/realms/osac/users/user-123/role-mappings/realm" {
+					if err := json.NewDecoder(r.Body).Decode(&receivedRoles); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{
-				{ID: "role1", Name: "admin"},
+				{Name: "admin"},
+				{Name: "editor"},
 			}
 			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user-123", roles)
-			Expect(err).ToNot(HaveOccurred()) // TODO returns nil until implemented
+			Expect(err).ToNot(HaveOccurred())
+			Expect(receivedRoles).To(HaveLen(2))
+			Expect(receivedRoles[0].ID).To(Equal("role-id-1"))
+			Expect(receivedRoles[0].Name).To(Equal("admin"))
+			Expect(receivedRoles[1].ID).To(Equal("role-id-2"))
+			Expect(receivedRoles[1].Name).To(Equal("editor"))
+		})
+
+		It("returns an error when GetRealmRole fails", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// GetRealmRole fails
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/admin" {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.WriteHeader(http.StatusBadRequest)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{{Name: "admin"}}
+			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user-123", roles)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get realm role"))
+			Expect(err.Error()).To(ContainSubstring("admin"))
+		})
+
+		It("returns an error when role assignment fails", func() {
+			clientRole := false
+			role := keycloakRole{
+				ID:         "role-id-1",
+				Name:       "admin",
+				ClientRole: &clientRole,
+			}
+
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				// GetRealmRole succeeds
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/admin" {
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode(role); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Role assignment fails
+				if r.Method == http.MethodPost && r.URL.Path == "/admin/realms/osac/users/user-123/role-mappings/realm" {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{{Name: "admin"}}
+			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user-123", roles)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to assign realm roles to user"))
+		})
+
+		It("handles empty roles list", func() {
+			var receivedRoles []keycloakRole
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Should only receive the POST request with empty array
+				if r.Method == http.MethodPost && r.URL.Path == "/admin/realms/osac/users/user-123/role-mappings/realm" {
+					if err := json.NewDecoder(r.Body).Decode(&receivedRoles); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{}
+			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user-123", roles)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(receivedRoles).To(BeEmpty())
+		})
+
+		It("properly escapes user ID in URL", func() {
+			clientRole := false
+			role := keycloakRole{
+				ID:         "role-id-1",
+				Name:       "admin",
+				ClientRole: &clientRole,
+			}
+
+			var requestedUserID string
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				// GetRealmRole
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/admin" {
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode(role); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Assignment - verify user ID with special characters is properly escaped
+				if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/role-mappings/realm") {
+					// Store the RequestURI (which preserves escaping) for verification
+					requestedUserID = r.RequestURI
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{{Name: "admin"}}
+			// Use a user ID with special characters that need URL escaping
+			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user/with@special#chars", roles)
+			Expect(err).ToNot(HaveOccurred())
+			// Verify the path contains the URL-escaped user ID (note: @ is not escaped by url.PathEscape)
+			Expect(requestedUserID).To(ContainSubstring("user%2Fwith@special%23chars"))
 		})
 	})
 
@@ -994,13 +1168,205 @@ var _ = Describe("Keycloak Client", func() {
 	})
 
 	Describe("RemoveOrganizationRolesFromUser", func() {
-		It("is not yet implemented (returns nil)", func() {
+		It("removes realm roles from a user", func() {
+			clientRole := false
+			role1 := keycloakRole{
+				ID:         "role-id-1",
+				Name:       "admin",
+				ClientRole: &clientRole,
+			}
+			role2 := keycloakRole{
+				ID:         "role-id-2",
+				Name:       "editor",
+				ClientRole: &clientRole,
+			}
+
+			var receivedRoles []keycloakRole
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				// First call: get realm role "admin"
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/admin" {
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode(role1); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Second call: get realm role "editor"
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/editor" {
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode(role2); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Third call: remove roles from user
+				if r.Method == http.MethodDelete && r.URL.Path == "/admin/realms/osac/users/user-123/role-mappings/realm" {
+					if err := json.NewDecoder(r.Body).Decode(&receivedRoles); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{
-				{ID: "role1", Name: "admin"},
+				{Name: "admin"},
+				{Name: "editor"},
 			}
 			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
-			Expect(err).ToNot(HaveOccurred()) // TODO returns nil until implemented
+			Expect(err).ToNot(HaveOccurred())
+			Expect(receivedRoles).To(HaveLen(2))
+			Expect(receivedRoles[0].ID).To(Equal("role-id-1"))
+			Expect(receivedRoles[0].Name).To(Equal("admin"))
+			Expect(receivedRoles[1].ID).To(Equal("role-id-2"))
+			Expect(receivedRoles[1].Name).To(Equal("editor"))
+		})
+
+		It("returns an error when GetRealmRole fails", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// GetRealmRole fails
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/admin" {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.WriteHeader(http.StatusBadRequest)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{{Name: "admin"}}
+			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get realm role"))
+			Expect(err.Error()).To(ContainSubstring("admin"))
+		})
+
+		It("returns an error when role removal fails", func() {
+			clientRole := false
+			role := keycloakRole{
+				ID:         "role-id-1",
+				Name:       "admin",
+				ClientRole: &clientRole,
+			}
+
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				// GetRealmRole succeeds
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/admin" {
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode(role); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Role removal fails
+				if r.Method == http.MethodDelete && r.URL.Path == "/admin/realms/osac/users/user-123/role-mappings/realm" {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{{Name: "admin"}}
+			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to remove realm roles from user"))
+		})
+
+		It("handles empty roles list", func() {
+			var receivedRoles []keycloakRole
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Should only receive the DELETE request with empty array
+				if r.Method == http.MethodDelete && r.URL.Path == "/admin/realms/osac/users/user-123/role-mappings/realm" {
+					if err := json.NewDecoder(r.Body).Decode(&receivedRoles); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{}
+			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(receivedRoles).To(BeEmpty())
+		})
+
+		It("properly escapes user ID in URL", func() {
+			clientRole := false
+			role := keycloakRole{
+				ID:         "role-id-1",
+				Name:       "admin",
+				ClientRole: &clientRole,
+			}
+
+			var requestedUserID string
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				// GetRealmRole
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/admin" {
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode(role); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Removal - verify user ID with special characters is properly escaped
+				if r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/role-mappings/realm") {
+					// Store the RequestURI (which preserves escaping) for verification
+					requestedUserID = r.RequestURI
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+
+				w.WriteHeader(http.StatusNotFound)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{{Name: "admin"}}
+			// Use a user ID with special characters that need URL escaping
+			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user/with@special#chars", roles)
+			Expect(err).ToNot(HaveOccurred())
+			// Verify the path contains the URL-escaped user ID (note: @ is not escaped by url.PathEscape)
+			Expect(requestedUserID).To(ContainSubstring("user%2Fwith@special%23chars"))
+		})
+
+		It("handles role not found scenario", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// GetRealmRole returns 404 for non-existent role
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/roles/nonexistent-role" {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.WriteHeader(http.StatusBadRequest)
+			}))
+
+			client = createTestClient(server.URL)
+			roles := []*idp.Role{{Name: "nonexistent-role"}}
+			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get realm role"))
+			Expect(err.Error()).To(ContainSubstring("nonexistent-role"))
 		})
 	})
 

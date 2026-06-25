@@ -61,6 +61,11 @@ message RoleBindingStatus {
   // Human-readable message providing additional details about the current state. For example, if the state is
   // FAILED, this field may explain why the synchronization with the authorization system failed.
   optional string message = 2;
+
+  // List of user IDs that have been successfully synced to the authorization system. This tracks which users
+  // currently have the role assigned in Keycloak, allowing the controller to detect when users are added or
+  // removed from the binding.
+  repeated string users = 3;
 }
 
 // Synchronization states for RoleBinding objects with the underlying authorization system.

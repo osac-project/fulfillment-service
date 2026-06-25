@@ -421,7 +421,21 @@ func (c *Client) ListClientRoles(ctx context.Context, organizationName, clientID
 
 // AssignOrganizationRolesToUser adds organization-level roles to a user.
 func (c *Client) AssignOrganizationRolesToUser(ctx context.Context, organizationName, userID string, roles []*idp.Role) error {
-	// TODO: implement function
+	// Fetch full role objects from Keycloak to get their IDs
+	kcRoles := make([]keycloakRole, 0, len(roles))
+	for _, role := range roles {
+		kcRole, err := c.GetRealmRole(ctx, role.Name)
+		if err != nil {
+			return fmt.Errorf("failed to get realm role %s: %w", role.Name, err)
+		}
+		kcRoles = append(kcRoles, kcRole)
+	}
+
+	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/realm", c.realmName, url.PathEscape(userID)), kcRoles)
+	if err != nil {
+		return fmt.Errorf("failed to assign realm roles to user: %w", err)
+	}
+	defer response.Body.Close()
 	return nil
 }
 
@@ -452,7 +466,21 @@ func (c *Client) AssignClientRolesToUser(ctx context.Context, organizationName, 
 
 // RemoveOrganizationRolesFromUser removes organization-level roles from a user.
 func (c *Client) RemoveOrganizationRolesFromUser(ctx context.Context, organizationName, userID string, roles []*idp.Role) error {
-	// TODO: implement function
+	// Fetch full role objects from Keycloak to get their IDs
+	kcRoles := make([]keycloakRole, 0, len(roles))
+	for _, role := range roles {
+		kcRole, err := c.GetRealmRole(ctx, role.Name)
+		if err != nil {
+			return fmt.Errorf("failed to get realm role %s: %w", role.Name, err)
+		}
+		kcRoles = append(kcRoles, kcRole)
+	}
+
+	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/realm", c.realmName, url.PathEscape(userID)), kcRoles)
+	if err != nil {
+		return fmt.Errorf("failed to remove realm roles from user: %w", err)
+	}
+	defer response.Body.Close()
 	return nil
 }
 
