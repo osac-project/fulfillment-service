@@ -61,6 +61,7 @@ func Cmd() *cobra.Command {
 		Short:                 shortHelp,
 		Long:                  longHelp,
 		RunE:                  runner.run,
+		ValidArgsFunction:     runner.complete,
 	}
 	result.AddCommand(kubeconfig.Cmd())
 	result.AddCommand(password.Cmd())
@@ -103,6 +104,33 @@ type runnerContext struct {
 	marshalOptions protojson.MarshalOptions
 	globalHelper   reflection.Helper
 	objectHelper   reflection.ObjectHelper
+}
+
+func (c *runnerContext) complete(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	ctx := cmd.Context()
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	conn, err := cfg.Connect(ctx, cmd.Flags())
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	defer conn.Close()
+	logger := logging.LoggerFromContext(ctx)
+	helper, err := reflection.NewHelper().
+		SetLogger(logger).
+		SetConnection(conn).
+		AddPackages(cfg.Packages()).
+		Build()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	names := append(helper.Singulars(), helper.Plurals()...)
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
