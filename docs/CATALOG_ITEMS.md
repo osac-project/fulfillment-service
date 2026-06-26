@@ -44,9 +44,8 @@ Catalog items control a **fixed set of known fields** on the resource (e.g., `pu
 flags (`--pull-secret`, `--ssh-public-key`, `--pod-cidr`).
 
 **You cannot define custom parameters in a catalog item.** For example, you cannot create a
-`field_definition` with `path: vlan` or `path: vpc_id` and expect AAP to receive it. If a path
-does not correspond to a known field, the value is silently discarded by the server — it has no
-effect on provisioning.
+`field_definition` with `path: vlan` or `path: vpc_id` and expect AAP to receive it. Paths must
+correspond to known fields in the resource spec — unknown paths have no effect on provisioning.
 
 Custom provisioning parameters (like `vpc_id`, `ip_block_id`, `ssh_key_group_id`) are defined as
 **template parameters**, which are a separate mechanism. Template parameters are passed by the user
@@ -136,14 +135,21 @@ description: General-purpose virtual machine with KubeVirt.
 template: "osac.templates.ocp_virt_vm"
 published: true
 field_definitions:
-  - path: ssh_public_key
-    display_name: SSH Public Key
+  - path: ssh_key
+    display_name: SSH Key
     editable: true
     default: "ssh-ed25519 AAAA..."
-  - path: host_type
-    display_name: Host Type
+  - path: cores
+    display_name: CPU Cores
     editable: true
-    default: "fc430"
+    default: 4
+  - path: memory_gib
+    display_name: Memory (GiB)
+    editable: true
+    default: 8
+  - path: network_attachments
+    display_name: Network Attachments
+    editable: true
 ```
 
 ### Create the catalog item

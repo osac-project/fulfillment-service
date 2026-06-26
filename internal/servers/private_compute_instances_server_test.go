@@ -1127,16 +1127,20 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Message()).To(Equal("catalog_item and template are mutually exclusive"))
 			})
 
-			It("Overrides user value for non-editable field", func() {
+			It("Rejects user value for non-editable field", func() {
 				createCICatalogItem("ci-cat-nonedit", true, []*privatev1.FieldDefinition{
 					privatev1.FieldDefinition_builder{
 						Path:     "ssh_key",
 						Editable: false,
 						Default:  structpb.NewStringValue("forced-key"),
 					}.Build(),
+					privatev1.FieldDefinition_builder{
+						Path:     "network_attachments",
+						Editable: true,
+					}.Build(),
 				})
 
-				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							CatalogItem: "ci-cat-nonedit",
@@ -1149,9 +1153,11 @@ var _ = Describe("Private compute instances server", func() {
 						}.Build(),
 					}.Build(),
 				}.Build())
-				Expect(err).ToNot(HaveOccurred())
-				object := response.GetObject()
-				Expect(object.GetSpec().GetSshKey()).To(Equal("forced-key"))
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("not editable"))
 			})
 
 			DescribeTable("validates editable field against JSON Schema",
@@ -1161,6 +1167,10 @@ var _ = Describe("Private compute instances server", func() {
 							Path:             "ssh_key",
 							Editable:         true,
 							ValidationSchema: `{"type":"string","minLength":10}`,
+						}.Build(),
+						privatev1.FieldDefinition_builder{
+							Path:     "network_attachments",
+							Editable: true,
 						}.Build(),
 					})
 
@@ -1198,6 +1208,10 @@ var _ = Describe("Private compute instances server", func() {
 						Path:     "ssh_key",
 						Editable: true,
 						Default:  structpb.NewStringValue("default-key"),
+					}.Build(),
+					privatev1.FieldDefinition_builder{
+						Path:     "network_attachments",
+						Editable: true,
 					}.Build(),
 				})
 

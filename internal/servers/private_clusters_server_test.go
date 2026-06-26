@@ -1176,7 +1176,7 @@ var _ = Describe("Private clusters server", func() {
 				Expect(status.Message()).To(Equal("catalog_item and template are mutually exclusive"))
 			})
 
-			It("Overrides user value for non-editable field", func() {
+			It("Rejects user value for non-editable field", func() {
 				createCatalogItem("cat-noneditable", true, []*privatev1.FieldDefinition{
 					privatev1.FieldDefinition_builder{
 						Path:     "pull_secret",
@@ -1185,7 +1185,7 @@ var _ = Describe("Private clusters server", func() {
 					}.Build(),
 				})
 
-				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
 							CatalogItem: "cat-noneditable",
@@ -1196,9 +1196,11 @@ var _ = Describe("Private clusters server", func() {
 						}.Build(),
 					}.Build(),
 				}.Build())
-				Expect(err).ToNot(HaveOccurred())
-				object := response.GetObject()
-				Expect(object.GetSpec().GetPullSecret()).To(Equal("forced-secret"))
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("not editable"))
 			})
 
 			DescribeTable("validates editable field against JSON Schema",
