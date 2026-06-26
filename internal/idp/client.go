@@ -35,10 +35,12 @@ type Client interface {
 	DeleteOrganization(ctx context.Context, name string) error
 
 	// User operations
+	// All user operations accept idpUserID, which is the identity provider's user UUID stored in User.status.keycloak_user_id.
+	// Controllers should fetch the OSAC User object and extract status.keycloak_user_id before calling these methods.
 	CreateUser(ctx context.Context, organizationName string, user *User) (*User, error)
-	GetUser(ctx context.Context, organizationName, userID string) (*User, error)
+	GetUser(ctx context.Context, organizationName, idpUserID string) (*User, error)
 	ListUsers(ctx context.Context, organizationName string) ([]*User, error)
-	DeleteUser(ctx context.Context, organizationName, userID string) error
+	DeleteUser(ctx context.Context, organizationName, idpUserID string) error
 
 	// Role operations
 	// Roles can be at the organization level or client level
@@ -46,12 +48,17 @@ type Client interface {
 	ListClientRoles(ctx context.Context, organizationName, clientID string) ([]*Role, error)
 
 	// User role assignments
-	AssignOrganizationRolesToUser(ctx context.Context, organizationName, userID string, roles []*Role) error
-	AssignClientRolesToUser(ctx context.Context, organizationName, userID, clientID string, roles []*Role) error
-	RemoveOrganizationRolesFromUser(ctx context.Context, organizationName, userID string, roles []*Role) error
-	RemoveClientRolesFromUser(ctx context.Context, organizationName, userID, clientID string, roles []*Role) error
-	GetUserOrganizationRoles(ctx context.Context, organizationName, userID string) ([]*Role, error)
-	GetUserClientRoles(ctx context.Context, organizationName, userID, clientID string) ([]*Role, error)
+	// All role assignment methods accept idpUserID (the identity provider's user UUID, not the OSAC user ID).
+	// Controllers must:
+	// 1. Fetch the OSAC User object by the user ID/name from the API request
+	// 2. Extract idpUserID from user.status.keycloak_user_id
+	// 3. Pass idpUserID to these IDP client methods
+	AssignOrganizationRolesToUser(ctx context.Context, organizationName, idpUserID string, roles []*Role) error
+	AssignClientRolesToUser(ctx context.Context, organizationName, idpUserID, clientID string, roles []*Role) error
+	RemoveOrganizationRolesFromUser(ctx context.Context, organizationName, idpUserID string, roles []*Role) error
+	RemoveClientRolesFromUser(ctx context.Context, organizationName, idpUserID, clientID string, roles []*Role) error
+	GetUserOrganizationRoles(ctx context.Context, organizationName, idpUserID string) ([]*Role, error)
+	GetUserClientRoles(ctx context.Context, organizationName, idpUserID, clientID string) ([]*Role, error)
 
 	// Admin permissions
 	// AssignOrganizationAdminPermissions grants full administrative access to an organization for the specified user.
@@ -60,7 +67,7 @@ type Client interface {
 	// - Auth0: Assigns organization Admin role
 	// - Okta: Assigns Organizational Administrator role
 	// - Azure AD: Assigns Global Administrator or Organizational Administrator role
-	AssignOrganizationAdminPermissions(ctx context.Context, organizationName, userID string) error
+	AssignOrganizationAdminPermissions(ctx context.Context, organizationName, idpUserID string) error
 
 	// AssignIdpManagerPermissions grants limited IdP management permissions to the specified user.
 	// This is used for the break-glass account which can manage user roles and identity providers
@@ -70,7 +77,7 @@ type Client interface {
 	// - Auth0: Assigns organization Member Manager role
 	// - Okta: Assigns User Administrator role
 	// - Azure AD: Assigns User Administrator role
-	AssignIdpManagerPermissions(ctx context.Context, userID string) error
+	AssignIdpManagerPermissions(ctx context.Context, idpUserID string) error
 
 	// Authorization resource operations (Keycloak Authorization Services / UMA 2.0)
 	// These methods manage fine-grained permissions on resources like Projects.
@@ -81,19 +88,19 @@ type Client interface {
 
 	// Authorization policy and permission operations
 	// These methods control who can access which resources with what scopes.
-	// CreateAuthorizationGroup creates a Keycloak organization group for authorization purposes.
+	// CreateAuthorizationGroup creates an organization group for authorization purposes.
 	// Organization groups are scoped to a specific organization and support hierarchical paths.
 	// Recommended path format: "/{project-name}/{viewers|managers}" for top-level projects.
 	// Returns the created group ID.
 	CreateAuthorizationGroup(ctx context.Context, organizationName, groupName, groupPath string) (string, error)
-	// DeleteAuthorizationGroup deletes a Keycloak organization group by ID.
+	// DeleteAuthorizationGroup deletes an organization group by ID.
 	DeleteAuthorizationGroup(ctx context.Context, organizationName, groupID string) error
-	// GetGroupIDByPath gets a Keycloak organization group ID by its path.
+	// GetGroupIDByPath gets an organization group ID by its path.
 	GetGroupIDByPath(ctx context.Context, organizationName, groupPath string) (string, error)
 	// AddUserToGroup adds a user to an organization group by group ID.
-	AddUserToGroup(ctx context.Context, organizationName, username, groupID string) error
+	AddUserToGroup(ctx context.Context, organizationName, idpUserID, groupID string) error
 	// RemoveUserFromGroup removes a user from an organization group by group ID.
-	RemoveUserFromGroup(ctx context.Context, organizationName, username, groupID string) error
+	RemoveUserFromGroup(ctx context.Context, organizationName, idpUserID, groupID string) error
 
 	// Identity Provider operations
 	// CreateIdentityProvider creates a new external identity provider for a specific organization.
