@@ -322,56 +322,13 @@ func (c *Client) getGroupIDByPath(ctx context.Context, tenantName, groupPath str
 	return c.getGroupIDByPathWithOrgID(ctx, org.ID, groupPath)
 }
 
-// getUserIDByUsername looks up a user's UUID by their username.
-// Returns the user's UUID if found, or an error if not found or multiple matches exist.
-func (c *Client) getUserIDByUsername(ctx context.Context, username string) (string, error) {
-	// Use exact match to find the user by username
-	path := fmt.Sprintf("/admin/realms/%s/users?username=%s&exact=true",
-		url.PathEscape(c.realmName),
-		url.QueryEscape(username),
-	)
-
-	response, err := c.httpClient.DoRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to search for user: %w", err)
-	}
-	defer response.Body.Close()
-
-	var users []struct {
-		ID       string `json:"id"`
-		Username string `json:"username"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&users); err != nil {
-		return "", fmt.Errorf("failed to decode user search response: %w", err)
-	}
-
-	if len(users) == 0 {
-		return "", fmt.Errorf("user not found: %s", username)
-	}
-	if len(users) > 1 {
-		return "", fmt.Errorf("multiple users found for username: %s", username)
-	}
-
-	return users[0].ID, nil
-}
-
 // AddUserToGroup adds a user to an organization group by group ID.
-func (c *Client) AddUserToGroup(ctx context.Context, tenantName, username, groupID string) error {
+// Accepts idpUserID (the identity provider's user UUID from User.status.keycloak_user_id).
+func (c *Client) AddUserToGroup(ctx context.Context, tenantName, idpUserID, groupID string) error {
 	c.logger.DebugContext(ctx, "Adding user to organization group",
 		slog.String("tenantName", tenantName),
-		slog.String("!username", username),
+		slog.String("!idpUserID", idpUserID),
 		slog.String("groupID", groupID),
-	)
-
-	// Look up the user's UUID by username
-	userUUID, err := c.getUserIDByUsername(ctx, username)
-	if err != nil {
-		return fmt.Errorf("failed to lookup user UUID: %w", err)
-	}
-
-	c.logger.DebugContext(ctx, "Looked up user UUID",
-		slog.String("!username", username),
-		slog.String("!uuid", userUUID),
 	)
 
 	// Get the organization ID
@@ -382,7 +339,7 @@ func (c *Client) AddUserToGroup(ctx context.Context, tenantName, username, group
 
 	// First, ensure the user is a member of the organization
 	// This is required before we can add them to organization groups
-	err = c.ensureOrganizationMember(ctx, org.ID, userUUID)
+	err = c.ensureOrganizationMember(ctx, org.ID, idpUserID)
 	if err != nil {
 		return fmt.Errorf("failed to ensure user is organization member: %w", err)
 	}
@@ -394,7 +351,7 @@ func (c *Client) AddUserToGroup(ctx context.Context, tenantName, username, group
 		url.PathEscape(c.realmName),
 		url.PathEscape(org.ID),
 		url.PathEscape(groupID),
-		url.PathEscape(userUUID),
+		url.PathEscape(idpUserID),
 	)
 
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPut, path, nil)
@@ -405,8 +362,7 @@ func (c *Client) AddUserToGroup(ctx context.Context, tenantName, username, group
 
 	c.logger.InfoContext(ctx, "Added user to organization group",
 		slog.String("tenantName", tenantName),
-		slog.String("!username", username),
-		slog.String("!uuid", userUUID),
+		slog.String("!idpUserID", idpUserID),
 		slog.String("groupID", groupID),
 	)
 
@@ -448,22 +404,11 @@ func (c *Client) ensureOrganizationMember(ctx context.Context, orgID, userUUID s
 }
 
 // RemoveUserFromGroup removes a user from an organization group by group ID.
-func (c *Client) RemoveUserFromGroup(ctx context.Context, tenantName, username, groupID string) error {
+func (c *Client) RemoveUserFromGroup(ctx context.Context, tenantName, idpUserID, groupID string) error {
 	c.logger.DebugContext(ctx, "Removing user from organization group",
 		slog.String("tenantName", tenantName),
-		slog.String("!username", username),
+		slog.String("!idpUserID", idpUserID),
 		slog.String("groupID", groupID),
-	)
-
-	// Look up the user's UUID by username
-	userUUID, err := c.getUserIDByUsername(ctx, username)
-	if err != nil {
-		return fmt.Errorf("failed to lookup user UUID: %w", err)
-	}
-
-	c.logger.DebugContext(ctx, "Looked up user UUID",
-		slog.String("!username", username),
-		slog.String("!uuid", userUUID),
 	)
 
 	// Get the organization ID
@@ -478,7 +423,7 @@ func (c *Client) RemoveUserFromGroup(ctx context.Context, tenantName, username, 
 		url.PathEscape(c.realmName),
 		url.PathEscape(org.ID),
 		url.PathEscape(groupID),
-		url.PathEscape(userUUID),
+		url.PathEscape(idpUserID),
 	)
 
 	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, path, nil)
@@ -489,8 +434,7 @@ func (c *Client) RemoveUserFromGroup(ctx context.Context, tenantName, username, 
 
 	c.logger.InfoContext(ctx, "Removed user from organization group",
 		slog.String("tenantName", tenantName),
-		slog.String("!username", username),
-		slog.String("!uuid", userUUID),
+		slog.String("!idpUserID", idpUserID),
 		slog.String("groupID", groupID),
 	)
 

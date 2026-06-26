@@ -35,10 +35,12 @@ type Client interface {
 	DeleteTenant(ctx context.Context, tenantName string) error
 
 	// User operations
+	// All user operations accept idpUserID, which is the identity provider's user UUID stored in User.status.keycloak_user_id.
+	// Controllers should fetch the OSAC User object and extract status.keycloak_user_id before calling these methods.
 	CreateUser(ctx context.Context, tenantName string, user *User) (*User, error)
-	GetUser(ctx context.Context, tenantName, userID string) (*User, error)
+	GetUser(ctx context.Context, tenantName, idpUserID string) (*User, error)
 	ListUsers(ctx context.Context, tenantName string) ([]*User, error)
-	DeleteUser(ctx context.Context, tenantName, userID string) error
+	DeleteUser(ctx context.Context, tenantName, idpUserID string) error
 
 	// Role operations
 	// Roles can be at the tenant level or client level
@@ -46,12 +48,17 @@ type Client interface {
 	ListClientRoles(ctx context.Context, tenantName, clientID string) ([]*Role, error)
 
 	// User role assignments
-	AssignTenantRolesToUser(ctx context.Context, tenantName, userID string, roles []*Role) error
-	AssignClientRolesToUser(ctx context.Context, tenantName, userID, clientID string, roles []*Role) error
-	RemoveTenantRolesFromUser(ctx context.Context, tenantName, userID string, roles []*Role) error
-	RemoveClientRolesFromUser(ctx context.Context, tenantName, userID, clientID string, roles []*Role) error
-	GetUserTenantRoles(ctx context.Context, tenantName, userID string) ([]*Role, error)
-	GetUserClientRoles(ctx context.Context, tenantName, userID, clientID string) ([]*Role, error)
+	// All role assignment methods accept idpUserID (the identity provider's user UUID, not the OSAC user ID).
+	// Controllers must:
+	// 1. Fetch the OSAC User object by the user ID/name from the API request
+	// 2. Extract idpUserID from user.status.keycloak_user_id
+	// 3. Pass idpUserID to these IDP client methods
+	AssignTenantRolesToUser(ctx context.Context, tenantName, idpUserID string, roles []*Role) error
+	AssignClientRolesToUser(ctx context.Context, tenantName, idpUserID, clientID string, roles []*Role) error
+	RemoveTenantRolesFromUser(ctx context.Context, tenantName, idpUserID string, roles []*Role) error
+	RemoveClientRolesFromUser(ctx context.Context, tenantName, idpUserID, clientID string, roles []*Role) error
+	GetUserTenantRoles(ctx context.Context, tenantName, idpUserID string) ([]*Role, error)
+	GetUserClientRoles(ctx context.Context, tenantName, idpUserID, clientID string) ([]*Role, error)
 
 	// Admin permissions
 	// AssignTenantAdminPermissions grants full administrative access to a tenant for the specified user.
@@ -60,7 +67,7 @@ type Client interface {
 	// - Auth0: Assigns organization Admin role
 	// - Okta: Assigns Organizational Administrator role
 	// - Azure AD: Assigns Global Administrator or Organizational Administrator role
-	AssignTenantAdminPermissions(ctx context.Context, tenantName, userID string) error
+	AssignTenantAdminPermissions(ctx context.Context, tenantName, idpUserID string) error
 
 	// AssignIdpManagerPermissions grants limited IdP management permissions to the specified user.
 	// This is used for the break-glass account which can manage user roles and identity providers
@@ -70,7 +77,7 @@ type Client interface {
 	// - Auth0: Assigns organization Member Manager role
 	// - Okta: Assigns User Administrator role
 	// - Azure AD: Assigns User Administrator role
-	AssignIdpManagerPermissions(ctx context.Context, userID string) error
+	AssignIdpManagerPermissions(ctx context.Context, idpUserID string) error
 
 	// Authorization resource operations (Keycloak Authorization Services / UMA 2.0)
 	// These methods manage fine-grained permissions on resources like Projects.

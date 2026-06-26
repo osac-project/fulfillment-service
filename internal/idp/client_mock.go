@@ -55,59 +55,59 @@ func (mr *MockClientMockRecorder) AddUserToGroup(ctx, tenantName, username, grou
 }
 
 // AssignClientRolesToUser mocks base method.
-func (m *MockClient) AssignClientRolesToUser(ctx context.Context, tenantName, userID, clientID string, roles []*Role) error {
+func (m *MockClient) AssignClientRolesToUser(ctx context.Context, tenantName, idpUserID, clientID string, roles []*Role) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AssignClientRolesToUser", ctx, tenantName, userID, clientID, roles)
+	ret := m.ctrl.Call(m, "AssignClientRolesToUser", ctx, tenantName, idpUserID, clientID, roles)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AssignClientRolesToUser indicates an expected call of AssignClientRolesToUser.
-func (mr *MockClientMockRecorder) AssignClientRolesToUser(ctx, tenantName, userID, clientID, roles any) *gomock.Call {
+func (mr *MockClientMockRecorder) AssignClientRolesToUser(ctx, tenantName, idpUserID, clientID, roles any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignClientRolesToUser", reflect.TypeOf((*MockClient)(nil).AssignClientRolesToUser), ctx, tenantName, userID, clientID, roles)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignClientRolesToUser", reflect.TypeOf((*MockClient)(nil).AssignClientRolesToUser), ctx, tenantName, idpUserID, clientID, roles)
 }
 
 // AssignIdpManagerPermissions mocks base method.
-func (m *MockClient) AssignIdpManagerPermissions(ctx context.Context, userID string) error {
+func (m *MockClient) AssignIdpManagerPermissions(ctx context.Context, idpUserID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AssignIdpManagerPermissions", ctx, userID)
+	ret := m.ctrl.Call(m, "AssignIdpManagerPermissions", ctx, idpUserID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AssignIdpManagerPermissions indicates an expected call of AssignIdpManagerPermissions.
-func (mr *MockClientMockRecorder) AssignIdpManagerPermissions(ctx, userID any) *gomock.Call {
+func (mr *MockClientMockRecorder) AssignIdpManagerPermissions(ctx, idpUserID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignIdpManagerPermissions", reflect.TypeOf((*MockClient)(nil).AssignIdpManagerPermissions), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignIdpManagerPermissions", reflect.TypeOf((*MockClient)(nil).AssignIdpManagerPermissions), ctx, idpUserID)
 }
 
 // AssignTenantAdminPermissions mocks base method.
-func (m *MockClient) AssignTenantAdminPermissions(ctx context.Context, tenantName, userID string) error {
+func (m *MockClient) AssignTenantAdminPermissions(ctx context.Context, tenantName, idpUserID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AssignTenantAdminPermissions", ctx, tenantName, userID)
+	ret := m.ctrl.Call(m, "AssignTenantAdminPermissions", ctx, tenantName, idpUserID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AssignTenantAdminPermissions indicates an expected call of AssignTenantAdminPermissions.
-func (mr *MockClientMockRecorder) AssignTenantAdminPermissions(ctx, tenantName, userID any) *gomock.Call {
+func (mr *MockClientMockRecorder) AssignTenantAdminPermissions(ctx, tenantName, idpUserID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignTenantAdminPermissions", reflect.TypeOf((*MockClient)(nil).AssignTenantAdminPermissions), ctx, tenantName, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignTenantAdminPermissions", reflect.TypeOf((*MockClient)(nil).AssignTenantAdminPermissions), ctx, tenantName, idpUserID)
 }
 
 // AssignTenantRolesToUser mocks base method.
-func (m *MockClient) AssignTenantRolesToUser(ctx context.Context, tenantName, userID string, roles []*Role) error {
+func (m *MockClient) AssignTenantRolesToUser(ctx context.Context, tenantName, idpUserID string, roles []*Role) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AssignTenantRolesToUser", ctx, tenantName, userID, roles)
+	ret := m.ctrl.Call(m, "AssignTenantRolesToUser", ctx, tenantName, idpUserID, roles)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AssignTenantRolesToUser indicates an expected call of AssignTenantRolesToUser.
-func (mr *MockClientMockRecorder) AssignTenantRolesToUser(ctx, tenantName, userID, roles any) *gomock.Call {
+func (mr *MockClientMockRecorder) AssignTenantRolesToUser(ctx, tenantName, idpUserID, roles any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignTenantRolesToUser", reflect.TypeOf((*MockClient)(nil).AssignTenantRolesToUser), ctx, tenantName, userID, roles)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AssignTenantRolesToUser", reflect.TypeOf((*MockClient)(nil).AssignTenantRolesToUser), ctx, tenantName, idpUserID, roles)
 }
 
 // CreateAuthorizationGroup mocks base method.
@@ -242,17 +242,17 @@ func (mr *MockClientMockRecorder) DeleteTenant(ctx, tenantName any) *gomock.Call
 }
 
 // DeleteUser mocks base method.
-func (m *MockClient) DeleteUser(ctx context.Context, tenantName, userID string) error {
+func (m *MockClient) DeleteUser(ctx context.Context, tenantName, idpUserID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteUser", ctx, tenantName, userID)
+	ret := m.ctrl.Call(m, "DeleteUser", ctx, tenantName, idpUserID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteUser indicates an expected call of DeleteUser.
-func (mr *MockClientMockRecorder) DeleteUser(ctx, tenantName, userID any) *gomock.Call {
+func (mr *MockClientMockRecorder) DeleteUser(ctx, tenantName, idpUserID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUser", reflect.TypeOf((*MockClient)(nil).DeleteUser), ctx, tenantName, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUser", reflect.TypeOf((*MockClient)(nil).DeleteUser), ctx, tenantName, idpUserID)
 }
 
 // GetAuthorizationResource mocks base method.
@@ -316,48 +316,48 @@ func (mr *MockClientMockRecorder) GetTenant(ctx, name any) *gomock.Call {
 }
 
 // GetUser mocks base method.
-func (m *MockClient) GetUser(ctx context.Context, tenantName, userID string) (*User, error) {
+func (m *MockClient) GetUser(ctx context.Context, tenantName, idpUserID string) (*User, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUser", ctx, tenantName, userID)
+	ret := m.ctrl.Call(m, "GetUser", ctx, tenantName, idpUserID)
 	ret0, _ := ret[0].(*User)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetUser indicates an expected call of GetUser.
-func (mr *MockClientMockRecorder) GetUser(ctx, tenantName, userID any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetUser(ctx, tenantName, idpUserID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUser", reflect.TypeOf((*MockClient)(nil).GetUser), ctx, tenantName, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUser", reflect.TypeOf((*MockClient)(nil).GetUser), ctx, tenantName, idpUserID)
 }
 
 // GetUserClientRoles mocks base method.
-func (m *MockClient) GetUserClientRoles(ctx context.Context, tenantName, userID, clientID string) ([]*Role, error) {
+func (m *MockClient) GetUserClientRoles(ctx context.Context, tenantName, idpUserID, clientID string) ([]*Role, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserClientRoles", ctx, tenantName, userID, clientID)
+	ret := m.ctrl.Call(m, "GetUserClientRoles", ctx, tenantName, idpUserID, clientID)
 	ret0, _ := ret[0].([]*Role)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetUserClientRoles indicates an expected call of GetUserClientRoles.
-func (mr *MockClientMockRecorder) GetUserClientRoles(ctx, tenantName, userID, clientID any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetUserClientRoles(ctx, tenantName, idpUserID, clientID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserClientRoles", reflect.TypeOf((*MockClient)(nil).GetUserClientRoles), ctx, tenantName, userID, clientID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserClientRoles", reflect.TypeOf((*MockClient)(nil).GetUserClientRoles), ctx, tenantName, idpUserID, clientID)
 }
 
 // GetUserTenantRoles mocks base method.
-func (m *MockClient) GetUserTenantRoles(ctx context.Context, tenantName, userID string) ([]*Role, error) {
+func (m *MockClient) GetUserTenantRoles(ctx context.Context, tenantName, idpUserID string) ([]*Role, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUserTenantRoles", ctx, tenantName, userID)
+	ret := m.ctrl.Call(m, "GetUserTenantRoles", ctx, tenantName, idpUserID)
 	ret0, _ := ret[0].([]*Role)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetUserTenantRoles indicates an expected call of GetUserTenantRoles.
-func (mr *MockClientMockRecorder) GetUserTenantRoles(ctx, tenantName, userID any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetUserTenantRoles(ctx, tenantName, idpUserID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserTenantRoles", reflect.TypeOf((*MockClient)(nil).GetUserTenantRoles), ctx, tenantName, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserTenantRoles", reflect.TypeOf((*MockClient)(nil).GetUserTenantRoles), ctx, tenantName, idpUserID)
 }
 
 // ListClientRoles mocks base method.
@@ -421,31 +421,31 @@ func (mr *MockClientMockRecorder) ListUsers(ctx, tenantName any) *gomock.Call {
 }
 
 // RemoveClientRolesFromUser mocks base method.
-func (m *MockClient) RemoveClientRolesFromUser(ctx context.Context, tenantName, userID, clientID string, roles []*Role) error {
+func (m *MockClient) RemoveClientRolesFromUser(ctx context.Context, tenantName, idpUserID, clientID string, roles []*Role) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveClientRolesFromUser", ctx, tenantName, userID, clientID, roles)
+	ret := m.ctrl.Call(m, "RemoveClientRolesFromUser", ctx, tenantName, idpUserID, clientID, roles)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemoveClientRolesFromUser indicates an expected call of RemoveClientRolesFromUser.
-func (mr *MockClientMockRecorder) RemoveClientRolesFromUser(ctx, tenantName, userID, clientID, roles any) *gomock.Call {
+func (mr *MockClientMockRecorder) RemoveClientRolesFromUser(ctx, tenantName, idpUserID, clientID, roles any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveClientRolesFromUser", reflect.TypeOf((*MockClient)(nil).RemoveClientRolesFromUser), ctx, tenantName, userID, clientID, roles)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveClientRolesFromUser", reflect.TypeOf((*MockClient)(nil).RemoveClientRolesFromUser), ctx, tenantName, idpUserID, clientID, roles)
 }
 
 // RemoveTenantRolesFromUser mocks base method.
-func (m *MockClient) RemoveTenantRolesFromUser(ctx context.Context, tenantName, userID string, roles []*Role) error {
+func (m *MockClient) RemoveTenantRolesFromUser(ctx context.Context, tenantName, idpUserID string, roles []*Role) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveTenantRolesFromUser", ctx, tenantName, userID, roles)
+	ret := m.ctrl.Call(m, "RemoveTenantRolesFromUser", ctx, tenantName, idpUserID, roles)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemoveTenantRolesFromUser indicates an expected call of RemoveTenantRolesFromUser.
-func (mr *MockClientMockRecorder) RemoveTenantRolesFromUser(ctx, tenantName, userID, roles any) *gomock.Call {
+func (mr *MockClientMockRecorder) RemoveTenantRolesFromUser(ctx, tenantName, idpUserID, roles any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveTenantRolesFromUser", reflect.TypeOf((*MockClient)(nil).RemoveTenantRolesFromUser), ctx, tenantName, userID, roles)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveTenantRolesFromUser", reflect.TypeOf((*MockClient)(nil).RemoveTenantRolesFromUser), ctx, tenantName, idpUserID, roles)
 }
 
 // RemoveUserFromGroup mocks base method.
