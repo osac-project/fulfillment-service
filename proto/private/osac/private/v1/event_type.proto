@@ -29,6 +29,7 @@ import "osac/private/v1/hub_type.proto";
 import "osac/private/v1/identity_provider_type.proto";
 import "osac/private/v1/instance_type_type.proto";
 import "osac/private/v1/network_class_type.proto";
+import "osac/private/v1/project_membership_type.proto";
 import "osac/private/v1/project_type.proto";
 import "osac/private/v1/tenant_type.proto";
 import "osac/private/v1/public_ip_attachment_type.proto";
@@ -80,6 +81,7 @@ message Event {
     StorageBackend storage_backend = 30;
     Tenant tenant = 31;
     IdentityProvider identity_provider = 32;
+    ProjectMembership project_membership = 33;
   }
 }
 
