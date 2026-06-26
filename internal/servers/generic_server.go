@@ -46,6 +46,7 @@ type GenericServerBuilder[O dao.Object] struct {
 	table             string
 	ignoredFields     []any
 	notifier          events.Notifier
+	nameValidator     func(context.Context, string) error
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -57,6 +58,7 @@ type GenericServer[O dao.Object] struct {
 	logger           *slog.Logger
 	service          string
 	dao              *dao.GenericDAO[O]
+	nameValidator    func(context.Context, string) error
 	attributionLogic auth.AttributionLogic
 	tenancyLogic     auth.TenancyLogic
 	template         proto.Message
@@ -88,6 +90,8 @@ type metadataIface interface {
 	SetCreator(string)
 	GetTenant() string
 	SetTenant(string)
+	GetProject() string
+	SetProject(string)
 	GetVersion() int32
 }
 
@@ -134,6 +138,13 @@ func (b *GenericServerBuilder[O]) AddIgnoredFields(values ...any) *GenericServer
 // SetNotifier sets the notifier that the server will use to send change notifications. This is optional.
 func (b *GenericServerBuilder[O]) SetNotifier(value events.Notifier) *GenericServerBuilder[O] {
 	b.notifier = reflection.NormalizeNil(value)
+	return b
+}
+
+// SetNameValidator sets the validator that will be used to validate the name of objects. This is optional. If not set,
+// the default DNS label validation will be used.
+func (b *GenericServerBuilder[O]) SetNameValidator(value func(context.Context, string) error) *GenericServerBuilder[O] {
+	b.nameValidator = value
 	return b
 }
 
@@ -196,6 +207,13 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		pathCompiler:     pathCompiler,
 		pathCache:        map[string]*masks.Path[O]{},
 		pathCacheLock:    &sync.Mutex{},
+	}
+
+	// Prepare the name validator:
+	if b.nameValidator != nil {
+		s.nameValidator = b.nameValidator
+	} else {
+		s.nameValidator = s.validateName
 	}
 
 	// Create the DAO:
@@ -427,7 +445,7 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	} else {
 		requestMetadata := s.getMetadata(requestObject)
 		if requestMetadata != nil {
-			err := s.validateMetadata(requestMetadata)
+			err := s.validateMetadata(ctx, requestMetadata)
 			if err != nil {
 				return err
 			}
@@ -594,7 +612,7 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 	// Validate the resulting metadata:
 	tmpMetadata := s.getMetadata(tmpObject)
 	if tmpMetadata != nil {
-		err = s.validateMetadata(tmpMetadata)
+		err = s.validateMetadata(ctx, tmpMetadata)
 		if err != nil {
 			return err
 		}
@@ -712,20 +730,20 @@ func (s *GenericServer[O]) Delete(ctx context.Context, request any, response any
 		SetId(requestId).
 		Do(ctx)
 	if err != nil {
-		var notFoundErr *dao.ErrNotFound
-		if errors.As(err, &notFoundErr) {
+		_, ok := errors.AsType[*dao.ErrNotFound](err)
+		if ok {
 			return grpcstatus.Errorf(
 				grpccodes.NotFound,
 				"object with identifier '%s' not found",
 				requestId,
 			)
 		}
-		var deniedErr *dao.ErrDenied
-		if errors.As(err, &deniedErr) {
-			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+		deniedErr, ok := errors.AsType[*dao.ErrDenied](err)
+		if ok {
+			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Error())
 		}
-		var inUseErr *dao.ErrInUse
-		if errors.As(err, &inUseErr) {
+		inUseErr, ok := errors.AsType[*dao.ErrInUse](err)
+		if ok {
 			return grpcstatus.Errorf(grpccodes.FailedPrecondition, "%s", inUseErr.Error())
 		}
 		s.logger.ErrorContext(
@@ -932,10 +950,10 @@ func (s *GenericServer[O]) setPointer(pointer any, value any) {
 	reflect.ValueOf(pointer).Elem().Set(reflect.ValueOf(value))
 }
 
-func (s *GenericServer[O]) validateMetadata(metadata metadataIface) error {
+func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metadataIface) error {
 	name := metadata.GetName()
 	if name != "" {
-		err := s.validateName(name)
+		err := s.nameValidator(ctx, name)
 		if err != nil {
 			return err
 		}
@@ -962,7 +980,7 @@ func (s *GenericServer[O]) validateMetadata(metadata metadataIface) error {
 // - Must be between 1 and 63 characters long
 // - Must only contain lowercase letters (a-z), digits (0-9) and hyphens (-)
 // - Cannot start or end with a hyphen
-func (s *GenericServer[O]) validateName(name string) error {
+func (s *GenericServer[O]) validateName(ctx context.Context, name string) error {
 	// Max length:
 	if len(name) > 63 {
 		return grpcstatus.Errorf(

@@ -66,6 +66,7 @@ message Metadata {
   string creator = 4;
   string tenant = 5;
   string name = 6;
+  string project = 10;
   map<string, string> labels = 7;
   map<string, string> annotations = 8;
   int32 version = 9;

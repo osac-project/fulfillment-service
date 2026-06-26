@@ -15,6 +15,9 @@ domains:
 
 columns:
 
+- header: PROJECT
+  value: "has(this.metadata.project)? this.metadata.project: '-'"
+
 - header: ID
   value: this.id
 

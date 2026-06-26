@@ -76,6 +76,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		labels      map[string]string
 		annotations map[string]string
 		tenant      string
+		project     string
 		creator     string
 	)
 	if metadata != nil {
@@ -83,6 +84,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		labels = metadata.GetLabels()
 		annotations = metadata.GetAnnotations()
 		tenant = metadata.GetTenant()
+		project = metadata.GetProject()
 		creator = metadata.GetCreator()
 	}
 
@@ -113,6 +115,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			finalizers,
 			creator,
 			tenant,
+			project,
 			labels,
 			annotations,
 			data
@@ -124,7 +127,8 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			$5,
 			$6,
 			$7,
-			$8
+			$8,
+			$9
 		)
 		returning
 			creation_timestamp,
@@ -149,6 +153,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			finalizers,
 			creator,
 			tenant,
+			project,
 			labelsData,
 			annotationsData,
 			data,
@@ -163,7 +168,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		)
 	}()
 	if err != nil {
-		err = r.translateError(ctx, id, name, tenant, err)
+		err = r.translateError(ctx, id, tenant, project, name, err)
 		return
 	}
 	created := r.cloneObject(r.object)
@@ -173,6 +178,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		finalizers:  finalizers,
 		creator:     creator,
 		tenant:      tenant,
+		project:     project,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
@@ -198,21 +204,17 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 }
 
 // translateError translates raw PostgreSQL errors into domain-specific error types.
-func (r *CreateRequest[O]) translateError(ctx context.Context, id, name, tenant string, err error) error {
+func (r *CreateRequest[O]) translateError(ctx context.Context, id, tenant, project, name string, err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		return err
 	}
 	switch pgErr.Code {
 	case pgerrcode.UniqueViolation:
-		if strings.Contains(pgErr.ConstraintName, "_unique_name_") {
-			return &ErrAlreadyExists{
-				ID:   id,
-				Name: name,
-			}
-		}
 		return &ErrAlreadyExists{
-			ID: id,
+			Table: r.dao.table,
+			ID:    id,
+			Name:  name,
 		}
 	case errReferenceCode:
 		return &ErrReference{
@@ -223,6 +225,14 @@ func (r *CreateRequest[O]) translateError(ctx context.Context, id, name, tenant 
 		case strings.HasSuffix(pgErr.ConstraintName, "_tenant_fk"):
 			return &ErrReference{
 				Reason: fmt.Sprintf("tenant '%s' doesn't exist", tenant),
+			}
+		case strings.HasSuffix(pgErr.ConstraintName, "_parent_project_fk"):
+			return &ErrReference{
+				Reason: fmt.Sprintf("parent project '%s' doesn't exist", project),
+			}
+		case strings.HasSuffix(pgErr.ConstraintName, "_project_fk"):
+			return &ErrReference{
+				Reason: fmt.Sprintf("project '%s' doesn't exist", project),
 			}
 		default:
 			r.dao.logger.WarnContext(

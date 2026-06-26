@@ -49,8 +49,87 @@ func createTenant(ctx context.Context, client privatev1.TenantsClient, name stri
 		_, _ = client.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
 			Id: id,
 		}.Build())
+		status, ok := grpcstatus.FromError(err)
+		if ok && status.Code() == grpccodes.NotFound {
+			return
+		}
+		Expect(err).ToNot(HaveOccurred())
 	})
 	return id
+}
+
+func deleteProject(ctx context.Context, client privatev1.ProjectsClient, id string) {
+	// Recursively find and delete all the child projects:
+	listFilter := fmt.Sprintf("this.metadata.project == %q && !has(this.metadata.deletion_timestamp)", id)
+	listRequest := privatev1.ProjectsListRequest_builder{
+		Filter: &listFilter,
+	}.Build()
+	for {
+		listResponse, err := client.List(ctx, listRequest)
+		Expect(err).ToNot(HaveOccurred())
+		if listResponse.GetTotal() == 0 {
+			break
+		}
+		listItems := listResponse.GetItems()
+		for _, listItem := range listItems {
+			deleteProject(ctx, client, listItem.GetId())
+		}
+	}
+
+	// Delete this project, and wait for it to be fully removed::
+	_, err := client.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+		Id: id,
+	}.Build())
+	Expect(err).ToNot(HaveOccurred())
+	Eventually(
+		func(g Gomega) {
+			_, err := client.Get(ctx, privatev1.ProjectsGetRequest_builder{
+				Id: id,
+			}.Build())
+			g.Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			g.Expect(ok).To(BeTrue())
+			g.Expect(status.Code()).To(Equal(grpccodes.NotFound))
+		},
+		time.Minute,
+		time.Second,
+	).Should(Succeed())
+}
+
+func deleteTenant(ctx context.Context, tenantsClient privatev1.TenantsClient, projectsClient privatev1.ProjectsClient,
+	id string) {
+	// Before deleting the tenant we need to delete all the projects associated with it:
+	listProjectsFilter := fmt.Sprintf("this.metadata.tenant == %q && !has(this.metadata.deletion_timestamp)", id)
+	listProjectsRequest := privatev1.ProjectsListRequest_builder{
+		Filter: &listProjectsFilter,
+	}.Build()
+	for {
+		listProjectsResponse, err := projectsClient.List(ctx, listProjectsRequest)
+		Expect(err).ToNot(HaveOccurred())
+		if listProjectsResponse.GetTotal() == 0 {
+			break
+		}
+		listProjectsItems := listProjectsResponse.GetItems()
+		for _, listProjectItem := range listProjectsItems {
+			deleteProject(ctx, projectsClient, listProjectItem.GetId())
+		}
+	}
+
+	// Now we can delete the tenant:
+	_, err := tenantsClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
+		Id: id,
+	}.Build())
+	Expect(err).ToNot(HaveOccurred())
+	Eventually(
+		func(g Gomega) {
+			_, err := tenantsClient.Get(ctx, privatev1.TenantsGetRequest_builder{
+				Id: id,
+			}.Build())
+			g.Expect(err).To(HaveOccurred())
+		},
+		time.Minute,
+		time.Second,
+	).Should(Succeed())
 }
 
 func waitForTenantSynced(ctx context.Context, client privatev1.TenantsClient, id string) {
@@ -167,26 +246,26 @@ func loginAsBreakGlass(
 
 var _ = Describe("Tenant lifecycle", func() {
 	var (
-		ctx    context.Context
-		client privatev1.TenantsClient
+		tenantsClient  privatev1.TenantsClient
+		projectsClient privatev1.ProjectsClient
 	)
 
 	BeforeEach(func() {
-		ctx = context.Background()
-		client = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
+		tenantsClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
+		projectsClient = privatev1.NewProjectsClient(tool.InternalView().AdminConn())
 	})
 
-	It("CRUD happy flow", func() {
+	It("CRUD happy flow", func(ctx context.Context) {
 		name := fmt.Sprintf("test-%s", uuid.New())
 
 		By(fmt.Sprintf("Creating tenant %q", name))
-		id := createTenant(ctx, client, name)
+		id := createTenant(ctx, tenantsClient, name)
 
 		By("Waiting for tenant to reach SYNCED state")
-		waitForTenantSynced(ctx, client, id)
+		waitForTenantSynced(ctx, tenantsClient, id)
 
 		By("Verifying tenant fields via Get")
-		getResponse, err := client.Get(ctx, privatev1.TenantsGetRequest_builder{
+		getResponse, err := tenantsClient.Get(ctx, privatev1.TenantsGetRequest_builder{
 			Id: id,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -196,7 +275,7 @@ var _ = Describe("Tenant lifecycle", func() {
 		Expect(object.GetStatus().GetIdpTenantName()).To(Equal(name))
 
 		By("Verifying tenant appears in List")
-		listResponse, err := client.List(ctx, privatev1.TenantsListRequest_builder{}.Build())
+		listResponse, err := tenantsClient.List(ctx, privatev1.TenantsListRequest_builder{}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		ids := make([]string, len(listResponse.GetItems()))
 		for i, item := range listResponse.GetItems() {
@@ -208,15 +287,12 @@ var _ = Describe("Tenant lifecycle", func() {
 		verifyTenantInKeycloak(ctx, name)
 
 		By("Deleting tenant")
-		_, err = client.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
-			Id: id,
-		}.Build())
-		Expect(err).ToNot(HaveOccurred())
+		deleteTenant(ctx, tenantsClient, projectsClient, id)
 
 		By("Waiting for tenant to return NotFound")
 		Eventually(
 			func(g Gomega) {
-				_, err := client.Get(ctx, privatev1.TenantsGetRequest_builder{
+				_, err := tenantsClient.Get(ctx, privatev1.TenantsGetRequest_builder{
 					Id: id,
 				}.Build())
 				g.Expect(err).To(HaveOccurred())
@@ -232,14 +308,14 @@ var _ = Describe("Tenant lifecycle", func() {
 		verifyTenantRemovedFromKeycloak(ctx, name)
 	})
 
-	It("Break-glass auth and RBAC", func() {
+	It("Break-glass auth and RBAC", func(ctx context.Context) {
 		name := fmt.Sprintf("test-%s", uuid.New())
 
 		By(fmt.Sprintf("Creating tenant %q", name))
-		id := createTenant(ctx, client, name)
+		id := createTenant(ctx, tenantsClient, name)
 
 		By("Logging in as break-glass user")
-		bgConn, _ := loginAsBreakGlass(ctx, client, name, id)
+		bgConn, _ := loginAsBreakGlass(ctx, tenantsClient, name, id)
 
 		By("Verifying break-glass user cannot list orgs on private API")
 		bgPrivateClient := privatev1.NewTenantsClient(bgConn)
@@ -250,15 +326,15 @@ var _ = Describe("Tenant lifecycle", func() {
 		Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
 	})
 
-	It("Duplicate tenant name fails", func() {
+	It("Duplicate tenant name fails", func(ctx context.Context) {
 		name := fmt.Sprintf("test-%s", uuid.New())
 
 		By(fmt.Sprintf("Creating tenant %q", name))
-		id := createTenant(ctx, client, name)
-		waitForTenantSynced(ctx, client, id)
+		id := createTenant(ctx, tenantsClient, name)
+		waitForTenantSynced(ctx, tenantsClient, id)
 
 		By("Attempting to create another tenant with the same name")
-		_, err := client.Create(ctx, privatev1.TenantsCreateRequest_builder{
+		_, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
 			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: name,
@@ -271,16 +347,16 @@ var _ = Describe("Tenant lifecycle", func() {
 		Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
 	})
 
-	It("Rename tenant is rejected", func() {
+	It("Rename tenant is rejected", func(ctx context.Context) {
 		name := fmt.Sprintf("test-%s", uuid.New())
 
 		By(fmt.Sprintf("Creating tenant %q", name))
-		id := createTenant(ctx, client, name)
+		id := createTenant(ctx, tenantsClient, name)
 
 		By("Waiting for tenant to reach SYNCED with finalizer")
 		Eventually(
 			func(g Gomega) {
-				getResponse, err := client.Get(ctx, privatev1.TenantsGetRequest_builder{
+				getResponse, err := tenantsClient.Get(ctx, privatev1.TenantsGetRequest_builder{
 					Id: id,
 				}.Build())
 				g.Expect(err).ToNot(HaveOccurred())
@@ -297,7 +373,7 @@ var _ = Describe("Tenant lifecycle", func() {
 
 		By("Attempting to rename the tenant")
 		newName := fmt.Sprintf("renamed-%s", uuid.New())
-		_, err := client.Update(ctx, privatev1.TenantsUpdateRequest_builder{
+		_, err := tenantsClient.Update(ctx, privatev1.TenantsUpdateRequest_builder{
 			Object: privatev1.Tenant_builder{
 				Id: id,
 				Metadata: privatev1.Metadata_builder{
@@ -479,18 +555,18 @@ var _ = Describe("Tenant authorization boundaries", func() {
 
 var _ = Describe("Tenant edge cases and resilience", func() {
 	var (
-		ctx    context.Context
-		client privatev1.TenantsClient
+		tenantsClient  privatev1.TenantsClient
+		projectsClient privatev1.ProjectsClient
 	)
 
 	BeforeEach(func() {
-		ctx = context.Background()
-		client = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
+		tenantsClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
+		projectsClient = privatev1.NewProjectsClient(tool.InternalView().AdminConn())
 	})
 
-	It("Empty name is rejected", func() {
+	It("Empty name is rejected", func(ctx context.Context) {
 		By("Attempting to create tenant with empty name")
-		_, err := client.Create(ctx, privatev1.TenantsCreateRequest_builder{
+		_, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
 			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "",
@@ -503,7 +579,7 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 	})
 
-	It("Name with special characters is rejected", func() {
+	It("Name with special characters is rejected", func(ctx context.Context) {
 		By("Attempting to create tenant with invalid characters")
 		invalidNames := []string{
 			"test/slash",
@@ -513,7 +589,7 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 		}
 		for _, name := range invalidNames {
 			By(fmt.Sprintf("Trying name %q", name))
-			_, err := client.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			_, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
 				Object: privatev1.Tenant_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name: name,
@@ -528,10 +604,10 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 		}
 	})
 
-	It("Very long name is rejected", func() {
+	It("Very long name is rejected", func(ctx context.Context) {
 		By("Attempting to create tenant with a 300-character name")
 		longName := strings.Repeat("a", 300)
-		_, err := client.Create(ctx, privatev1.TenantsCreateRequest_builder{
+		_, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
 			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: longName,
@@ -544,23 +620,20 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 	})
 
-	It("Re-create after delete succeeds with same name", func() {
+	It("Re-create after delete succeeds with same name", func(ctx context.Context) {
 		name := fmt.Sprintf("test-%s", uuid.New())
 
 		By(fmt.Sprintf("Creating tenant %q", name))
-		id := createTenant(ctx, client, name)
-		waitForTenantSynced(ctx, client, id)
+		id := createTenant(ctx, tenantsClient, name)
+		waitForTenantSynced(ctx, tenantsClient, id)
 
 		By("Deleting the tenant")
-		_, err := client.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
-			Id: id,
-		}.Build())
-		Expect(err).ToNot(HaveOccurred())
+		deleteTenant(ctx, tenantsClient, projectsClient, id)
 
 		By("Waiting for tenant to be fully removed")
 		Eventually(
 			func(g Gomega) {
-				_, err := client.Get(ctx, privatev1.TenantsGetRequest_builder{
+				_, err := tenantsClient.Get(ctx, privatev1.TenantsGetRequest_builder{
 					Id: id,
 				}.Build())
 				g.Expect(err).To(HaveOccurred())
@@ -573,7 +646,7 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 		).Should(Succeed())
 
 		By("Re-creating tenant with the same name")
-		createResponse, err := client.Create(ctx, privatev1.TenantsCreateRequest_builder{
+		createResponse, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
 			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: name,
@@ -583,20 +656,25 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 		Expect(err).ToNot(HaveOccurred())
 		newId := createResponse.GetObject().GetId()
 		DeferCleanup(func() {
-			_, _ = client.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
+			_, _ = tenantsClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
 				Id: newId,
 			}.Build())
+			status, ok := grpcstatus.FromError(err)
+			if ok && status.Code() == grpccodes.NotFound {
+				return
+			}
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		By("Verifying the re-created tenant reaches SYNCED")
-		waitForTenantSynced(ctx, client, newId)
+		waitForTenantSynced(ctx, tenantsClient, newId)
 	})
 
-	It("Delete during sync is handled gracefully", func() {
+	It("Delete during sync is handled gracefully", func(ctx context.Context) {
 		name := fmt.Sprintf("test-%s", uuid.New())
 
 		By(fmt.Sprintf("Creating tenant %q", name))
-		createResponse, err := client.Create(ctx, privatev1.TenantsCreateRequest_builder{
+		createResponse, err := tenantsClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
 			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: name,
@@ -607,15 +685,12 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 		id := createResponse.GetObject().GetId()
 
 		By("Immediately deleting the tenant before it reaches SYNCED")
-		_, err = client.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
-			Id: id,
-		}.Build())
-		Expect(err).ToNot(HaveOccurred())
+		deleteTenant(ctx, tenantsClient, projectsClient, id)
 
 		By("Verifying the tenant eventually returns NotFound")
 		Eventually(
 			func(g Gomega) {
-				_, err := client.Get(ctx, privatev1.TenantsGetRequest_builder{
+				_, err := tenantsClient.Get(ctx, privatev1.TenantsGetRequest_builder{
 					Id: id,
 				}.Build())
 				g.Expect(err).To(HaveOccurred())

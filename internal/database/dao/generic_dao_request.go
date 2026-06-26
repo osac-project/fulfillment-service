@@ -52,6 +52,7 @@ type archiveArgs struct {
 	deletionTs      time.Time
 	creator         string
 	tenant          string
+	project         string
 	name            string
 	labelsData      []byte
 	annotationsData []byte
@@ -82,6 +83,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 			deletion_timestamp,
 			creator,
 			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -96,7 +98,8 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 			$7,
 			$8,
 			$9,
-			$10
+			$10,
+			$11
 		)
 		`,
 		r.dao.table,
@@ -111,6 +114,7 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 		args.deletionTs,
 		args.creator,
 		args.tenant,
+		args.project,
 		args.labelsData,
 		args.annotationsData,
 		args.version,
@@ -183,6 +187,7 @@ type makeMetadataArgs struct {
 	finalizers  []string
 	creator     string
 	tenant      string
+	project     string
 	name        string
 	labels      map[string]string
 	annotations map[string]string
@@ -201,6 +206,7 @@ func (r *request[O]) makeMetadata(args makeMetadataArgs) metadataIface {
 	result.SetFinalizers(args.finalizers)
 	result.SetCreator(args.creator)
 	result.SetTenant(r.filterTenant(args.tenant))
+	result.SetProject(args.project)
 	result.SetLabels(args.labels)
 	result.SetAnnotations(args.annotations)
 	result.SetVersion(args.version)

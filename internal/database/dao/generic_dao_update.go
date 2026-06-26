@@ -83,12 +83,20 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		labels      map[string]string
 		annotations map[string]string
 		tenant      string
+		project     string
 	)
 	if metadata != nil {
 		name = metadata.GetName()
 		labels = metadata.GetLabels()
 		annotations = metadata.GetAnnotations()
 		tenant = metadata.GetTenant()
+		project = metadata.GetProject()
+	}
+
+	// Validate that tenant is not empty:
+	if tenant == "" {
+		err = errors.New("cannot update object with empty tenant")
+		return
 	}
 
 	// Marshal the data, labels and annotations:
@@ -118,10 +126,11 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	addColumn("labels", labelsData)
 	addColumn("annotations", annotationsData)
 	addColumn("tenant", tenant)
+	addColumn("project", project)
 	addColumn("data", data)
 	fmt.Fprintf(&buffer, ` version = version + 1`)
 	fmt.Fprintf(&buffer, ` where %s`, r.sql.filter.String())
-	fmt.Fprintf(&buffer, ` returning creation_timestamp, deletion_timestamp, creator, version`)
+	fmt.Fprintf(&buffer, ` returning creation_timestamp, deletion_timestamp, creator, project, version`)
 
 	// Run the SQL statement:
 	sql := buffer.String()
@@ -141,6 +150,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 			&creationTs,
 			&deletionTs,
 			&creator,
+			&project,
 			&version,
 		)
 		return
@@ -164,6 +174,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		finalizers:  finalizers,
 		creator:     creator,
 		tenant:      tenant,
+		project:     project,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
@@ -190,6 +201,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 			deletionTs:      deletionTs,
 			creator:         creator,
 			tenant:          tenant,
+			project:         project,
 			name:            name,
 			labelsData:      labelsData,
 			annotationsData: annotationsData,
@@ -277,12 +289,8 @@ func (r *UpdateRequest[O]) translateError(ctx context.Context, id, name, tenant 
 		var fields []string
 		for _, column := range columns {
 			switch column {
-			case "name":
-				fields = append(fields, "metadata.name")
-			case "tenant":
-				fields = append(fields, "metadata.tenant")
-			case "creator":
-				fields = append(fields, "metadata.creator")
+			case "creator", "name", "project", "tenant":
+				fields = append(fields, fmt.Sprintf("metadata.%s", column))
 			default:
 				r.dao.logger.WarnContext(
 					ctx,

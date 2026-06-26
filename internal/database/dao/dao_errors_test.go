@@ -48,13 +48,51 @@ var _ = Describe("Errors", func() {
 
 	Describe("ErrAlreadyExists", func() {
 		It("Implements the error interface", func() {
-			var err error = &ErrAlreadyExists{ID: "123"}
+			var err error = &ErrAlreadyExists{}
 			Expect(err).To(HaveOccurred())
 		})
 
-		It("Returns expected error message", func() {
-			err := &ErrAlreadyExists{ID: "my-id"}
+		It("Returns expected error message when identifier is set", func() {
+			err := &ErrAlreadyExists{
+				ID: "my-id",
+			}
 			Expect(err.Error()).To(Equal("object with identifier 'my-id' already exists"))
+		})
+
+		It("Returns expected message for a tenant with a name", func() {
+			err := &ErrAlreadyExists{
+				Table: "tenants",
+				Name:  "my-tenant",
+			}
+			Expect(err.Error()).To(Equal("tenant 'my-tenant' already exists"))
+		})
+
+		It("Returns expected error message when name is set", func() {
+			err := &ErrAlreadyExists{
+				Name: "my-name",
+			}
+			Expect(err.Error()).To(Equal("object 'my-name' already exists"))
+		})
+
+		It("Returns expected error message when both identifier and name are set", func() {
+			err := &ErrAlreadyExists{
+				ID:   "my-id",
+				Name: "my-name",
+			}
+			Expect(err.Error()).To(Equal("object with identifier 'my-id' and name 'my-name' already exists"))
+		})
+
+		It("Returns a generic error message when neither identifier nor name are set", func() {
+			err := &ErrAlreadyExists{}
+			Expect(err.Error()).To(Equal("object already exists"))
+		})
+
+		It("Returns custom message for projects", func() {
+			err := &ErrAlreadyExists{
+				Table: "projects",
+				Name:  "my-name",
+			}
+			Expect(err.Error()).To(Equal("project 'my-name' already exists"))
 		})
 	})
 

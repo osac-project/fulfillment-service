@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
+	"fmt"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
@@ -87,40 +89,6 @@ var _ = Describe("Private projects server", func() {
 		Expect(response.Object.Spec.Description).To(HaveValue(Equal("Test project")))
 	})
 
-	It("Creates a nested project with parent", func() {
-		// Create parent project:
-		parentReq := privatev1.ProjectsCreateRequest_builder{
-			Object: privatev1.Project_builder{
-				Metadata: privatev1.Metadata_builder{
-					Name:   "parent-project",
-					Tenant: "my-tenant",
-				}.Build(),
-				Spec: privatev1.ProjectSpec_builder{
-					Title: "Parent Project",
-				}.Build(),
-			}.Build(),
-		}.Build()
-		parentResp, err := privateServer.Create(ctx, parentReq)
-		Expect(err).ToNot(HaveOccurred())
-
-		// Create child project:
-		childReq := privatev1.ProjectsCreateRequest_builder{
-			Object: privatev1.Project_builder{
-				Metadata: privatev1.Metadata_builder{
-					Name:   "child-project",
-					Tenant: "my-tenant",
-				}.Build(),
-				Spec: privatev1.ProjectSpec_builder{
-					Title:  "Child Project",
-					Parent: new(parentResp.Object.Id),
-				}.Build(),
-			}.Build(),
-		}.Build()
-		childResp, err := privateServer.Create(ctx, childReq)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(childResp.Object.Spec.Parent).To(HaveValue(Equal(parentResp.Object.Id)))
-	})
-
 	It("Lists projects", func() {
 		// Create a project first:
 		createReq := privatev1.ProjectsCreateRequest_builder{
@@ -149,34 +117,35 @@ var _ = Describe("Private projects server", func() {
 
 	It("Lists projects by tenant", func() {
 		// Create projects in different tenants:
-		for _, tenant := range []string{"my-tenant", "your-tenant"} {
-			createReq := privatev1.ProjectsCreateRequest_builder{
+		createProject := func(tenant string) {
+			_, err := privateServer.Create(ctx, privatev1.ProjectsCreateRequest_builder{
 				Object: privatev1.Project_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   "project-" + tenant,
+						Name:   fmt.Sprintf("my-project-in-%s", tenant),
 						Tenant: tenant,
 					}.Build(),
-					Spec: privatev1.ProjectSpec_builder{
-						Title: "Project " + tenant,
-					}.Build(),
 				}.Build(),
-			}.Build()
-			_, err := privateServer.Create(ctx, createReq)
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		}
+		createProject("my-tenant")
+		createProject("your-tenant")
 
-		// List projects for one of the tenants:
-		listResp, err := privateServer.List(ctx, &privatev1.ProjectsListRequest{
-			Filter: new("this.metadata.tenant == 'my-tenant'"),
-		})
+		// List projects for one of the tenants, excluding the default project:
+		listResponse, err := privateServer.List(ctx, privatev1.ProjectsListRequest_builder{
+			Filter: new("this.metadata.tenant == 'my-tenant' && this.metadata.name != ''"),
+		}.Build())
 		Expect(err).ToNot(HaveOccurred())
-		Expect(listResp.Size).To(Equal(int32(1)))
-		Expect(listResp.Items[0].Metadata.Tenant).To(Equal("my-tenant"))
+		Expect(listResponse.GetSize()).To(BeNumerically("==", 1))
+		items := listResponse.GetItems()
+		Expect(items).To(HaveLen(1))
+		item := items[0]
+		Expect(item.GetMetadata().GetTenant()).To(Equal("my-tenant"))
 	})
 
 	It("Lists top-level projects (no parent)", func() {
 		// Create parent and child:
-		parentReq := privatev1.ProjectsCreateRequest_builder{
+		_, err := privateServer.Create(ctx, privatev1.ProjectsCreateRequest_builder{
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "parent",
@@ -186,32 +155,29 @@ var _ = Describe("Private projects server", func() {
 					Title: "Parent",
 				}.Build(),
 			}.Build(),
-		}.Build()
-		parentResp, err := privateServer.Create(ctx, parentReq)
+		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 
-		childReq := privatev1.ProjectsCreateRequest_builder{
+		_, err = privateServer.Create(ctx, privatev1.ProjectsCreateRequest_builder{
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name:   "child",
+					Name:   "parent.child",
 					Tenant: "my-tenant",
 				}.Build(),
 				Spec: privatev1.ProjectSpec_builder{
-					Title:  "Child",
-					Parent: new(parentResp.Object.Id),
+					Title: "Child",
 				}.Build(),
 			}.Build(),
-		}.Build()
-		_, err = privateServer.Create(ctx, childReq)
+		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 
-		// List only top-level projects:
-		listResp, err := privateServer.List(ctx, &privatev1.ProjectsListRequest{
-			Filter: new("this.metadata.tenant == 'my-tenant' && !has(this.spec.parent)"),
-		})
+		// List only top-level projects (metadata.project is empty), excluding the default project:
+		listResp, err := privateServer.List(ctx, privatev1.ProjectsListRequest_builder{
+			Filter: new("this.metadata.tenant == 'my-tenant' && this.metadata.project == '' && this.metadata.name != ''"),
+		}.Build())
 		Expect(err).ToNot(HaveOccurred())
-		Expect(listResp.Size).To(Equal(int32(1)))
-		Expect(listResp.Items[0].Metadata.Name).To(Equal("parent"))
+		Expect(listResp.GetSize()).To(Equal(int32(1)))
+		Expect(listResp.GetItems()[0].GetMetadata().GetName()).To(Equal("parent"))
 	})
 
 	It("Gets a project by ID", func() {
@@ -260,6 +226,55 @@ var _ = Describe("Private projects server", func() {
 			Id: createResp.Object.Id,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("Can delete the default project", func() {
+		// Find the default project:
+		listResponse, err := privateServer.List(ctx, privatev1.ProjectsListRequest_builder{
+			Filter: new("this.metadata.tenant == 'my-tenant' && this.metadata.name == ''"),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		projects := listResponse.GetItems()
+		Expect(projects).To(HaveLen(1))
+		project := projects[0]
+
+		// Delete it:
+		_, err = privateServer.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+			Id: project.GetId(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("Can re-create the default project after it was deleted", func() {
+		// Find the default project:
+		listResponse, err := privateServer.List(ctx, privatev1.ProjectsListRequest_builder{
+			Filter: new("this.metadata.tenant == 'my-tenant' && this.metadata.name == ''"),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		projects := listResponse.GetItems()
+		Expect(projects).To(HaveLen(1))
+		project := projects[0]
+
+		// Delete it:
+		_, err = privateServer.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+			Id: project.GetId(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+
+		// Re-create it:
+		createResponse, err := privateServer.Create(ctx, privatev1.ProjectsCreateRequest_builder{
+			Object: privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenant: "my-tenant",
+					Name:   "",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		project = createResponse.GetObject()
+
+		// Verify that the the project is its own parent:
+		Expect(project.GetMetadata().GetProject()).To(BeEmpty())
 	})
 
 	It("Updates a project", func() {

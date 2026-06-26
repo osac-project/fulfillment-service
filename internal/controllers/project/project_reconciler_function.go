@@ -23,8 +23,6 @@ import (
 	"slices"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -148,7 +146,8 @@ func (t *task) update(ctx context.Context) error {
 		return nil
 	}
 
-	// For active projects, no re-validation needed (parent is immutable).
+	// For active projects, no re-validation needed (the parent project relationship, stored in
+	// metadata.project, is immutable).
 	if state == privatev1.ProjectState_PROJECT_STATE_ACTIVE {
 		return nil
 	}
@@ -161,38 +160,37 @@ func (t *task) update(ctx context.Context) error {
 func (t *task) validateAndActivate(ctx context.Context) error {
 	t.project.GetStatus().SetState(privatev1.ProjectState_PROJECT_STATE_PENDING)
 
-	// Validate parent project if specified
-	if t.project.GetSpec().HasParent() {
-		parentID := t.project.GetSpec().GetParent()
-
+	// Validate parent project if specified via metadata.project
+	parentName := t.project.GetMetadata().GetProject()
+	if parentName != "" {
 		// Prevent self-reference
-		if parentID == t.project.GetId() {
+		if parentName == t.project.GetMetadata().GetName() {
 			t.project.GetStatus().SetState(privatev1.ProjectState_PROJECT_STATE_FAILED)
 			t.project.GetStatus().SetMessage("Project cannot be its own parent")
 			return nil
 		}
 
-		// Fetch parent project
-		parentResp, err := t.r.projectsClient.Get(ctx, privatev1.ProjectsGetRequest_builder{
-			Id: parentID,
-		}.Build())
+		// Find parent project by name
+		parentProject, err := t.findProjectByName(ctx, parentName)
 		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				t.project.GetStatus().SetState(privatev1.ProjectState_PROJECT_STATE_FAILED)
-				t.project.GetStatus().SetMessage(fmt.Sprintf("Parent project not found: %s", parentID))
-				return nil
-			}
-			// Transient error - return it to retry later
 			return fmt.Errorf("failed to fetch parent project: %w", err)
 		}
-
-		parentProject := parentResp.GetObject()
+		if parentProject == nil {
+			t.project.GetStatus().SetState(privatev1.ProjectState_PROJECT_STATE_FAILED)
+			t.project.GetStatus().SetMessage(fmt.Sprintf(
+				"Parent project not found: %s", parentName,
+			))
+			return nil
+		}
 
 		// Validate parent is in ACTIVE state
 		parentState := parentProject.GetStatus().GetState()
 		if parentState != privatev1.ProjectState_PROJECT_STATE_ACTIVE {
 			t.project.GetStatus().SetState(privatev1.ProjectState_PROJECT_STATE_FAILED)
-			t.project.GetStatus().SetMessage(fmt.Sprintf("Parent project %s is not in ACTIVE state (current state: %s)", parentProject.GetId(), parentState))
+			t.project.GetStatus().SetMessage(fmt.Sprintf(
+				"Parent project '%s' is not in ACTIVE state (current state: %s)",
+				parentName, parentState,
+			))
 			return nil
 		}
 
@@ -278,72 +276,87 @@ func (t *task) validateAndActivate(ctx context.Context) error {
 	return nil
 }
 
-// checkCircularDependency traverses the parent hierarchy to detect circular dependencies.
-// Accepts the already-fetched immediate parent to avoid redundant RPC calls.
+// checkCircularDependency traverses the parent hierarchy via metadata.project to detect circular
+// dependencies. Accepts the already-fetched immediate parent to avoid redundant RPC calls.
 func (t *task) checkCircularDependency(ctx context.Context, parent *privatev1.Project) error {
 	visited := make(map[string]bool)
-	visited[t.project.GetId()] = true
-	visited[parent.GetId()] = true
+	visited[t.project.GetMetadata().GetName()] = true
+	visited[parent.GetMetadata().GetName()] = true
 
 	currentParent := parent
-	maxDepth := 100 // Prevent infinite loops from unexpected state
+	maxDepth := 100
 
 	for depth := 0; depth < maxDepth; depth++ {
-		// If parent has no parent, we've reached the top of the hierarchy
-		if !currentParent.GetSpec().HasParent() {
+		nextParentName := currentParent.GetMetadata().GetProject()
+		if nextParentName == "" {
 			return nil
 		}
 
-		nextParentID := currentParent.GetSpec().GetParent()
+		nextParentID := currentParent.GetMetadata().GetProject()
 
 		// Check if we've seen this parent before (circular dependency)
 		if visited[nextParentID] {
 			return fmt.Errorf("circular dependency detected in project hierarchy")
 		}
-		visited[nextParentID] = true
+		visited[nextParentName] = true
 
-		// Fetch the next parent project
-		parentResp, err := t.r.projectsClient.Get(ctx, privatev1.ProjectsGetRequest_builder{
-			Id: nextParentID,
-		}.Build())
+		nextParent, err := t.findProjectByName(ctx, nextParentName)
 		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				// Parent not found, but we already validated it exists above, so this is transient
-				return fmt.Errorf("parent project disappeared during validation: %w", err)
-			}
 			return fmt.Errorf("failed to fetch parent project during circular dependency check: %w", err)
 		}
+		if nextParent == nil {
+			return fmt.Errorf("parent project disappeared during validation: %s", nextParentName)
+		}
 
-		currentParent = parentResp.GetObject()
+		currentParent = nextParent
 	}
 
 	// If we hit max depth, treat it as a circular dependency
 	return fmt.Errorf("project hierarchy exceeds maximum depth of %d", maxDepth)
 }
 
+// findProjectByName looks up a project by its metadata.name. Returns nil if not found.
+func (t *task) findProjectByName(ctx context.Context, name string) (*privatev1.Project, error) {
+	listResp, err := t.r.projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+		Filter: new(fmt.Sprintf("this.metadata.name == %q", name)),
+		Limit:  new(int32(1)),
+	}.Build())
+	if err != nil {
+		return nil, err
+	}
+	items := listResp.GetItems()
+	if len(items) == 0 {
+		return nil, nil
+	}
+	return items[0], nil
+}
+
 // delete performs the deletion cleanup for a project.
 func (t *task) delete(ctx context.Context) error {
 	// Check for child projects before deletion
-	listResp, err := t.r.projectsClient.List(ctx, &privatev1.ProjectsListRequest{
-		//TODO: Update to use metadata.project once OSAC-1064 is implemented
-		Filter: new(fmt.Sprintf("this.spec.parent == '%s'", t.project.GetId())),
-		Limit:  new(int32(1)), // We only need to know if any exist
-	})
+	listFilter := fmt.Sprintf(
+		"this.metadata.tenant == %q && this.metadata.project == %q",
+		t.project.GetMetadata().GetTenant(), t.project.GetMetadata().GetName(),
+	)
+	listResp, err := t.r.projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+		Filter: new(listFilter),
+		Limit:  new(int32(0)),
+	}.Build())
 	if err != nil {
 		// Transient error - retry later
 		return fmt.Errorf("failed to query for child projects: %w", err)
 	}
 
 	// Block deletion if children exist
-	if listResp.GetSize() > 0 {
+	if listResp.GetTotal() > 0 {
 		if !t.project.HasStatus() {
 			t.project.SetStatus(&privatev1.ProjectStatus{})
 		}
 		t.project.GetStatus().SetState(privatev1.ProjectState_PROJECT_STATE_DELETE_FAILED)
-		t.project.GetStatus().SetMessage(fmt.Sprintf("Cannot delete project with %d child project(s). Delete children first.", listResp.GetSize()))
+		t.project.GetStatus().SetMessage(fmt.Sprintf("Cannot delete project with %d child project(s). Delete children first.", listResp.GetTotal()))
 		t.r.logger.WarnContext(ctx, "Cannot delete project with children",
 			slog.String("project_id", t.project.GetId()),
-			slog.Int("child_count", int(listResp.GetSize())),
+			slog.Int("child_count", int(listResp.GetTotal())),
 		)
 		// Don't remove finalizer - deletion is blocked
 		return nil

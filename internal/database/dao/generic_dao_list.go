@@ -120,6 +120,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 			finalizers,
 			creator,
 			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -177,6 +178,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				finalizers      []string
 				creator         string
 				tenant          string
+				project         string
 				labelsData      []byte
 				annotationsData []byte
 				version         int32
@@ -190,6 +192,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				&finalizers,
 				&creator,
 				&tenant,
+				&project,
 				&labelsData,
 				&annotationsData,
 				&version,
@@ -219,6 +222,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				finalizers:  finalizers,
 				creator:     creator,
 				tenant:      tenant,
+				project:     project,
 				name:        name,
 				labels:      labels,
 				annotations: annotations,

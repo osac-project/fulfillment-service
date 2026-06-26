@@ -140,7 +140,7 @@ var _ = Describe("Table renderer", func() {
 					}.Build(),
 				})
 			Expect(output).To(ContainSubstring("DELETING"))
-			Expect(output).To(MatchRegexp(`subnet-2\s+Yes\s`))
+			Expect(output).To(MatchRegexp(`Yes\s+subnet-2\s`))
 		})
 	})
 

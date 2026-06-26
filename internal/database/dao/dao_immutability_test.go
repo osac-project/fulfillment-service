@@ -65,7 +65,7 @@ var _ = Describe("Immutable columns", func() {
 	})
 
 	Describe("Database trigger", func() {
-		It("Rejects update that changes the one immutable column", func() {
+		It("Rejects update that changes one immutable column", func() {
 			_, err := conn.Exec(ctx, `
 				update tenants set
 					name = 'your-tenant'

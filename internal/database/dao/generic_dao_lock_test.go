@@ -55,8 +55,6 @@ var _ = Describe("Lock", func() {
 		pool, err = db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
-		_, err = pool.Exec(ctx, createObjectsTableSQL)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create the transaction manager:
 		tm, err = database.NewTxManager().
@@ -77,6 +75,23 @@ var _ = Describe("Lock", func() {
 			SetLogger(logger).
 			SetTenancyLogic(tenancy).
 			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create the tenant used in the tests:
+		_, err = pool.Exec(ctx, `
+			insert into tenants (
+				id,
+				name,
+				tenant,
+				data
+			)
+			values (
+				'my-tenant',
+				'my-tenant',
+				'my-tenant',
+				'{}'
+			)
+		`)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -141,7 +156,7 @@ var _ = Describe("Lock", func() {
 		err := tm.Run(
 			ctx,
 			func(ctx context.Context) {
-				createObject(ctx, "obj1", "my_tenant")
+				createObject(ctx, "obj1", "my-tenant")
 				_, err := generic.Lock().AddId("obj1").Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				checkLocked(ctx, "obj1")
@@ -156,7 +171,7 @@ var _ = Describe("Lock", func() {
 			func(ctx context.Context) {
 				objects := []string{"obj1", "obj2", "obj3"}
 				for _, object := range objects {
-					createObject(ctx, object, "my_tenant")
+					createObject(ctx, object, "my-tenant")
 				}
 				_, err := generic.Lock().AddIds(objects...).Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
@@ -183,7 +198,7 @@ var _ = Describe("Lock", func() {
 		err := tm.Run(
 			ctx,
 			func(ctx context.Context) {
-				createObject(ctx, "obj1", "my_tenant")
+				createObject(ctx, "obj1", "my-tenant")
 				_, err := generic.Lock().AddIds("obj1", "does-not-exist").Do(ctx)
 				Expect(err).To(HaveOccurred())
 				var notFoundErr *ErrNotFound
@@ -197,7 +212,7 @@ var _ = Describe("Lock", func() {
 		err := tm.Run(
 			ctx,
 			func(ctx context.Context) {
-				createObject(ctx, "obj1", "my_tenant")
+				createObject(ctx, "obj1", "my-tenant")
 				_, err := generic.Lock().AddId("obj1").Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				checkLocked(ctx, "obj1")
@@ -211,7 +226,7 @@ var _ = Describe("Lock", func() {
 		err := tm.Run(
 			ctx,
 			func(ctx context.Context) error {
-				createObject(ctx, "obj1", "my_tenant")
+				createObject(ctx, "obj1", "my-tenant")
 				_, err := generic.Lock().AddId("obj1").Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				return errors.New("my error")
@@ -222,8 +237,8 @@ var _ = Describe("Lock", func() {
 	})
 
 	It("Prevents deadlocks by locking in consistent order", func() {
-		createObject(ctx, "a", "my_tenant")
-		createObject(ctx, "b", "my_tenant")
+		createObject(ctx, "a", "my-tenant")
+		createObject(ctx, "b", "my-tenant")
 
 		// Start a transaction and lock 'a' using direct SQL:
 		tx, err := pool.Begin(ctx)

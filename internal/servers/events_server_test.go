@@ -202,7 +202,7 @@ var _ = Describe("Events server visibility", func() {
 
 	It("Delivers only visible events when multiple are sent", func() {
 		client := startServer(makeTenancy(
-			collections.NewUniversalSet[string](),
+			collections.NewSet("tenant-a"),
 		))
 		collector, cancel := startWatch(client)
 		defer cancel()
@@ -213,6 +213,6 @@ var _ = Describe("Events server visibility", func() {
 				return len(collector.Events())
 			},
 			10*time.Second,
-		).Should(BeNumerically(">=", 2))
+		).Should(BeNumerically("==", 1))
 	})
 })

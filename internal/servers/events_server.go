@@ -99,6 +99,10 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 		err = errors.New("listener is mandatory")
 		return
 	}
+	if b.tenancyLogic == nil {
+		err = errors.New("tenancy logic is mandatory")
+		return
+	}
 
 	// Create  the CEL environment:
 	celEnv, err := b.createCelEnv()
@@ -180,11 +184,15 @@ func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
 	// Get the context:
 	ctx := stream.Context()
 
-	// Get the subject:
+	// Determine the visible tenants:
 	tenants, err := s.tenancyLogic.DetermineVisibleTenants(ctx)
 	if err != nil {
-		err = fmt.Errorf("failed to determine visible tenants: %w", err)
-		return
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to determine visible tenants",
+			slog.Any("error", err),
+		)
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to determine visible tenants")
 	}
 
 	// Compile the filter expression:
@@ -319,11 +327,6 @@ func (s *EventsServer) processPayload(ctx context.Context, payload proto.Message
 	return s.processEvent(ctx, public, private)
 }
 
-func (s *EventsServer) extractTenant(ctx context.Context, event *privatev1.Event) string {
-	metadata := s.extractMetadata(ctx, event)
-	return metadata.GetTenant()
-}
-
 func (s *EventsServer) extractMetadata(ctx context.Context, event *privatev1.Event) *privatev1.Metadata {
 	switch {
 	case event.HasCluster():
@@ -369,7 +372,11 @@ func (s *EventsServer) processEvent(ctx context.Context, public *publicv1.Event,
 		accepted := true
 
 		// Check if the user has permission to see the event:
-		tenant := s.extractTenant(ctx, private)
+		metadata := s.extractMetadata(ctx, private)
+		if metadata == nil {
+			continue
+		}
+		tenant := metadata.GetTenant()
 		visible := sub.tenants.Contains(tenant)
 		if !visible {
 			continue

@@ -53,7 +53,7 @@ var _ = Describe("Private identity providers server", func() {
 		_, err = tx.Exec(ctx,
 			`insert into tenants (id, name, tenant, creator, data)
 			 values ($1, $2, $3, $4, $5) on conflict do nothing`,
-			"test-org", "Test Organization", "system", "system", "{}")
+			"test-org", "test-org", "test-org", "system", "{}")
 		Expect(err).ToNot(HaveOccurred())
 	})
 

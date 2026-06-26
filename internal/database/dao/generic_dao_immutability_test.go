@@ -15,6 +15,7 @@ package dao
 
 import (
 	"context"
+	"errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -106,11 +107,11 @@ var _ = Describe("Immutable fields", func() {
 			}.Build()).
 			Do(ctx)
 		Expect(err).To(HaveOccurred())
-		Expect(err).To(MatchError(&ErrImmutable{
-			Fields: []string{
-				"metadata.name",
-			},
-		}))
+		errImmutable, ok := errors.AsType[*ErrImmutable](err)
+		Expect(ok).To(BeTrue())
+		Expect(errImmutable.Fields).To(ConsistOf(
+			"metadata.name",
+		))
 	})
 
 	It("Rejects update that changes two immutable field", func() {
@@ -124,12 +125,12 @@ var _ = Describe("Immutable fields", func() {
 			}.Build()).
 			Do(ctx)
 		Expect(err).To(HaveOccurred())
-		Expect(err).To(MatchError(&ErrImmutable{
-			Fields: []string{
-				"metadata.name",
-				"metadata.tenant",
-			},
-		}))
+		errImmutable, ok := errors.AsType[*ErrImmutable](err)
+		Expect(ok).To(BeTrue())
+		Expect(errImmutable.Fields).To(ConsistOf(
+			"metadata.name",
+			"metadata.tenant",
+		))
 	})
 
 	It("Allows update that includes but doesn't change an immutable field", func() {
