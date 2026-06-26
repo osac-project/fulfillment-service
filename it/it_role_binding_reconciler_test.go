@@ -31,17 +31,20 @@ import (
 
 var _ = Describe("Role binding reconciler", func() {
 	var (
-		ctx          context.Context
-		client       privatev1.RoleBindingsClient
-		rolesClient  privatev1.RolesClient
-		testRoleName string
-		testUserID   string
+		ctx            context.Context
+		client         privatev1.RoleBindingsClient
+		rolesClient    privatev1.RolesClient
+		usersClient    privatev1.UsersClient
+		testRoleName   string
+		testUserID     string
+		testKeycloakID string
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		client = privatev1.NewRoleBindingsClient(tool.InternalView().AdminConn())
 		rolesClient = privatev1.NewRolesClient(tool.InternalView().AdminConn())
+		usersClient = privatev1.NewUsersClient(tool.InternalView().AdminConn())
 		testRoleName = fmt.Sprintf("test-role-%s", uuid.New())
 
 		// Create a role in OSAC that will also be created in Keycloak
@@ -93,13 +96,34 @@ var _ = Describe("Role binding reconciler", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(users).To(HaveLen(1))
 		var ok bool
-		testUserID, ok = users[0]["id"].(string)
+		testKeycloakID, ok = users[0]["id"].(string)
 		Expect(ok).To(BeTrue())
-		Expect(testUserID).ToNot(BeEmpty())
+		Expect(testKeycloakID).ToNot(BeEmpty())
 
 		// Clean up the Keycloak user after the test
 		DeferCleanup(func() {
-			_, _, _ = tool.KeycloakAdminRequest(ctx, "DELETE", fmt.Sprintf("/users/%s", testUserID), nil)
+			_, _, _ = tool.KeycloakAdminRequest(ctx, "DELETE", fmt.Sprintf("/users/%s", testKeycloakID), nil)
+		})
+
+		// Create a User object in OSAC with the Keycloak ID in status
+		userResponse, err := usersClient.Create(ctx, privatev1.UsersCreateRequest_builder{
+			Object: privatev1.User_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: "my-user",
+				}.Build(),
+				Status: privatev1.UserStatus_builder{
+					KeycloakUserId: testKeycloakID,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		testUserID = userResponse.GetObject().GetId()
+
+		// Clean up the OSAC user after the test
+		DeferCleanup(func() {
+			_, _ = usersClient.Delete(ctx, privatev1.UsersDeleteRequest_builder{
+				Id: testUserID,
+			}.Build())
 		})
 	})
 
