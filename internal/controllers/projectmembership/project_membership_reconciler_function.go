@@ -1,0 +1,463 @@
+/*
+Copyright (c) 2026 Red Hat Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+License. You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific
+language governing permissions and limitations under the License.
+*/
+
+//go:generate mockgen -source=../../api/osac/private/v1/project_memberships_service_grpc.pb.go -destination=project_memberships_client_mock.go -package=projectmembership ProjectMembershipsClient
+//go:generate mockgen -source=../../api/osac/private/v1/projects_service_grpc.pb.go -destination=projects_client_mock.go -package=projectmembership ProjectsClient
+//go:generate mockgen -source=../../api/osac/private/v1/users_service_grpc.pb.go -destination=users_client_mock.go -package=projectmembership UsersClient
+
+package projectmembership
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
+
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
+	"github.com/osac-project/fulfillment-service/internal/idp"
+	"github.com/osac-project/fulfillment-service/internal/masks"
+)
+
+// FunctionBuilder contains the data needed to build instances of the reconciler function.
+type FunctionBuilder struct {
+	logger     *slog.Logger
+	connection *grpc.ClientConn
+	idpClient  idp.Client
+}
+
+// NewFunction creates a builder that can be used to configure and create reconciler functions.
+func NewFunction() *FunctionBuilder {
+	return &FunctionBuilder{}
+}
+
+// SetLogger sets the logger that the reconciler will use to write log messages.
+func (b *FunctionBuilder) SetLogger(value *slog.Logger) *FunctionBuilder {
+	b.logger = value
+	return b
+}
+
+// SetConnection sets the gRPC connection that the reconciler will use to communicate with the API server.
+func (b *FunctionBuilder) SetConnection(value *grpc.ClientConn) *FunctionBuilder {
+	b.connection = value
+	return b
+}
+
+// SetIdpClient sets the IDP client that the reconciler will use to manage project membership roles.
+func (b *FunctionBuilder) SetIdpClient(value idp.Client) *FunctionBuilder {
+	b.idpClient = value
+	return b
+}
+
+// Build uses the data stored in the builder to create and configure a new reconciler function.
+func (b *FunctionBuilder) Build() (result *function, err error) {
+	if b.logger == nil {
+		err = errors.New("logger is mandatory")
+		return
+	}
+	if b.connection == nil {
+		err = errors.New("connection is mandatory")
+		return
+	}
+	if b.idpClient == nil {
+		err = errors.New("IDP client is mandatory")
+		return
+	}
+
+	result = &function{
+		logger:                     b.logger,
+		projectMembershipsClient:   privatev1.NewProjectMembershipsClient(b.connection),
+		projectsClient:             privatev1.NewProjectsClient(b.connection),
+		usersClient:                privatev1.NewUsersClient(b.connection),
+		idpClient:                  b.idpClient,
+		maskCalculator:             masks.NewCalculator().Build(),
+	}
+	return
+}
+
+// function is the implementation of the reconciler function.
+type function struct {
+	logger                     *slog.Logger
+	projectMembershipsClient   privatev1.ProjectMembershipsClient
+	projectsClient             privatev1.ProjectsClient
+	usersClient                privatev1.UsersClient
+	idpClient                  idp.Client
+	maskCalculator             *masks.Calculator
+}
+
+// Run executes the reconciliation logic for the given project membership.
+func (r *function) Run(ctx context.Context, membership *privatev1.ProjectMembership) error {
+	oldMembership := proto.Clone(membership).(*privatev1.ProjectMembership)
+
+	task := &task{
+		r:          r,
+		membership: membership,
+	}
+
+	var err error
+	if membership.HasMetadata() && membership.GetMetadata().HasDeletionTimestamp() {
+		err = task.delete(ctx)
+	} else {
+		err = task.update(ctx)
+	}
+	if err != nil {
+		return err
+	}
+
+	updateMask := r.maskCalculator.Calculate(oldMembership, membership)
+
+	if len(updateMask.GetPaths()) > 0 {
+		_, err = r.projectMembershipsClient.Update(ctx, privatev1.ProjectMembershipsUpdateRequest_builder{
+			Object:     membership,
+			UpdateMask: updateMask,
+		}.Build())
+	}
+
+	return err
+}
+
+// task contains the data needed to reconcile a single project membership.
+type task struct {
+	r          *function
+	membership *privatev1.ProjectMembership
+}
+
+func (t *task) update(ctx context.Context) error {
+	if t.addFinalizer() {
+		return nil
+	}
+
+	t.setDefaults()
+
+	state := t.membership.GetStatus().GetState()
+
+	// Skip reconciliation for terminal error state
+	if state == privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED {
+		return nil
+	}
+
+	// For READY memberships, nothing to do for now
+	if state == privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY {
+		return nil
+	}
+
+	// Project membership is PENDING, perform initial synchronization
+	return t.syncProjectMembership(ctx)
+}
+
+// getProjectByNameOrID fetches a project by ID or name. If the provided value is not found as an ID,
+// it attempts to find the project by name.
+func (t *task) getProjectByNameOrID(ctx context.Context, nameOrID string) (*privatev1.Project, error) {
+	// Try fetching by ID first
+	projectResponse, err := t.r.projectsClient.Get(ctx, privatev1.ProjectsGetRequest_builder{
+		Id: nameOrID,
+	}.Build())
+	if err == nil {
+		return projectResponse.GetObject(), nil
+	}
+
+	// If not found by ID, try listing by name
+	t.r.logger.DebugContext(ctx, "Project not found by ID, trying by name",
+		slog.String("name_or_id", nameOrID),
+	)
+
+	filter := fmt.Sprintf("this.metadata.name == '%s'", nameOrID)
+	listResponse, err := t.r.projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+		Filter: &filter,
+	}.Build())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects by name: %w", err)
+	}
+
+	projects := listResponse.GetItems()
+	if len(projects) == 0 {
+		return nil, fmt.Errorf("project with name or ID '%s' not found", nameOrID)
+	}
+	if len(projects) > 1 {
+		return nil, fmt.Errorf("multiple projects found with name '%s'", nameOrID)
+	}
+
+	return projects[0], nil
+}
+
+func (t *task) addFinalizer() bool {
+	metadata := t.membership.GetMetadata()
+	finalizerName := finalizers.ProjectMembershipFinalizer
+	for _, f := range metadata.GetFinalizers() {
+		if f == finalizerName {
+			return false
+		}
+	}
+	metadata.SetFinalizers(append(metadata.GetFinalizers(), finalizerName))
+	return true
+}
+
+func (t *task) setDefaults() {
+	if !t.membership.HasStatus() {
+		t.membership.SetStatus(privatev1.ProjectMembershipStatus_builder{}.Build())
+	}
+	status := t.membership.GetStatus()
+	if status.GetState() == privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_UNSPECIFIED {
+		status.SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING)
+	}
+}
+
+func (t *task) syncProjectMembership(ctx context.Context) error {
+	// Get the user
+	userID := t.membership.GetSpec().GetUser()
+	if userID == "" {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage("User ID is required")
+		return nil
+	}
+
+	userResponse, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+		Id: userID,
+	}.Build())
+	if err != nil {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch user: %v", err))
+		return nil
+	}
+	user := userResponse.GetObject()
+
+	// Get the project
+	projectNameOrID := t.membership.GetSpec().GetProject()
+	if projectNameOrID == "" {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage("Project is required")
+		return nil
+	}
+
+	project, err := t.getProjectByNameOrID(ctx, projectNameOrID)
+	if err != nil {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch project: %v", err))
+		return nil
+	}
+
+	// Determine the authorization group based on the membership role
+	role := t.membership.GetSpec().GetRole()
+	groupSuffix := t.mapRoleToGroupSuffix(role)
+	if groupSuffix == "" {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage(fmt.Sprintf("Unknown project membership role: %v", role))
+		return nil
+	}
+
+	// Get organization from project tenant
+	organizationName := project.GetMetadata().GetTenant()
+	if organizationName == "" {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage("Project has no organization tenant")
+		return nil
+	}
+
+	// Get the IDP user ID from the user status
+	idpUserID := user.GetStatus().GetKeycloakUserId()
+	if idpUserID == "" {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage("User has no IDP user ID")
+		return nil
+	}
+
+	// Build the full hierarchical group path for this project + role
+	groupPath, err := t.buildProjectGroupPath(ctx, project, groupSuffix)
+	if err != nil {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to build project hierarchy path: %v", err))
+		return nil
+	}
+
+	// Get the group ID from the path
+	groupID, err := t.r.idpClient.GetGroupIDByPath(ctx, organizationName, groupPath)
+	if err != nil {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to find authorization group %s: %v", groupPath, err))
+		return nil
+	}
+
+	// Add the user to the authorization group
+	err = t.r.idpClient.AddUserToGroup(ctx, organizationName, idpUserID, groupID)
+	if err != nil {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to add user to authorization group: %v", err))
+		return nil
+	}
+
+	t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY)
+	t.membership.GetStatus().SetMessage("")
+	return nil
+}
+
+func (t *task) mapRoleToGroupSuffix(role privatev1.ProjectMembershipRole) string {
+	switch role {
+	case privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER:
+		return "viewers"
+	case privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER:
+		return "managers"
+	default:
+		return ""
+	}
+}
+
+// buildProjectGroupPath constructs the full hierarchical authorization group path for a project.
+// For a nested project like project1 -> project2 -> project3 with role "managers",
+// this returns "/project1/project2/project3/managers".
+func (t *task) buildProjectGroupPath(ctx context.Context, project *privatev1.Project, groupSuffix string) (string, error) {
+	// Build the path by traversing up the parent chain
+	var pathParts []string
+	currentProject := project
+	maxDepth := 100 // Prevent infinite loops in case of circular references
+
+	for i := 0; i < maxDepth; i++ {
+		// Prepend the current project name
+		projectName := currentProject.GetMetadata().GetName()
+		pathParts = append([]string{projectName}, pathParts...)
+
+		// Check if there's a parent
+		if !currentProject.GetSpec().HasParent() {
+			break
+		}
+
+		// Fetch the parent project
+		parentNameOrID := currentProject.GetSpec().GetParent()
+		var err error
+		currentProject, err = t.getProjectByNameOrID(ctx, parentNameOrID)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch parent project %s: %w", parentNameOrID, err)
+		}
+	}
+
+	if len(pathParts) >= maxDepth {
+		return "", fmt.Errorf("project hierarchy exceeded maximum depth of %d (possible circular reference)", maxDepth)
+	}
+
+	// Add the role suffix at the end
+	pathParts = append(pathParts, groupSuffix)
+
+	// Construct the full path with leading slash
+	// For example: pathParts = ["project1", "project2", "project3", "managers"]
+	// Result: "/project1/project2/project3/managers"
+	return "/" + joinPath(pathParts...), nil
+}
+
+// joinPath joins path components with "/" separator
+func joinPath(parts ...string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	result := parts[0]
+	for i := 1; i < len(parts); i++ {
+		result += "/" + parts[i]
+	}
+	return result
+}
+
+func (t *task) delete(ctx context.Context) error {
+	metadata := t.membership.GetMetadata()
+	finalizerName := finalizers.ProjectMembershipFinalizer
+
+	currentFinalizers := metadata.GetFinalizers()
+	if len(currentFinalizers) == 0 {
+		return nil
+	}
+
+	var updated []string
+	for _, f := range currentFinalizers {
+		if f != finalizerName {
+			updated = append(updated, f)
+		}
+	}
+
+	// If we're removing the finalizer, clean up the IDP assignment first
+	if len(updated) < len(currentFinalizers) {
+		if err := t.cleanupProjectMembership(ctx); err != nil {
+			return err
+		}
+	}
+
+	metadata.SetFinalizers(updated)
+	return nil
+}
+
+func (t *task) cleanupProjectMembership(ctx context.Context) error {
+	// Get the user
+	userID := t.membership.GetSpec().GetUser()
+	if userID == "" {
+		return nil
+	}
+
+	userResponse, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+		Id: userID,
+	}.Build())
+	if err != nil {
+		t.r.logger.WarnContext(ctx, "Failed to fetch user during cleanup", slog.Any("error", err))
+		return nil
+	}
+	user := userResponse.GetObject()
+
+	// Get the project
+	projectNameOrID := t.membership.GetSpec().GetProject()
+	if projectNameOrID == "" {
+		return nil
+	}
+
+	project, err := t.getProjectByNameOrID(ctx, projectNameOrID)
+	if err != nil {
+		t.r.logger.WarnContext(ctx, "Failed to fetch project during cleanup", slog.Any("error", err))
+		return nil
+	}
+
+	// Determine the authorization group
+	role := t.membership.GetSpec().GetRole()
+	groupSuffix := t.mapRoleToGroupSuffix(role)
+	if groupSuffix == "" {
+		return nil
+	}
+
+	organizationName := project.GetMetadata().GetTenant()
+
+	// Get the IDP user ID from the user status
+	idpUserID := user.GetStatus().GetKeycloakUserId()
+	if idpUserID == "" {
+		t.r.logger.WarnContext(ctx, "User has no IDP user ID during cleanup")
+		return nil
+	}
+
+	groupPath, err := t.buildProjectGroupPath(ctx, project, groupSuffix)
+	if err != nil {
+		t.r.logger.WarnContext(ctx, "Failed to build project hierarchy path during cleanup", slog.Any("error", err))
+		return nil
+	}
+
+	// Get the group ID from the path
+	groupID, err := t.r.idpClient.GetGroupIDByPath(ctx, organizationName, groupPath)
+	if err != nil {
+		t.r.logger.WarnContext(ctx, "Failed to find authorization group during cleanup",
+			slog.String("group_path", groupPath),
+			slog.Any("error", err))
+		return nil
+	}
+
+	// Remove the user from the authorization group
+	err = t.r.idpClient.RemoveUserFromGroup(ctx, organizationName, idpUserID, groupID)
+	if err != nil {
+		t.r.logger.WarnContext(ctx, "Failed to remove user from authorization group during cleanup", slog.Any("error", err))
+	}
+
+	return nil
+}
