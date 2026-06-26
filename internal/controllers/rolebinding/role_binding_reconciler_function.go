@@ -251,11 +251,34 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 	// Remove roles from users that were removed from the binding
 	var removalErrors []string
 	for _, userID := range usersToRemove {
-		var err error
+		// Fetch the user to get their Keycloak ID
+		userResp, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+			Id: userID,
+		}.Build())
+		if err != nil {
+			removalErrors = append(removalErrors, fmt.Sprintf("user %s: failed to fetch user: %v", userID, err))
+			t.r.logger.ErrorContext(ctx, "Failed to fetch user for role removal",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		idpUserID := userResp.GetObject().GetStatus().GetKeycloakUserId()
+		if idpUserID == "" {
+			removalErrors = append(removalErrors, fmt.Sprintf("user %s: no IDP user ID", userID))
+			t.r.logger.ErrorContext(ctx, "User has no IDP user ID",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+			)
+			continue
+		}
+
 		if clientID != "" {
-			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, tenantName, userID, clientID, keycloakRoles)
+			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, tenantName, idpUserID, clientID, keycloakRoles)
 		} else {
-			err = t.r.idpClient.RemoveTenantRolesFromUser(ctx, tenantName, userID, keycloakRoles)
+			err = t.r.idpClient.RemoveTenantRolesFromUser(ctx, tenantName, idpUserID, keycloakRoles)
 		}
 
 		if err != nil {
@@ -263,6 +286,7 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 			t.r.logger.ErrorContext(ctx, "Failed to remove role from user",
 				slog.String("role_binding_id", t.binding.GetId()),
 				slog.String("user_id", userID),
+				slog.String("idp_user_id", idpUserID),
 				slog.String("role", roleName),
 				slog.Any("error", err),
 			)
@@ -270,6 +294,7 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 			t.r.logger.InfoContext(ctx, "Role removed from user during update",
 				slog.String("role_binding_id", t.binding.GetId()),
 				slog.String("user_id", userID),
+				slog.String("idp_user_id", idpUserID),
 				slog.String("role", roleName),
 			)
 		}
@@ -278,11 +303,34 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 	// Assign roles to users that were added to the binding
 	var assignmentErrors []string
 	for _, userID := range usersToAdd {
-		var err error
+		// Fetch the user to get their Keycloak ID
+		userResp, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+			Id: userID,
+		}.Build())
+		if err != nil {
+			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: failed to fetch user: %v", userID, err))
+			t.r.logger.ErrorContext(ctx, "Failed to fetch user for role assignment",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		idpUserID := userResp.GetObject().GetStatus().GetKeycloakUserId()
+		if idpUserID == "" {
+			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: no IDP user ID", userID))
+			t.r.logger.ErrorContext(ctx, "User has no IDP user ID",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+			)
+			continue
+		}
+
 		if clientID != "" {
-			err = t.r.idpClient.AssignClientRolesToUser(ctx, tenantName, userID, clientID, keycloakRoles)
+			err = t.r.idpClient.AssignClientRolesToUser(ctx, tenantName, idpUserID, clientID, keycloakRoles)
 		} else {
-			err = t.r.idpClient.AssignTenantRolesToUser(ctx, tenantName, userID, keycloakRoles)
+			err = t.r.idpClient.AssignTenantRolesToUser(ctx, tenantName, idpUserID, keycloakRoles)
 		}
 
 		if err != nil {
@@ -290,6 +338,7 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 			t.r.logger.ErrorContext(ctx, "Failed to assign role to user",
 				slog.String("role_binding_id", t.binding.GetId()),
 				slog.String("user_id", userID),
+				slog.String("idp_user_id", idpUserID),
 				slog.String("role", roleName),
 				slog.Any("error", err),
 			)
@@ -349,13 +398,36 @@ func (t *task) syncRoleAssignments(ctx context.Context) error {
 	// Assign the roles to each user in the binding
 	var assignmentErrors []string
 	for _, userID := range t.binding.GetSpec().GetUsers() {
-		var err error
+		// Fetch the user to get their Keycloak ID
+		userResp, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+			Id: userID,
+		}.Build())
+		if err != nil {
+			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: failed to fetch user: %v", userID, err))
+			t.r.logger.ErrorContext(ctx, "Failed to fetch user for role assignment",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		idpUserID := userResp.GetObject().GetStatus().GetKeycloakUserId()
+		if idpUserID == "" {
+			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: no IDP user ID", userID))
+			t.r.logger.ErrorContext(ctx, "User has no IDP user ID",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+			)
+			continue
+		}
+
 		if clientID != "" {
 			// Client-level role (e.g., realm-management)
-			err = t.r.idpClient.AssignClientRolesToUser(ctx, tenantName, userID, clientID, keycloakRoles)
+			err = t.r.idpClient.AssignClientRolesToUser(ctx, tenantName, idpUserID, clientID, keycloakRoles)
 		} else {
 			// Tenant-level role
-			err = t.r.idpClient.AssignTenantRolesToUser(ctx, tenantName, userID, keycloakRoles)
+			err = t.r.idpClient.AssignTenantRolesToUser(ctx, tenantName, idpUserID, keycloakRoles)
 		}
 
 		if err != nil {
@@ -363,6 +435,7 @@ func (t *task) syncRoleAssignments(ctx context.Context) error {
 			t.r.logger.ErrorContext(ctx, "Failed to assign role to user",
 				slog.String("role_binding_id", t.binding.GetId()),
 				slog.String("user_id", userID),
+				slog.String("idp_user_id", idpUserID),
 				slog.String("role", roleName),
 				slog.Any("error", err),
 			)
@@ -434,19 +507,41 @@ func (t *task) delete(ctx context.Context) error {
 
 	// Remove the roles from each user in the binding
 	for _, userID := range t.binding.GetSpec().GetUsers() {
-		var err error
+		// Fetch the user to get their Keycloak ID
+		userResp, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+			Id: userID,
+		}.Build())
+		if err != nil {
+			t.r.logger.ErrorContext(ctx, "Failed to fetch user for role removal during delete",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		idpUserID := userResp.GetObject().GetStatus().GetKeycloakUserId()
+		if idpUserID == "" {
+			t.r.logger.WarnContext(ctx, "User has no IDP user ID during delete",
+				slog.String("role_binding_id", t.binding.GetId()),
+				slog.String("user_id", userID),
+			)
+			continue
+		}
+
 		if clientID != "" {
 			// Client-level role (e.g., realm-management)
-			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, tenantName, userID, clientID, keycloakRoles)
+			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, tenantName, idpUserID, clientID, keycloakRoles)
 		} else {
 			// Tenant-level role
-			err = t.r.idpClient.RemoveTenantRolesFromUser(ctx, tenantName, userID, keycloakRoles)
+			err = t.r.idpClient.RemoveTenantRolesFromUser(ctx, tenantName, idpUserID, keycloakRoles)
 		}
 
 		if err != nil {
 			t.r.logger.ErrorContext(ctx, "Failed to remove role from user",
 				slog.String("role_binding_id", t.binding.GetId()),
 				slog.String("user_id", userID),
+				slog.String("idp_user_id", idpUserID),
 				slog.String("role", roleName),
 				slog.Any("error", err),
 			)
@@ -455,6 +550,7 @@ func (t *task) delete(ctx context.Context) error {
 			t.r.logger.InfoContext(ctx, "Role removed from user",
 				slog.String("role_binding_id", t.binding.GetId()),
 				slog.String("user_id", userID),
+				slog.String("idp_user_id", idpUserID),
 				slog.String("role", roleName),
 			)
 		}
