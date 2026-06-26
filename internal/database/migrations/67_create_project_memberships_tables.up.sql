@@ -62,11 +62,11 @@ alter table project_memberships add constraint project_memberships_tenant_fk for
 create table project_membership_subjects (
   tenant text not null,
   project text not null,
-  username text not null,
-  membership_id text not null references project_memberships(id) on delete cascade,
-  primary key (tenant, project, username)
+  "user" text not null,
+  membership text not null references project_memberships(id) on delete cascade,
+  primary key (tenant, project, "user")
 );
-create index project_membership_subjects_by_membership on project_membership_subjects (membership_id);
+create index project_membership_subjects_by_membership on project_membership_subjects (membership);
 
 -- Trigger function that materializes the (tenant, project, user) tuple from the JSONB data column.
 create function materialize_project_membership_subjects() returns trigger as $$
@@ -75,7 +75,7 @@ declare
   v_user text;
 begin
   -- Delete stale rows for this membership:
-  delete from project_membership_subjects where membership_id = new.id;
+  delete from project_membership_subjects where membership = new.id;
 
   -- Extract project and user from the spec:
   v_project := new.data->'spec'->>'project';
@@ -83,12 +83,22 @@ begin
 
   -- Insert the new tuple, catching duplicates:
   begin
-    insert into project_membership_subjects (tenant, project, username, membership_id)
+    insert into project_membership_subjects (tenant, project, "user", membership)
       values (new.tenant, v_project, v_user, new.id);
   exception when unique_violation then
-    raise exception using
-      errcode = 'Z0004',
-      message = format('user ''%s'' already has a membership in project ''%s'' within tenant ''%s''', v_user, v_project, new.tenant);
+    declare
+      existing_membership_name text;
+    begin
+      select pm.name into existing_membership_name
+        from project_membership_subjects pms
+        join project_memberships pm on pm.id = pms.membership
+        where pms.tenant = new.tenant and pms.project = v_project and pms."user" = v_user;
+
+      raise exception using
+        errcode = 'Z0004',
+        message = format('user ''%s'' is already a member of project ''%s'' via membership ''%s''',
+          v_user, v_project, existing_membership_name);
+    end;
   end;
 
   return new;

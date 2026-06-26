@@ -332,7 +332,7 @@ var _ = DescribeMigration("Create project memberships tables", func() {
 		Expect(finalizers).To(BeEmpty()) // default '{}'
 	})
 
-	It("Rejects duplicate (tenant, project, user) tuples", func(ctx context.Context) {
+	It("Rejects duplicate (tenant, project, user) tuples with helpful error message", func(ctx context.Context) {
 		// Run the migration:
 		err := tool.Migrate(ctx, 67)
 		Expect(err).ToNot(HaveOccurred())
@@ -363,7 +363,7 @@ var _ = DescribeMigration("Create project memberships tables", func() {
 		)
 		Expect(err).To(HaveOccurred())
 
-		// Verify it's the duplicate membership error:
+		// Verify it's the duplicate membership error with the correct message:
 		var pgErr *pgconn.PgError
 		Expect(err).To(BeAssignableToTypeOf(pgErr))
 		pgErr = func() *pgconn.PgError {
@@ -371,8 +371,8 @@ var _ = DescribeMigration("Create project memberships tables", func() {
 			_ = errors.As(err, &target)
 			return target
 		}()
-		Expect(pgErr.Code).To(Equal("Z0004"))
-		Expect(pgErr.Message).To(ContainSubstring("user 'user-1' already has a membership in project 'proj-1' within tenant 'test-tenant'"))
+		Expect(pgErr.Code).To(Equal("Z0004")) // errNotUniqueCode
+		Expect(pgErr.Message).To(Equal("user 'user-1' is already a member of project 'proj-1' via membership 'first-membership'"))
 	})
 
 	It("Allows different users to have memberships in the same project", func(ctx context.Context) {

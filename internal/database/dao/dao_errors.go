@@ -50,10 +50,17 @@ type ErrAlreadyExists struct {
 	// Name is set when the violation is caused by a name uniqueness constraint rather than a primary key
 	// collision. When set, error messages should reference the name instead of the identifier.
 	Name string
+
+	// Reason is set when a custom error message is provided by a database trigger (e.g., for uniqueness
+	// violations with additional context). When set, this message is returned instead of the default message.
+	Reason string
 }
 
 // Error returns the error message.
 func (e *ErrAlreadyExists) Error() string {
+	if e.Reason != "" {
+		return e.Reason
+	}
 	if e.Name != "" {
 		return fmt.Sprintf("object with name '%s' already exists", e.Name)
 	}

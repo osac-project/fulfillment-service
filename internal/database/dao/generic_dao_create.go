@@ -233,8 +233,16 @@ func (r *CreateRequest[O]) translateError(ctx context.Context, id, name, tenant 
 			return &ErrReference{}
 		}
 	case errNotUniqueCode:
-		return &ErrNotUnique{
-			Reason: pgErr.Message,
+		// When the trigger provides a custom message, use it as Reason.
+		// If no message is provided, fall back to ID.
+		if pgErr.Message != "" {
+			return &ErrAlreadyExists{
+				ID:     id,
+				Reason: pgErr.Message,
+			}
+		}
+		return &ErrAlreadyExists{
+			ID: id,
 		}
 	}
 	return err
