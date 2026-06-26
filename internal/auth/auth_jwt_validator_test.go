@@ -548,10 +548,10 @@ var _ = Describe("JWT token validator cache cleanup", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Validate a token that expires in 1 second:
+		// Validate a token that expires in 2 seconds:
 		shortLived := MakeTokenObject(nil, jwt.MapClaims{
 			"iss": issuerUrl,
-			"exp": time.Now().Add(1 * time.Second).Unix(),
+			"exp": time.Now().Add(2 * time.Second).Unix(),
 		}).Raw
 		_, err = validator.Validate(ctx, shortLived)
 		Expect(err).ToNot(HaveOccurred())
@@ -565,7 +565,7 @@ var _ = Describe("JWT token validator cache cleanup", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Wait for the short-lived token to expire and for the cleanup interval to elapse:
-		time.Sleep(1100 * time.Millisecond)
+		time.Sleep(2100 * time.Millisecond)
 
 		// Trigger cleanup by validating again:
 		_, err = validator.Validate(ctx, longLived)

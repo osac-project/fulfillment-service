@@ -15,5 +15,6 @@ package finalizers
 
 // Names of well known finalizers.
 const (
-	Controller = "fulfillment-controller"
+	Controller                 = "fulfillment-controller"
+	ProjectMembershipFinalizer = "projectmembership.osac.io/finalizer"
 )
