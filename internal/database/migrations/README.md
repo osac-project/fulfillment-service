@@ -30,8 +30,7 @@ This forces one of them to renumber after the other's PR merges.
 Timestamp prefixes (`YYYYMMDDHHMMSS`) eliminate this problem — two
 developers would need to generate the prefix at the exact same second
 to collide. This is the same approach used by
-[assisted-service](https://github.com/openshift/assisted-service/tree/master/internal/migrations)
-and Rails ActiveRecord migrations.
+[assisted-service](https://github.com/openshift/assisted-service/tree/master/internal/migrations).
 
 ## Legacy migrations
 
