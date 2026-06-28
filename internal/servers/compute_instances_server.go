@@ -321,6 +321,7 @@ func (s *ComputeInstancesServer) Update(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ComputeInstancesUpdateResponse{}
 	response.SetObject(updatedPublicComputeInstance)
+	response.SetWarnings(privateResponse.GetWarnings())
 	return
 }
 

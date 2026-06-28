@@ -98,8 +98,8 @@ message IdentityProvidersDeleteResponse {}
 
 // Request to assign an identity provider to a tenant.
 message IdentityProvidersAssignRequest {
-  // Name of the identity provider to assign.
-  string name = 1;
+  // ID of the identity provider to assign.
+  string id = 1;
 
   // Name of the tenant to assign the identity provider to.
   string tenant_name = 2;
@@ -110,8 +110,8 @@ message IdentityProvidersAssignResponse {}
 
 // Request to unassign an identity provider from a tenant.
 message IdentityProvidersUnassignRequest {
-  // Name of the identity provider to unassign.
-  string name = 1;
+  // ID of the identity provider to unassign.
+  string id = 1;
 
   // Name of the tenant to unassign the identity provider from.
   string tenant_name = 2;
@@ -172,7 +172,7 @@ service IdentityProviders {
   // Assigns an identity provider to a tenant.
   rpc Assign(IdentityProvidersAssignRequest) returns (IdentityProvidersAssignResponse) {
     option (google.api.http) = {
-      post: "/api/private/v1/identity_providers/{name}:assign"
+      post: "/api/private/v1/identity_providers/{id}:assign"
       body: "*"
     };
   }
@@ -180,7 +180,7 @@ service IdentityProviders {
   // Unassigns an identity provider from a tenant.
   rpc Unassign(IdentityProvidersUnassignRequest) returns (IdentityProvidersUnassignResponse) {
     option (google.api.http) = {
-      post: "/api/private/v1/identity_providers/{name}:unassign"
+      post: "/api/private/v1/identity_providers/{id}:unassign"
       body: "*"
     };
   }

@@ -295,7 +295,22 @@ func (s *PrivateComputeInstancesServer) Update(ctx context.Context,
 		return
 	}
 
+	var warnings []string
+	if request.GetObject() != nil && hasMaskPrefix(mask, "spec") {
+		warnings, err = s.validateInstanceType(ctx, request.GetObject())
+		if err != nil {
+			return
+		}
+	}
+
 	err = s.generic.Update(ctx, request, &response)
+	if err != nil {
+		return
+	}
+
+	if len(warnings) > 0 && response != nil {
+		response.SetWarnings(warnings)
+	}
 	return
 }
 

@@ -468,7 +468,7 @@ var _ = Describe("Private identity providers server", func() {
 	Describe("Assign and Unassign", func() {
 		It("Returns not implemented for Assign", func() {
 			_, err := privateServer.Assign(ctx, &privatev1.IdentityProvidersAssignRequest{
-				Name:       "test-ldap",
+				Id:         "test-ldap-id",
 				TenantName: "my-tenant",
 			})
 			Expect(err).To(HaveOccurred())
@@ -479,7 +479,7 @@ var _ = Describe("Private identity providers server", func() {
 
 		It("Returns not implemented for Unassign", func() {
 			_, err := privateServer.Unassign(ctx, &privatev1.IdentityProvidersUnassignRequest{
-				Name:       "test-ldap",
+				Id:         "test-ldap-id",
 				TenantName: "my-tenant",
 			})
 			Expect(err).To(HaveOccurred())
