@@ -23,14 +23,15 @@ $ touch internal/database/migrations/20260625143022_add_storage_class_column.up.
 
 ## Why timestamps?
 
-Sequential numbering (`54_`, `55_`, ...) caused collisions when two PRs
-independently claimed the same next number. With `strict: false` on
-branch protection (required to avoid tide retest loops), both PRs could
-merge without git detecting a conflict, breaking the service at startup.
+With sequential numbering (`64_`, `65_`, ...), two developers
+independently adding migrations will both pick the same next number.
+This forces one of them to renumber after the other's PR merges.
 
-Timestamp prefixes (`YYYYMMDDHHMMSS`) make collisions practically
-impossible — two developers would need to create a migration at the
-exact same second.
+Timestamp prefixes (`YYYYMMDDHHMMSS`) eliminate this problem — two
+developers would need to generate the prefix at the exact same second
+to collide. This is the same approach used by
+[assisted-service](https://github.com/openshift/assisted-service/tree/master/internal/migrations)
+and Rails ActiveRecord migrations.
 
 ## Legacy migrations
 
