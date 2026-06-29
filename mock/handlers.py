@@ -34,9 +34,15 @@ async def handle_list(
     initial_state: str | None = None,
 ) -> JSONResponse:
     tenant = None if is_admin(request) else get_tenant(request)
-    offset = int(request.query_params.get("offset", 0))
-    limit_str = request.query_params.get("limit")
-    limit = int(limit_str) if limit_str else None
+
+    def _to_int(value: str | None) -> int | None:
+        try:
+            return max(0, int(value)) if value is not None else None
+        except ValueError:
+            return None
+
+    offset = _to_int(request.query_params.get("offset")) or 0
+    limit = _to_int(request.query_params.get("limit"))
     filter_expr = request.query_params.get("filter", "")
     filter_fn = parse_filter(filter_expr)
 
@@ -71,10 +77,16 @@ async def handle_create(
     initial_state: str | None = None,
     state_field: str = "status.state",
 ) -> JSONResponse:
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            {"code": 3, "message": "Invalid request body", "details": []},
+            status_code=400,
+        )
     obj = body.get("object", body)
 
-    labels = obj.get("metadata", {}).get("labels", {})
+    labels = (obj.get("metadata") or {}).get("labels") or {}
     if labels.get(f"{MOCK_LABEL_PREFIX}fail-create") == "true":
         msg = labels.get(f"{MOCK_LABEL_PREFIX}error-message", "Simulated create failure")
         return JSONResponse(
@@ -146,7 +158,7 @@ async def handle_delete(
             {"code": 5, "message": "Not found", "details": []}, status_code=404
         )
 
-    labels = obj.get("metadata", {}).get("labels", {})
+    labels = (obj.get("metadata") or {}).get("labels") or {}
     if labels.get(f"{MOCK_LABEL_PREFIX}fail-delete") == "true":
         msg = labels.get(f"{MOCK_LABEL_PREFIX}error-message", "Simulated delete failure")
         return JSONResponse(

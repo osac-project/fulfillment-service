@@ -263,8 +263,9 @@ async def run_ticker(store: ResourceStore, interval: float = 0.5) -> None:
                     }
                     _set_nested(updates, config.state_field, transition.fail_state)
                     _set_nested(updates, "status.message", error_msg)
-                    await store.update_internal(resource_type, resource_id, updates)
-                    store._emit("OBJECT_UPDATED", resource_type, obj)
+                    result = await store.update_internal(resource_type, resource_id, updates)
+                    if result:
+                        store._emit("OBJECT_UPDATED", resource_type, result)
                 else:
                     updates = {
                         "_mock_entered_state_at": now.isoformat(),
@@ -328,8 +329,9 @@ async def _check_fail_after(
             new_labels = dict(labels)
             del new_labels[f"{MOCK_LABEL_PREFIX}fail-after"]
             updates.setdefault("metadata", {})["labels"] = new_labels
-            await store.update_internal(resource_type, resource_id, updates)
-            store._emit("OBJECT_UPDATED", resource_type, obj)
+            result = await store.update_internal(resource_type, resource_id, updates)
+            if result:
+                store._emit("OBJECT_UPDATED", resource_type, result)
             return
 
 

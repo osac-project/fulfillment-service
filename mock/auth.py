@@ -79,6 +79,10 @@ class AuthProvider:
 
         if organization is None:
             organization = user.tenants[0] if user.tenants[0] != "*" else ""
+        elif "*" not in user.tenants and organization not in user.tenants:
+            raise ValueError(
+                f"User {username} is not authorized for organization {organization}"
+            )
 
         now = int(time.time())
         payload = {

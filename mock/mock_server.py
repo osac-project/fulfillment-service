@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,15 +21,17 @@ from fastapi.responses import JSONResponse
 from auth import AuthMiddleware, AuthProvider, USERS
 from events import EventBus, events_endpoint
 from handlers import (
+    get_tenant,
     handle_create,
     handle_delete,
     handle_get,
     handle_list,
     handle_update,
+    is_admin,
 )
 from openapi_loader import ResourceConfig, discover_resources, load_spec
 from state_machines import STATE_MACHINES, run_ticker
-from store import ResourceStore
+from store import NotFoundError, ResourceStore
 
 DEFAULT_SPEC = Path(__file__).parent.parent / "pages" / "openapi" / "v3" / "public.yaml"
 
@@ -115,7 +118,14 @@ def create_app(
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=[
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:8080",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:8080",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -151,7 +161,13 @@ def create_app(
                 status_code=401,
             )
 
-        token = auth_provider.create_token(username, organization)
+        try:
+            token = auth_provider.create_token(username, organization)
+        except ValueError as e:
+            return JSONResponse(
+                {"error": "invalid_grant", "error_description": str(e)},
+                status_code=403,
+            )
         return {
             "access_token": token,
             "token_type": "bearer",
@@ -170,11 +186,15 @@ def create_app(
 
     # --- Special cluster endpoints ---
 
+    mock_cluster_token = secrets.token_urlsafe(32)
+    mock_cluster_password = secrets.token_urlsafe(24)
+
     @app.get("/api/fulfillment/v1/clusters/{cluster_id}/kubeconfig")
     async def cluster_kubeconfig(cluster_id: str, request: Request):
+        tenant = None if is_admin(request) else get_tenant(request)
         try:
-            obj = await store.get("clusters", cluster_id)
-        except Exception:
+            obj = await store.get("clusters", cluster_id, tenant=tenant)
+        except NotFoundError:
             return JSONResponse({"code": 5, "message": "Not found"}, status_code=404)
         name = obj.get("metadata", {}).get("name", "cluster")
         kubeconfig = f"""\
@@ -194,17 +214,18 @@ current-context: {name}
 users:
 - name: admin
   user:
-    token: mock-admin-token
+    token: {mock_cluster_token}
 """
         return Response(content=kubeconfig, media_type="application/yaml")
 
     @app.get("/api/fulfillment/v1/clusters/{cluster_id}/password")
     async def cluster_password(cluster_id: str, request: Request):
+        tenant = None if is_admin(request) else get_tenant(request)
         try:
-            await store.get("clusters", cluster_id)
-        except Exception:
+            await store.get("clusters", cluster_id, tenant=tenant)
+        except NotFoundError:
             return JSONResponse({"code": 5, "message": "Not found"}, status_code=404)
-        return Response(content="mock-admin-password", media_type="text/plain")
+        return Response(content=mock_cluster_password, media_type="text/plain")
 
     # --- Dynamic CRUD routes ---
 

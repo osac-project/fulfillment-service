@@ -122,11 +122,19 @@ def _parse_atom(expr: str) -> Callable[[dict], bool]:
     if m:
         path, op, value = m.group(1), m.group(2), m.group(3)
         if op == "==":
-            return lambda obj, _p=path, _v=value: str(_get_path(obj, _p) or "") == _v
+            return lambda obj, _p=path, _v=value: _stringify(_get_path(obj, _p)) == _v
         else:
-            return lambda obj, _p=path, _v=value: str(_get_path(obj, _p) or "") != _v
+            return lambda obj, _p=path, _v=value: _stringify(_get_path(obj, _p)) != _v
 
     raise _ParseError(f"Unsupported expression: {expr}")
+
+
+def _stringify(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
 
 
 def _get_path(obj: dict, path: str) -> Any:

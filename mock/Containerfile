@@ -2,17 +2,22 @@ FROM python:3.12-slim AS base
 
 WORKDIR /app
 
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
+COPY mock/pyproject.toml .
+RUN pip install --no-cache-dir . && \
+    groupadd -r mockuser && useradd -r -g mockuser mockuser
 
-COPY *.py .
-COPY scenarios/ scenarios/
+COPY mock/*.py .
+COPY mock/scenarios/ scenarios/
 
 # Copy the OpenAPI spec from the parent build context
 # Build with: podman build -f mock/Containerfile -t fulfillment-mock .
 COPY pages/openapi/v3/public.yaml /app/spec/public.yaml
 
+USER mockuser
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/fulfillment/v1/capabilities')" || exit 1
 
 ENTRYPOINT ["python", "mock_server.py", "--spec", "/app/spec/public.yaml"]
 CMD ["--scenario", "scenarios/default.yaml"]

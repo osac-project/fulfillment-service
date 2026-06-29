@@ -90,6 +90,8 @@ def _build_event(
 
 
 async def events_endpoint(request: Request, event_bus: EventBus) -> EventSourceResponse:
+    tenant = getattr(request.state, "tenant", "") or ""
+    is_admin = "cloud-provider-admin" in (getattr(request.state, "roles", None) or [])
     queue = await event_bus.subscribe()
 
     async def event_generator():
@@ -99,6 +101,16 @@ async def events_endpoint(request: Request, event_bus: EventBus) -> EventSourceR
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    if not is_admin and tenant:
+                        obj_tenant = ""
+                        for key in event:
+                            if isinstance(event[key], dict):
+                                obj_tenant = (
+                                    event[key].get("metadata", {}).get("tenant", "")
+                                )
+                                break
+                        if obj_tenant and obj_tenant != tenant:
+                            continue
                     yield {"data": json.dumps(event)}
                 except asyncio.TimeoutError:
                     yield {"comment": "keepalive"}

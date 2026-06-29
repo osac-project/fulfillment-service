@@ -161,7 +161,7 @@ See `scenarios/default.yaml` for the format.
 
 ## CLI options
 
-```
+```text
 --port PORT        Port to listen on (default: 8000)
 --spec PATH        Path to OpenAPI v3 spec (default: ../pages/openapi/v3/public.yaml)
 --scenario PATH    Scenario YAML file to preload (repeatable)

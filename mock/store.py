@@ -142,17 +142,23 @@ class ResourceStore:
                 if obj_tenant and obj_tenant != tenant:
                     raise NotFoundError()
 
+            current_version = obj.get("metadata", {}).get("version", 0)
             if lock:
-                incoming_version = (
-                    updates.get("metadata", {}).get("version")
-                    or updates.get("object", {}).get("metadata", {}).get("version")
-                )
-                current_version = obj.get("metadata", {}).get("version", 0)
-                if incoming_version is not None and incoming_version != current_version:
+                incoming_version = updates.get("metadata", {}).get("version")
+                if incoming_version is None or incoming_version != current_version:
                     raise ConflictError()
 
+            updates = copy.deepcopy(updates)
+            update_meta = updates.get("metadata", {})
+            for protected in ("version", "tenant", "creator", "creation_timestamp"):
+                update_meta.pop(protected, None)
+            if update_meta:
+                updates["metadata"] = update_meta
+            elif "metadata" in updates:
+                del updates["metadata"]
+
             _deep_merge(obj, updates)
-            obj["metadata"]["version"] = obj["metadata"].get("version", 0) + 1
+            obj["metadata"]["version"] = current_version + 1
             bucket[resource_id] = obj
             result = copy.deepcopy(obj)
 
