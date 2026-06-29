@@ -158,7 +158,7 @@ var _ = Describe("RoleBinding Reconciler", func() {
 			idpClient := idp.NewMockClient(ctrl)
 			// When binding already has finalizer, update will call syncRoleAssignments
 			idpClient.EXPECT().
-				AssignOrganizationRolesToUser(ctx, "test-org", "user-1", gomock.Any()).
+				AssignTenantRolesToUser(ctx, "test-org", "user-1", gomock.Any()).
 				Return(nil).
 				Times(1)
 
@@ -204,7 +204,7 @@ var _ = Describe("RoleBinding Reconciler", func() {
 			bindingsClient := &mockRoleBindingsClient{}
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				RemoveOrganizationRolesFromUser(ctx, "test-org", "user-1", gomock.Any()).
+				RemoveTenantRolesFromUser(ctx, "test-org", "user-1", gomock.Any()).
 				Return(nil)
 
 			f := &function{
@@ -486,10 +486,10 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				AssignOrganizationRolesToUser(ctx, "test-org", "user-1", gomock.Any()).
+				AssignTenantRolesToUser(ctx, "test-org", "user-1", gomock.Any()).
 				Return(nil)
 			idpClient.EXPECT().
-				AssignOrganizationRolesToUser(ctx, "test-org", "user-2", gomock.Any()).
+				AssignTenantRolesToUser(ctx, "test-org", "user-2", gomock.Any()).
 				Return(nil)
 
 			binding := privatev1.RoleBinding_builder{
@@ -533,7 +533,7 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				AssignOrganizationRolesToUser(ctx, "test-org", "user-1", gomock.Any()).
+				AssignTenantRolesToUser(ctx, "test-org", "user-1", gomock.Any()).
 				Return(nil)
 
 			binding := privatev1.RoleBinding_builder{
@@ -576,7 +576,7 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				AssignOrganizationRolesToUser(ctx, "test-org", "user-1", gomock.Any()).
+				AssignTenantRolesToUser(ctx, "test-org", "user-1", gomock.Any()).
 				Return(fmt.Errorf("IDP error"))
 
 			binding := privatev1.RoleBinding_builder{
@@ -652,7 +652,7 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				AssignOrganizationRolesToUser(ctx, "test-org", "user-3", gomock.Any()).
+				AssignTenantRolesToUser(ctx, "test-org", "user-3", gomock.Any()).
 				Return(nil)
 
 			binding := privatev1.RoleBinding_builder{
@@ -697,7 +697,7 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				RemoveOrganizationRolesFromUser(ctx, "test-org", "user-3", gomock.Any()).
+				RemoveTenantRolesFromUser(ctx, "test-org", "user-3", gomock.Any()).
 				Return(nil)
 
 			binding := privatev1.RoleBinding_builder{
@@ -742,10 +742,10 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				RemoveOrganizationRolesFromUser(ctx, "test-org", "user-2", gomock.Any()).
+				RemoveTenantRolesFromUser(ctx, "test-org", "user-2", gomock.Any()).
 				Return(nil)
 			idpClient.EXPECT().
-				AssignOrganizationRolesToUser(ctx, "test-org", "user-3", gomock.Any()).
+				AssignTenantRolesToUser(ctx, "test-org", "user-3", gomock.Any()).
 				Return(nil)
 
 			binding := privatev1.RoleBinding_builder{
@@ -842,7 +842,7 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				AssignOrganizationRolesToUser(ctx, "test-org", "user-2", gomock.Any()).
+				AssignTenantRolesToUser(ctx, "test-org", "user-2", gomock.Any()).
 				Return(fmt.Errorf("IDP error"))
 
 			binding := privatev1.RoleBinding_builder{
@@ -886,7 +886,7 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				RemoveOrganizationRolesFromUser(ctx, "test-org", "user-2", gomock.Any()).
+				RemoveTenantRolesFromUser(ctx, "test-org", "user-2", gomock.Any()).
 				Return(fmt.Errorf("IDP error"))
 
 			binding := privatev1.RoleBinding_builder{
@@ -932,10 +932,10 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				RemoveOrganizationRolesFromUser(ctx, "test-org", "user-1", gomock.Any()).
+				RemoveTenantRolesFromUser(ctx, "test-org", "user-1", gomock.Any()).
 				Return(nil)
 			idpClient.EXPECT().
-				RemoveOrganizationRolesFromUser(ctx, "test-org", "user-2", gomock.Any()).
+				RemoveTenantRolesFromUser(ctx, "test-org", "user-2", gomock.Any()).
 				Return(nil)
 
 			binding := privatev1.RoleBinding_builder{
@@ -1031,10 +1031,10 @@ var _ = Describe("RoleBinding Reconciler", func() {
 
 			idpClient := idp.NewMockClient(ctrl)
 			idpClient.EXPECT().
-				RemoveOrganizationRolesFromUser(ctx, "test-org", "user-1", gomock.Any()).
+				RemoveTenantRolesFromUser(ctx, "test-org", "user-1", gomock.Any()).
 				Return(fmt.Errorf("IDP error"))
 			idpClient.EXPECT().
-				RemoveOrganizationRolesFromUser(ctx, "test-org", "user-2", gomock.Any()).
+				RemoveTenantRolesFromUser(ctx, "test-org", "user-2", gomock.Any()).
 				Return(nil)
 
 			binding := privatev1.RoleBinding_builder{

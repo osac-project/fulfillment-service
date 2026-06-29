@@ -136,8 +136,8 @@ func (m *ResourceManager) DeleteProjectGroups(ctx context.Context, tenant, proje
 }
 
 // getGroupIDByPath is a helper to get the group ID from a group path.
-func (m *ResourceManager) getGroupIDByPath(ctx context.Context, organizationName, groupPath string) (string, error) {
-	return m.client.GetGroupIDByPath(ctx, organizationName, groupPath)
+func (m *ResourceManager) getGroupIDByPath(ctx context.Context, tenantName, groupPath string) (string, error) {
+	return m.client.GetGroupIDByPath(ctx, tenantName, groupPath)
 }
 
 // CreateProjectGroups creates Keycloak organization groups for a project.

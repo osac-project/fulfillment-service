@@ -176,7 +176,7 @@ var _ = Describe("Default Values", func() {
 })
 
 var _ = Describe("Tenant Validation", func() {
-	It("should succeed when tenant is set to a valid organization", func() {
+	It("should succeed when tenant is set to a valid tenant", func() {
 		identityProvider := privatev1.IdentityProvider_builder{
 			Metadata: privatev1.Metadata_builder{
 				Tenant: "my-org",
@@ -425,8 +425,8 @@ var _ = Describe("IDP Sync", func() {
 
 		mockClient.EXPECT().
 			CreateIdentityProvider(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, organizationName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
-				Expect(organizationName).To(Equal("tenant-1"))
+			DoAndReturn(func(ctx context.Context, tenantName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
+				Expect(tenantName).To(Equal("tenant-1"))
 				Expect(idpProvider.Alias).To(Equal("tenant-1-corporate-ldap"))
 				Expect(idpProvider.DisplayName).To(Equal("Corporate LDAP"))
 				Expect(idpProvider.Type).To(Equal("ldap"))
@@ -473,8 +473,8 @@ var _ = Describe("IDP Sync", func() {
 
 		mockClient.EXPECT().
 			CreateIdentityProvider(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, organizationName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
-				Expect(organizationName).To(Equal("tenant-2"))
+			DoAndReturn(func(ctx context.Context, tenantName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
+				Expect(tenantName).To(Equal("tenant-2"))
 				Expect(idpProvider.Alias).To(Equal("tenant-2-google-sso"))
 				Expect(idpProvider.DisplayName).To(Equal("Google SSO"))
 				Expect(idpProvider.Type).To(Equal("oidc"))
@@ -559,9 +559,9 @@ var _ = Describe("IDP Sync", func() {
 
 		mockClient.EXPECT().
 			CreateIdentityProvider(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, organizationName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
+			DoAndReturn(func(ctx context.Context, tenantName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
 				// Verify the full object with unredacted secrets was used
-				Expect(organizationName).To(Equal("tenant-3"))
+				Expect(tenantName).To(Equal("tenant-3"))
 				Expect(idpProvider.Config).To(HaveKeyWithValue("clientSecret", "actual-secret-123"))
 				Expect(idpProvider.Config).To(HaveKeyWithValue("clientAuthMethod", "client_secret_post"))
 				Expect(idpProvider.Config).To(HaveKeyWithValue("authorizationUrl", "https://auth.example.com/authorize"))
@@ -597,8 +597,8 @@ var _ = Describe("IDP Sync", func() {
 
 		mockClient.EXPECT().
 			CreateIdentityProvider(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, organizationName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
-				Expect(organizationName).To(Equal("my-tenant"))
+			DoAndReturn(func(ctx context.Context, tenantName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
+				Expect(tenantName).To(Equal("my-tenant"))
 				Expect(idpProvider.Alias).To(Equal("my-tenant-test-idp"))
 				return idpProvider, nil
 			}).
@@ -692,8 +692,8 @@ var _ = Describe("IDP Sync", func() {
 
 		mockClient.EXPECT().
 			CreateIdentityProvider(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, organizationName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
-				Expect(organizationName).To(Equal("tenant-1"))
+			DoAndReturn(func(ctx context.Context, tenantName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
+				Expect(tenantName).To(Equal("tenant-1"))
 				Expect(idpProvider.Enabled).To(BeFalse())
 				return idpProvider, nil
 			}).

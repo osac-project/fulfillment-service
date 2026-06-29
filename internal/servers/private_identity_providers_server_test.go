@@ -46,7 +46,7 @@ var _ = Describe("Private identity providers server", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Create an organization to use as a valid tenant for identity providers
+		// Create a tenant for identity providers
 		// This is required because of the foreign key constraint
 		tx, err := database.TxFromContext(ctx)
 		Expect(err).ToNot(HaveOccurred())

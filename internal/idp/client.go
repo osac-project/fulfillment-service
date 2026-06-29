@@ -24,47 +24,47 @@ import (
 //
 // For Keycloak:
 // - One realm contains all OSAC (e.g., "osac" realm)
-// - Organizations map to Keycloak Organizations within that realm
-// - Identity providers are realm-level resources assigned to organizations
+// - Tenants map to Keycloak Organizations within that realm
+// - Identity providers are realm-level resources assigned to tenants
 type Client interface {
-	// Organization operations
-	// These manage Keycloak Organizations within the configured realm.
-	CreateOrganization(ctx context.Context, org *Organization) (*Organization, error)
-	GetOrganization(ctx context.Context, name string) (*Organization, error)
-	UpdateOrganization(ctx context.Context, org *Organization) (*Organization, error)
-	DeleteOrganization(ctx context.Context, name string) error
+	// Tenant operations
+	// These manage tenants in the identity provider (e.g., Keycloak Organizations).
+	CreateTenant(ctx context.Context, tenant *Tenant) (*Tenant, error)
+	GetTenant(ctx context.Context, name string) (*Tenant, error)
+	UpdateTenant(ctx context.Context, tenant *Tenant) (*Tenant, error)
+	DeleteTenant(ctx context.Context, tenantName string) error
 
 	// User operations
-	CreateUser(ctx context.Context, organizationName string, user *User) (*User, error)
-	GetUser(ctx context.Context, organizationName, userID string) (*User, error)
-	ListUsers(ctx context.Context, organizationName string) ([]*User, error)
-	DeleteUser(ctx context.Context, organizationName, userID string) error
+	CreateUser(ctx context.Context, tenantName string, user *User) (*User, error)
+	GetUser(ctx context.Context, tenantName, userID string) (*User, error)
+	ListUsers(ctx context.Context, tenantName string) ([]*User, error)
+	DeleteUser(ctx context.Context, tenantName, userID string) error
 
 	// Role operations
-	// Roles can be at the organization level or client level
-	ListOrganizationRoles(ctx context.Context, organizationName string) ([]*Role, error)
-	ListClientRoles(ctx context.Context, organizationName, clientID string) ([]*Role, error)
+	// Roles can be at the tenant level or client level
+	ListTenantRoles(ctx context.Context, tenantName string) ([]*Role, error)
+	ListClientRoles(ctx context.Context, tenantName, clientID string) ([]*Role, error)
 
 	// User role assignments
-	AssignOrganizationRolesToUser(ctx context.Context, organizationName, userID string, roles []*Role) error
-	AssignClientRolesToUser(ctx context.Context, organizationName, userID, clientID string, roles []*Role) error
-	RemoveOrganizationRolesFromUser(ctx context.Context, organizationName, userID string, roles []*Role) error
-	RemoveClientRolesFromUser(ctx context.Context, organizationName, userID, clientID string, roles []*Role) error
-	GetUserOrganizationRoles(ctx context.Context, organizationName, userID string) ([]*Role, error)
-	GetUserClientRoles(ctx context.Context, organizationName, userID, clientID string) ([]*Role, error)
+	AssignTenantRolesToUser(ctx context.Context, tenantName, userID string, roles []*Role) error
+	AssignClientRolesToUser(ctx context.Context, tenantName, userID, clientID string, roles []*Role) error
+	RemoveTenantRolesFromUser(ctx context.Context, tenantName, userID string, roles []*Role) error
+	RemoveClientRolesFromUser(ctx context.Context, tenantName, userID, clientID string, roles []*Role) error
+	GetUserTenantRoles(ctx context.Context, tenantName, userID string) ([]*Role, error)
+	GetUserClientRoles(ctx context.Context, tenantName, userID, clientID string) ([]*Role, error)
 
 	// Admin permissions
-	// AssignOrganizationAdminPermissions grants full administrative access to an organization for the specified user.
+	// AssignTenantAdminPermissions grants full administrative access to a tenant for the specified user.
 	// The implementation is provider-specific:
 	// - Keycloak: Assigns tenant-admin role
 	// - Auth0: Assigns organization Admin role
 	// - Okta: Assigns Organizational Administrator role
 	// - Azure AD: Assigns Global Administrator or Organizational Administrator role
-	AssignOrganizationAdminPermissions(ctx context.Context, organizationName, userID string) error
+	AssignTenantAdminPermissions(ctx context.Context, tenantName, userID string) error
 
 	// AssignIdpManagerPermissions grants limited IdP management permissions to the specified user.
 	// This is used for the break-glass account which can manage user roles and identity providers
-	// but cannot modify critical organization settings.
+	// but cannot modify critical tenant settings.
 	// The implementation is provider-specific:
 	// - Keycloak: Assigns limited tenant-idp-manager role
 	// - Auth0: Assigns organization Member Manager role
@@ -81,31 +81,31 @@ type Client interface {
 
 	// Authorization policy and permission operations
 	// These methods control who can access which resources with what scopes.
-	// CreateAuthorizationGroup creates a Keycloak organization group for authorization purposes.
-	// Organization groups are scoped to a specific organization and support hierarchical paths.
+	// CreateAuthorizationGroup creates a tenant group for authorization purposes.
+	// Groups are scoped to a specific tenant and support hierarchical paths.
 	// Recommended path format: "/{project-name}/{system:viewers|system:managers}" for top-level projects.
 	// Returns the created group ID.
-	CreateAuthorizationGroup(ctx context.Context, organizationName, groupPath string) (string, error)
-	// DeleteAuthorizationGroup deletes a Keycloak organization group by ID.
-	DeleteAuthorizationGroup(ctx context.Context, organizationName, groupID string) error
-	// GetGroupIDByPath gets a Keycloak organization group ID by its path.
-	GetGroupIDByPath(ctx context.Context, organizationName, groupPath string) (string, error)
-	// AddUserToGroup adds a user to an organization group by group ID.
-	AddUserToGroup(ctx context.Context, organizationName, username, groupID string) error
-	// RemoveUserFromGroup removes a user from an organization group by group ID.
-	RemoveUserFromGroup(ctx context.Context, organizationName, username, groupID string) error
+	CreateAuthorizationGroup(ctx context.Context, tenantName, groupPath string) (string, error)
+	// DeleteAuthorizationGroup deletes a tenant group by ID.
+	DeleteAuthorizationGroup(ctx context.Context, tenantName, groupID string) error
+	// GetGroupIDByPath gets a tenant group ID by its path.
+	GetGroupIDByPath(ctx context.Context, tenantName, groupPath string) (string, error)
+	// AddUserToGroup adds a user to a tenant group by group ID.
+	AddUserToGroup(ctx context.Context, tenantName, username, groupID string) error
+	// RemoveUserFromGroup removes a user from a tenant group by group ID.
+	RemoveUserFromGroup(ctx context.Context, tenantName, username, groupID string) error
 
 	// Identity Provider operations
-	// CreateIdentityProvider creates a new external identity provider for a specific organization.
-	CreateIdentityProvider(ctx context.Context, organizationName string, idp *IdentityProvider) (*IdentityProvider, error)
+	// CreateIdentityProvider creates a new external identity provider for a specific tenant.
+	CreateIdentityProvider(ctx context.Context, tenantName string, idp *IdentityProvider) (*IdentityProvider, error)
 
-	// GetIdentityProvider retrieves an identity provider by alias for a specific organization.
-	GetIdentityProvider(ctx context.Context, organizationName, alias string) (*IdentityProvider, error)
+	// GetIdentityProvider retrieves an identity provider by alias for a specific tenant.
+	GetIdentityProvider(ctx context.Context, tenantName, alias string) (*IdentityProvider, error)
 
-	// ListIdentityProviders lists all identity providers for a specific organization.
-	// Returns an empty slice if no IdPs are configured for the organization.
-	ListIdentityProviders(ctx context.Context, organizationName string) ([]*IdentityProvider, error)
+	// ListIdentityProviders lists all identity providers for a specific tenant.
+	// Returns an empty slice if no IdPs are configured for the tenant.
+	ListIdentityProviders(ctx context.Context, tenantName string) ([]*IdentityProvider, error)
 
-	// DeleteIdentityProvider deletes an identity provider for a specific organization.
-	DeleteIdentityProvider(ctx context.Context, organizationName, alias string) error
+	// DeleteIdentityProvider deletes an identity provider for a specific tenant.
+	DeleteIdentityProvider(ctx context.Context, tenantName, alias string) error
 }

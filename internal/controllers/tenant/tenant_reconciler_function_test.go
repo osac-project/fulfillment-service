@@ -173,7 +173,7 @@ var _ = Describe("IDP Sync", func() {
 		ctx        context.Context
 		ctrl       *gomock.Controller
 		mockClient *idp.MockClient
-		idpManager *idp.OrganizationManager
+		idpManager *idp.TenantManager
 		reconciler *function
 	)
 
@@ -183,7 +183,7 @@ var _ = Describe("IDP Sync", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = idp.NewMockClient(ctrl)
 
-		idpManager, err = idp.NewOrganizationManager().
+		idpManager, err = idp.NewTenantManager().
 			SetLogger(logger).
 			SetClient(mockClient).
 			Build()
@@ -206,11 +206,11 @@ var _ = Describe("IDP Sync", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			CreateOrganization(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+			CreateTenant(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, org *idp.Tenant) (*idp.Tenant, error) {
 				Expect(org.Name).To(Equal("test-org"))
 				Expect(org.Enabled).To(BeTrue())
-				return &idp.Organization{
+				return &idp.Tenant{
 					Name:    "test-org",
 					Enabled: true,
 				}, nil
@@ -257,8 +257,8 @@ var _ = Describe("IDP Sync", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			CreateOrganization(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+			CreateTenant(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, org *idp.Tenant) (*idp.Tenant, error) {
 				Expect(tenant.GetStatus().GetState()).To(Equal(privatev1.TenantState_TENANT_STATE_PENDING))
 				return org, nil
 			}).
@@ -293,7 +293,7 @@ var _ = Describe("IDP Sync", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			CreateOrganization(gomock.Any(), gomock.Any()).
+			CreateTenant(gomock.Any(), gomock.Any()).
 			Return(nil, fmt.Errorf("IDP connection timeout")).
 			Times(1)
 
@@ -322,7 +322,7 @@ var _ = Describe("IDP Sync", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			CreateOrganization(gomock.Any(), gomock.Any()).
+			CreateTenant(gomock.Any(), gomock.Any()).
 			Return(nil, fmt.Errorf("organization already exists")).
 			Times(1)
 
@@ -346,11 +346,11 @@ var _ = Describe("IDP Sync", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			CreateOrganization(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+			CreateTenant(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, org *idp.Tenant) (*idp.Tenant, error) {
 				Expect(org.Name).To(Equal(auth.SharedTenant))
 				Expect(org.Enabled).To(BeFalse())
-				return &idp.Organization{
+				return &idp.Tenant{
 					Name:    auth.SharedTenant,
 					Enabled: false,
 				}, nil
@@ -388,11 +388,11 @@ var _ = Describe("IDP Sync", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			CreateOrganization(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+			CreateTenant(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, org *idp.Tenant) (*idp.Tenant, error) {
 				Expect(org.Name).To(Equal(auth.SystemTenant))
 				Expect(org.Enabled).To(BeFalse())
-				return &idp.Organization{
+				return &idp.Tenant{
 					Name:    auth.SystemTenant,
 					Enabled: false,
 				}, nil
@@ -438,13 +438,13 @@ var _ = Describe("IDP Sync", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			CreateOrganization(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+			CreateTenant(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, org *idp.Tenant) (*idp.Tenant, error) {
 				Expect(org.Domains).To(ConsistOf(
 					"example.com",
 					"corp.example.org",
 				))
-				return &idp.Organization{
+				return &idp.Tenant{
 					Name:    "domain-org",
 					Enabled: true,
 					Domains: org.Domains,
@@ -474,7 +474,7 @@ var _ = Describe("IDP Sync", func() {
 		)
 	})
 
-	It("should update domains in IDP for synced organization", func() {
+	It("should update domains in IDP for synced tenant", func() {
 		tenant := privatev1.Tenant_builder{
 			Id: "org-update",
 			Metadata: privatev1.Metadata_builder{
@@ -498,8 +498,8 @@ var _ = Describe("IDP Sync", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			GetOrganization(gomock.Any(), "update-org").
-			Return(&idp.Organization{
+			GetTenant(gomock.Any(), "update-org").
+			Return(&idp.Tenant{
 				Name:    "update-org",
 				Enabled: true,
 				Domains: []string{
@@ -509,8 +509,8 @@ var _ = Describe("IDP Sync", func() {
 			Times(1)
 
 		mockClient.EXPECT().
-			UpdateOrganization(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
+			UpdateTenant(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, org *idp.Tenant) (*idp.Tenant, error) {
 				Expect(org.Domains).To(ConsistOf(
 					"new.example.com",
 					"new.corp.example.org",
@@ -572,7 +572,7 @@ var _ = Describe("Deletion", func() {
 		ctx        context.Context
 		ctrl       *gomock.Controller
 		mockClient *idp.MockClient
-		idpManager *idp.OrganizationManager
+		idpManager *idp.TenantManager
 		reconciler *function
 	)
 
@@ -582,7 +582,7 @@ var _ = Describe("Deletion", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = idp.NewMockClient(ctrl)
 
-		idpManager, err = idp.NewOrganizationManager().
+		idpManager, err = idp.NewTenantManager().
 			SetLogger(logger).
 			SetClient(mockClient).
 			Build()
@@ -611,7 +611,7 @@ var _ = Describe("Deletion", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			DeleteOrganization(gomock.Any(), "test-org").
+			DeleteTenant(gomock.Any(), "test-org").
 			Return(nil).
 			Times(1)
 
@@ -649,7 +649,7 @@ var _ = Describe("Deletion", func() {
 		Expect(tenant.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
 	})
 
-	It("should skip IDP deletion and remove finalizer when idp_organization_name is empty", func() {
+	It("should skip IDP deletion and remove finalizer when idp_tenant_name is empty", func() {
 		deletionTimestamp := timestamppb.New(time.Now())
 		tenant := privatev1.Tenant_builder{
 			Id: "org-123",
@@ -691,7 +691,7 @@ var _ = Describe("Deletion", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			DeleteOrganization(gomock.Any(), "test-org").
+			DeleteTenant(gomock.Any(), "test-org").
 			Return(fmt.Errorf("IDP connection timeout")).
 			Times(1)
 
@@ -741,11 +741,11 @@ var _ = Describe("Deletion", func() {
 })
 
 var _ = Describe("Skip Reconciliation", func() {
-	It("should call updateIDP for synced organizations", func() {
+	It("should call updateIDP for synced tenants", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		mockClient := idp.NewMockClient(ctrl)
 
-		idpManager, err := idp.NewOrganizationManager().
+		idpManager, err := idp.NewTenantManager().
 			SetLogger(logger).
 			SetClient(mockClient).
 			Build()
@@ -772,13 +772,13 @@ var _ = Describe("Skip Reconciliation", func() {
 		}.Build()
 
 		mockClient.EXPECT().
-			GetOrganization(gomock.Any(), "test-org").
-			Return(&idp.Organization{Name: "test-org", Enabled: true}, nil).
+			GetTenant(gomock.Any(), "test-org").
+			Return(&idp.Tenant{Name: "test-org", Enabled: true}, nil).
 			Times(1)
 
 		mockClient.EXPECT().
-			UpdateOrganization(gomock.Any(), gomock.Any()).
-			Return(&idp.Organization{Name: "test-org", Enabled: true}, nil).
+			UpdateTenant(gomock.Any(), gomock.Any()).
+			Return(&idp.Tenant{Name: "test-org", Enabled: true}, nil).
 			Times(1)
 
 		task := &task{

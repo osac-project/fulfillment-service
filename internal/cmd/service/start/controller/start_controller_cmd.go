@@ -358,14 +358,14 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return err
 	}
 
-	// Create the IDP organization manager:
-	r.logger.InfoContext(ctx, "Creating IDP organization manager")
-	idpManager, err := idp.NewOrganizationManager().
+	// Create the IDP tenant manager:
+	r.logger.InfoContext(ctx, "Creating IDP tenant manager")
+	idpManager, err := idp.NewTenantManager().
 		SetLogger(r.logger).
 		SetClient(idpClient).
 		Build()
 	if err != nil {
-		return fmt.Errorf("failed to create IDP organization manager: %w", err)
+		return fmt.Errorf("failed to create IDP tenant manager: %w", err)
 	}
 
 	// Create the IDP resource manager:

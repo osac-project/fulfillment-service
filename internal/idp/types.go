@@ -13,13 +13,13 @@ language governing permissions and limitations under the License.
 
 package idp
 
-// Organization represents a logical grouping of users, groups, and applications in an IdP.
+// Tenant represents a logical grouping of users, groups, and applications in an IdP.
 // Different providers call this different things:
-// - Keycloak: Realm
+// - Keycloak: Organization
 // - Auth0: Tenant
 // - Okta: Organization
 // - Azure AD: Tenant
-type Organization struct {
+type Tenant struct {
 	ID          string
 	Name        string
 	DisplayName string
@@ -51,14 +51,14 @@ type Credential struct {
 }
 
 // Role represents a role that can be assigned to users.
-// Roles can be at the organization level or client level.
+// Roles can be at the tenant level or client level.
 type Role struct {
 	ID          string
 	Name        string
 	Description string
 	Composite   bool
-	ClientRole  bool   // true if client-level, false if organization-level
-	ContainerID string // The ID of the organization or client that contains this role
+	ClientRole  bool   // true if client-level, false if tenant-level
+	ContainerID string // The ID of the tenant or client that contains this role
 	Attributes  map[string][]string
 }
 

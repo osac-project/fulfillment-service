@@ -47,7 +47,7 @@ var _ = Describe("Keycloak Client", func() {
 		}
 	})
 
-	Describe("CreateOrganization", func() {
+	Describe("CreateTenant", func() {
 		It("creates an organization in Keycloak", func() {
 			var receivedOrg *keycloakOrganization
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,12 +82,12 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 
-			org := &idp.Organization{
+			org := &idp.Tenant{
 				Name:        "test-org",
 				DisplayName: "Test Organization",
 				Enabled:     true,
 			}
-			createdOrg, err := client.CreateOrganization(ctx, org)
+			createdOrg, err := client.CreateTenant(ctx, org)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedOrg.Name).To(Equal("test-org"))
 			Expect(createdOrg).ToNot(BeNil())
@@ -103,12 +103,12 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 
-			org := &idp.Organization{
+			org := &idp.Tenant{
 				Name:        "test-org",
 				DisplayName: "Test Organization",
 				Enabled:     true,
 			}
-			_, err := client.CreateOrganization(ctx, org)
+			_, err := client.CreateTenant(ctx, org)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already exists"))
 			Expect(err.Error()).To(ContainSubstring("test-org"))
@@ -125,8 +125,8 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 
-			org := &idp.Organization{Name: "test-org"}
-			_, err := client.CreateOrganization(ctx, org)
+			org := &idp.Tenant{Name: "test-org"}
+			_, err := client.CreateTenant(ctx, org)
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -159,12 +159,12 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			org := &idp.Organization{
+			org := &idp.Tenant{
 				Name:    "test-org",
 				Enabled: true,
 				Domains: []string{"example.com", "corp.example.org"},
 			}
-			createdOrg, err := client.CreateOrganization(ctx, org)
+			createdOrg, err := client.CreateTenant(ctx, org)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedOrg.Domains).To(HaveLen(2))
 			Expect(receivedOrg.Domains[0].Name).To(Equal("example.com"))
@@ -197,17 +197,17 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			org := &idp.Organization{
+			org := &idp.Tenant{
 				Name:    "test-org",
 				Enabled: true,
 			}
-			_, err := client.CreateOrganization(ctx, org)
+			_, err := client.CreateTenant(ctx, org)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedOrg.Domains).To(BeEmpty())
 		})
 	})
 
-	Describe("UpdateOrganization", func() {
+	Describe("UpdateTenant", func() {
 		It("updates an organization in Keycloak", func() {
 			var receivedOrg *keycloakOrganization
 			var receivedMethod string
@@ -238,13 +238,13 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			org := &idp.Organization{
+			org := &idp.Tenant{
 				ID:      "org-uuid-123",
 				Name:    "test-org",
 				Enabled: true,
 				Domains: []string{"updated.example.com"},
 			}
-			updatedOrg, err := client.UpdateOrganization(ctx, org)
+			updatedOrg, err := client.UpdateTenant(ctx, org)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedMethod).To(Equal(http.MethodPut))
 			Expect(receivedOrg.Domains).To(HaveLen(1))
@@ -279,12 +279,12 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			org := &idp.Organization{
+			org := &idp.Tenant{
 				ID:      "org-uuid-123",
 				Name:    "test-org",
 				Enabled: true,
 			}
-			updatedOrg, err := client.UpdateOrganization(ctx, org)
+			updatedOrg, err := client.UpdateTenant(ctx, org)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedOrg.Domains).To(BeEmpty())
 			Expect(updatedOrg.Domains).To(BeEmpty())
@@ -296,11 +296,11 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			org := &idp.Organization{
+			org := &idp.Tenant{
 				Name:    "test-org",
 				Enabled: true,
 			}
-			_, err := client.UpdateOrganization(ctx, org)
+			_, err := client.UpdateTenant(ctx, org)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("organization ID is required"))
 		})
@@ -311,7 +311,7 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			_, err := client.UpdateOrganization(ctx, nil)
+			_, err := client.UpdateTenant(ctx, nil)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("organization is required"))
 		})
@@ -322,16 +322,16 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			org := &idp.Organization{
+			org := &idp.Tenant{
 				ID:   "org-uuid-123",
 				Name: "test-org",
 			}
-			_, err := client.UpdateOrganization(ctx, org)
+			_, err := client.UpdateTenant(ctx, org)
 			Expect(err).To(HaveOccurred())
 		})
 	})
 
-	Describe("GetOrganization", func() {
+	Describe("GetTenant", func() {
 		It("retrieves an organization from Keycloak", func() {
 			enabled := true
 			testOrgs := []keycloakOrganization{{
@@ -356,7 +356,7 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 
-			org, err := client.GetOrganization(ctx, "test-org")
+			org, err := client.GetTenant(ctx, "test-org")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(org.Name).To(Equal("test-org"))
 			Expect(org.DisplayName).To(Equal("Test Organization"))
@@ -367,7 +367,7 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			_, err := client.GetOrganization(ctx, "test-org")
+			_, err := client.GetTenant(ctx, "test-org")
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -379,7 +379,7 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			_, err := client.GetOrganization(ctx, "test-org")
+			_, err := client.GetTenant(ctx, "test-org")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to decode organization response"))
 		})
@@ -770,7 +770,7 @@ var _ = Describe("Keycloak Client", func() {
 		})
 	})
 
-	Describe("DeleteOrganization", func() {
+	Describe("DeleteTenant", func() {
 		It("deletes an organization from Keycloak", func() {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// First request: query user by username (for break-glass deletion)
@@ -824,7 +824,7 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			err := client.DeleteOrganization(ctx, "test-org")
+			err := client.DeleteTenant(ctx, "test-org")
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -834,7 +834,7 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			err := client.DeleteOrganization(ctx, "test-org")
+			err := client.DeleteTenant(ctx, "test-org")
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -844,15 +844,15 @@ var _ = Describe("Keycloak Client", func() {
 			}))
 
 			client = createTestClient(server.URL)
-			err := client.DeleteOrganization(ctx, "test-org")
+			err := client.DeleteTenant(ctx, "test-org")
 			Expect(err).To(HaveOccurred())
 		})
 	})
 
-	Describe("ListOrganizationRoles", func() {
+	Describe("ListTenantRoles", func() {
 		It("is not yet implemented (returns nil, nil)", func() {
 			client = createTestClient(server.URL)
-			result, err := client.ListOrganizationRoles(ctx, "test-org")
+			result, err := client.ListTenantRoles(ctx, "test-org")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(BeNil()) // TODO returns nil until implemented
 		})
@@ -938,7 +938,7 @@ var _ = Describe("Keycloak Client", func() {
 		})
 	})
 
-	Describe("AssignOrganizationRolesToUser", func() {
+	Describe("AssignTenantRolesToUser", func() {
 		It("assigns realm roles to a user", func() {
 			clientRole := false
 			role1 := keycloakRole{
@@ -994,7 +994,7 @@ var _ = Describe("Keycloak Client", func() {
 				{Name: "admin"},
 				{Name: "editor"},
 			}
-			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user-123", roles)
+			err := client.AssignTenantRolesToUser(ctx, "test-org", "user-123", roles)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedRoles).To(HaveLen(2))
 			Expect(receivedRoles[0].ID).To(Equal("role-id-1"))
@@ -1015,7 +1015,7 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{{Name: "admin"}}
-			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user-123", roles)
+			err := client.AssignTenantRolesToUser(ctx, "test-org", "user-123", roles)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to get realm role"))
 			Expect(err.Error()).To(ContainSubstring("admin"))
@@ -1053,7 +1053,7 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{{Name: "admin"}}
-			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user-123", roles)
+			err := client.AssignTenantRolesToUser(ctx, "test-org", "user-123", roles)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to assign realm roles to user"))
 		})
@@ -1075,7 +1075,7 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{}
-			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user-123", roles)
+			err := client.AssignTenantRolesToUser(ctx, "test-org", "user-123", roles)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedRoles).To(BeEmpty())
 		})
@@ -1116,7 +1116,7 @@ var _ = Describe("Keycloak Client", func() {
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{{Name: "admin"}}
 			// Use a user ID with special characters that need URL escaping
-			err := client.AssignOrganizationRolesToUser(ctx, "test-org", "user/with@special#chars", roles)
+			err := client.AssignTenantRolesToUser(ctx, "test-org", "user/with@special#chars", roles)
 			Expect(err).ToNot(HaveOccurred())
 			// Verify the path contains the URL-escaped user ID (note: @ is not escaped by url.PathEscape)
 			Expect(requestedUserID).To(ContainSubstring("user%2Fwith@special%23chars"))
@@ -1167,7 +1167,7 @@ var _ = Describe("Keycloak Client", func() {
 		})
 	})
 
-	Describe("RemoveOrganizationRolesFromUser", func() {
+	Describe("RemoveTenantRolesFromUser", func() {
 		It("removes realm roles from a user", func() {
 			clientRole := false
 			role1 := keycloakRole{
@@ -1223,7 +1223,7 @@ var _ = Describe("Keycloak Client", func() {
 				{Name: "admin"},
 				{Name: "editor"},
 			}
-			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			err := client.RemoveTenantRolesFromUser(ctx, "test-org", "user-123", roles)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedRoles).To(HaveLen(2))
 			Expect(receivedRoles[0].ID).To(Equal("role-id-1"))
@@ -1244,7 +1244,7 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{{Name: "admin"}}
-			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			err := client.RemoveTenantRolesFromUser(ctx, "test-org", "user-123", roles)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to get realm role"))
 			Expect(err.Error()).To(ContainSubstring("admin"))
@@ -1282,7 +1282,7 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{{Name: "admin"}}
-			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			err := client.RemoveTenantRolesFromUser(ctx, "test-org", "user-123", roles)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to remove realm roles from user"))
 		})
@@ -1304,7 +1304,7 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{}
-			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			err := client.RemoveTenantRolesFromUser(ctx, "test-org", "user-123", roles)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(receivedRoles).To(BeEmpty())
 		})
@@ -1345,7 +1345,7 @@ var _ = Describe("Keycloak Client", func() {
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{{Name: "admin"}}
 			// Use a user ID with special characters that need URL escaping
-			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user/with@special#chars", roles)
+			err := client.RemoveTenantRolesFromUser(ctx, "test-org", "user/with@special#chars", roles)
 			Expect(err).ToNot(HaveOccurred())
 			// Verify the path contains the URL-escaped user ID (note: @ is not escaped by url.PathEscape)
 			Expect(requestedUserID).To(ContainSubstring("user%2Fwith@special%23chars"))
@@ -1363,7 +1363,7 @@ var _ = Describe("Keycloak Client", func() {
 
 			client = createTestClient(server.URL)
 			roles := []*idp.Role{{Name: "nonexistent-role"}}
-			err := client.RemoveOrganizationRolesFromUser(ctx, "test-org", "user-123", roles)
+			err := client.RemoveTenantRolesFromUser(ctx, "test-org", "user-123", roles)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to get realm role"))
 			Expect(err.Error()).To(ContainSubstring("nonexistent-role"))
@@ -1414,10 +1414,10 @@ var _ = Describe("Keycloak Client", func() {
 		})
 	})
 
-	Describe("GetUserOrganizationRoles", func() {
+	Describe("GetUserTenantRoles", func() {
 		It("is not yet implemented (returns nil, nil)", func() {
 			client = createTestClient(server.URL)
-			result, err := client.GetUserOrganizationRoles(ctx, "test-org", "user-123")
+			result, err := client.GetUserTenantRoles(ctx, "test-org", "user-123")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(BeNil()) // TODO returns nil until implemented
 		})
@@ -1501,10 +1501,10 @@ var _ = Describe("Keycloak Client", func() {
 		})
 	})
 
-	Describe("AssignOrganizationAdminPermissions", func() {
+	Describe("AssignTenantAdminPermissions", func() {
 		It("is not yet implemented (returns nil)", func() {
 			client = createTestClient(server.URL)
-			err := client.AssignOrganizationAdminPermissions(ctx, "test-org", "user-123")
+			err := client.AssignTenantAdminPermissions(ctx, "test-org", "user-123")
 			Expect(err).ToNot(HaveOccurred()) // TODO returns nil until implemented
 		})
 	})

@@ -185,8 +185,8 @@ func (t *task) syncToIDP(ctx context.Context) error {
 		Config:      t.buildConfigFromIdp(fullIdp),
 	}
 
-	organizationName := t.identityProvider.GetMetadata().GetTenant()
-	createdIdp, err := t.r.idpClient.CreateIdentityProvider(ctx, organizationName, idpProvider)
+	tenantName := t.identityProvider.GetMetadata().GetTenant()
+	createdIdp, err := t.r.idpClient.CreateIdentityProvider(ctx, tenantName, idpProvider)
 	if err != nil {
 		t.identityProvider.GetStatus().SetPhase(privatev1.IdentityProviderPhase_IDENTITY_PROVIDER_PHASE_ERROR)
 		t.identityProvider.GetStatus().SetMessage(fmt.Sprintf("Identity provider creation in IDP failed: %v", err))
@@ -242,14 +242,14 @@ func (t *task) buildConfigFromIdp(idp *privatev1.IdentityProvider) map[string]st
 }
 
 // validateTenant verifies that the identity provider has a valid tenant assigned.
-// Identity providers must belong to a specific organization tenant, not "shared" or "system".
+// Identity providers must belong to a specific tenant, not "shared" or "system".
 func (t *task) validateTenant() error {
 	if !t.identityProvider.HasMetadata() || t.identityProvider.GetMetadata().GetTenant() == "" {
 		return errors.New("Identity provider must have a tenant assigned") //nolint:staticcheck // ST1005: Identity provider is an API resource name
 	}
 	tenant := t.identityProvider.GetMetadata().GetTenant()
 	if tenant == auth.SharedTenant || tenant == auth.SystemTenant {
-		return fmt.Errorf("Identity provider cannot belong to '%s' tenant - must be scoped to a specific organization", tenant) //nolint:staticcheck // ST1005: Identity provider is an API resource name
+		return fmt.Errorf("Identity provider cannot belong to '%s' tenant - must be scoped to a specific tenant", tenant) //nolint:staticcheck // ST1005: Identity provider is an API resource name
 	}
 	return nil
 }
@@ -303,10 +303,10 @@ func (t *task) delete(ctx context.Context) error {
 
 	// Delete the identity provider from Keycloak
 	// Use tenant-prefixed alias (same as in syncToIDP)
-	organizationName := t.identityProvider.GetMetadata().GetTenant()
-	alias := fmt.Sprintf("%s-%s", organizationName, t.identityProvider.GetMetadata().GetName())
+	tenantName := t.identityProvider.GetMetadata().GetTenant()
+	alias := fmt.Sprintf("%s-%s", tenantName, t.identityProvider.GetMetadata().GetName())
 
-	err := t.r.idpClient.DeleteIdentityProvider(ctx, organizationName, alias)
+	err := t.r.idpClient.DeleteIdentityProvider(ctx, tenantName, alias)
 	if err != nil {
 		// Check if this is a terminal error (not found / already deleted)
 		var apiErr *apiclient.APIError

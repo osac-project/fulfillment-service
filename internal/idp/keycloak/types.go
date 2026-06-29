@@ -175,22 +175,22 @@ func fromKeycloakRole(kcRole *keycloakRole) *idp.Role {
 	}
 }
 
-func toKeycloakOrganization(org *idp.Organization) *keycloakOrganization {
-	enabled := org.Enabled
+func toKeycloakOrganization(t *idp.Tenant) *keycloakOrganization {
+	enabled := t.Enabled
 	var domains []*keycloakOrganizationDomain
-	for _, d := range org.Domains {
+	for _, d := range t.Domains {
 		domains = append(domains, &keycloakOrganizationDomain{Name: d})
 	}
 	return &keycloakOrganization{
-		ID:         org.ID,
-		Name:       org.Name,
+		ID:         t.ID,
+		Name:       t.Name,
 		Enabled:    &enabled,
-		Attributes: org.Attributes,
+		Attributes: t.Attributes,
 		Domains:    domains,
 	}
 }
 
-func fromKeycloakOrganization(kcOrg *keycloakOrganization) *idp.Organization {
+func fromKeycloakOrganization(kcOrg *keycloakOrganization) *idp.Tenant {
 	enabled := false
 	if kcOrg.Enabled != nil {
 		enabled = *kcOrg.Enabled
@@ -207,7 +207,7 @@ func fromKeycloakOrganization(kcOrg *keycloakOrganization) *idp.Organization {
 		}
 		domains = append(domains, d.Name)
 	}
-	return &idp.Organization{
+	return &idp.Tenant{
 		ID:          kcOrg.ID,
 		Name:        kcOrg.Name,
 		DisplayName: displayName,

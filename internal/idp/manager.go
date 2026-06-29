@@ -24,38 +24,38 @@ import (
 	"time"
 )
 
-// OrganizationManager handles the lifecycle of IdP organizations.
+// TenantManager handles the lifecycle of tenants in the identity provider.
 // It works with any IdP client implementation.
-type OrganizationManager struct {
+type TenantManager struct {
 	logger *slog.Logger
 	client Client
 }
 
-// OrganizationManagerBuilder builds the manager.
-type OrganizationManagerBuilder struct {
+// TenantManagerBuilder builds the manager.
+type TenantManagerBuilder struct {
 	logger *slog.Logger
 	client Client
 }
 
-// NewOrganizationManager creates a builder for the organization manager.
-func NewOrganizationManager() *OrganizationManagerBuilder {
-	return &OrganizationManagerBuilder{}
+// NewTenantManager creates a builder for the tenant manager.
+func NewTenantManager() *TenantManagerBuilder {
+	return &TenantManagerBuilder{}
 }
 
 // SetLogger sets the logger.
-func (b *OrganizationManagerBuilder) SetLogger(value *slog.Logger) *OrganizationManagerBuilder {
+func (b *TenantManagerBuilder) SetLogger(value *slog.Logger) *TenantManagerBuilder {
 	b.logger = value
 	return b
 }
 
 // SetClient sets the IdP client implementation.
-func (b *OrganizationManagerBuilder) SetClient(value Client) *OrganizationManagerBuilder {
+func (b *TenantManagerBuilder) SetClient(value Client) *TenantManagerBuilder {
 	b.client = value
 	return b
 }
 
 // Build creates the manager.
-func (b *OrganizationManagerBuilder) Build() (result *OrganizationManager, err error) {
+func (b *TenantManagerBuilder) Build() (result *TenantManager, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
 		return
@@ -65,25 +65,25 @@ func (b *OrganizationManagerBuilder) Build() (result *OrganizationManager, err e
 		return
 	}
 
-	result = &OrganizationManager{
+	result = &TenantManager{
 		logger: b.logger,
 		client: b.client,
 	}
 	return
 }
 
-// OrganizationConfig contains configuration for creating an organization.
-type OrganizationConfig struct {
-	// Name is the unique identifier for the organization
+// TenantConfig contains configuration for creating a tenant in the identity provider.
+type TenantConfig struct {
+	// Name is the unique identifier for the tenant
 	Name string
 
 	// DisplayName is the human-readable name
 	DisplayName string
 
-	// Enabled indicates whether the organization should be enabled in the identity provider. Nil defaults to true.
+	// Enabled indicates whether the tenant should be enabled in the identity provider. Nil defaults to true.
 	Enabled *bool
 
-	// Domains is the list of e-mail domains associated with the organization.
+	// Domains is the list of e-mail domains associated with the tenant.
 	Domains []string
 
 	// BreakGlassUsername is the username for the break-glass account
@@ -91,7 +91,7 @@ type OrganizationConfig struct {
 	BreakGlassUsername string
 
 	// BreakGlassEmail is the email for the break-glass account
-	// If empty, defaults to "break-glass@{organization-name}.osac.local"
+	// If empty, defaults to "break-glass@{tenant-name}.osac.local"
 	BreakGlassEmail string
 
 	// BreakGlassPassword is the temporary password for the break-glass account
@@ -124,53 +124,53 @@ type BreakGlassCredentials struct {
 	Password string `json:"-"`
 }
 
-// CreateOrganization creates a complete IdP organization setup with a break-glass account.
+// CreateTenant creates a complete IdP tenant setup with a break-glass account.
 // Returns the break-glass account credentials and error.
-func (m *OrganizationManager) CreateOrganization(ctx context.Context, config *OrganizationConfig) (*BreakGlassCredentials, error) {
+func (m *TenantManager) CreateTenant(ctx context.Context, config *TenantConfig) (*BreakGlassCredentials, error) {
 	if config == nil {
-		return nil, errors.New("OrganizationConfig is mandatory")
+		return nil, errors.New("TenantConfig is mandatory")
 	}
 
-	m.logger.InfoContext(ctx, "Creating IdP organization",
-		slog.String("organization", config.Name),
+	m.logger.InfoContext(ctx, "Creating IdP tenant",
+		slog.String("tenant", config.Name),
 	)
 
 	var (
-		// Track if the organization was created in case of error and rollback is needed
-		organizationCreated bool
-		credentials         *BreakGlassCredentials
-		err                 error
+		// Track if the tenant was created in case of error and rollback is needed
+		tenantCreated bool
+		credentials   *BreakGlassCredentials
+		err           error
 	)
 
 	// Defer cleanup on error
 	defer func() {
 		if err != nil {
-			m.logger.ErrorContext(ctx, "Error creating organization",
-				slog.String("organization", config.Name),
+			m.logger.ErrorContext(ctx, "Error creating tenant in IdP",
+				slog.String("tenant", config.Name),
 				slog.Any("error", err),
 			)
-			m.rollback(ctx, config.Name, organizationCreated)
+			m.rollback(ctx, config.Name, tenantCreated)
 		}
 	}()
 
-	// Step 1: Create the organization
+	// Step 1: Create the tenant in the IdP
 	enabled := true
 	if config.Enabled != nil {
 		enabled = *config.Enabled
 	}
-	org := &Organization{
+	org := &Tenant{
 		Name:        config.Name,
 		DisplayName: config.DisplayName,
 		Enabled:     enabled,
 		Domains:     config.Domains,
 	}
-	createdOrg, err := m.client.CreateOrganization(ctx, org)
+	createdOrg, err := m.client.CreateTenant(ctx, org)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create organization: %w", err)
+		return nil, fmt.Errorf("failed to create tenant in IdP: %w", err)
 	}
-	organizationCreated = true
-	m.logger.InfoContext(ctx, "Organization created",
-		slog.String("organization", createdOrg.Name),
+	tenantCreated = true
+	m.logger.InfoContext(ctx, "Tenant created in IdP",
+		slog.String("tenant", createdOrg.Name),
 	)
 
 	// Step 2: Create break-glass account
@@ -185,29 +185,29 @@ func (m *OrganizationManager) CreateOrganization(ctx context.Context, config *Or
 		return nil, fmt.Errorf("failed to assign IdP manager permissions: %w", err)
 	}
 
-	m.logger.InfoContext(ctx, "IdP organization created successfully",
-		slog.String("organization", createdOrg.Name),
+	m.logger.InfoContext(ctx, "IdP tenant created successfully",
+		slog.String("tenant", createdOrg.Name),
 	)
 	return credentials, nil
 }
 
-// UpdateOrganization updates an existing organization in the identity provider. It fetches the current
-// organization by name, applies the updated domains, and sends the update to the IDP.
-func (m *OrganizationManager) UpdateOrganization(ctx context.Context, name string, domains []string) error {
+// UpdateTenant updates an existing tenant in the identity provider. It fetches the current
+// organization by name, applies the updated domains, and sends the update to the IdP.
+func (m *TenantManager) UpdateTenant(ctx context.Context, name string, domains []string) error {
 	if name == "" {
-		return errors.New("organization name is mandatory")
+		return errors.New("tenant name is mandatory")
 	}
 
-	m.logger.InfoContext(ctx, "Updating IdP organization domains",
-		slog.String("organization", name),
+	m.logger.InfoContext(ctx, "Updating IdP tenant domains",
+		slog.String("tenant", name),
 	)
 
-	org, err := m.client.GetOrganization(ctx, name)
+	org, err := m.client.GetTenant(ctx, name)
 	if err != nil {
-		return fmt.Errorf("failed to get organization for update: %w", err)
+		return fmt.Errorf("failed to get tenant from IdP for update: %w", err)
 	}
 	if org == nil {
-		return fmt.Errorf("organization '%s' not found", name)
+		return fmt.Errorf("tenant '%s' not found in IdP", name)
 	}
 
 	currentDomains := slices.Clone(org.Domains)
@@ -215,28 +215,28 @@ func (m *OrganizationManager) UpdateOrganization(ctx context.Context, name strin
 	slices.Sort(currentDomains)
 	slices.Sort(desiredDomains)
 	if slices.Equal(currentDomains, desiredDomains) {
-		m.logger.DebugContext(ctx, "IdP organization domains already up to date, skipping update",
-			slog.String("organization", name),
+		m.logger.DebugContext(ctx, "IdP tenant domains already up to date, skipping update",
+			slog.String("tenant", name),
 		)
 		return nil
 	}
 
 	org.Domains = domains
-	_, err = m.client.UpdateOrganization(ctx, org)
+	_, err = m.client.UpdateTenant(ctx, org)
 	if err != nil {
-		return fmt.Errorf("failed to update organization: %w", err)
+		return fmt.Errorf("failed to update tenant in IdP: %w", err)
 	}
 
-	m.logger.InfoContext(ctx, "IdP organization domains updated successfully",
-		slog.String("organization", name),
+	m.logger.InfoContext(ctx, "IdP tenant domains updated successfully",
+		slog.String("tenant", name),
 	)
 	return nil
 }
 
-// rollback performs cleanup by deleting the organization.
-// Deleting the organization will cascade-delete all resources within it (users, roles, etc.).
-func (m *OrganizationManager) rollback(ctx context.Context, organizationName string, deleteOrg bool) {
-	if !deleteOrg {
+// rollback performs cleanup by deleting the tenant from the IdP.
+// Deleting the IdP organization will cascade-delete all resources within it (users, roles, etc.).
+func (m *TenantManager) rollback(ctx context.Context, tenantName string, deleteTenant bool) {
+	if !deleteTenant {
 		return
 	}
 
@@ -245,28 +245,28 @@ func (m *OrganizationManager) rollback(ctx context.Context, organizationName str
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	m.logger.WarnContext(ctx, "Rolling back organization creation",
-		slog.String("organization", organizationName),
+	m.logger.WarnContext(ctx, "Rolling back tenant creation in IdP",
+		slog.String("tenant", tenantName),
 	)
 
-	// Delete organization (cascade-deletes all users and resources within it)
-	if err := m.client.DeleteOrganization(cleanupCtx, organizationName); err != nil {
-		m.logger.ErrorContext(ctx, "Failed to rollback organization deletion",
-			slog.String("organization", organizationName),
+	// Delete tenant from IdP (cascade-deletes all users and resources within it)
+	if err := m.client.DeleteTenant(cleanupCtx, tenantName); err != nil {
+		m.logger.ErrorContext(ctx, "Failed to rollback tenant creation in IdP",
+			slog.String("tenant", tenantName),
 			slog.Any("error", err),
 		)
 	} else {
-		m.logger.InfoContext(ctx, "Rolled back organization deletion",
-			slog.String("organization", organizationName),
+		m.logger.InfoContext(ctx, "Rolled back tenant creation in IdP",
+			slog.String("tenant", tenantName),
 		)
 	}
 }
 
-// createBreakGlassAccount creates the break-glass account for an organization.
+// createBreakGlassAccount creates the break-glass account for a tenant.
 // Returns the break-glass credentials and error.
 // The break-glass account is a built-in OSAC user with limited privileges (idp-manager role)
 // that can manage IdP configuration and roles.
-func (m *OrganizationManager) createBreakGlassAccount(ctx context.Context, config *OrganizationConfig) (*BreakGlassCredentials, error) {
+func (m *TenantManager) createBreakGlassAccount(ctx context.Context, config *TenantConfig) (*BreakGlassCredentials, error) {
 	// Set defaults if not provided
 	username := config.BreakGlassUsername
 	if username == "" {
@@ -292,7 +292,7 @@ func (m *OrganizationManager) createBreakGlassAccount(ctx context.Context, confi
 		}
 		password = string(b)
 		m.logger.DebugContext(ctx, "Generated temporary break-glass password because it was not provided",
-			slog.String("organization", config.Name),
+			slog.String("tenant", config.Name),
 			slog.String("username", username),
 		)
 	}
@@ -325,8 +325,8 @@ func (m *OrganizationManager) createBreakGlassAccount(ctx context.Context, confi
 		Password: password,
 	}
 
-	m.logger.InfoContext(ctx, "Break-glass account created for organization",
-		slog.String("organization_name", config.Name),
+	m.logger.InfoContext(ctx, "Break-glass account created for tenant",
+		slog.String("tenant_name", config.Name),
 		slog.String("username", username),
 		slog.String("user_id", createdUser.ID),
 	)
@@ -338,7 +338,7 @@ func (m *OrganizationManager) createBreakGlassAccount(ctx context.Context, confi
 // This grants the user permissions to manage user roles and identity providers but not
 // critical realm settings.
 // The implementation is provider-specific (delegated to the IdP client).
-func (m *OrganizationManager) assignIdpManagerPermissions(ctx context.Context, userID string) error {
+func (m *TenantManager) assignIdpManagerPermissions(ctx context.Context, userID string) error {
 	m.logger.InfoContext(ctx, "Assigning IdP manager permissions to user",
 		slog.String("user_id", userID),
 	)
@@ -354,20 +354,20 @@ func (m *OrganizationManager) assignIdpManagerPermissions(ctx context.Context, u
 	return nil
 }
 
-// DeleteOrganization deletes an IdP organization and all its resources.
+// DeleteTenant deletes a tenant from the IdP and all its resources.
 // The implementation handles provider-specific cleanup (e.g., Keycloak deletes break-glass account first).
-func (m *OrganizationManager) DeleteOrganization(ctx context.Context, organizationName string) error {
-	m.logger.InfoContext(ctx, "Deleting IdP organization",
-		slog.String("organization", organizationName),
+func (m *TenantManager) DeleteTenant(ctx context.Context, tenantName string) error {
+	m.logger.InfoContext(ctx, "Deleting tenant from IdP",
+		slog.String("tenant", tenantName),
 	)
 
-	err := m.client.DeleteOrganization(ctx, organizationName)
+	err := m.client.DeleteTenant(ctx, tenantName)
 	if err != nil {
-		return fmt.Errorf("failed to delete organization: %w", err)
+		return fmt.Errorf("failed to delete tenant from IdP: %w", err)
 	}
 
-	m.logger.InfoContext(ctx, "IdP organization deleted successfully",
-		slog.String("organization", organizationName),
+	m.logger.InfoContext(ctx, "IdP tenant deleted successfully",
+		slog.String("tenant", tenantName),
 	)
 	return nil
 }

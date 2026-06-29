@@ -23,23 +23,23 @@ import (
 
 // mockClient is a mock IdP client for testing.
 type mockClient struct {
-	createdRealm        *Organization
+	createdRealm        *Tenant
 	createdUsers        []*User
 	deletedRealm        string
 	deletedUsers        []string                      // Track deleted user IDs
 	userRoleAssignments map[string]map[string][]*Role // userID -> clientID -> roles
 	failUserCreation    bool                          // Trigger user creation failure
 	failRoleAssignment  bool                          // Trigger role assignment failure
-	failOrgDeletion     bool                          // Trigger organization deletion failure
-	failOrgGet          bool                          // Trigger organization get failure
-	failOrgUpdate       bool                          // Trigger organization update failure
-	returnNilOrg        bool                          // GetOrganization returns nil without error
-	orgUpdateCalled     bool                          // Track whether UpdateOrganization was called
+	failTenantDeletion  bool                          // Trigger tenant deletion failure
+	failTenantGet       bool                          // Trigger tenant get failure
+	failTenantUpdate    bool                          // Trigger tenant update failure
+	returnNilTenant     bool                          // GetTenant returns nil without error
+	tenantUpdateCalled  bool                          // Track whether UpdateTenant was called
 }
 
-func (m *mockClient) CreateOrganization(ctx context.Context, org *Organization) (*Organization, error) {
+func (m *mockClient) CreateTenant(ctx context.Context, org *Tenant) (*Tenant, error) {
 	// Create a copy to avoid mutation
-	createdOrg := &Organization{
+	createdOrg := &Tenant{
 		ID:          org.ID,
 		Name:        org.Name,
 		DisplayName: org.DisplayName,
@@ -51,19 +51,19 @@ func (m *mockClient) CreateOrganization(ctx context.Context, org *Organization) 
 	return createdOrg, nil
 }
 
-func (m *mockClient) GetOrganization(ctx context.Context, name string) (*Organization, error) {
-	if m.failOrgGet {
+func (m *mockClient) GetTenant(ctx context.Context, name string) (*Tenant, error) {
+	if m.failTenantGet {
 		return nil, fmt.Errorf("simulated get organization failure")
 	}
-	if m.returnNilOrg {
+	if m.returnNilTenant {
 		return nil, nil
 	}
 	return m.createdRealm, nil
 }
 
-func (m *mockClient) UpdateOrganization(ctx context.Context, org *Organization) (*Organization, error) {
-	m.orgUpdateCalled = true
-	if m.failOrgUpdate {
+func (m *mockClient) UpdateTenant(ctx context.Context, org *Tenant) (*Tenant, error) {
+	m.tenantUpdateCalled = true
+	if m.failTenantUpdate {
 		return nil, fmt.Errorf("simulated update organization failure")
 	}
 	if m.createdRealm != nil {
@@ -73,8 +73,8 @@ func (m *mockClient) UpdateOrganization(ctx context.Context, org *Organization) 
 	return m.createdRealm, nil
 }
 
-func (m *mockClient) DeleteOrganization(ctx context.Context, name string) error {
-	if m.failOrgDeletion {
+func (m *mockClient) DeleteTenant(ctx context.Context, name string) error {
+	if m.failTenantDeletion {
 		return fmt.Errorf("simulated organization deletion failure")
 	}
 
@@ -91,7 +91,7 @@ func (m *mockClient) DeleteOrganization(ctx context.Context, name string) error 
 	return nil
 }
 
-func (m *mockClient) CreateUser(ctx context.Context, organization string, user *User) (*User, error) {
+func (m *mockClient) CreateUser(ctx context.Context, tenantName string, user *User) (*User, error) {
 	if m.failUserCreation {
 		return nil, fmt.Errorf("simulated user creation failure")
 	}
@@ -114,7 +114,7 @@ func (m *mockClient) CreateUser(ctx context.Context, organization string, user *
 	return createdUser, nil
 }
 
-func (m *mockClient) GetUser(ctx context.Context, organization, userID string) (*User, error) {
+func (m *mockClient) GetUser(ctx context.Context, tenantName, userID string) (*User, error) {
 	for _, user := range m.createdUsers {
 		if user.ID == userID {
 			return user, nil
@@ -123,20 +123,20 @@ func (m *mockClient) GetUser(ctx context.Context, organization, userID string) (
 	return nil, nil
 }
 
-func (m *mockClient) ListUsers(ctx context.Context, organization string) ([]*User, error) {
+func (m *mockClient) ListUsers(ctx context.Context, tenantName string) ([]*User, error) {
 	return m.createdUsers, nil
 }
 
-func (m *mockClient) DeleteUser(ctx context.Context, organization, userID string) error {
+func (m *mockClient) DeleteUser(ctx context.Context, tenantName, userID string) error {
 	m.deletedUsers = append(m.deletedUsers, userID)
 	return nil
 }
 
-func (m *mockClient) ListOrganizationRoles(ctx context.Context, organization string) ([]*Role, error) {
+func (m *mockClient) ListTenantRoles(ctx context.Context, tenantName string) ([]*Role, error) {
 	return nil, nil
 }
 
-func (m *mockClient) ListClientRoles(ctx context.Context, organization, clientID string) ([]*Role, error) {
+func (m *mockClient) ListClientRoles(ctx context.Context, tenantName, clientID string) ([]*Role, error) {
 	// Return full set of realm-management roles (matching Keycloak's standard roles)
 	if clientID == "realm-management" {
 		return []*Role{
@@ -157,7 +157,7 @@ func (m *mockClient) ListClientRoles(ctx context.Context, organization, clientID
 	return nil, nil
 }
 
-func (m *mockClient) AssignOrganizationRolesToUser(ctx context.Context, organization, userID string, roles []*Role) error {
+func (m *mockClient) AssignTenantRolesToUser(ctx context.Context, tenantName, userID string, roles []*Role) error {
 	if m.userRoleAssignments == nil {
 		m.userRoleAssignments = make(map[string]map[string][]*Role)
 	}
@@ -168,7 +168,7 @@ func (m *mockClient) AssignOrganizationRolesToUser(ctx context.Context, organiza
 	return nil
 }
 
-func (m *mockClient) AssignClientRolesToUser(ctx context.Context, organization, userID, clientID string, roles []*Role) error {
+func (m *mockClient) AssignClientRolesToUser(ctx context.Context, tenantName, userID, clientID string, roles []*Role) error {
 	if m.userRoleAssignments == nil {
 		m.userRoleAssignments = make(map[string]map[string][]*Role)
 	}
@@ -179,29 +179,29 @@ func (m *mockClient) AssignClientRolesToUser(ctx context.Context, organization, 
 	return nil
 }
 
-func (m *mockClient) RemoveOrganizationRolesFromUser(ctx context.Context, organization, userID string, roles []*Role) error {
+func (m *mockClient) RemoveTenantRolesFromUser(ctx context.Context, tenantName, userID string, roles []*Role) error {
 	return nil
 }
 
-func (m *mockClient) RemoveClientRolesFromUser(ctx context.Context, organization, userID, clientID string, roles []*Role) error {
+func (m *mockClient) RemoveClientRolesFromUser(ctx context.Context, tenantName, userID, clientID string, roles []*Role) error {
 	return nil
 }
 
-func (m *mockClient) GetUserOrganizationRoles(ctx context.Context, organization, userID string) ([]*Role, error) {
+func (m *mockClient) GetUserTenantRoles(ctx context.Context, tenantName, userID string) ([]*Role, error) {
 	if m.userRoleAssignments != nil && m.userRoleAssignments[userID] != nil {
 		return m.userRoleAssignments[userID]["realm"], nil
 	}
 	return nil, nil
 }
 
-func (m *mockClient) GetUserClientRoles(ctx context.Context, organization, userID, clientID string) ([]*Role, error) {
+func (m *mockClient) GetUserClientRoles(ctx context.Context, tenantName, userID, clientID string) ([]*Role, error) {
 	if m.userRoleAssignments != nil && m.userRoleAssignments[userID] != nil {
 		return m.userRoleAssignments[userID][clientID], nil
 	}
 	return nil, nil
 }
 
-func (m *mockClient) AssignOrganizationAdminPermissions(ctx context.Context, organization, userID string) error {
+func (m *mockClient) AssignTenantAdminPermissions(ctx context.Context, tenantName, userID string) error {
 	if m.failRoleAssignment {
 		return fmt.Errorf("simulated role assignment failure")
 	}
@@ -220,7 +220,7 @@ func (m *mockClient) AssignOrganizationAdminPermissions(ctx context.Context, org
 		{ID: "11", Name: "view-authorization", ClientRole: true},
 		{ID: "12", Name: "view-events", ClientRole: true},
 	}
-	return m.AssignClientRolesToUser(ctx, organization, userID, "realm-management", roles)
+	return m.AssignClientRolesToUser(ctx, tenantName, userID, "realm-management", roles)
 }
 
 func (m *mockClient) AssignIdpManagerPermissions(ctx context.Context, userID string) error {
@@ -261,51 +261,51 @@ func (m *mockClient) DeleteAuthorizationResource(ctx context.Context, resourceID
 }
 
 // Identity Provider stub methods
-func (m *mockClient) CreateIdentityProvider(ctx context.Context, organizationName string, idp *IdentityProvider) (*IdentityProvider, error) {
+func (m *mockClient) CreateIdentityProvider(ctx context.Context, tenantName string, idp *IdentityProvider) (*IdentityProvider, error) {
 	return idp, nil
 }
 
-func (m *mockClient) GetIdentityProvider(ctx context.Context, organizationName, alias string) (*IdentityProvider, error) {
+func (m *mockClient) GetIdentityProvider(ctx context.Context, tenantName, alias string) (*IdentityProvider, error) {
 	return nil, nil
 }
 
-func (m *mockClient) ListIdentityProviders(ctx context.Context, organizationName string) ([]*IdentityProvider, error) {
+func (m *mockClient) ListIdentityProviders(ctx context.Context, tenantName string) ([]*IdentityProvider, error) {
 	return nil, nil
 }
 
-func (m *mockClient) DeleteIdentityProvider(ctx context.Context, organizationName, alias string) error {
+func (m *mockClient) DeleteIdentityProvider(ctx context.Context, tenantName, alias string) error {
 	return nil
 }
 
-func (m *mockClient) CreateAuthorizationGroup(ctx context.Context, organizationName, groupPath string) (string, error) {
+func (m *mockClient) CreateAuthorizationGroup(ctx context.Context, tenantName, groupPath string) (string, error) {
 	// Return a fake group ID
 	return "test-group-id", nil
 }
 
-func (m *mockClient) DeleteAuthorizationGroup(ctx context.Context, organizationName, groupID string) error {
+func (m *mockClient) DeleteAuthorizationGroup(ctx context.Context, tenantName, groupID string) error {
 	return nil
 }
 
-func (m *mockClient) GetGroupIDByPath(ctx context.Context, organizationName, groupPath string) (string, error) {
+func (m *mockClient) GetGroupIDByPath(ctx context.Context, tenantName, groupPath string) (string, error) {
 	// Return a fake group ID for testing
 	return "test-group-id", nil
 }
 
-func (m *mockClient) AddUserToGroup(ctx context.Context, organizationName, userID, groupID string) error {
+func (m *mockClient) AddUserToGroup(ctx context.Context, tenantName, userID, groupID string) error {
 	// Stub for testing - no-op
 	return nil
 }
 
-func (m *mockClient) RemoveUserFromGroup(ctx context.Context, organizationName, username, groupID string) error {
+func (m *mockClient) RemoveUserFromGroup(ctx context.Context, tenantName, username, groupID string) error {
 	// Stub for testing - no-op
 	return nil
 }
 
-var _ = Describe("OrganizationManager", func() {
+var _ = Describe("TenantManager", func() {
 	var (
 		ctx     context.Context
 		mock    *mockClient
-		manager *OrganizationManager
+		manager *TenantManager
 	)
 
 	BeforeEach(func() {
@@ -313,23 +313,23 @@ var _ = Describe("OrganizationManager", func() {
 		ctx = context.Background()
 		mock = &mockClient{}
 
-		manager, err = NewOrganizationManager().
+		manager, err = NewTenantManager().
 			SetLogger(logger).
 			SetClient(mock).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	Describe("CreateOrganization", func() {
-		It("creates an organization with break-glass account", func() {
-			config := &OrganizationConfig{
+	Describe("CreateTenant", func() {
+		It("creates a tenant with break-glass account", func() {
+			config := &TenantConfig{
 				Name:               "test-org",
 				DisplayName:        "Test Organization",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
 
-			credentials, err := manager.CreateOrganization(ctx, config)
+			credentials, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(credentials).ToNot(BeNil())
 
@@ -357,15 +357,15 @@ var _ = Describe("OrganizationManager", func() {
 			Expect(breakGlassUser.Credentials[0].Temporary).To(BeTrue())
 		})
 
-		It("creates a disabled organization when Enabled is false", func() {
-			config := &OrganizationConfig{
+		It("creates a disabled tenant when Enabled is false", func() {
+			config := &TenantConfig{
 				Name:               "test-org",
 				DisplayName:        "Test Organization",
 				Enabled:            new(false),
 				BreakGlassPassword: "breakglass123",
 			}
 
-			credentials, err := manager.CreateOrganization(ctx, config)
+			credentials, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(credentials).ToNot(BeNil())
 
@@ -375,14 +375,14 @@ var _ = Describe("OrganizationManager", func() {
 		})
 
 		It("assigns IdP manager roles to break-glass account", func() {
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:               "test-org",
 				DisplayName:        "Test Organization",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
 
-			credentials, err := manager.CreateOrganization(ctx, config)
+			credentials, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(credentials).ToNot(BeNil())
 			Expect(credentials.Username).ToNot(BeEmpty())
@@ -421,7 +421,7 @@ var _ = Describe("OrganizationManager", func() {
 		})
 
 		It("uses custom break-glass username and email when provided", func() {
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:               "test-org",
 				DisplayName:        "Test Organization",
 				Enabled:            new(true),
@@ -430,7 +430,7 @@ var _ = Describe("OrganizationManager", func() {
 				BreakGlassPassword: "breakglass123",
 			}
 
-			credentials, err := manager.CreateOrganization(ctx, config)
+			credentials, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(mock.createdUsers).To(HaveLen(1))
@@ -445,13 +445,13 @@ var _ = Describe("OrganizationManager", func() {
 		})
 
 		It("generates password when not provided", func() {
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:        "test-org",
 				DisplayName: "Test Organization",
 				Enabled:     new(true),
 			}
 
-			credentials, err := manager.CreateOrganization(ctx, config)
+			credentials, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(credentials.Username).To(Equal("test-org-osac-break-glass"))
 			Expect(credentials.Email).To(Equal("break-glass@test-org.osac.local"))
@@ -461,55 +461,55 @@ var _ = Describe("OrganizationManager", func() {
 			Expect(credentials.Password).To(MatchRegexp(`^[A-Za-z0-9!@#$%]{24}$`))
 		})
 
-		It("rolls back organization on break-glass user creation failure", func() {
+		It("rolls back tenant on break-glass user creation failure", func() {
 			// Create a mock that fails on user creation
 			failingMock := &mockClient{
 				failUserCreation: true,
 			}
 
-			failingManager, err := NewOrganizationManager().
+			failingManager, err := NewTenantManager().
 				SetLogger(logger).
 				SetClient(failingMock).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:               "test-org",
 				DisplayName:        "Test Organization",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
 
-			credentials, err := failingManager.CreateOrganization(ctx, config)
+			credentials, err := failingManager.CreateTenant(ctx, config)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to create break-glass account"))
 			Expect(credentials).To(BeNil())
 
-			// Verify organization was created then deleted (rollback)
+			// Verify tenant was created then deleted (rollback)
 			Expect(failingMock.createdRealm).ToNot(BeNil())
 			Expect(failingMock.deletedRealm).To(Equal("test-org"))
 		})
 
-		It("rolls back organization on role assignment failure", func() {
+		It("rolls back tenant on role assignment failure", func() {
 			// Create a mock that fails on role assignment
 			failingMock := &mockClient{
 				failRoleAssignment: true,
 			}
 
-			failingManager, err := NewOrganizationManager().
+			failingManager, err := NewTenantManager().
 				SetLogger(logger).
 				SetClient(failingMock).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:               "test-org",
 				DisplayName:        "Test Organization",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
 
-			credentials, err := failingManager.CreateOrganization(ctx, config)
+			credentials, err := failingManager.CreateTenant(ctx, config)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to assign IdP manager permissions"))
 			Expect(credentials).To(BeNil())
@@ -517,20 +517,20 @@ var _ = Describe("OrganizationManager", func() {
 			// Verify user was created
 			Expect(failingMock.createdUsers).To(HaveLen(1))
 
-			// Verify organization was created then deleted (rollback)
-			// Deleting the organization cascade-deletes all users, so we don't
+			// Verify tenant was created then deleted (rollback)
+			// Deleting the tenant from the IdP cascade-deletes all users, so we don't
 			// need to explicitly delete the user
 			Expect(failingMock.createdRealm).ToNot(BeNil())
 			Expect(failingMock.deletedRealm).To(Equal("test-org"))
 		})
 
-		It("rolls back organization even when original context is cancelled", func() {
+		It("rolls back tenant even when original context is cancelled", func() {
 			// Create a mock that fails on user creation
 			failingMock := &mockClient{
 				failUserCreation: true,
 			}
 
-			failingManager, err := NewOrganizationManager().
+			failingManager, err := NewTenantManager().
 				SetLogger(logger).
 				SetClient(failingMock).
 				Build()
@@ -540,18 +540,18 @@ var _ = Describe("OrganizationManager", func() {
 			cancelledCtx, cancel := context.WithCancel(context.Background())
 			cancel()
 
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:               "test-org",
 				DisplayName:        "Test Organization",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
 
-			credentials, err := failingManager.CreateOrganization(cancelledCtx, config)
+			credentials, err := failingManager.CreateTenant(cancelledCtx, config)
 			Expect(err).To(HaveOccurred())
 			Expect(credentials).To(BeNil())
 
-			// Verify organization was created then deleted (rollback)
+			// Verify tenant was created then deleted (rollback)
 			// Even though the original context was cancelled, rollback should succeed
 			// because it uses a fresh context
 			Expect(failingMock.createdRealm).ToNot(BeNil())
@@ -559,146 +559,146 @@ var _ = Describe("OrganizationManager", func() {
 		})
 	})
 
-	Describe("UpdateOrganization", func() {
+	Describe("UpdateTenant", func() {
 		It("skips the IDP update when domains already match", func() {
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:               "test-org",
 				Enabled:            new(true),
 				Domains:            []string{"a.example.com", "b.example.com"},
 				BreakGlassPassword: "breakglass123",
 			}
-			_, err := manager.CreateOrganization(ctx, config)
+			_, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 
-			mock.orgUpdateCalled = false
-			err = manager.UpdateOrganization(
+			mock.tenantUpdateCalled = false
+			err = manager.UpdateTenant(
 				ctx, "test-org", []string{"b.example.com", "a.example.com"},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(mock.orgUpdateCalled).To(BeFalse())
+			Expect(mock.tenantUpdateCalled).To(BeFalse())
 			Expect(mock.createdRealm.Domains).To(ConsistOf("a.example.com", "b.example.com"))
 		})
 
-		It("updates the organization domains", func() {
-			config := &OrganizationConfig{
+		It("updates the tenant domains", func() {
+			config := &TenantConfig{
 				Name:               "test-org",
 				Enabled:            new(true),
 				Domains:            []string{"example.com"},
 				BreakGlassPassword: "breakglass123",
 			}
-			_, err := manager.CreateOrganization(ctx, config)
+			_, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = manager.UpdateOrganization(ctx, "test-org", []string{"new.example.com", "corp.example.org"})
+			err = manager.UpdateTenant(ctx, "test-org", []string{"new.example.com", "corp.example.org"})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mock.createdRealm.Domains).To(ConsistOf("new.example.com", "corp.example.org"))
 		})
 
 		It("clears domains when given an empty list", func() {
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:               "test-org",
 				Enabled:            new(true),
 				Domains:            []string{"example.com"},
 				BreakGlassPassword: "breakglass123",
 			}
-			_, err := manager.CreateOrganization(ctx, config)
+			_, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mock.createdRealm.Domains).To(ConsistOf("example.com"))
 
-			err = manager.UpdateOrganization(ctx, "test-org", []string{})
+			err = manager.UpdateTenant(ctx, "test-org", []string{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mock.createdRealm.Domains).To(BeEmpty())
 		})
 
 		It("clears domains when given nil", func() {
-			config := &OrganizationConfig{
+			config := &TenantConfig{
 				Name:               "test-org",
 				Enabled:            new(true),
 				Domains:            []string{"example.com"},
 				BreakGlassPassword: "breakglass123",
 			}
-			_, err := manager.CreateOrganization(ctx, config)
+			_, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = manager.UpdateOrganization(ctx, "test-org", nil)
+			err = manager.UpdateTenant(ctx, "test-org", nil)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mock.createdRealm.Domains).To(BeEmpty())
 		})
 
 		It("returns an error when the name is empty", func() {
-			err := manager.UpdateOrganization(ctx, "", []string{"example.com"})
+			err := manager.UpdateTenant(ctx, "", []string{"example.com"})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("organization name is mandatory"))
+			Expect(err.Error()).To(ContainSubstring("tenant name is mandatory"))
 		})
 
-		It("returns an error when getting the organization fails", func() {
+		It("returns an error when getting the tenant from IdP fails", func() {
 			failingMock := &mockClient{
-				failOrgGet: true,
+				failTenantGet: true,
 			}
-			failingManager, err := NewOrganizationManager().
+			failingManager, err := NewTenantManager().
 				SetLogger(logger).
 				SetClient(failingMock).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			err = failingManager.UpdateOrganization(ctx, "test-org", []string{"example.com"})
+			err = failingManager.UpdateTenant(ctx, "test-org", []string{"example.com"})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("failed to get organization for update"))
+			Expect(err.Error()).To(ContainSubstring("failed to get tenant from IdP for update"))
 		})
 
-		It("returns an error when the organization does not exist", func() {
+		It("returns an error when the tenant does not exist in IdP", func() {
 			failingMock := &mockClient{
-				returnNilOrg: true,
+				returnNilTenant: true,
 			}
-			failingManager, err := NewOrganizationManager().
+			failingManager, err := NewTenantManager().
 				SetLogger(logger).
 				SetClient(failingMock).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			err = failingManager.UpdateOrganization(ctx, "missing-org", []string{"example.com"})
+			err = failingManager.UpdateTenant(ctx, "missing-org", []string{"example.com"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not found"))
 		})
 
 		It("returns an error when the client update fails", func() {
 			failingMock := &mockClient{
-				createdRealm:  &Organization{Name: "test-org"},
-				failOrgUpdate: true,
+				createdRealm:  &Tenant{Name: "test-org"},
+				failTenantUpdate: true,
 			}
-			failingManager, err := NewOrganizationManager().
+			failingManager, err := NewTenantManager().
 				SetLogger(logger).
 				SetClient(failingMock).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			err = failingManager.UpdateOrganization(ctx, "test-org", []string{"example.com"})
+			err = failingManager.UpdateTenant(ctx, "test-org", []string{"example.com"})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("failed to update organization"))
+			Expect(err.Error()).To(ContainSubstring("failed to update tenant in IdP"))
 		})
 	})
 
-	Describe("DeleteOrganization", func() {
-		It("deletes the organization realm", func() {
-			err := manager.DeleteOrganization(ctx, "test-org")
+	Describe("DeleteTenant", func() {
+		It("deletes the tenant from IdP", func() {
+			err := manager.DeleteTenant(ctx, "test-org")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mock.deletedRealm).To(Equal("test-org"))
 		})
 
 		It("returns an error when deletion fails", func() {
 			failingMock := &mockClient{
-				failOrgDeletion: true,
+				failTenantDeletion: true,
 			}
 
-			failingManager, err := NewOrganizationManager().
+			failingManager, err := NewTenantManager().
 				SetLogger(logger).
 				SetClient(failingMock).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			err = failingManager.DeleteOrganization(ctx, "test-org")
+			err = failingManager.DeleteTenant(ctx, "test-org")
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("failed to delete organization"))
+			Expect(err.Error()).To(ContainSubstring("failed to delete tenant from IdP"))
 		})
 	})
 })

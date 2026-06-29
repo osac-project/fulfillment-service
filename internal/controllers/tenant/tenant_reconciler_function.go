@@ -34,7 +34,7 @@ import (
 type FunctionBuilder struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
-	idpManager *idp.OrganizationManager
+	idpManager *idp.TenantManager
 }
 
 // NewFunction creates a builder that can be used to configure and create reconciler functions.
@@ -55,7 +55,7 @@ func (b *FunctionBuilder) SetConnection(value *grpc.ClientConn) *FunctionBuilder
 }
 
 // SetIdpManager sets the IDP manager that the reconciler will use to manage tenants in the identity provider.
-func (b *FunctionBuilder) SetIdpManager(value *idp.OrganizationManager) *FunctionBuilder {
+func (b *FunctionBuilder) SetIdpManager(value *idp.TenantManager) *FunctionBuilder {
 	b.idpManager = value
 	return b
 }
@@ -88,7 +88,7 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 type function struct {
 	logger         *slog.Logger
 	tenantsClient  privatev1.TenantsClient
-	idpManager     *idp.OrganizationManager
+	idpManager     *idp.TenantManager
 	maskCalculator *masks.Calculator
 }
 
@@ -163,13 +163,13 @@ func (t *task) syncToIDP(ctx context.Context) error {
 	t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_PENDING)
 
 	tenantName := t.tenant.GetMetadata().GetName()
-	config := &idp.OrganizationConfig{
+	config := &idp.TenantConfig{
 		Name:    tenantName,
 		Enabled: new(!t.isBuiltin()),
 		Domains: t.tenant.GetSpec().GetDomains(),
 	}
 
-	credentials, err := t.r.idpManager.CreateOrganization(ctx, config)
+	credentials, err := t.r.idpManager.CreateTenant(ctx, config)
 	if err != nil {
 		t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_FAILED)
 		t.tenant.GetStatus().SetMessage(fmt.Sprintf("Tenant creation in IDP failed: %v", err))
@@ -194,10 +194,10 @@ func (t *task) syncToIDP(ctx context.Context) error {
 	return nil
 }
 
-// updateIDP updates the organization in the identity provider with the current spec values.
+// updateIDP updates the tenant in the identity provider with the current spec values.
 func (t *task) updateIDP(ctx context.Context) error {
-	orgName := t.tenant.GetStatus().GetIdpTenantName()
-	if orgName == "" {
+	tenantName := t.tenant.GetStatus().GetIdpTenantName()
+	if tenantName == "" {
 		t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_FAILED)
 		t.tenant.GetStatus().SetMessage("Tenant name is empty")
 		t.r.logger.ErrorContext(
@@ -208,9 +208,9 @@ func (t *task) updateIDP(ctx context.Context) error {
 		return nil
 	}
 	domains := t.tenant.GetSpec().GetDomains()
-	err := t.r.idpManager.UpdateOrganization(ctx, orgName, domains)
+	err := t.r.idpManager.UpdateTenant(ctx, tenantName, domains)
 	if err != nil {
-		t.r.logger.ErrorContext(ctx, "Failed to update organization domains in IDP",
+		t.r.logger.ErrorContext(ctx, "Failed to update tenant domains in IDP",
 			slog.String("tenant_id", t.tenant.GetId()),
 			slog.Any("error", err),
 		)
@@ -288,7 +288,7 @@ func (t *task) delete(ctx context.Context) error {
 		return nil
 	}
 
-	err := t.r.idpManager.DeleteOrganization(ctx, tenantName)
+	err := t.r.idpManager.DeleteTenant(ctx, tenantName)
 	if err != nil {
 		return fmt.Errorf("failed to delete IDP tenant: %w", err)
 	}

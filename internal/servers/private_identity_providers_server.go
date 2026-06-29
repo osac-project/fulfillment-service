@@ -119,7 +119,7 @@ func (b *PrivateIdentityProvidersServerBuilder) Build() (result *PrivateIdentity
 
 func (s *PrivateIdentityProvidersServer) Create(ctx context.Context,
 	request *privatev1.IdentityProvidersCreateRequest) (response *privatev1.IdentityProvidersCreateResponse, err error) {
-	// Identity providers are scoped to a specific organization tenant.
+	// Identity providers are scoped to a specific tenant.
 	// Validate that the tenant will not be set to 'shared' or 'system'.
 	object := request.GetObject()
 	if object != nil && object.HasMetadata() {
@@ -127,7 +127,7 @@ func (s *PrivateIdentityProvidersServer) Create(ctx context.Context,
 		if tenant == auth.SharedTenant || tenant == auth.SystemTenant {
 			err = grpcstatus.Errorf(
 				grpccodes.InvalidArgument,
-				"identity provider cannot belong to '%s' tenant - must be scoped to a specific organization",
+				"identity provider cannot belong to '%s' tenant - must be scoped to a specific tenant",
 				tenant,
 			)
 			return
@@ -152,7 +152,7 @@ func (s *PrivateIdentityProvidersServer) Create(ctx context.Context,
 			)
 			err = grpcstatus.Errorf(
 				grpccodes.InvalidArgument,
-				"identity provider must be assigned to a specific organization tenant - please specify metadata.tenant in the request",
+				"identity provider must be assigned to a specific tenant - please specify metadata.tenant in the request",
 			)
 			return
 		}

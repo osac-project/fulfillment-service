@@ -238,7 +238,7 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 	}
 
 	roleName := role.GetMetadata().GetName()
-	organizationName := t.binding.GetMetadata().GetTenant()
+	tenantName := t.binding.GetMetadata().GetTenant()
 
 	// Map OSAC role to Keycloak roles
 	keycloakRoles, clientID := t.mapRoleToKeycloak(roleName)
@@ -253,9 +253,9 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 	for _, userID := range usersToRemove {
 		var err error
 		if clientID != "" {
-			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, organizationName, userID, clientID, keycloakRoles)
+			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, tenantName, userID, clientID, keycloakRoles)
 		} else {
-			err = t.r.idpClient.RemoveOrganizationRolesFromUser(ctx, organizationName, userID, keycloakRoles)
+			err = t.r.idpClient.RemoveTenantRolesFromUser(ctx, tenantName, userID, keycloakRoles)
 		}
 
 		if err != nil {
@@ -280,9 +280,9 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 	for _, userID := range usersToAdd {
 		var err error
 		if clientID != "" {
-			err = t.r.idpClient.AssignClientRolesToUser(ctx, organizationName, userID, clientID, keycloakRoles)
+			err = t.r.idpClient.AssignClientRolesToUser(ctx, tenantName, userID, clientID, keycloakRoles)
 		} else {
-			err = t.r.idpClient.AssignOrganizationRolesToUser(ctx, organizationName, userID, keycloakRoles)
+			err = t.r.idpClient.AssignTenantRolesToUser(ctx, tenantName, userID, keycloakRoles)
 		}
 
 		if err != nil {
@@ -336,7 +336,7 @@ func (t *task) syncRoleAssignments(ctx context.Context) error {
 	}
 
 	roleName := role.GetMetadata().GetName()
-	organizationName := t.binding.GetMetadata().GetTenant()
+	tenantName := t.binding.GetMetadata().GetTenant()
 
 	// Map OSAC role to Keycloak roles
 	keycloakRoles, clientID := t.mapRoleToKeycloak(roleName)
@@ -352,10 +352,10 @@ func (t *task) syncRoleAssignments(ctx context.Context) error {
 		var err error
 		if clientID != "" {
 			// Client-level role (e.g., realm-management)
-			err = t.r.idpClient.AssignClientRolesToUser(ctx, organizationName, userID, clientID, keycloakRoles)
+			err = t.r.idpClient.AssignClientRolesToUser(ctx, tenantName, userID, clientID, keycloakRoles)
 		} else {
-			// Organization-level role
-			err = t.r.idpClient.AssignOrganizationRolesToUser(ctx, organizationName, userID, keycloakRoles)
+			// Tenant-level role
+			err = t.r.idpClient.AssignTenantRolesToUser(ctx, tenantName, userID, keycloakRoles)
 		}
 
 		if err != nil {
@@ -419,7 +419,7 @@ func (t *task) delete(ctx context.Context) error {
 	}
 
 	roleName := role.GetMetadata().GetName()
-	organizationName := t.binding.GetMetadata().GetTenant()
+	tenantName := t.binding.GetMetadata().GetTenant()
 
 	// Map OSAC role to Keycloak roles
 	keycloakRoles, clientID := t.mapRoleToKeycloak(roleName)
@@ -437,10 +437,10 @@ func (t *task) delete(ctx context.Context) error {
 		var err error
 		if clientID != "" {
 			// Client-level role (e.g., realm-management)
-			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, organizationName, userID, clientID, keycloakRoles)
+			err = t.r.idpClient.RemoveClientRolesFromUser(ctx, tenantName, userID, clientID, keycloakRoles)
 		} else {
-			// Organization-level role
-			err = t.r.idpClient.RemoveOrganizationRolesFromUser(ctx, organizationName, userID, keycloakRoles)
+			// Tenant-level role
+			err = t.r.idpClient.RemoveTenantRolesFromUser(ctx, tenantName, userID, keycloakRoles)
 		}
 
 		if err != nil {

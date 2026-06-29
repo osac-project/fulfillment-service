@@ -147,15 +147,15 @@ func (b *ClientBuilder) Build() (result *Client, err error) {
 	return
 }
 
-// CreateOrganization creates a new organization (Keycloak organization in the configured realm).
-// Returns the created organization with server-assigned ID and any server defaults.
-func (c *Client) CreateOrganization(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
-	kcOrg := toKeycloakOrganization(org)
+// CreateTenant creates a new tenant (Keycloak organization in the configured realm).
+// Returns the created tenant with server-assigned ID and any server defaults.
+func (c *Client) CreateTenant(ctx context.Context, tenant *idp.Tenant) (*idp.Tenant, error) {
+	kcOrg := toKeycloakOrganization(tenant)
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, fmt.Sprintf("/admin/realms/%s/organizations", c.realmName), kcOrg)
 	if err != nil {
 		var apiErr *apiclient.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
-			return nil, fmt.Errorf("organization %q already exists: %w", org.Name, err)
+			return nil, fmt.Errorf("organization %q already exists: %w", tenant.Name, err)
 		}
 		return nil, fmt.Errorf("failed to create organization: %w", err)
 	}
@@ -163,11 +163,11 @@ func (c *Client) CreateOrganization(ctx context.Context, org *idp.Organization) 
 
 	// Keycloak's POST /admin/realms returns 201 with no body, so we fetch the created organization
 	// to get the server-assigned ID and verify the organization was actually created
-	return c.GetOrganization(ctx, org.Name)
+	return c.GetTenant(ctx, tenant.Name)
 }
 
-// GetOrganization retrieves an organization (Keycloak organization in the configured realm) by name.
-func (c *Client) GetOrganization(ctx context.Context, name string) (*idp.Organization, error) {
+// GetTenant retrieves a tenant (Keycloak organization in the configured realm) by name.
+func (c *Client) GetTenant(ctx context.Context, name string) (*idp.Tenant, error) {
 	query := url.Values{}
 	query.Add("search", name)
 	query.Add("exact", "true")
@@ -189,35 +189,35 @@ func (c *Client) GetOrganization(ctx context.Context, name string) (*idp.Organiz
 	return fromKeycloakOrganization(&kcOrg), nil
 }
 
-// UpdateOrganization updates an existing organization (Keycloak organization in the configured realm).
-// The organization must have a non-empty ID.
-func (c *Client) UpdateOrganization(ctx context.Context, org *idp.Organization) (*idp.Organization, error) {
-	if org == nil {
+// UpdateTenant updates an existing tenant (Keycloak organization in the configured realm).
+// The tenant must have a non-empty ID.
+func (c *Client) UpdateTenant(ctx context.Context, tenant *idp.Tenant) (*idp.Tenant, error) {
+	if tenant == nil {
 		return nil, fmt.Errorf("organization is required for update")
 	}
-	if org.ID == "" {
+	if tenant.ID == "" {
 		return nil, fmt.Errorf("organization ID is required for update")
 	}
-	kcOrg := toKeycloakOrganization(org)
-	path := fmt.Sprintf("/admin/realms/%s/organizations/%s", c.realmName, url.PathEscape(org.ID))
+	kcOrg := toKeycloakOrganization(tenant)
+	path := fmt.Sprintf("/admin/realms/%s/organizations/%s", c.realmName, url.PathEscape(tenant.ID))
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPut, path, kcOrg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update organization: %w", err)
 	}
 	response.Body.Close()
 
-	return c.GetOrganization(ctx, org.Name)
+	return c.GetTenant(ctx, tenant.Name)
 }
 
-// DeleteOrganization deletes an organization (Keycloak organization in the configured realm) by name.
-func (c *Client) DeleteOrganization(ctx context.Context, organizationName string) error {
+// DeleteTenant deletes a tenant (Keycloak organization in the configured realm) by name.
+func (c *Client) DeleteTenant(ctx context.Context, tenantName string) error {
 	// Delete the break-glass account first (Keycloak-specific: it belongs to realm, not organization)
-	breakGlassUsername := fmt.Sprintf("%s-osac-break-glass", organizationName)
-	if err := c.deleteBreakGlassAccount(ctx, organizationName, breakGlassUsername); err != nil {
+	breakGlassUsername := fmt.Sprintf("%s-osac-break-glass", tenantName)
+	if err := c.deleteBreakGlassAccount(ctx, tenantName, breakGlassUsername); err != nil {
 		return fmt.Errorf("failed to delete break-glass account: %w", err)
 	}
 
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -230,8 +230,8 @@ func (c *Client) DeleteOrganization(ctx context.Context, organizationName string
 	return nil
 }
 
-func (c *Client) AddUserToOrganization(ctx context.Context, organizationName string, userID string) error {
-	org, err := c.GetOrganization(ctx, organizationName)
+func (c *Client) AddUserToOrganization(ctx context.Context, tenantName string, userID string) error {
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -268,7 +268,7 @@ func (c *Client) CreateUserInRealm(ctx context.Context, user *idp.User) (*idp.Us
 // Returns the created user with ID populated.
 // If adding to the organization fails, the user is still created in the realm and can be
 // added to the organization later using AddUserToOrganization.
-func (c *Client) CreateUser(ctx context.Context, organizationName string, user *idp.User) (*idp.User, error) {
+func (c *Client) CreateUser(ctx context.Context, tenantName string, user *idp.User) (*idp.User, error) {
 	// Step 1: Create user in the OSAC realm
 	createdUser, err := c.CreateUserInRealm(ctx, user)
 	if err != nil {
@@ -276,11 +276,11 @@ func (c *Client) CreateUser(ctx context.Context, organizationName string, user *
 	}
 
 	// Step 2: Add user to the organization
-	err = c.AddUserToOrganization(ctx, organizationName, createdUser.ID)
+	err = c.AddUserToOrganization(ctx, tenantName, createdUser.ID)
 	if err != nil {
 		c.logger.WarnContext(ctx, "User created but failed to add to organization",
 			slog.String("user_id", createdUser.ID),
-			slog.String("organization", organizationName),
+			slog.String("organization", tenantName),
 			slog.Any("error", err),
 		)
 		return createdUser, fmt.Errorf("failed to add user to organization (user %s created in realm): %w", createdUser.ID, err)
@@ -290,7 +290,7 @@ func (c *Client) CreateUser(ctx context.Context, organizationName string, user *
 }
 
 // GetUser retrieves a user by ID from the realm.
-func (c *Client) GetUser(ctx context.Context, organizationName, userID string) (*idp.User, error) {
+func (c *Client) GetUser(ctx context.Context, tenantName, userID string) (*idp.User, error) {
 	response, err := c.httpClient.DoRequest(ctx, http.MethodGet, fmt.Sprintf("/admin/realms/%s/users/%s", c.realmName, url.PathEscape(userID)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
@@ -305,7 +305,7 @@ func (c *Client) GetUser(ctx context.Context, organizationName, userID string) (
 }
 
 // ListUsers lists all users (members) in an organization.
-func (c *Client) ListUsers(ctx context.Context, organizationName string) ([]*idp.User, error) {
+func (c *Client) ListUsers(ctx context.Context, tenantName string) ([]*idp.User, error) {
 	var allUsers []*idp.User
 	const maxPerPage = 100
 	first := 0
@@ -320,7 +320,7 @@ func (c *Client) ListUsers(ctx context.Context, organizationName string) ([]*idp
 		// Fetch one page of organization members
 		path := fmt.Sprintf("/admin/realms/%s/organizations/%s/members?first=%d&max=%d",
 			c.realmName,
-			url.PathEscape(organizationName), first, maxPerPage)
+			url.PathEscape(tenantName), first, maxPerPage)
 
 		response, err := c.httpClient.DoRequest(ctx, http.MethodGet, path, nil)
 		if err != nil {
@@ -353,14 +353,14 @@ func (c *Client) ListUsers(ctx context.Context, organizationName string) ([]*idp
 }
 
 // DeleteUserFromOrganization removes a user (member) from an organization.
-func (c *Client) DeleteUserFromOrganization(ctx context.Context, organizationName, userID string) error {
-	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, fmt.Sprintf("/admin/realms/%s/organizations/%s/members/%s", c.realmName, url.PathEscape(organizationName), url.PathEscape(userID)), nil)
+func (c *Client) DeleteUserFromOrganization(ctx context.Context, tenantName, userID string) error {
+	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, fmt.Sprintf("/admin/realms/%s/organizations/%s/members/%s", c.realmName, url.PathEscape(tenantName), url.PathEscape(userID)), nil)
 	if err != nil {
 		var apiErr *apiclient.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-			return fmt.Errorf("user %q not found in organization %q: %w", userID, organizationName, err)
+			return fmt.Errorf("user %q not found in organization %q: %w", userID, tenantName, err)
 		}
-		return fmt.Errorf("failed to remove user %q from organization %q: %w", userID, organizationName, err)
+		return fmt.Errorf("failed to remove user %q from organization %q: %w", userID, tenantName, err)
 	}
 	defer response.Body.Close()
 	return nil
@@ -378,13 +378,13 @@ func (c *Client) DeleteUserFromRealm(ctx context.Context, userID string) error {
 // DeleteUser deletes a user by ID from the realm.
 // Note: Deleting a user from the realm automatically removes them from all organizations,
 // so there's no need to explicitly remove them from the organization first.
-func (c *Client) DeleteUser(ctx context.Context, organizationName, userID string) error {
+func (c *Client) DeleteUser(ctx context.Context, tenantName, userID string) error {
 	return c.DeleteUserFromRealm(ctx, userID)
 }
 
-// ListOrganizationRoles lists all organization-level roles.
+// ListTenantRoles lists all tenant-level roles.
 // Note: Organizations in Keycloak don't have their own roles - they use realm roles.
-func (c *Client) ListOrganizationRoles(ctx context.Context, organizationName string) ([]*idp.Role, error) {
+func (c *Client) ListTenantRoles(ctx context.Context, tenantName string) ([]*idp.Role, error) {
 	// TODO: implement function
 	return nil, nil
 }
@@ -394,7 +394,7 @@ func (c *Client) ListOrganizationRoles(ctx context.Context, organizationName str
 // The clientID parameter accepts either format for convenience:
 //   - Human-readable clientId: "realm-management", "account", "my-app"
 //   - Internal UUID: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-func (c *Client) ListClientRoles(ctx context.Context, organizationName, clientID string) ([]*idp.Role, error) {
+func (c *Client) ListClientRoles(ctx context.Context, tenantName, clientID string) ([]*idp.Role, error) {
 	// Resolve to internal UUID
 	internalID, err := c.GetRealmClientByClientID(ctx, clientID, c.realmName)
 	if err != nil {
@@ -419,8 +419,8 @@ func (c *Client) ListClientRoles(ctx context.Context, organizationName, clientID
 	return roles, nil
 }
 
-// AssignOrganizationRolesToUser adds organization-level roles to a user.
-func (c *Client) AssignOrganizationRolesToUser(ctx context.Context, organizationName, userID string, roles []*idp.Role) error {
+// AssignTenantRolesToUser adds tenant-level roles to a user.
+func (c *Client) AssignTenantRolesToUser(ctx context.Context, tenantName, userID string, roles []*idp.Role) error {
 	// Fetch full role objects from Keycloak to get their IDs
 	kcRoles := make([]keycloakRole, 0, len(roles))
 	for _, role := range roles {
@@ -444,7 +444,7 @@ func (c *Client) AssignOrganizationRolesToUser(ctx context.Context, organization
 // The clientID parameter accepts either format:
 //   - Human-readable clientId: "realm-management", "account", "my-app"
 //   - Internal UUID: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-func (c *Client) AssignClientRolesToUser(ctx context.Context, organizationName, userID, clientID string, roles []*idp.Role) error {
+func (c *Client) AssignClientRolesToUser(ctx context.Context, tenantName, userID, clientID string, roles []*idp.Role) error {
 	// Resolve to internal UUID
 	internalID, err := c.GetRealmClientByClientID(ctx, clientID, c.realmName)
 	if err != nil {
@@ -464,8 +464,8 @@ func (c *Client) AssignClientRolesToUser(ctx context.Context, organizationName, 
 	return nil
 }
 
-// RemoveOrganizationRolesFromUser removes organization-level roles from a user.
-func (c *Client) RemoveOrganizationRolesFromUser(ctx context.Context, organizationName, userID string, roles []*idp.Role) error {
+// RemoveTenantRolesFromUser removes tenant-level roles from a user.
+func (c *Client) RemoveTenantRolesFromUser(ctx context.Context, tenantName, userID string, roles []*idp.Role) error {
 	// Fetch full role objects from Keycloak to get their IDs
 	kcRoles := make([]keycloakRole, 0, len(roles))
 	for _, role := range roles {
@@ -504,7 +504,7 @@ func (c *Client) RemoveRealmRolesFromUser(ctx context.Context, userID string, ro
 // The clientID parameter accepts either format:
 //   - Human-readable clientId: "realm-management", "account", "my-app"
 //   - Internal UUID: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-func (c *Client) RemoveClientRolesFromUser(ctx context.Context, organizationName, userID, clientID string, roles []*idp.Role) error {
+func (c *Client) RemoveClientRolesFromUser(ctx context.Context, tenantName, userID, clientID string, roles []*idp.Role) error {
 	// Resolve to internal UUID
 	internalID, err := c.GetRealmClientByClientID(ctx, clientID, c.realmName)
 	if err != nil {
@@ -524,8 +524,8 @@ func (c *Client) RemoveClientRolesFromUser(ctx context.Context, organizationName
 	return nil
 }
 
-// GetUserOrganizationRoles gets the organization-level roles assigned to a user.
-func (c *Client) GetUserOrganizationRoles(ctx context.Context, organizationName, userID string) ([]*idp.Role, error) {
+// GetUserTenantRoles gets the tenant-level roles assigned to a user.
+func (c *Client) GetUserTenantRoles(ctx context.Context, tenantName, userID string) ([]*idp.Role, error) {
 	// TODO: implement function
 	return nil, nil
 }
@@ -535,7 +535,7 @@ func (c *Client) GetUserOrganizationRoles(ctx context.Context, organizationName,
 // The clientID parameter accepts either format:
 //   - Human-readable clientId: "realm-management", "account", "my-app"
 //   - Internal UUID: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-func (c *Client) GetUserClientRoles(ctx context.Context, organizationName, userID, clientID string) ([]*idp.Role, error) {
+func (c *Client) GetUserClientRoles(ctx context.Context, tenantName, userID, clientID string) ([]*idp.Role, error) {
 	// Resolve to internal UUID
 	internalID, err := c.GetRealmClientByClientID(ctx, clientID, c.realmName)
 	if err != nil {
@@ -618,10 +618,10 @@ func (c *Client) GetRealmClientByClientID(ctx context.Context, clientID, realmNa
 	return internalUUID, nil
 }
 
-// AssignOrganizationAdminPermissions grants administrative access to an organization for the specified user.
+// AssignTenantAdminPermissions grants administrative access to a tenant for the specified user.
 //
 // For Keycloak, this assigns organization-level admin roles to the user.
-func (c *Client) AssignOrganizationAdminPermissions(ctx context.Context, organizationName, userID string) error {
+func (c *Client) AssignTenantAdminPermissions(ctx context.Context, tenantName, userID string) error {
 	// TODO: implement function
 	return nil
 }
@@ -688,7 +688,7 @@ func (c *Client) getUserByUsername(ctx context.Context, username string) (*idp.U
 // deleteBreakGlassAccount is a Keycloak-specific helper that deletes the break-glass account.
 // In Keycloak, the break-glass account belongs to the realm (not the organization),
 // so it must be explicitly deleted and won't be cascade-deleted with the organization.
-func (c *Client) deleteBreakGlassAccount(ctx context.Context, organizationName, breakGlassUsername string) error {
+func (c *Client) deleteBreakGlassAccount(ctx context.Context, tenantName, breakGlassUsername string) error {
 	// Query for the break-glass user by username
 	user, err := c.getUserByUsername(ctx, breakGlassUsername)
 	if err != nil {
@@ -702,7 +702,7 @@ func (c *Client) deleteBreakGlassAccount(ctx context.Context, organizationName, 
 	}
 
 	// Delete the break-glass user
-	err = c.DeleteUser(ctx, organizationName, user.ID)
+	err = c.DeleteUser(ctx, tenantName, user.ID)
 	if err != nil {
 		return fmt.Errorf("failed to delete break-glass user: %w", err)
 	}
@@ -806,13 +806,13 @@ func (c *Client) DeleteAuthorizationResource(ctx context.Context, resourceID str
 
 // CreateIdentityProvider creates an identity provider for a specific organization.
 // In Keycloak, this creates the IdP at realm level and links it to the organization.
-func (c *Client) CreateIdentityProvider(ctx context.Context, organizationName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
+func (c *Client) CreateIdentityProvider(ctx context.Context, tenantName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
 	if idpProvider == nil {
 		return nil, fmt.Errorf("identity provider is nil")
 	}
 	c.logger.InfoContext(ctx, "Creating identity provider",
 		slog.String("realm", c.realmName),
-		slog.String("organization", organizationName),
+		slog.String("organization", tenantName),
 		slog.String("alias", idpProvider.Alias),
 		slog.String("type", idpProvider.Type),
 	)
@@ -828,7 +828,7 @@ func (c *Client) CreateIdentityProvider(ctx context.Context, organizationName st
 	defer response.Body.Close()
 
 	// Step 2: Link to organization
-	err = c.linkIdentityProviderToOrganization(ctx, organizationName, idpProvider.Alias)
+	err = c.linkIdentityProviderToOrganization(ctx, tenantName, idpProvider.Alias)
 	if err != nil {
 		// Try to clean up the realm-level IdP if linking fails
 		if cleanupErr := c.deleteIdentityProviderFromRealm(ctx, idpProvider.Alias); cleanupErr != nil {
@@ -838,11 +838,11 @@ func (c *Client) CreateIdentityProvider(ctx context.Context, organizationName st
 	}
 
 	// Step 3: Fetch and return (Keycloak returns empty body on creation)
-	result, err := c.GetIdentityProvider(ctx, organizationName, idpProvider.Alias)
+	result, err := c.GetIdentityProvider(ctx, tenantName, idpProvider.Alias)
 	if err != nil {
 		// IdP was successfully created and linked - treat read failure as non-fatal
 		c.logger.WarnContext(ctx, "Created identity provider but failed to fetch it back",
-			slog.String("organization", organizationName),
+			slog.String("organization", tenantName),
 			slog.String("alias", idpProvider.Alias),
 			slog.String("error", err.Error()),
 		)
@@ -859,15 +859,15 @@ func (c *Client) CreateIdentityProvider(ctx context.Context, organizationName st
 }
 
 // GetIdentityProvider retrieves an identity provider for a specific organization.
-func (c *Client) GetIdentityProvider(ctx context.Context, organizationName, alias string) (*idp.IdentityProvider, error) {
+func (c *Client) GetIdentityProvider(ctx context.Context, tenantName, alias string) (*idp.IdentityProvider, error) {
 	c.logger.InfoContext(ctx, "Getting identity provider",
 		slog.String("realm", c.realmName),
-		slog.String("organization", organizationName),
+		slog.String("organization", tenantName),
 		slog.String("alias", alias),
 	)
 
 	// Get the organization to obtain its ID
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -895,10 +895,10 @@ func (c *Client) GetIdentityProvider(ctx context.Context, organizationName, alia
 
 // DeleteIdentityProvider deletes an identity provider for a specific organization.
 // In Keycloak, this deletes the IdP at realm level (which auto-removes from all organizations).
-func (c *Client) DeleteIdentityProvider(ctx context.Context, organizationName, alias string) error {
+func (c *Client) DeleteIdentityProvider(ctx context.Context, tenantName, alias string) error {
 	c.logger.InfoContext(ctx, "Deleting identity provider",
 		slog.String("realm", c.realmName),
-		slog.String("organization", organizationName),
+		slog.String("organization", tenantName),
 		slog.String("alias", alias),
 	)
 
@@ -923,14 +923,14 @@ func (c *Client) deleteIdentityProviderFromRealm(ctx context.Context, alias stri
 }
 
 // linkIdentityProviderToOrganization is an internal helper that links an IdP to an organization.
-func (c *Client) linkIdentityProviderToOrganization(ctx context.Context, organizationName, alias string) error {
+func (c *Client) linkIdentityProviderToOrganization(ctx context.Context, tenantName, alias string) error {
 	c.logger.InfoContext(ctx, "Linking identity provider to organization",
-		slog.String("organization", organizationName),
+		slog.String("organization", tenantName),
 		slog.String("alias", alias),
 	)
 
 	// Get the organization to obtain its ID
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -952,13 +952,13 @@ func (c *Client) linkIdentityProviderToOrganization(ctx context.Context, organiz
 }
 
 // ListIdentityProviders lists all identity providers for a specific organization.
-func (c *Client) ListIdentityProviders(ctx context.Context, organizationName string) ([]*idp.IdentityProvider, error) {
+func (c *Client) ListIdentityProviders(ctx context.Context, tenantName string) ([]*idp.IdentityProvider, error) {
 	c.logger.InfoContext(ctx, "Listing organization identity providers",
-		slog.String("organization", organizationName),
+		slog.String("organization", tenantName),
 	)
 
 	// Get the organization to obtain its ID
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -985,7 +985,7 @@ func (c *Client) ListIdentityProviders(ctx context.Context, organizationName str
 	}
 
 	c.logger.InfoContext(ctx, "Listed organization identity providers",
-		slog.String("organization", organizationName),
+		slog.String("organization", tenantName),
 		slog.Int("count", len(idps)),
 	)
 

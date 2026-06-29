@@ -40,14 +40,14 @@ import (
 // Organization groups are scoped per organization, so paths can be simple and readable.
 // This method creates the full hierarchy if parent groups don't exist.
 // See https://www.keycloak.org/2026/04/org-groups for details.
-func (c *Client) CreateAuthorizationGroup(ctx context.Context, organizationName, groupPath string) (string, error) {
-	c.logger.DebugContext(ctx, "Creating organization authorization group",
-		slog.String("organizationName", organizationName),
+func (c *Client) CreateAuthorizationGroup(ctx context.Context, tenantName, groupPath string) (string, error) {
+	c.logger.DebugContext(ctx, "Creating tenant authorization group",
+		slog.String("tenantName", tenantName),
 		slog.String("groupPath", groupPath),
 	)
 
 	// Get the organization ID first
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -68,8 +68,8 @@ func (c *Client) CreateAuthorizationGroup(ctx context.Context, organizationName,
 		return "", fmt.Errorf("group was created but ID not found in cache: %s", groupPath)
 	}
 
-	c.logger.DebugContext(ctx, "Created organization authorization group",
-		slog.String("organizationName", organizationName),
+	c.logger.DebugContext(ctx, "Created tenant authorization group",
+		slog.String("tenantName", tenantName),
 		slog.String("groupPath", groupPath),
 		slog.String("groupID", groupID),
 	)
@@ -78,14 +78,14 @@ func (c *Client) CreateAuthorizationGroup(ctx context.Context, organizationName,
 }
 
 // DeleteAuthorizationGroup deletes a Keycloak organization group by ID.
-func (c *Client) DeleteAuthorizationGroup(ctx context.Context, organizationName, groupID string) error {
+func (c *Client) DeleteAuthorizationGroup(ctx context.Context, tenantName, groupID string) error {
 	c.logger.DebugContext(ctx, "Deleting organization authorization group",
-		slog.String("organizationName", organizationName),
+		slog.String("tenantName", tenantName),
 		slog.String("groupID", groupID),
 	)
 
 	// Get the organization ID first
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -104,7 +104,7 @@ func (c *Client) DeleteAuthorizationGroup(ctx context.Context, organizationName,
 	defer response.Body.Close()
 
 	c.logger.DebugContext(ctx, "Deleted organization authorization group",
-		slog.String("organizationName", organizationName),
+		slog.String("tenantName", tenantName),
 		slog.String("groupID", groupID),
 	)
 
@@ -306,13 +306,13 @@ func searchGroupRecursively(group groupNode, targetPath string) string {
 
 // GetGroupIDByPath gets a Keycloak organization group ID by its path.
 // This is exposed for use by the ResourceManager.
-func (c *Client) GetGroupIDByPath(ctx context.Context, organizationName, groupPath string) (string, error) {
-	return c.getGroupIDByPath(ctx, organizationName, groupPath)
+func (c *Client) GetGroupIDByPath(ctx context.Context, tenantName, groupPath string) (string, error) {
+	return c.getGroupIDByPath(ctx, tenantName, groupPath)
 }
 
-func (c *Client) getGroupIDByPath(ctx context.Context, organizationName, groupPath string) (string, error) {
+func (c *Client) getGroupIDByPath(ctx context.Context, tenantName, groupPath string) (string, error) {
 	// Get the organization ID first
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -356,9 +356,9 @@ func (c *Client) getUserIDByUsername(ctx context.Context, username string) (stri
 }
 
 // AddUserToGroup adds a user to an organization group by group ID.
-func (c *Client) AddUserToGroup(ctx context.Context, organizationName, username, groupID string) error {
+func (c *Client) AddUserToGroup(ctx context.Context, tenantName, username, groupID string) error {
 	c.logger.DebugContext(ctx, "Adding user to organization group",
-		slog.String("organizationName", organizationName),
+		slog.String("tenantName", tenantName),
 		slog.String("!username", username),
 		slog.String("groupID", groupID),
 	)
@@ -375,7 +375,7 @@ func (c *Client) AddUserToGroup(ctx context.Context, organizationName, username,
 	)
 
 	// Get the organization ID
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -404,7 +404,7 @@ func (c *Client) AddUserToGroup(ctx context.Context, organizationName, username,
 	defer response.Body.Close()
 
 	c.logger.InfoContext(ctx, "Added user to organization group",
-		slog.String("organizationName", organizationName),
+		slog.String("tenantName", tenantName),
 		slog.String("!username", username),
 		slog.String("!uuid", userUUID),
 		slog.String("groupID", groupID),
@@ -448,9 +448,9 @@ func (c *Client) ensureOrganizationMember(ctx context.Context, orgID, userUUID s
 }
 
 // RemoveUserFromGroup removes a user from an organization group by group ID.
-func (c *Client) RemoveUserFromGroup(ctx context.Context, organizationName, username, groupID string) error {
+func (c *Client) RemoveUserFromGroup(ctx context.Context, tenantName, username, groupID string) error {
 	c.logger.DebugContext(ctx, "Removing user from organization group",
-		slog.String("organizationName", organizationName),
+		slog.String("tenantName", tenantName),
 		slog.String("!username", username),
 		slog.String("groupID", groupID),
 	)
@@ -467,7 +467,7 @@ func (c *Client) RemoveUserFromGroup(ctx context.Context, organizationName, user
 	)
 
 	// Get the organization ID
-	org, err := c.GetOrganization(ctx, organizationName)
+	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
 		return fmt.Errorf("failed to get organization: %w", err)
 	}
@@ -488,7 +488,7 @@ func (c *Client) RemoveUserFromGroup(ctx context.Context, organizationName, user
 	defer response.Body.Close()
 
 	c.logger.InfoContext(ctx, "Removed user from organization group",
-		slog.String("organizationName", organizationName),
+		slog.String("tenantName", tenantName),
 		slog.String("!username", username),
 		slog.String("!uuid", userUUID),
 		slog.String("groupID", groupID),
