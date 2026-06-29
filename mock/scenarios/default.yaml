@@ -1,0 +1,509 @@
+name: "Default UI Development Scenario"
+description: >
+  Pre-populated resources for a realistic UI development environment.
+  Includes resources across multiple tenants in various states.
+
+resources:
+  # --- Platform resources (no tenant, admin-only creation) ---
+
+  - type: network_classes
+    id: "nc-udn-001"
+    metadata:
+      name: "udn-net"
+    spec:
+      implementation_strategy: "cudn_net"
+      capabilities:
+        supports_ipv4: true
+        supports_ipv6: true
+        supports_dual_stack: true
+    status:
+      state: "NETWORK_CLASS_STATE_READY"
+
+  - type: network_classes
+    id: "nc-phys-001"
+    metadata:
+      name: "phys-net"
+    spec:
+      implementation_strategy: "phys_net"
+      capabilities:
+        supports_ipv4: true
+        supports_ipv6: false
+        supports_dual_stack: false
+    status:
+      state: "NETWORK_CLASS_STATE_READY"
+
+  - type: instance_types
+    id: "it-small-001"
+    metadata:
+      name: "small"
+    title: "Small"
+    spec:
+      cpus: 2
+      memory_gib: 4
+
+  - type: instance_types
+    id: "it-medium-001"
+    metadata:
+      name: "medium"
+    title: "Medium"
+    spec:
+      cpus: 4
+      memory_gib: 8
+
+  - type: instance_types
+    id: "it-large-001"
+    metadata:
+      name: "large"
+    title: "Large"
+    spec:
+      cpus: 8
+      memory_gib: 16
+
+  - type: host_types
+    id: "ht-standard-001"
+    metadata:
+      name: "standard"
+    title: "Standard Host"
+    spec:
+      cpus: 64
+      memory_gib: 256
+
+  - type: cluster_templates
+    id: "tpl-ocp-417-small"
+    metadata:
+      name: "ocp-4-17-small"
+    title: "OpenShift 4.17 Small"
+    description: "Single control plane, 2 worker nodes"
+
+  - type: cluster_templates
+    id: "tpl-ocp-417-medium"
+    metadata:
+      name: "ocp-4-17-medium"
+    title: "OpenShift 4.17 Medium"
+    description: "3 control plane nodes, 4 worker nodes"
+
+  - type: compute_instance_templates
+    id: "tpl-ci-rhel9"
+    metadata:
+      name: "rhel9-base"
+    title: "RHEL 9 Base"
+    description: "Red Hat Enterprise Linux 9 base image"
+
+  - type: public_ip_pools
+    id: "pool-public-001"
+    metadata:
+      name: "public-ipv4"
+    spec:
+      cidr: "203.0.113.0/24"
+    status:
+      state: "PUBLIC_IP_POOL_STATE_READY"
+
+  # --- Tenants ---
+
+  - type: tenants
+    id: "tenant-engineering"
+    metadata:
+      name: "engineering"
+    spec: {}
+    status: {}
+
+  - type: tenants
+    id: "tenant-sales"
+    metadata:
+      name: "sales"
+    spec: {}
+    status: {}
+
+  # --- Engineering tenant: networking ---
+
+  - type: virtual_networks
+    id: "vn-eng-prod"
+    metadata:
+      name: "prod-network"
+      tenant: "engineering"
+    spec:
+      network_class: "nc-udn-001"
+      ipv4_cidr: "10.0.0.0/16"
+      capabilities:
+        enable_ipv4: true
+    status:
+      state: "VIRTUAL_NETWORK_STATE_READY"
+      message: ""
+
+  - type: virtual_networks
+    id: "vn-eng-staging"
+    metadata:
+      name: "staging-network"
+      tenant: "engineering"
+    spec:
+      network_class: "nc-udn-001"
+      ipv4_cidr: "10.1.0.0/16"
+      capabilities:
+        enable_ipv4: true
+    status:
+      state: "VIRTUAL_NETWORK_STATE_PENDING"
+
+  - type: virtual_networks
+    id: "vn-eng-failed"
+    metadata:
+      name: "bad-network"
+      tenant: "engineering"
+    spec:
+      network_class: "nc-phys-001"
+      ipv4_cidr: "invalid-cidr"
+      ipv6_cidr: "2001:db8::/48"
+      capabilities:
+        enable_dual_stack: true
+    status:
+      state: "VIRTUAL_NETWORK_STATE_FAILED"
+      message: "NetworkClass 'phys-net' does not support dual-stack"
+
+  - type: subnets
+    id: "sn-eng-prod-a"
+    metadata:
+      name: "prod-subnet-a"
+      tenant: "engineering"
+      annotations:
+        "osac.openshift.io/owner-reference": "vn-eng-prod"
+    spec:
+      virtual_network: "vn-eng-prod"
+      ipv4_cidr: "10.0.1.0/24"
+    status:
+      state: "SUBNET_STATE_READY"
+
+  - type: subnets
+    id: "sn-eng-prod-b"
+    metadata:
+      name: "prod-subnet-b"
+      tenant: "engineering"
+      annotations:
+        "osac.openshift.io/owner-reference": "vn-eng-prod"
+    spec:
+      virtual_network: "vn-eng-prod"
+      ipv4_cidr: "10.0.2.0/24"
+    status:
+      state: "SUBNET_STATE_READY"
+
+  - type: security_groups
+    id: "sg-eng-web"
+    metadata:
+      name: "web-traffic"
+      tenant: "engineering"
+      annotations:
+        "osac.openshift.io/owner-reference": "vn-eng-prod"
+    spec:
+      virtual_network: "vn-eng-prod"
+      ingress:
+        - protocol: "TCP"
+          port_range_min: 80
+          port_range_max: 80
+          ipv4_cidr: "0.0.0.0/0"
+        - protocol: "TCP"
+          port_range_min: 443
+          port_range_max: 443
+          ipv4_cidr: "0.0.0.0/0"
+      egress:
+        - protocol: "TCP"
+          port_range_min: 0
+          port_range_max: 65535
+          ipv4_cidr: "0.0.0.0/0"
+    status:
+      state: "SECURITY_GROUP_STATE_READY"
+
+  - type: security_groups
+    id: "sg-eng-ssh"
+    metadata:
+      name: "ssh-access"
+      tenant: "engineering"
+      annotations:
+        "osac.openshift.io/owner-reference": "vn-eng-prod"
+    spec:
+      virtual_network: "vn-eng-prod"
+      ingress:
+        - protocol: "TCP"
+          port_range_min: 22
+          port_range_max: 22
+          ipv4_cidr: "10.0.0.0/8"
+    status:
+      state: "SECURITY_GROUP_STATE_READY"
+
+  # --- Engineering tenant: compute instances ---
+
+  - type: compute_instances
+    id: "ci-eng-web-1"
+    metadata:
+      name: "web-server-1"
+      tenant: "engineering"
+      labels:
+        role: "web"
+        env: "production"
+    spec:
+      instance_type: "it-medium-001"
+      image:
+        source_type: "IMAGE_SOURCE_TYPE_URL"
+        source_ref: "https://images.example.com/rhel9.qcow2"
+      network_attachments:
+        - subnet: "sn-eng-prod-a"
+          security_groups: ["sg-eng-web", "sg-eng-ssh"]
+    status:
+      state: "COMPUTE_INSTANCE_STATE_RUNNING"
+      internal_ip_address: "10.0.1.10"
+
+  - type: compute_instances
+    id: "ci-eng-web-2"
+    metadata:
+      name: "web-server-2"
+      tenant: "engineering"
+      labels:
+        role: "web"
+        env: "production"
+    spec:
+      instance_type: "it-medium-001"
+      image:
+        source_type: "IMAGE_SOURCE_TYPE_URL"
+        source_ref: "https://images.example.com/rhel9.qcow2"
+      network_attachments:
+        - subnet: "sn-eng-prod-a"
+          security_groups: ["sg-eng-web"]
+    status:
+      state: "COMPUTE_INSTANCE_STATE_RUNNING"
+      internal_ip_address: "10.0.1.11"
+
+  - type: compute_instances
+    id: "ci-eng-db-1"
+    metadata:
+      name: "database-1"
+      tenant: "engineering"
+      labels:
+        role: "database"
+        env: "production"
+    spec:
+      instance_type: "it-large-001"
+      image:
+        source_type: "IMAGE_SOURCE_TYPE_URL"
+        source_ref: "https://images.example.com/rhel9.qcow2"
+      network_attachments:
+        - subnet: "sn-eng-prod-b"
+          security_groups: ["sg-eng-ssh"]
+    status:
+      state: "COMPUTE_INSTANCE_STATE_RUNNING"
+      internal_ip_address: "10.0.2.10"
+
+  - type: compute_instances
+    id: "ci-eng-new"
+    metadata:
+      name: "staging-app"
+      tenant: "engineering"
+      labels:
+        role: "app"
+        env: "staging"
+    spec:
+      instance_type: "it-small-001"
+      image:
+        source_type: "IMAGE_SOURCE_TYPE_URL"
+        source_ref: "https://images.example.com/rhel9.qcow2"
+      network_attachments:
+        - subnet: "sn-eng-prod-a"
+    status:
+      state: "COMPUTE_INSTANCE_STATE_STARTING"
+
+  - type: compute_instances
+    id: "ci-eng-stopped"
+    metadata:
+      name: "dev-box"
+      tenant: "engineering"
+      labels:
+        role: "dev"
+        env: "development"
+    spec:
+      instance_type: "it-small-001"
+      run_strategy: "Halted"
+    status:
+      state: "COMPUTE_INSTANCE_STATE_STOPPED"
+
+  # --- Engineering tenant: clusters ---
+
+  - type: clusters
+    id: "cl-eng-prod"
+    metadata:
+      name: "prod-cluster"
+      tenant: "engineering"
+      labels:
+        env: "production"
+    spec:
+      template: "tpl-ocp-417-medium"
+    status:
+      state: "CLUSTER_STATE_READY"
+      api_url: "https://api.prod-cluster.mock.osac.dev:6443"
+      console_url: "https://console.prod-cluster.mock.osac.dev"
+
+  - type: clusters
+    id: "cl-eng-staging"
+    metadata:
+      name: "staging-cluster"
+      tenant: "engineering"
+      labels:
+        env: "staging"
+    spec:
+      template: "tpl-ocp-417-small"
+    status:
+      state: "CLUSTER_STATE_PROGRESSING"
+
+  - type: clusters
+    id: "cl-eng-failed"
+    metadata:
+      name: "broken-cluster"
+      tenant: "engineering"
+      labels:
+        env: "test"
+    spec:
+      template: "tpl-ocp-417-small"
+    status:
+      state: "CLUSTER_STATE_FAILED"
+      message: "Insufficient host capacity in region"
+
+  # --- Engineering tenant: public IPs ---
+
+  - type: public_ips
+    id: "pip-eng-web"
+    metadata:
+      name: "web-public-ip"
+      tenant: "engineering"
+    spec:
+      pool: "pool-public-001"
+    status:
+      state: "PUBLIC_IP_STATE_ALLOCATED"
+      address: "203.0.113.10"
+      pool: "pool-public-001"
+
+  - type: public_ip_attachments
+    id: "pipa-eng-web"
+    metadata:
+      name: "web-ip-attachment"
+      tenant: "engineering"
+    spec:
+      public_ip: "pip-eng-web"
+      target: "ci-eng-web-1"
+    status:
+      state: "PUBLIC_IP_ATTACHMENT_STATE_READY"
+
+  # --- Sales tenant: networking ---
+
+  - type: virtual_networks
+    id: "vn-sales-prod"
+    metadata:
+      name: "sales-network"
+      tenant: "sales"
+    spec:
+      network_class: "nc-udn-001"
+      ipv4_cidr: "10.10.0.0/16"
+      capabilities:
+        enable_ipv4: true
+    status:
+      state: "VIRTUAL_NETWORK_STATE_READY"
+
+  - type: subnets
+    id: "sn-sales-prod"
+    metadata:
+      name: "sales-subnet"
+      tenant: "sales"
+      annotations:
+        "osac.openshift.io/owner-reference": "vn-sales-prod"
+    spec:
+      virtual_network: "vn-sales-prod"
+      ipv4_cidr: "10.10.1.0/24"
+    status:
+      state: "SUBNET_STATE_READY"
+
+  # --- Sales tenant: compute ---
+
+  - type: compute_instances
+    id: "ci-sales-crm"
+    metadata:
+      name: "crm-server"
+      tenant: "sales"
+      labels:
+        role: "crm"
+    spec:
+      instance_type: "it-medium-001"
+    status:
+      state: "COMPUTE_INSTANCE_STATE_RUNNING"
+      internal_ip_address: "10.10.1.10"
+
+  # --- Users and roles ---
+
+  - type: users
+    id: "user-adam"
+    metadata:
+      name: "adam"
+      tenant: "engineering"
+    spec:
+      email: "adam@example.com"
+
+  - type: users
+    id: "user-ben"
+    metadata:
+      name: "ben"
+      tenant: "engineering"
+    spec:
+      email: "ben@example.com"
+
+  - type: users
+    id: "user-charles"
+    metadata:
+      name: "charles"
+      tenant: "sales"
+    spec:
+      email: "charles@example.com"
+
+  - type: roles
+    id: "role-tenant-admin"
+    metadata:
+      name: "tenant-admin"
+    spec:
+      permissions:
+        - "clusters:*"
+        - "compute_instances:*"
+        - "virtual_networks:*"
+        - "subnets:*"
+        - "security_groups:*"
+        - "users:*"
+
+  - type: roles
+    id: "role-tenant-user"
+    metadata:
+      name: "tenant-user"
+    spec:
+      permissions:
+        - "clusters:read"
+        - "compute_instances:*"
+        - "virtual_networks:read"
+        - "subnets:read"
+        - "security_groups:read"
+
+  - type: role_bindings
+    id: "rb-adam-admin"
+    metadata:
+      name: "adam-engineering-admin"
+      tenant: "engineering"
+    spec:
+      role: "role-tenant-admin"
+      user: "user-adam"
+
+  - type: role_bindings
+    id: "rb-ben-user"
+    metadata:
+      name: "ben-engineering-user"
+      tenant: "engineering"
+    spec:
+      role: "role-tenant-user"
+      user: "user-ben"
+
+  - type: role_bindings
+    id: "rb-charles-user"
+    metadata:
+      name: "charles-sales-user"
+      tenant: "sales"
+    spec:
+      role: "role-tenant-user"
+      user: "user-charles"
