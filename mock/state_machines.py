@@ -17,7 +17,6 @@ def _random_ip(base: str = "10.0.1") -> str:
 
 
 def _populate_cluster_ready(obj: dict) -> dict:
-    resource_id = obj.get("id", "unknown")
     name = obj.get("metadata", {}).get("name", "cluster")
     return {
         "status": {

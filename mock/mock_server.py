@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -96,7 +95,7 @@ def create_app(
                 count = await load_scenario(store, sp)
                 print(f"Loaded {count} resources from {sp}")
         ticker_task = asyncio.create_task(run_ticker(store))
-        print(f"State machine ticker started")
+        print("State machine ticker started")
         yield
         if ticker_task:
             ticker_task.cancel()
