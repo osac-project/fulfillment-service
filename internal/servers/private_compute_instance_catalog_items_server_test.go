@@ -322,6 +322,8 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			Expect(fd1.GetPath()).To(Equal("spec.run_strategy"))
 			Expect(fd1.GetDisplayName()).To(Equal("Run Strategy"))
 			Expect(fd1.GetEditable()).To(BeFalse())
+			Expect(fd1.GetDefault()).ToNot(BeNil())
+			Expect(fd1.GetDefault().GetNumberValue()).To(Equal(16.0))
 		})
 
 		It("Delete object", func() {
