@@ -38,7 +38,7 @@ jobs:
           AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
         run: |
           case "${AUTHOR_ASSOCIATION}" in
-            OWNER|MEMBER|COLLABORATOR)
+            OWNER|MEMBER|COLLABORATOR|CONTRIBUTOR)
               echo "PR author association is ${AUTHOR_ASSOCIATION} — allowing fork e2e."
               ;;
             *)
