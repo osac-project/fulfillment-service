@@ -53,7 +53,7 @@ var _ = Describe("Private identity providers server", func() {
 		_, err = tx.Exec(ctx,
 			`insert into tenants (id, name, tenant, creator, data)
 			 values ($1, $2, $3, $4, $5) on conflict do nothing`,
-			"test-org", "test-org", "test-org", "system", "{}")
+			"test-tenant", "test-tenant", "test-tenant", "system", "{}")
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -63,7 +63,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-ldap",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test LDAP",
@@ -97,7 +97,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-oidc",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test OIDC",
@@ -119,7 +119,7 @@ var _ = Describe("Private identity providers server", func() {
 		Expect(response).ToNot(BeNil())
 		Expect(response.Object).ToNot(BeNil())
 		// Tenant should be preserved from the request
-		Expect(response.Object.Metadata.Tenant).To(Equal("test-org"))
+		Expect(response.Object.Metadata.Tenant).To(Equal("test-tenant"))
 	})
 
 	It("Lists identity providers", func() {
@@ -128,7 +128,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-ldap",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test LDAP",
@@ -161,7 +161,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-ldap",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test LDAP",
@@ -193,7 +193,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-ldap",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test LDAP",
@@ -223,7 +223,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-ldap",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test LDAP",
@@ -264,7 +264,7 @@ var _ = Describe("Private identity providers server", func() {
 		response, err := privateServer.Create(ctx, privatev1.IdentityProvidersCreateRequest_builder{
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test LDAP",
@@ -281,7 +281,7 @@ var _ = Describe("Private identity providers server", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response).ToNot(BeNil())
 		// Tenant should be preserved from the request
-		Expect(response.Object.Metadata.Tenant).To(Equal("test-org"))
+		Expect(response.Object.Metadata.Tenant).To(Equal("test-tenant"))
 	})
 
 	It("Rejects update of the name of an identity provider", func() {
@@ -289,7 +289,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-ldap",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test LDAP",
@@ -334,7 +334,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-ldap",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test LDAP",
@@ -380,7 +380,7 @@ var _ = Describe("Private identity providers server", func() {
 			Object: privatev1.IdentityProvider_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "test-oidc",
-					Tenant: "test-org", // Must specify tenant explicitly
+					Tenant: "test-tenant", // Must specify tenant explicitly
 				}.Build(),
 				Spec: privatev1.IdentityProviderSpec_builder{
 					Title:   "Test OIDC",

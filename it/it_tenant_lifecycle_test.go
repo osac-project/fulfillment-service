@@ -176,7 +176,7 @@ func verifyTenantRemovedFromKeycloak(ctx context.Context, name string) {
 }
 
 // loginAsBreakGlass creates a gRPC connection authenticated as the break-glass user
-// for the given organization. It waits for the org to reach SYNCED, retrieves or sets
+// for the given tenant. It waits for the tenant to reach SYNCED, retrieves or sets
 // the break-glass password, clears the UPDATE_PASSWORD required action, and returns
 // a gRPC connection and the token source. The connection is registered for cleanup.
 func loginAsBreakGlass(

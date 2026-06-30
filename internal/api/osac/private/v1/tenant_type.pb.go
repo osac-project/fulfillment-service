@@ -335,7 +335,7 @@ type TenantStatus struct {
 	// For SYNCED state, this is typically empty or contains confirmation like "Tenant synced to IDP".
 	Message *string `protobuf:"bytes,3,opt,name=message,proto3,oneof" json:"message,omitempty"`
 	// Name of the tenant created in the identity provider.
-	// Different providers use different terminology (Keycloak: realm, Auth0: tenant, Okta: organization),
+	// Different providers use different terminology (Keycloak: organization, Auth0: tenant, Okta: organization),
 	// but this field generically stores the IDP-side tenant identifier.
 	// Typically matches the tenant name but stored here for reference.
 	// This is set by the controller after successful IDP sync.
@@ -473,7 +473,7 @@ type TenantStatus_builder struct {
 	// For SYNCED state, this is typically empty or contains confirmation like "Tenant synced to IDP".
 	Message *string
 	// Name of the tenant created in the identity provider.
-	// Different providers use different terminology (Keycloak: realm, Auth0: tenant, Okta: organization),
+	// Different providers use different terminology (Keycloak: organization, Auth0: tenant, Okta: organization),
 	// but this field generically stores the IDP-side tenant identifier.
 	// Typically matches the tenant name but stored here for reference.
 	// This is set by the controller after successful IDP sync.

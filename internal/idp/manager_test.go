@@ -23,9 +23,9 @@ import (
 
 // mockClient is a mock IdP client for testing.
 type mockClient struct {
-	createdRealm        *Tenant
+	createdTenant       *Tenant
 	createdUsers        []*User
-	deletedRealm        string
+	deletedTenant       string
 	deletedUsers        []string                      // Track deleted user IDs
 	userRoleAssignments map[string]map[string][]*Role // userID -> clientID -> roles
 	failUserCreation    bool                          // Trigger user creation failure
@@ -37,45 +37,45 @@ type mockClient struct {
 	tenantUpdateCalled  bool                          // Track whether UpdateTenant was called
 }
 
-func (m *mockClient) CreateTenant(ctx context.Context, org *Tenant) (*Tenant, error) {
+func (m *mockClient) CreateTenant(ctx context.Context, tenant *Tenant) (*Tenant, error) {
 	// Create a copy to avoid mutation
-	createdOrg := &Tenant{
-		ID:          org.ID,
-		Name:        org.Name,
-		DisplayName: org.DisplayName,
-		Enabled:     org.Enabled,
-		Attributes:  org.Attributes,
-		Domains:     org.Domains,
+	createdTenant := &Tenant{
+		ID:          tenant.ID,
+		Name:        tenant.Name,
+		DisplayName: tenant.DisplayName,
+		Enabled:     tenant.Enabled,
+		Attributes:  tenant.Attributes,
+		Domains:     tenant.Domains,
 	}
-	m.createdRealm = createdOrg
-	return createdOrg, nil
+	m.createdTenant = createdTenant
+	return createdTenant, nil
 }
 
 func (m *mockClient) GetTenant(ctx context.Context, name string) (*Tenant, error) {
 	if m.failTenantGet {
-		return nil, fmt.Errorf("simulated get organization failure")
+		return nil, fmt.Errorf("simulated get tenant failure")
 	}
 	if m.returnNilTenant {
 		return nil, nil
 	}
-	return m.createdRealm, nil
+	return m.createdTenant, nil
 }
 
-func (m *mockClient) UpdateTenant(ctx context.Context, org *Tenant) (*Tenant, error) {
+func (m *mockClient) UpdateTenant(ctx context.Context, tenant *Tenant) (*Tenant, error) {
 	m.tenantUpdateCalled = true
 	if m.failTenantUpdate {
-		return nil, fmt.Errorf("simulated update organization failure")
+		return nil, fmt.Errorf("simulated update tenant failure")
 	}
-	if m.createdRealm != nil {
-		m.createdRealm.Domains = org.Domains
-		m.createdRealm.Enabled = org.Enabled
+	if m.createdTenant != nil {
+		m.createdTenant.Domains = tenant.Domains
+		m.createdTenant.Enabled = tenant.Enabled
 	}
-	return m.createdRealm, nil
+	return m.createdTenant, nil
 }
 
 func (m *mockClient) DeleteTenant(ctx context.Context, name string) error {
 	if m.failTenantDeletion {
-		return fmt.Errorf("simulated organization deletion failure")
+		return fmt.Errorf("simulated tenant deletion failure")
 	}
 
 	// Simulate Keycloak behavior: delete break-glass account first
@@ -87,7 +87,7 @@ func (m *mockClient) DeleteTenant(ctx context.Context, name string) error {
 		}
 	}
 
-	m.deletedRealm = name
+	m.deletedTenant = name
 	return nil
 }
 
@@ -235,7 +235,7 @@ func (m *mockClient) AssignIdpManagerPermissions(ctx context.Context, userID str
 		{ID: "10", Name: "view-identity-providers", ClientRole: true},
 		{ID: "7", Name: "view-realm", ClientRole: true},
 	}
-	// Use empty organization name since it's no longer a parameter
+	// Use empty tenant name since it's no longer a parameter
 	return m.AssignClientRolesToUser(ctx, "", userID, "realm-management", roles)
 }
 
@@ -323,8 +323,8 @@ var _ = Describe("TenantManager", func() {
 	Describe("CreateTenant", func() {
 		It("creates a tenant with break-glass account", func() {
 			config := &TenantConfig{
-				Name:               "test-org",
-				DisplayName:        "Test Organization",
+				Name:               "test-tenant",
+				DisplayName:        "Test Tenant",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
@@ -333,23 +333,23 @@ var _ = Describe("TenantManager", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(credentials).ToNot(BeNil())
 
-			// Verify realm was created
-			Expect(mock.createdRealm).ToNot(BeNil())
-			Expect(mock.createdRealm.Name).To(Equal("test-org"))
-			Expect(mock.createdRealm.Enabled).To(BeTrue())
+			// Verify Tenant was created
+			Expect(mock.createdTenant).ToNot(BeNil())
+			Expect(mock.createdTenant.Name).To(Equal("test-tenant"))
+			Expect(mock.createdTenant.Enabled).To(BeTrue())
 
 			// Verify break-glass user was created
 			Expect(mock.createdUsers).To(HaveLen(1))
 			breakGlassUser := mock.createdUsers[0]
-			Expect(breakGlassUser.Username).To(Equal("test-org-osac-break-glass"))
-			Expect(breakGlassUser.Email).To(Equal("break-glass@test-org.osac.local"))
+			Expect(breakGlassUser.Username).To(Equal("test-tenant-osac-break-glass"))
+			Expect(breakGlassUser.Email).To(Equal("break-glass@test-tenant.osac.local"))
 			Expect(breakGlassUser.FirstName).To(Equal("OSAC"))
 			Expect(breakGlassUser.LastName).To(Equal("Break-Glass"))
 
 			// Verify credentials were returned
 			Expect(credentials.UserID).To(Equal(breakGlassUser.ID))
-			Expect(credentials.Username).To(Equal("test-org-osac-break-glass"))
-			Expect(credentials.Email).To(Equal("break-glass@test-org.osac.local"))
+			Expect(credentials.Username).To(Equal("test-tenant-osac-break-glass"))
+			Expect(credentials.Email).To(Equal("break-glass@test-tenant.osac.local"))
 			Expect(credentials.Password).To(Equal("breakglass123"))
 
 			// Verify password is temporary
@@ -359,8 +359,8 @@ var _ = Describe("TenantManager", func() {
 
 		It("creates a disabled tenant when Enabled is false", func() {
 			config := &TenantConfig{
-				Name:               "test-org",
-				DisplayName:        "Test Organization",
+				Name:               "test-tenant",
+				DisplayName:        "Test Tenant",
 				Enabled:            new(false),
 				BreakGlassPassword: "breakglass123",
 			}
@@ -369,15 +369,15 @@ var _ = Describe("TenantManager", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(credentials).ToNot(BeNil())
 
-			Expect(mock.createdRealm).ToNot(BeNil())
-			Expect(mock.createdRealm.Name).To(Equal("test-org"))
-			Expect(mock.createdRealm.Enabled).To(BeFalse())
+			Expect(mock.createdTenant).ToNot(BeNil())
+			Expect(mock.createdTenant.Name).To(Equal("test-tenant"))
+			Expect(mock.createdTenant.Enabled).To(BeFalse())
 		})
 
 		It("assigns IdP manager roles to break-glass account", func() {
 			config := &TenantConfig{
-				Name:               "test-org",
-				DisplayName:        "Test Organization",
+				Name:               "test-tenant",
+				DisplayName:        "Test Tenant",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
@@ -422,8 +422,8 @@ var _ = Describe("TenantManager", func() {
 
 		It("uses custom break-glass username and email when provided", func() {
 			config := &TenantConfig{
-				Name:               "test-org",
-				DisplayName:        "Test Organization",
+				Name:               "test-tenant",
+				DisplayName:        "Test Tenant",
 				Enabled:            new(true),
 				BreakGlassUsername: "custom-break-glass",
 				BreakGlassEmail:    "custom@example.com",
@@ -446,15 +446,15 @@ var _ = Describe("TenantManager", func() {
 
 		It("generates password when not provided", func() {
 			config := &TenantConfig{
-				Name:        "test-org",
-				DisplayName: "Test Organization",
+				Name:        "test-tenant",
+				DisplayName: "Test Tenant",
 				Enabled:     new(true),
 			}
 
 			credentials, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(credentials.Username).To(Equal("test-org-osac-break-glass"))
-			Expect(credentials.Email).To(Equal("break-glass@test-org.osac.local"))
+			Expect(credentials.Username).To(Equal("test-tenant-osac-break-glass"))
+			Expect(credentials.Email).To(Equal("break-glass@test-tenant.osac.local"))
 			Expect(credentials.Password).ToNot(BeEmpty())
 			Expect(credentials.Password).To(HaveLen(24))
 			// Password should contain characters from the defined charset
@@ -474,8 +474,8 @@ var _ = Describe("TenantManager", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			config := &TenantConfig{
-				Name:               "test-org",
-				DisplayName:        "Test Organization",
+				Name:               "test-tenant",
+				DisplayName:        "Test Tenant",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
@@ -486,8 +486,8 @@ var _ = Describe("TenantManager", func() {
 			Expect(credentials).To(BeNil())
 
 			// Verify tenant was created then deleted (rollback)
-			Expect(failingMock.createdRealm).ToNot(BeNil())
-			Expect(failingMock.deletedRealm).To(Equal("test-org"))
+			Expect(failingMock.createdTenant).ToNot(BeNil())
+			Expect(failingMock.deletedTenant).To(Equal("test-tenant"))
 		})
 
 		It("rolls back tenant on role assignment failure", func() {
@@ -503,8 +503,8 @@ var _ = Describe("TenantManager", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			config := &TenantConfig{
-				Name:               "test-org",
-				DisplayName:        "Test Organization",
+				Name:               "test-tenant",
+				DisplayName:        "Test Tenant",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
@@ -520,8 +520,8 @@ var _ = Describe("TenantManager", func() {
 			// Verify tenant was created then deleted (rollback)
 			// Deleting the tenant from the IdP cascade-deletes all users, so we don't
 			// need to explicitly delete the user
-			Expect(failingMock.createdRealm).ToNot(BeNil())
-			Expect(failingMock.deletedRealm).To(Equal("test-org"))
+			Expect(failingMock.createdTenant).ToNot(BeNil())
+			Expect(failingMock.deletedTenant).To(Equal("test-tenant"))
 		})
 
 		It("rolls back tenant even when original context is cancelled", func() {
@@ -541,8 +541,8 @@ var _ = Describe("TenantManager", func() {
 			cancel()
 
 			config := &TenantConfig{
-				Name:               "test-org",
-				DisplayName:        "Test Organization",
+				Name:               "test-tenant",
+				DisplayName:        "Test Tenant",
 				Enabled:            new(true),
 				BreakGlassPassword: "breakglass123",
 			}
@@ -554,15 +554,15 @@ var _ = Describe("TenantManager", func() {
 			// Verify tenant was created then deleted (rollback)
 			// Even though the original context was cancelled, rollback should succeed
 			// because it uses a fresh context
-			Expect(failingMock.createdRealm).ToNot(BeNil())
-			Expect(failingMock.deletedRealm).To(Equal("test-org"))
+			Expect(failingMock.createdTenant).ToNot(BeNil())
+			Expect(failingMock.deletedTenant).To(Equal("test-tenant"))
 		})
 	})
 
 	Describe("UpdateTenant", func() {
 		It("skips the IDP update when domains already match", func() {
 			config := &TenantConfig{
-				Name:               "test-org",
+				Name:               "test-tenant",
 				Enabled:            new(true),
 				Domains:            []string{"a.example.com", "b.example.com"},
 				BreakGlassPassword: "breakglass123",
@@ -572,16 +572,16 @@ var _ = Describe("TenantManager", func() {
 
 			mock.tenantUpdateCalled = false
 			err = manager.UpdateTenant(
-				ctx, "test-org", []string{"b.example.com", "a.example.com"},
+				ctx, "test-tenant", []string{"b.example.com", "a.example.com"},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mock.tenantUpdateCalled).To(BeFalse())
-			Expect(mock.createdRealm.Domains).To(ConsistOf("a.example.com", "b.example.com"))
+			Expect(mock.createdTenant.Domains).To(ConsistOf("a.example.com", "b.example.com"))
 		})
 
 		It("updates the tenant domains", func() {
 			config := &TenantConfig{
-				Name:               "test-org",
+				Name:               "test-tenant",
 				Enabled:            new(true),
 				Domains:            []string{"example.com"},
 				BreakGlassPassword: "breakglass123",
@@ -589,30 +589,30 @@ var _ = Describe("TenantManager", func() {
 			_, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = manager.UpdateTenant(ctx, "test-org", []string{"new.example.com", "corp.example.org"})
+			err = manager.UpdateTenant(ctx, "test-tenant", []string{"new.example.com", "corp.example.org"})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(mock.createdRealm.Domains).To(ConsistOf("new.example.com", "corp.example.org"))
+			Expect(mock.createdTenant.Domains).To(ConsistOf("new.example.com", "corp.example.org"))
 		})
 
 		It("clears domains when given an empty list", func() {
 			config := &TenantConfig{
-				Name:               "test-org",
+				Name:               "test-tenant",
 				Enabled:            new(true),
 				Domains:            []string{"example.com"},
 				BreakGlassPassword: "breakglass123",
 			}
 			_, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(mock.createdRealm.Domains).To(ConsistOf("example.com"))
+			Expect(mock.createdTenant.Domains).To(ConsistOf("example.com"))
 
-			err = manager.UpdateTenant(ctx, "test-org", []string{})
+			err = manager.UpdateTenant(ctx, "test-tenant", []string{})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(mock.createdRealm.Domains).To(BeEmpty())
+			Expect(mock.createdTenant.Domains).To(BeEmpty())
 		})
 
 		It("clears domains when given nil", func() {
 			config := &TenantConfig{
-				Name:               "test-org",
+				Name:               "test-tenant",
 				Enabled:            new(true),
 				Domains:            []string{"example.com"},
 				BreakGlassPassword: "breakglass123",
@@ -620,9 +620,9 @@ var _ = Describe("TenantManager", func() {
 			_, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = manager.UpdateTenant(ctx, "test-org", nil)
+			err = manager.UpdateTenant(ctx, "test-tenant", nil)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(mock.createdRealm.Domains).To(BeEmpty())
+			Expect(mock.createdTenant.Domains).To(BeEmpty())
 		})
 
 		It("returns an error when the name is empty", func() {
@@ -641,7 +641,7 @@ var _ = Describe("TenantManager", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			err = failingManager.UpdateTenant(ctx, "test-org", []string{"example.com"})
+			err = failingManager.UpdateTenant(ctx, "test-tenant", []string{"example.com"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to get tenant from IdP for update"))
 		})
@@ -656,14 +656,14 @@ var _ = Describe("TenantManager", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			err = failingManager.UpdateTenant(ctx, "missing-org", []string{"example.com"})
+			err = failingManager.UpdateTenant(ctx, "missing-tenant", []string{"example.com"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not found"))
 		})
 
 		It("returns an error when the client update fails", func() {
 			failingMock := &mockClient{
-				createdRealm:  &Tenant{Name: "test-org"},
+				createdTenant:    &Tenant{Name: "test-tenant"},
 				failTenantUpdate: true,
 			}
 			failingManager, err := NewTenantManager().
@@ -672,7 +672,7 @@ var _ = Describe("TenantManager", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			err = failingManager.UpdateTenant(ctx, "test-org", []string{"example.com"})
+			err = failingManager.UpdateTenant(ctx, "test-tenant", []string{"example.com"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to update tenant in IdP"))
 		})
@@ -680,9 +680,9 @@ var _ = Describe("TenantManager", func() {
 
 	Describe("DeleteTenant", func() {
 		It("deletes the tenant from IdP", func() {
-			err := manager.DeleteTenant(ctx, "test-org")
+			err := manager.DeleteTenant(ctx, "test-tenant")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(mock.deletedRealm).To(Equal("test-org"))
+			Expect(mock.deletedTenant).To(Equal("test-tenant"))
 		})
 
 		It("returns an error when deletion fails", func() {
@@ -696,7 +696,7 @@ var _ = Describe("TenantManager", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 
-			err = failingManager.DeleteTenant(ctx, "test-org")
+			err = failingManager.DeleteTenant(ctx, "test-tenant")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to delete tenant from IdP"))
 		})

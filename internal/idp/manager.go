@@ -158,19 +158,19 @@ func (m *TenantManager) CreateTenant(ctx context.Context, config *TenantConfig) 
 	if config.Enabled != nil {
 		enabled = *config.Enabled
 	}
-	org := &Tenant{
+	tenant := &Tenant{
 		Name:        config.Name,
 		DisplayName: config.DisplayName,
 		Enabled:     enabled,
 		Domains:     config.Domains,
 	}
-	createdOrg, err := m.client.CreateTenant(ctx, org)
+	createdTenant, err := m.client.CreateTenant(ctx, tenant)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tenant in IdP: %w", err)
 	}
 	tenantCreated = true
 	m.logger.InfoContext(ctx, "Tenant created in IdP",
-		slog.String("tenant", createdOrg.Name),
+		slog.String("tenant", createdTenant.Name),
 	)
 
 	// Step 2: Create break-glass account
@@ -186,13 +186,13 @@ func (m *TenantManager) CreateTenant(ctx context.Context, config *TenantConfig) 
 	}
 
 	m.logger.InfoContext(ctx, "IdP tenant created successfully",
-		slog.String("tenant", createdOrg.Name),
+		slog.String("tenant", createdTenant.Name),
 	)
 	return credentials, nil
 }
 
 // UpdateTenant updates an existing tenant in the identity provider. It fetches the current
-// organization by name, applies the updated domains, and sends the update to the IdP.
+// tenant by name, applies the updated domains, and sends the update to the IdP.
 func (m *TenantManager) UpdateTenant(ctx context.Context, name string, domains []string) error {
 	if name == "" {
 		return errors.New("tenant name is mandatory")
@@ -202,15 +202,15 @@ func (m *TenantManager) UpdateTenant(ctx context.Context, name string, domains [
 		slog.String("tenant", name),
 	)
 
-	org, err := m.client.GetTenant(ctx, name)
+	tenant, err := m.client.GetTenant(ctx, name)
 	if err != nil {
 		return fmt.Errorf("failed to get tenant from IdP for update: %w", err)
 	}
-	if org == nil {
+	if tenant == nil {
 		return fmt.Errorf("tenant '%s' not found in IdP", name)
 	}
 
-	currentDomains := slices.Clone(org.Domains)
+	currentDomains := slices.Clone(tenant.Domains)
 	desiredDomains := slices.Clone(domains)
 	slices.Sort(currentDomains)
 	slices.Sort(desiredDomains)
@@ -221,8 +221,8 @@ func (m *TenantManager) UpdateTenant(ctx context.Context, name string, domains [
 		return nil
 	}
 
-	org.Domains = domains
-	_, err = m.client.UpdateTenant(ctx, org)
+	tenant.Domains = domains
+	_, err = m.client.UpdateTenant(ctx, tenant)
 	if err != nil {
 		return fmt.Errorf("failed to update tenant in IdP: %w", err)
 	}
@@ -234,7 +234,7 @@ func (m *TenantManager) UpdateTenant(ctx context.Context, name string, domains [
 }
 
 // rollback performs cleanup by deleting the tenant from the IdP.
-// Deleting the IdP organization will cascade-delete all resources within it (users, roles, etc.).
+// Deleting the IdP tenant will cascade-delete all resources within it (users, roles, etc.).
 func (m *TenantManager) rollback(ctx context.Context, tenantName string, deleteTenant bool) {
 	if !deleteTenant {
 		return

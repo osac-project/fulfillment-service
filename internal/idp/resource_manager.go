@@ -80,7 +80,7 @@ func (b *ResourceManagerBuilder) Build() (result *ResourceManager, err error) {
 	return
 }
 
-// DeleteProjectGroups deletes Keycloak organization groups for a project.
+// DeleteProjectGroups deletes tenant authorization groups for a project.
 func (m *ResourceManager) DeleteProjectGroups(ctx context.Context, tenant, projectName string) error {
 	if tenant == "" {
 		return fmt.Errorf("tenant is required")
@@ -140,7 +140,7 @@ func (m *ResourceManager) getGroupIDByPath(ctx context.Context, tenantName, grou
 	return m.client.GetGroupIDByPath(ctx, tenantName, groupPath)
 }
 
-// CreateProjectGroups creates Keycloak organization groups for a project.
+// CreateProjectGroups creates Keycloak tenant groups for a project.
 // Creates hierarchical groups: /{project-name}/system:viewers and /{project-name}/system:managers
 // These groups are used by Authorino OPA policies for authorization.
 // Returns the managers group ID for immediate use (avoids timing issues with group lookup).

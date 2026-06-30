@@ -323,7 +323,7 @@ var _ = Describe("IDP Sync", func() {
 
 		mockClient.EXPECT().
 			CreateTenant(gomock.Any(), gomock.Any()).
-			Return(nil, fmt.Errorf("organization already exists")).
+			Return(nil, fmt.Errorf("tenant already exists")).
 			Times(1)
 
 		task := &task{

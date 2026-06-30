@@ -376,7 +376,7 @@ var _ = Describe("Validation and Activation", func() {
 				).
 				Return("viewers-id", nil)
 
-			// Expect managers group creation (new organization groups API)
+			// Expect managers group creation (new tenant groups API)
 			mockIdpClient.EXPECT().
 				CreateAuthorizationGroup(
 					gomock.Any(),
