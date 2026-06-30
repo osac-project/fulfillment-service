@@ -29,27 +29,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  validate-fork:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check PR author is an org member
-        env:
-          AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
-        run: |
-          case "${AUTHOR_ASSOCIATION}" in
-            OWNER|MEMBER|COLLABORATOR|CONTRIBUTOR)
-              echo "PR author association is ${AUTHOR_ASSOCIATION} — allowing fork e2e."
-              ;;
-            *)
-              echo "::error::PR author association is '${AUTHOR_ASSOCIATION}'. Fork PRs require org membership."
-              exit 1
-              ;;
-          esac
-
   e2e-vmaas-full-install:
-    needs: [validate-fork]
-    if: ${{ !cancelled() && (needs.validate-fork.result == 'success' || needs.validate-fork.result == 'skipped') }}
     uses: osac-project/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@main
     with:
       test-suite: ${{ inputs.test-suite || 'vmaas' }}
