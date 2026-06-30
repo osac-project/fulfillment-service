@@ -445,6 +445,67 @@ var _ = Describe("Settings", func() {
 		})
 	})
 
+	Describe("Tenant", func() {
+		BeforeEach(func() {
+			keyring.MockInit()
+		})
+
+		It("Returns empty string when no tenant is saved", func(ctx context.Context) {
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			err = settings.Load(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(settings.Tenant()).To(BeEmpty())
+		})
+
+		It("Round-trips the tenant through the secret store", func(ctx context.Context) {
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			settings.SetTenant("my-tenant")
+			err = settings.Save(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			settings2, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			err = settings2.Load(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(settings2.Tenant()).To(Equal("my-tenant"))
+		})
+
+		It("Clears the tenant when set to empty string", func(ctx context.Context) {
+			settings, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			settings.SetTenant("my-tenant")
+			err = settings.Save(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			settings.SetTenant("")
+			err = settings.Save(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			settings2, err := NewSettings().
+				SetLogger(logger).
+				SetDir(tmp).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			err = settings2.Load(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(settings2.Tenant()).To(BeEmpty())
+		})
+	})
+
 	Describe("Armed check", func() {
 		It("Returns false when settings are nil", func() {
 			var settings *Settings

@@ -29,6 +29,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
+	"github.com/osac-project/fulfillment-service/internal/config"
+
 	// This is needed to ensure that the types and services are loaded into the protocol buffers registry, otherwise
 	// they will be visible only if they are explicitly used in some part of the code.
 	_ "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -74,6 +76,9 @@ type ObjectHelper interface {
 	Update(ctx context.Context, object proto.Message) (proto.Message, error)
 	Delete(ctx context.Context, id string) error
 	FindObject(ctx context.Context, ref string, console Renderer) (proto.Message, error)
+	SetTenant(object proto.Message, tenant string)
+	GetTenant(object proto.Message) string
+	IsTenantScoped() bool
 }
 
 // HelperBuilder contains the data and logic needed to create a reflection helper.
@@ -335,6 +340,7 @@ func (h *helper) scanService(serviceDesc protoreflect.ServiceDescriptor) {
 		metadataField: metadataFieldDesc,
 		singular:      objectNameSingular,
 		plural:        objectNamePlural,
+		tenantScoped:  tenantScopedTypes[objectDesc.FullName()],
 		template:      objectTemplate,
 		get: getInfo{
 			methodInfo: methodInfo{
@@ -503,15 +509,15 @@ func (h *helper) Plurals() []string {
 
 func (h *helper) Lookup(objectType string) ObjectHelper {
 	h.scanIfNeeded()
-	for i, objectInfo := range h.helpers {
+	for _, objectInfo := range h.helpers {
 		if objectType == string(objectInfo.descriptor.FullName()) {
-			return &h.helpers[i]
+			return &objectInfo
 		}
 		if strings.EqualFold(objectType, objectInfo.singular) {
-			return &h.helpers[i]
+			return &objectInfo
 		}
 		if strings.EqualFold(objectType, objectInfo.plural) {
-			return &h.helpers[i]
+			return &objectInfo
 		}
 	}
 	return nil
@@ -542,6 +548,7 @@ type objectHelper struct {
 	descriptor    protoreflect.MessageDescriptor
 	singular      string
 	plural        string
+	tenantScoped  bool
 	template      proto.Message
 	list          listInfo
 	get           getInfo
@@ -625,6 +632,18 @@ type ListResult struct {
 
 func (h *objectHelper) List(ctx context.Context, options ListOptions) (result ListResult, err error) {
 	filter := options.Filter
+
+	// Inject tenant filter from context if present:
+	tenant := config.TenantFromContext(ctx)
+	if tenant != "" && h.tenantScoped {
+		tenantFilter := fmt.Sprintf("this.metadata.tenant == %q", tenant)
+		if filter != "" {
+			filter = fmt.Sprintf("%s && (%s)", tenantFilter, filter)
+		} else {
+			filter = tenantFilter
+		}
+	}
+
 	request := proto.Clone(h.list.request)
 	if filter != "" {
 		request.ProtoReflect().Set(h.list.filter, protoreflect.ValueOfString(filter))
@@ -705,6 +724,34 @@ func (h *objectHelper) Delete(ctx context.Context, id string) error {
 	return h.parent.connection.Invoke(ctx, h.delete.path, request, response)
 }
 
+// tenantFieldName is the name of the tenant field in the metadata message.
+const tenantFieldName = protoreflect.Name("tenant")
+
+// SetTenant sets the tenant field on the object's metadata. If the metadata submessage does not
+// exist it is created.
+func (h *objectHelper) SetTenant(object proto.Message, tenant string) {
+	metadata := object.ProtoReflect().Mutable(h.metadataField).Message()
+	field := metadata.Descriptor().Fields().ByName(tenantFieldName)
+	if field != nil {
+		metadata.Set(field, protoreflect.ValueOfString(tenant))
+	}
+}
+
+// GetTenant returns the tenant field from the object's metadata.
+func (h *objectHelper) GetTenant(object proto.Message) string {
+	metadata := object.ProtoReflect().Get(h.metadataField).Message()
+	field := metadata.Descriptor().Fields().ByName(tenantFieldName)
+	if field == nil {
+		return ""
+	}
+	return metadata.Get(field).String()
+}
+
+// IsTenantScoped returns true if this resource type is scoped to a tenant.
+func (h *objectHelper) IsTenantScoped() bool {
+	return h.tenantScoped
+}
+
 func (h *objectHelper) setId(message proto.Message, field protoreflect.FieldDescriptor, value string) {
 	message.ProtoReflect().Set(field, protoreflect.ValueOfString(value))
 }
@@ -735,3 +782,47 @@ const (
 	objectFieldName   = protoreflect.Name("object")
 	totalFieldName    = protoreflect.Name("total")
 )
+
+// tenantScopedTypes lists the resource types that are scoped to a tenant. Only these types get
+// automatic tenant filter injection on List, automatic tenant field setting on generic Create,
+// and the TENANT column in table output. Types not listed here are platform-scoped.
+var tenantScopedTypes = map[protoreflect.FullName]bool{
+	"osac.public.v1.BareMetalInstance":             true,
+	"osac.public.v1.BareMetalInstanceCatalogItem":  true,
+	"osac.public.v1.BareMetalInstanceTemplate":     true,
+	"osac.public.v1.Cluster":                       true,
+	"osac.public.v1.ClusterCatalogItem":            true,
+	"osac.public.v1.ClusterTemplate":               true,
+	"osac.public.v1.ComputeInstance":                true,
+	"osac.public.v1.ComputeInstanceCatalogItem":    true,
+	"osac.public.v1.ComputeInstanceTemplate":       true,
+	"osac.public.v1.ExternalIP":                    true,
+	"osac.public.v1.ExternalIPAttachment":          true,
+	"osac.public.v1.Project":                       true,
+	"osac.public.v1.ProjectMembership":             true,
+	"osac.public.v1.PublicIP":                      true,
+	"osac.public.v1.PublicIPAttachment":            true,
+	"osac.public.v1.RoleBinding":                   true,
+	"osac.public.v1.SecurityGroup":                 true,
+	"osac.public.v1.Subnet":                        true,
+	"osac.public.v1.VirtualNetwork":                true,
+	"osac.private.v1.BareMetalInstance":             true,
+	"osac.private.v1.BareMetalInstanceCatalogItem":  true,
+	"osac.private.v1.BareMetalInstanceTemplate":     true,
+	"osac.private.v1.Cluster":                       true,
+	"osac.private.v1.ClusterCatalogItem":            true,
+	"osac.private.v1.ClusterTemplate":               true,
+	"osac.private.v1.ComputeInstance":                true,
+	"osac.private.v1.ComputeInstanceCatalogItem":    true,
+	"osac.private.v1.ComputeInstanceTemplate":       true,
+	"osac.private.v1.ExternalIP":                    true,
+	"osac.private.v1.ExternalIPAttachment":          true,
+	"osac.private.v1.Project":                       true,
+	"osac.private.v1.ProjectMembership":             true,
+	"osac.private.v1.PublicIP":                      true,
+	"osac.private.v1.PublicIPAttachment":            true,
+	"osac.private.v1.RoleBinding":                   true,
+	"osac.private.v1.SecurityGroup":                 true,
+	"osac.private.v1.Subnet":                        true,
+	"osac.private.v1.VirtualNetwork":                true,
+}

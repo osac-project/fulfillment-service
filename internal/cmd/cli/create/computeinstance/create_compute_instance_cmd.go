@@ -263,7 +263,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 		computeInstance := publicv1.ComputeInstance_builder{
 			Metadata: publicv1.Metadata_builder{
-				Name: c.args.name,
+				Name:   c.args.name,
+				Tenant: config.TenantFromContext(ctx),
 			}.Build(),
 			Spec: specResult,
 		}.Build()

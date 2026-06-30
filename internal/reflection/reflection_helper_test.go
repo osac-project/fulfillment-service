@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/testing"
 )
@@ -219,6 +220,21 @@ var _ = Describe("Reflection helper", func() {
 				"Host type in plural",
 				"hosttypes",
 				"osac.public.v1.HostType",
+			),
+			Entry(
+				"Tenant in singular",
+				"tenant",
+				"osac.public.v1.Tenant",
+			),
+			Entry(
+				"Tenant in plural",
+				"tenants",
+				"osac.public.v1.Tenant",
+			),
+			Entry(
+				"Tenant in upper case",
+				"TENANT",
+				"osac.public.v1.Tenant",
 			),
 		)
 
@@ -624,6 +640,128 @@ var _ = Describe("Reflection helper", func() {
 					)
 				}
 			}
+		})
+
+		It("Sets tenant on an object with existing metadata", func() {
+			objectHelper := helper.Lookup("cluster")
+			Expect(objectHelper).ToNot(BeNil())
+			object := publicv1.Cluster_builder{
+				Metadata: publicv1.Metadata_builder{
+					Name: "my-cluster",
+				}.Build(),
+			}.Build()
+			objectHelper.SetTenant(object, "my-tenant")
+			Expect(objectHelper.GetTenant(object)).To(Equal("my-tenant"))
+			Expect(objectHelper.GetMetadata(object).GetName()).To(Equal("my-cluster"))
+		})
+
+		It("Sets tenant on an object without metadata", func() {
+			objectHelper := helper.Lookup("cluster")
+			Expect(objectHelper).ToNot(BeNil())
+			object := publicv1.Cluster_builder{
+				Id: "123",
+			}.Build()
+			objectHelper.SetTenant(object, "my-tenant")
+			Expect(objectHelper.GetTenant(object)).To(Equal("my-tenant"))
+		})
+
+		It("Returns empty tenant when none is set", func() {
+			objectHelper := helper.Lookup("cluster")
+			Expect(objectHelper).ToNot(BeNil())
+			object := publicv1.Cluster_builder{
+				Metadata: publicv1.Metadata_builder{
+					Name: "my-cluster",
+				}.Build(),
+			}.Build()
+			Expect(objectHelper.GetTenant(object)).To(BeEmpty())
+		})
+
+		It("Injects tenant filter into list when tenant is in context", func() {
+			var capturedFilter string
+			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
+				ListFunc: func(ctx context.Context, request *publicv1.ClustersListRequest,
+				) (response *publicv1.ClustersListResponse, err error) {
+					capturedFilter = request.GetFilter()
+					response = publicv1.ClustersListResponse_builder{
+						Size:  0,
+						Total: 0,
+					}.Build()
+					return
+				},
+			})
+			server.Start()
+
+			tenantCtx := config.TenantIntoContext(ctx, "acme")
+			objectHelper := helper.Lookup("cluster")
+			Expect(objectHelper).ToNot(BeNil())
+			_, err := objectHelper.List(tenantCtx, ListOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(capturedFilter).To(Equal(`this.metadata.tenant == "acme"`))
+		})
+
+		It("Combines tenant filter with user-provided filter", func() {
+			var capturedFilter string
+			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
+				ListFunc: func(ctx context.Context, request *publicv1.ClustersListRequest,
+				) (response *publicv1.ClustersListResponse, err error) {
+					capturedFilter = request.GetFilter()
+					response = publicv1.ClustersListResponse_builder{
+						Size:  0,
+						Total: 0,
+					}.Build()
+					return
+				},
+			})
+			server.Start()
+
+			tenantCtx := config.TenantIntoContext(ctx, "acme")
+			objectHelper := helper.Lookup("cluster")
+			Expect(objectHelper).ToNot(BeNil())
+			_, err := objectHelper.List(tenantCtx, ListOptions{
+				Filter: `this.metadata.name == "my-cluster"`,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(capturedFilter).To(Equal(
+				`this.metadata.tenant == "acme" && (this.metadata.name == "my-cluster")`,
+			))
+		})
+
+		It("Reports tenant-scoped types correctly", func() {
+			Expect(helper.Lookup("cluster").IsTenantScoped()).To(BeTrue())
+			Expect(helper.Lookup("virtualnetwork").IsTenantScoped()).To(BeTrue())
+			Expect(helper.Lookup("subnet").IsTenantScoped()).To(BeTrue())
+			Expect(helper.Lookup("project").IsTenantScoped()).To(BeTrue())
+		})
+
+		It("Reports platform-scoped types correctly", func() {
+			Expect(helper.Lookup("hosttype").IsTenantScoped()).To(BeFalse())
+			Expect(helper.Lookup("tenant").IsTenantScoped()).To(BeFalse())
+			Expect(helper.Lookup("networkclass").IsTenantScoped()).To(BeFalse())
+			Expect(helper.Lookup("role").IsTenantScoped()).To(BeFalse())
+		})
+
+		It("Does not inject tenant filter when no tenant in context", func() {
+			var capturedFilter string
+			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
+				ListFunc: func(ctx context.Context, request *publicv1.ClustersListRequest,
+				) (response *publicv1.ClustersListResponse, err error) {
+					capturedFilter = request.GetFilter()
+					response = publicv1.ClustersListResponse_builder{
+						Size:  0,
+						Total: 0,
+					}.Build()
+					return
+				},
+			})
+			server.Start()
+
+			objectHelper := helper.Lookup("cluster")
+			Expect(objectHelper).ToNot(BeNil())
+			_, err := objectHelper.List(ctx, ListOptions{
+				Filter: `this.metadata.name == "my-cluster"`,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(capturedFilter).To(Equal(`this.metadata.name == "my-cluster"`))
 		})
 
 		It("Sorts types according to package order when adding packages", func() {

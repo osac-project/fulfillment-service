@@ -105,7 +105,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		Pool: pool.GetId(),
 	}
 	publicIP := publicv1.PublicIP_builder{
-		Metadata: publicv1.Metadata_builder{Name: c.args.name}.Build(),
+		Metadata: publicv1.Metadata_builder{Name: c.args.name, Tenant: config.TenantFromContext(ctx)}.Build(),
 		Spec:     spec.Build(),
 	}.Build()
 

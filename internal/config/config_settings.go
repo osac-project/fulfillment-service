@@ -115,6 +115,7 @@ type secretSettings struct {
 	ClientSecret string    `json:"client_secret,omitempty"`
 	User         string    `json:"user,omitempty"`
 	Password     string    `json:"password,omitempty"`
+	Tenant       string    `json:"tenant,omitempty"`
 }
 
 // CaFile represents a CA certificate file with its name and optionally its content. The content is stored for relative
@@ -270,6 +271,16 @@ func (s *Settings) SetUser(value string) {
 // SetPassword sets the OAuth password.
 func (s *Settings) SetPassword(value string) {
 	s.secret.Password = value
+}
+
+// Tenant returns the saved tenant name.
+func (s *Settings) Tenant() string {
+	return s.secret.Tenant
+}
+
+// SetTenant sets the saved tenant name.
+func (s *Settings) SetTenant(value string) {
+	s.secret.Tenant = value
 }
 
 // Load populates the settings from the configuration file and the secret store.

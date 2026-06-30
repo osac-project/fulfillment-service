@@ -36,6 +36,7 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 	"gopkg.in/yaml.v3"
 
+	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
 )
 
@@ -183,6 +184,21 @@ func (r *TableRenderer) Render(ctx context.Context, objects any) error {
 	}
 	if table == nil {
 		table = r.defaultTable()
+	}
+
+	// When no tenant is selected, inject a TENANT column for tenant-scoped types so users can
+	// see which tenant each resource belongs to.
+	if config.TenantFromContext(ctx) == "" && helper.IsTenantScoped() {
+		hasTenantCol := slices.ContainsFunc(table.Columns, func(c *columnLayout) bool {
+			return c.Header == "TENANT"
+		})
+		if !hasTenantCol {
+			tenantCol := &columnLayout{
+				Header: "TENANT",
+				Value:  "has(this.metadata.tenant)? this.metadata.tenant: '-'",
+			}
+			table.Columns = slices.Insert(table.Columns, 0, tenantCol)
+		}
 	}
 
 	// Always show a DELETING column so users can see objects being torn down.
@@ -447,7 +463,8 @@ func (r *TableRenderer) lookupName(ctx context.Context, messageFullName protoref
 		"this.id == %[1]q || this.metadata.name == %[1]q",
 		key,
 	)
-	listResult, err := helper.List(ctx, reflection.ListOptions{
+	lookupCtx := config.TenantIntoContext(ctx, "")
+	listResult, err := helper.List(lookupCtx, reflection.ListOptions{
 		Filter: filter,
 	})
 	if err != nil {

@@ -130,7 +130,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	client := publicv1.NewSecurityGroupsClient(conn)
 
 	sg := publicv1.SecurityGroup_builder{
-		Metadata: publicv1.Metadata_builder{Name: c.args.name}.Build(),
+		Metadata: publicv1.Metadata_builder{Name: c.args.name, Tenant: config.TenantFromContext(ctx)}.Build(),
 		Spec: publicv1.SecurityGroupSpec_builder{
 			VirtualNetwork: vn.GetId(),
 			Ingress:        ingress,

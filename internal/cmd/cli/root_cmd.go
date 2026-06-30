@@ -32,6 +32,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/label"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/login"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/logout"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/tenant"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/version"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
@@ -85,6 +86,12 @@ func Root() (result *cobra.Command, err error) {
 		defaultCacheDir,
 		cacheFlagHelp,
 	)
+	flags.StringVar(
+		&runner.args.tenant,
+		tenantFlag,
+		"",
+		tenantFlagHelp,
+	)
 
 	// Add commands:
 	result.AddCommand(annotate.Cmd())
@@ -97,6 +104,7 @@ func Root() (result *cobra.Command, err error) {
 	result.AddCommand(label.Cmd())
 	result.AddCommand(login.Cmd())
 	result.AddCommand(logout.Cmd())
+	result.AddCommand(tenant.Cmd())
 	result.AddCommand(version.Cmd())
 
 	// Configure the root command, and therefore all its subcommands, to use Markdown for their help output:
@@ -110,6 +118,7 @@ type runnerContext struct {
 	args       struct {
 		configDir string
 		cacheDir  string
+		tenant    string
 	}
 }
 
@@ -197,11 +206,21 @@ func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) erro
 		return fmt.Errorf("failed to create console: %w", err)
 	}
 
-	// Replace the default context with one that contains the logger, the settings, and the console:
+	// Resolve the effective tenant: flag takes precedence over saved setting.
+	tenant := settings.Tenant()
+	if flags.Changed(tenantFlag) {
+		tenant = c.args.tenant
+	}
+
+	// Replace the default context with one that contains the logger, the settings, the console,
+	// and the resolved tenant:
 	ctx := cmd.Context()
 	ctx = logging.LoggerIntoContext(ctx, logger)
 	ctx = config.SettingsIntoContext(ctx, settings)
 	ctx = terminal.ConsoleIntoContext(ctx, console)
+	if tenant != "" {
+		ctx = config.TenantIntoContext(ctx, tenant)
+	}
 	cmd.SetContext(ctx)
 
 	return nil
@@ -211,6 +230,7 @@ func (c *runnerContext) persistentPreRun(cmd *cobra.Command, args []string) erro
 const (
 	configFlag = "config"
 	cacheFlag  = "cache"
+	tenantFlag = "tenant"
 )
 
 // Names of the environment variables:
@@ -233,6 +253,12 @@ Configuration is stored in a file named {{ bt }}config.json{{ bt }} inside this 
 
 Secrets, such as tokens and passwords, are stored in the operating system keyring. If the keyring is not available,
 they are stored in a file named {{ bt }}secrets.json{{ bt }} inside this directory.
+`
+
+const tenantFlagHelp = `
+_NAME_ - Scope operations to the specified tenant. When set, list operations automatically filter by tenant,
+and create operations populate {{ bt }}metadata.tenant{{ bt }} on new objects. If a current tenant has been
+saved with {{ bt }}{{ binary }} tenant <name>{{ bt }}, the flag takes precedence.
 `
 
 const cacheFlagHelp = `

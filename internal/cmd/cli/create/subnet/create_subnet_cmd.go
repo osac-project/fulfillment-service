@@ -130,7 +130,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		spec.Ipv6Cidr = &c.args.ipv6Cidr
 	}
 	subnet := publicv1.Subnet_builder{
-		Metadata: publicv1.Metadata_builder{Name: c.args.name}.Build(),
+		Metadata: publicv1.Metadata_builder{Name: c.args.name, Tenant: config.TenantFromContext(ctx)}.Build(),
 		Spec:     spec.Build(),
 	}.Build()
 

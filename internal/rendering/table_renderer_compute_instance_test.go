@@ -61,6 +61,9 @@ var _ = Describe("Compute instance table rendering", func() {
 			templateHelper.EXPECT().String().
 				Return(string(templateFullName)).
 				AnyTimes()
+			templateHelper.EXPECT().IsTenantScoped().
+				Return(true).
+				AnyTimes()
 			templateHelper.EXPECT().
 				List(gomock.Any(), gomock.Any()).
 				Return(
@@ -99,6 +102,9 @@ var _ = Describe("Compute instance table rendering", func() {
 				AnyTimes()
 			computeHelper.EXPECT().String().
 				Return(string(computeDescriptor.FullName())).
+				AnyTimes()
+			computeHelper.EXPECT().IsTenantScoped().
+				Return(true).
 				AnyTimes()
 
 			// Create a helper that returns compute instances or templates based on the object type:

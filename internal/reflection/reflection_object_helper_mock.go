@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
-	proto "google.golang.org/protobuf/proto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
 
@@ -22,7 +21,6 @@ import (
 type MockObjectHelper struct {
 	ctrl     *gomock.Controller
 	recorder *MockObjectHelperMockRecorder
-	isgomock struct{}
 }
 
 // MockObjectHelperMockRecorder is the mock recorder for MockObjectHelper.
@@ -43,32 +41,32 @@ func (m *MockObjectHelper) EXPECT() *MockObjectHelperMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockObjectHelper) Create(ctx context.Context, object proto.Message) (proto.Message, error) {
+func (m *MockObjectHelper) Create(arg0 context.Context, arg1 protoreflect.ProtoMessage) (protoreflect.ProtoMessage, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, object)
-	ret0, _ := ret[0].(proto.Message)
+	ret := m.ctrl.Call(m, "Create", arg0, arg1)
+	ret0, _ := ret[0].(protoreflect.ProtoMessage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockObjectHelperMockRecorder) Create(ctx, object any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) Create(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockObjectHelper)(nil).Create), ctx, object)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockObjectHelper)(nil).Create), arg0, arg1)
 }
 
 // Delete mocks base method.
-func (m *MockObjectHelper) Delete(ctx context.Context, id string) error {
+func (m *MockObjectHelper) Delete(arg0 context.Context, arg1 string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, id)
+	ret := m.ctrl.Call(m, "Delete", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockObjectHelperMockRecorder) Delete(ctx, id any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) Delete(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockObjectHelper)(nil).Delete), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockObjectHelper)(nil).Delete), arg0, arg1)
 }
 
 // Descriptor mocks base method.
@@ -86,18 +84,18 @@ func (mr *MockObjectHelperMockRecorder) Descriptor() *gomock.Call {
 }
 
 // FindObject mocks base method.
-func (m *MockObjectHelper) FindObject(ctx context.Context, ref string, console Renderer) (proto.Message, error) {
+func (m *MockObjectHelper) FindObject(arg0 context.Context, arg1 string, arg2 Renderer) (protoreflect.ProtoMessage, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindObject", ctx, ref, console)
-	ret0, _ := ret[0].(proto.Message)
+	ret := m.ctrl.Call(m, "FindObject", arg0, arg1, arg2)
+	ret0, _ := ret[0].(protoreflect.ProtoMessage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FindObject indicates an expected call of FindObject.
-func (mr *MockObjectHelperMockRecorder) FindObject(ctx, ref, console any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) FindObject(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindObject", reflect.TypeOf((*MockObjectHelper)(nil).FindObject), ctx, ref, console)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindObject", reflect.TypeOf((*MockObjectHelper)(nil).FindObject), arg0, arg1, arg2)
 }
 
 // FullName mocks base method.
@@ -115,67 +113,81 @@ func (mr *MockObjectHelperMockRecorder) FullName() *gomock.Call {
 }
 
 // Get mocks base method.
-func (m *MockObjectHelper) Get(ctx context.Context, id string) (proto.Message, error) {
+func (m *MockObjectHelper) Get(arg0 context.Context, arg1 string) (protoreflect.ProtoMessage, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, id)
-	ret0, _ := ret[0].(proto.Message)
+	ret := m.ctrl.Call(m, "Get", arg0, arg1)
+	ret0, _ := ret[0].(protoreflect.ProtoMessage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockObjectHelperMockRecorder) Get(ctx, id any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) Get(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockObjectHelper)(nil).Get), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockObjectHelper)(nil).Get), arg0, arg1)
 }
 
 // GetId mocks base method.
-func (m *MockObjectHelper) GetId(object proto.Message) string {
+func (m *MockObjectHelper) GetId(arg0 protoreflect.ProtoMessage) string {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetId", object)
+	ret := m.ctrl.Call(m, "GetId", arg0)
 	ret0, _ := ret[0].(string)
 	return ret0
 }
 
 // GetId indicates an expected call of GetId.
-func (mr *MockObjectHelperMockRecorder) GetId(object any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) GetId(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetId", reflect.TypeOf((*MockObjectHelper)(nil).GetId), object)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetId", reflect.TypeOf((*MockObjectHelper)(nil).GetId), arg0)
 }
 
 // GetMetadata mocks base method.
-func (m *MockObjectHelper) GetMetadata(object proto.Message) Metadata {
+func (m *MockObjectHelper) GetMetadata(arg0 protoreflect.ProtoMessage) Metadata {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMetadata", object)
+	ret := m.ctrl.Call(m, "GetMetadata", arg0)
 	ret0, _ := ret[0].(Metadata)
 	return ret0
 }
 
 // GetMetadata indicates an expected call of GetMetadata.
-func (mr *MockObjectHelperMockRecorder) GetMetadata(object any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) GetMetadata(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetadata", reflect.TypeOf((*MockObjectHelper)(nil).GetMetadata), object)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetadata", reflect.TypeOf((*MockObjectHelper)(nil).GetMetadata), arg0)
 }
 
 // GetName mocks base method.
-func (m *MockObjectHelper) GetName(object proto.Message) string {
+func (m *MockObjectHelper) GetName(arg0 protoreflect.ProtoMessage) string {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetName", object)
+	ret := m.ctrl.Call(m, "GetName", arg0)
 	ret0, _ := ret[0].(string)
 	return ret0
 }
 
 // GetName indicates an expected call of GetName.
-func (mr *MockObjectHelperMockRecorder) GetName(object any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) GetName(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetName", reflect.TypeOf((*MockObjectHelper)(nil).GetName), object)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetName", reflect.TypeOf((*MockObjectHelper)(nil).GetName), arg0)
+}
+
+// GetTenant mocks base method.
+func (m *MockObjectHelper) GetTenant(arg0 protoreflect.ProtoMessage) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTenant", arg0)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetTenant indicates an expected call of GetTenant.
+func (mr *MockObjectHelperMockRecorder) GetTenant(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTenant", reflect.TypeOf((*MockObjectHelper)(nil).GetTenant), arg0)
 }
 
 // Instance mocks base method.
-func (m *MockObjectHelper) Instance() proto.Message {
+func (m *MockObjectHelper) Instance() protoreflect.ProtoMessage {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Instance")
-	ret0, _ := ret[0].(proto.Message)
+	ret0, _ := ret[0].(protoreflect.ProtoMessage)
 	return ret0
 }
 
@@ -185,19 +197,33 @@ func (mr *MockObjectHelperMockRecorder) Instance() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Instance", reflect.TypeOf((*MockObjectHelper)(nil).Instance))
 }
 
-// List mocks base method.
-func (m *MockObjectHelper) List(ctx context.Context, options ListOptions) (ListResult, error) {
+// IsTenantScoped mocks base method.
+func (m *MockObjectHelper) IsTenantScoped() bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", ctx, options)
+	ret := m.ctrl.Call(m, "IsTenantScoped")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsTenantScoped indicates an expected call of IsTenantScoped.
+func (mr *MockObjectHelperMockRecorder) IsTenantScoped() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsTenantScoped", reflect.TypeOf((*MockObjectHelper)(nil).IsTenantScoped))
+}
+
+// List mocks base method.
+func (m *MockObjectHelper) List(arg0 context.Context, arg1 ListOptions) (ListResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", arg0, arg1)
 	ret0, _ := ret[0].(ListResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // List indicates an expected call of List.
-func (mr *MockObjectHelperMockRecorder) List(ctx, options any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) List(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockObjectHelper)(nil).List), ctx, options)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockObjectHelper)(nil).List), arg0, arg1)
 }
 
 // Plural mocks base method.
@@ -212,6 +238,18 @@ func (m *MockObjectHelper) Plural() string {
 func (mr *MockObjectHelperMockRecorder) Plural() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Plural", reflect.TypeOf((*MockObjectHelper)(nil).Plural))
+}
+
+// SetTenant mocks base method.
+func (m *MockObjectHelper) SetTenant(arg0 protoreflect.ProtoMessage, arg1 string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetTenant", arg0, arg1)
+}
+
+// SetTenant indicates an expected call of SetTenant.
+func (mr *MockObjectHelperMockRecorder) SetTenant(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTenant", reflect.TypeOf((*MockObjectHelper)(nil).SetTenant), arg0, arg1)
 }
 
 // Singular mocks base method.
@@ -243,16 +281,16 @@ func (mr *MockObjectHelperMockRecorder) String() *gomock.Call {
 }
 
 // Update mocks base method.
-func (m *MockObjectHelper) Update(ctx context.Context, object proto.Message) (proto.Message, error) {
+func (m *MockObjectHelper) Update(arg0 context.Context, arg1 protoreflect.ProtoMessage) (protoreflect.ProtoMessage, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, object)
-	ret0, _ := ret[0].(proto.Message)
+	ret := m.ctrl.Call(m, "Update", arg0, arg1)
+	ret0, _ := ret[0].(protoreflect.ProtoMessage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockObjectHelperMockRecorder) Update(ctx, object any) *gomock.Call {
+func (mr *MockObjectHelperMockRecorder) Update(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockObjectHelper)(nil).Update), ctx, object)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockObjectHelper)(nil).Update), arg0, arg1)
 }

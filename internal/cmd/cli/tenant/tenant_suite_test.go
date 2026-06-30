@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2025 Red Hat Inc.
+Copyright (c) 2026 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
 License. You may obtain a copy of the License at
@@ -11,16 +11,16 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
-package reflection
+package tenant
 
-// Metadata is an interface that provides access to common metadata fields in protobuf messages.
-type Metadata interface {
-	GetName() string
-	GetTenant() string
-	SetTenant(string)
-	GetLabels() map[string]string
-	SetLabels(map[string]string)
-	GetAnnotations() map[string]string
-	SetAnnotations(map[string]string)
-	GetVersion() int32
+import (
+	"testing"
+
+	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/gomega"
+)
+
+func TestTenant(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Tenant command")
 }

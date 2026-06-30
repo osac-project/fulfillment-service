@@ -54,6 +54,9 @@ var _ = Describe("Table renderer", func() {
 		helper.EXPECT().String().
 			Return(string(fullName)).
 			AnyTimes()
+		helper.EXPECT().IsTenantScoped().
+			Return(true).
+			AnyTimes()
 		return helper
 	}
 
@@ -63,6 +66,9 @@ var _ = Describe("Table renderer", func() {
 		helper.EXPECT().
 			List(gomock.Any(), gomock.Any()).
 			Return(reflection.ListResult{}, nil).
+			AnyTimes()
+		helper.EXPECT().IsTenantScoped().
+			Return(false).
 			AnyTimes()
 		return helper
 	}
@@ -140,7 +146,7 @@ var _ = Describe("Table renderer", func() {
 					}.Build(),
 				})
 			Expect(output).To(ContainSubstring("DELETING"))
-			Expect(output).To(MatchRegexp(`Yes\s+subnet-2\s`))
+			Expect(output).To(MatchRegexp(`Yes\s+.*subnet-2\s`))
 		})
 	})
 

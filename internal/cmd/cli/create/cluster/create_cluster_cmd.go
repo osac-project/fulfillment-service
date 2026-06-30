@@ -316,7 +316,8 @@ func (c *runnerContext) applyOptionalSpecFields(
 func (c *runnerContext) createCluster(ctx context.Context, spec *publicv1.ClusterSpec) error {
 	cluster := publicv1.Cluster_builder{
 		Metadata: publicv1.Metadata_builder{
-			Name: c.args.name,
+			Name:   c.args.name,
+			Tenant: config.TenantFromContext(ctx),
 		}.Build(),
 		Spec: spec,
 	}.Build()

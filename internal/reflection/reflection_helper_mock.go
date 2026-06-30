@@ -19,7 +19,6 @@ import (
 type MockHelper struct {
 	ctrl     *gomock.Controller
 	recorder *MockHelperMockRecorder
-	isgomock struct{}
 }
 
 // MockHelperMockRecorder is the mock recorder for MockHelper.
@@ -40,17 +39,17 @@ func (m *MockHelper) EXPECT() *MockHelperMockRecorder {
 }
 
 // Lookup mocks base method.
-func (m *MockHelper) Lookup(objectType string) ObjectHelper {
+func (m *MockHelper) Lookup(arg0 string) ObjectHelper {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Lookup", objectType)
+	ret := m.ctrl.Call(m, "Lookup", arg0)
 	ret0, _ := ret[0].(ObjectHelper)
 	return ret0
 }
 
 // Lookup indicates an expected call of Lookup.
-func (mr *MockHelperMockRecorder) Lookup(objectType any) *gomock.Call {
+func (mr *MockHelperMockRecorder) Lookup(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Lookup", reflect.TypeOf((*MockHelper)(nil).Lookup), objectType)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Lookup", reflect.TypeOf((*MockHelper)(nil).Lookup), arg0)
 }
 
 // Names mocks base method.

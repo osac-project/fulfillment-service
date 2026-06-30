@@ -154,12 +154,16 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	tenant := config.TenantFromContext(ctx)
 	for i, object := range objects {
 		objectDesc := object.ProtoReflect().Descriptor()
 		objectType := string(objectDesc.FullName())
 		objectHelper := helper.Lookup(objectType)
 		if objectHelper == nil {
 			return fmt.Errorf("input object at index %d is of an unknown type '%s'", i, objectType)
+		}
+		if tenant != "" && objectHelper.IsTenantScoped() {
+			objectHelper.SetTenant(object, tenant)
 		}
 		object, err = objectHelper.Create(ctx, object)
 		if err != nil {

@@ -42,4 +42,14 @@ var _ = Describe("Context", func() {
 			SettingsFromContext(ctx)
 		}).To(Panic())
 	})
+
+	It("Returns empty string when no tenant in context", func() {
+		ctx := context.Background()
+		Expect(TenantFromContext(ctx)).To(BeEmpty())
+	})
+
+	It("Returns the tenant stored by TenantIntoContext", func() {
+		ctx := TenantIntoContext(context.Background(), "my-tenant")
+		Expect(TenantFromContext(ctx)).To(Equal("my-tenant"))
+	})
 })
