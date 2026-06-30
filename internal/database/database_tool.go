@@ -580,12 +580,16 @@ func (t *tool) listArchiveTables(ctx context.Context, pool *pgxpool.Pool) (resul
 }
 
 // checkObjectTable performs all consistency checks for a single object table: verifies that it has the expected columns
-// with the correct types, a primary key on 'id', a tenant foreign key, and a corresponding archive table. Returns the
-// number of issues found.
+// with the correct types, a primary key, a tenant foreign key, and a corresponding archive table. Returns the number
+// of issues found.
 func (t *tool) checkObjectTable(ctx context.Context, pool *pgxpool.Pool, table string) int {
 	issues := 0
 	issues += t.checkColumns(ctx, pool, table, toolObjectColumns)
-	issues += t.checkPrimaryKey(ctx, pool, table)
+	if slices.Contains(hardenedTables, table) {
+		issues += t.checkPrimaryKey(ctx, pool, table, "tenant", "name")
+	} else {
+		issues += t.checkPrimaryKey(ctx, pool, table, "id")
+	}
 	issues += t.checkTenantForeignKey(ctx, pool, table)
 	issues += t.checkTableExists(ctx, pool, "archived_"+table)
 	return issues
@@ -639,9 +643,9 @@ func (t *tool) checkColumns(ctx context.Context, pool *pgxpool.Pool, table strin
 	return issues
 }
 
-// checkPrimaryKey verifies that the given table has a primary key constraint on the 'id' column. Returns the number
-// of issues found.
-func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table string) int {
+// checkPrimaryKey verifies that the given table has a primary key constraint covering all the specified columns.
+// Returns the number of issues found.
+func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table string, columns ...string) int {
 	var count int
 	row := pool.QueryRow(
 		ctx,
@@ -660,8 +664,9 @@ func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table st
 			n.nspname = 'public' and
 			c.relname = $1 and
 			con.contype = 'p' and
-			a.attname = 'id'`,
+			a.attname = any($2)`,
 		table,
+		columns,
 	)
 	err := row.Scan(&count)
 	if err != nil {
@@ -673,11 +678,12 @@ func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table st
 		)
 		return 1
 	}
-	if count != 1 {
+	if count != len(columns) {
 		t.logger.ErrorContext(
 			ctx,
-			"Object table is missing the primary key on 'id' column",
+			"Object table primary key doesn't match expected columns",
 			slog.String("table", table),
+			slog.Any("expected", columns),
 		)
 		return 1
 	}
@@ -888,4 +894,10 @@ var toolArchivedColumns = map[string]string{
 	"name":               "text",
 	"tenant":             "text",
 	"version":            "integer",
+}
+
+// hardenedTables lists tables whose primary key has been changed from the default single-column 'id' to the composite
+// (tenant, name) pair. More tables will be hardened in the future following the same pattern.
+var hardenedTables = []string{
+	"hubs",
 }

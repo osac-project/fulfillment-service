@@ -19,6 +19,8 @@ import (
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -119,6 +121,46 @@ func (s *PrivateHubsServer) Get(ctx context.Context,
 
 func (s *PrivateHubsServer) Create(ctx context.Context,
 	request *privatev1.HubsCreateRequest) (response *privatev1.HubsCreateResponse, err error) {
+	// For hubs the name is mandatory:
+	object := request.GetObject()
+	metadata := object.GetMetadata()
+	name := metadata.GetName()
+	if name == "" {
+		err = grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'metadata.name' is mandatory",
+		)
+		return
+	}
+
+	// For hubs the identifier must be empty or equal to the name. If it is empty it will be set to the name.
+	id := object.GetId()
+	if id != "" && id != name {
+		err = grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'id' must be empty or equal to field 'metadata.name'",
+		)
+		return
+	}
+	if id == "" {
+		object.SetId(name)
+	}
+
+	// Hubs must always belong to the shared tenant. If the caller didn't specify a tenant we default to 'shared'.
+	// If they specified anything else we reject the request.
+	tenant := metadata.GetTenant()
+	if tenant != "" && tenant != auth.SharedTenant {
+		err = grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"field 'metadata.tenant' must be empty or '%s'",
+			auth.SharedTenant,
+		)
+		return
+	}
+	if tenant == "" {
+		metadata.SetTenant(auth.SharedTenant)
+	}
+
 	err = s.generic.Create(ctx, request, &response)
 	return
 }

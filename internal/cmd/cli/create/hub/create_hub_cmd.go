@@ -37,11 +37,18 @@ func Cmd() *cobra.Command {
 	}
 	flags := result.Flags()
 	flags.StringVar(
-		&runner.id,
+		&runner.name,
+		"name",
+		"",
+		nameFlagHelp,
+	)
+	flags.StringVar(
+		&runner.name,
 		"id",
 		"",
 		idFlagHelp,
 	)
+	flags.MarkDeprecated("id", "use '--name' instead")
 	flags.StringVar(
 		&runner.kubeconfig,
 		"kubeconfig",
@@ -59,7 +66,7 @@ func Cmd() *cobra.Command {
 
 type runnerContext struct {
 	console    *terminal.Console
-	id         string
+	name       string
 	kubeconfig string
 	namespace  string
 }
@@ -78,11 +85,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check the parameters:
-	if c.id == "" {
-		return fmt.Errorf("identifier is required")
-	}
-	if c.namespace == "" {
-		return fmt.Errorf("namespace name is required")
+	if c.name == "" {
+		return fmt.Errorf("hub name is required, use the '--name' flag")
 	}
 	if c.kubeconfig == "" {
 		return fmt.Errorf("kubeconfig file is required")
@@ -109,7 +113,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	// Prepare the hub:
 	hub := privatev1.Hub_builder{
-		Id: c.id,
+		Metadata: privatev1.Metadata_builder{
+			Name: c.name,
+		}.Build(),
 		Spec: privatev1.HubSpec_builder{
 			Kubeconfig: kubeconfig,
 			Namespace:  c.namespace,
@@ -126,7 +132,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	// Display the result:
 	hub = response.Object
-	c.console.Infof(ctx, "Created hub `%s`.\n", hub.GetId())
+	c.console.Infof(ctx, "Created hub `%s`.\n", hub.GetMetadata().GetName())
 
 	return nil
 }
@@ -137,8 +143,12 @@ const longHelp = `
 Create a hub.
 `
 
+const nameFlagHelp = `
+_NAME_ - Name of the hub.
+`
+
 const idFlagHelp = `
-_ID_ - Unique identifier of the hub.
+Deprecated alternative for the '--name' flag.
 `
 
 const kubeconfigFlagHelp = `

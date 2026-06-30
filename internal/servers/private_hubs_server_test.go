@@ -18,9 +18,13 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 )
 
 var _ = Describe("Private hubs server", func() {
@@ -82,6 +86,9 @@ var _ = Describe("Private hubs server", func() {
 		It("Creates object", func() {
 			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-hub",
+					}.Build(),
 					Spec: privatev1.HubSpec_builder{
 						Kubeconfig: []byte("my_config"),
 						Namespace:  "my_ns",
@@ -92,7 +99,7 @@ var _ = Describe("Private hubs server", func() {
 			Expect(response).ToNot(BeNil())
 			object := response.GetObject()
 			Expect(object).ToNot(BeNil())
-			Expect(object.GetId()).ToNot(BeEmpty())
+			Expect(object.GetId()).To(Equal("my-hub"))
 		})
 
 		It("List objects", func() {
@@ -101,6 +108,9 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: fmt.Sprintf("my-hub-%d", i),
+						}.Build(),
 						Spec: privatev1.HubSpec_builder{
 							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
 							Namespace:  fmt.Sprintf("my_ns_%d", i),
@@ -124,6 +134,9 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: fmt.Sprintf("my-hub-%d", i),
+						}.Build(),
 						Spec: privatev1.HubSpec_builder{
 							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
 							Namespace:  fmt.Sprintf("my_ns_%d", i),
@@ -147,6 +160,9 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: fmt.Sprintf("my-hub-%d", i),
+						}.Build(),
 						Spec: privatev1.HubSpec_builder{
 							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
 							Namespace:  fmt.Sprintf("my_ns_%d", i),
@@ -171,6 +187,9 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: fmt.Sprintf("my-hub-%d", i),
+						}.Build(),
 						Spec: privatev1.HubSpec_builder{
 							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
 							Namespace:  fmt.Sprintf("my_ns_%d", i),
@@ -196,6 +215,9 @@ var _ = Describe("Private hubs server", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-hub",
+					}.Build(),
 					Spec: privatev1.HubSpec_builder{
 						Kubeconfig: []byte("my_config"),
 						Namespace:  "my_ns",
@@ -216,6 +238,9 @@ var _ = Describe("Private hubs server", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-hub",
+					}.Build(),
 					Spec: privatev1.HubSpec_builder{
 						Kubeconfig: []byte("my_config"),
 						Namespace:  "my_ns",
@@ -234,6 +259,12 @@ var _ = Describe("Private hubs server", func() {
 						Namespace:  "your_ns",
 					}.Build(),
 				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{
+						"spec.kubeconfig",
+						"spec.namespace",
+					},
+				},
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(updateResponse.GetObject().GetSpec().GetKubeconfig()).To(Equal([]byte("your_config")))
@@ -253,6 +284,7 @@ var _ = Describe("Private hubs server", func() {
 			createResponse, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
 					Metadata: privatev1.Metadata_builder{
+						Name:       "my-hub",
 						Finalizers: []string{"a"},
 					}.Build(),
 					Spec: privatev1.HubSpec_builder{
@@ -276,6 +308,178 @@ var _ = Describe("Private hubs server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(getResponse.GetObject().GetMetadata().GetDeletionTimestamp()).ToNot(BeNil())
+		})
+
+		It("Rejects creation when name is not provided", func() {
+			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(Equal(
+				"field 'metadata.name' is mandatory",
+			))
+		})
+
+		It("Uses the name as the identifier", func() {
+			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-hub",
+					}.Build(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response).ToNot(BeNil())
+			Expect(response.GetObject().GetId()).To(Equal("my-hub"))
+			Expect(response.GetObject().GetMetadata().GetName()).To(Equal("my-hub"))
+		})
+
+		It("Accepts matching identifier and name", func() {
+			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Id: "my-hub",
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-hub",
+					}.Build(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response).ToNot(BeNil())
+			Expect(response.GetObject().GetId()).To(Equal("my-hub"))
+			Expect(response.GetObject().GetMetadata().GetName()).To(Equal("my-hub"))
+		})
+
+		It("Rejects creation when identifier and name differ", func() {
+			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Id: "my-hub",
+					Metadata: privatev1.Metadata_builder{
+						Name: "other-hub",
+					}.Build(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(Equal(
+				"field 'id' must be empty or equal to field 'metadata.name'",
+			))
+		})
+
+		It("Rejects creation of a hub with a duplicate name", func() {
+			// Create the first hub:
+			_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-hub",
+					}.Build(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			// Try to create a second hub with the same name:
+			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-hub",
+					}.Build(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("other_config"),
+						Namespace:  "other_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
+		})
+
+		It("Defaults tenant to 'shared' when not specified", func() {
+			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-hub",
+					}.Build(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response).ToNot(BeNil())
+			Expect(response.GetObject().GetMetadata().GetTenant()).To(Equal(auth.SharedTenant))
+		})
+
+		It("Accepts explicit 'shared' tenant", func() {
+			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "my-hub",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response).ToNot(BeNil())
+			Expect(response.GetObject().GetMetadata().GetTenant()).To(Equal(auth.SharedTenant))
+		})
+
+		It("Rejects creation with a non-shared tenant", func() {
+			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "my-hub",
+						Tenant: "other-tenant",
+					}.Build(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(Equal(fmt.Sprintf(
+				"field 'metadata.tenant' must be empty or '%s'",
+				auth.SharedTenant,
+			)))
 		})
 	})
 })
