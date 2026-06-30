@@ -37,6 +37,7 @@ jobs:
       # Build the component image from the PR's fork/branch
       component-repo: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       component-ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      component-pr-author: ${{ github.event.pull_request.user.login || '' }}
       component-image-key: service.images.service
       # Checkout osac-test-infra for tests/Containerfile (not the caller repo)
       test-infra-repository: osac-project/osac-test-infra
