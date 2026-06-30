@@ -480,6 +480,6 @@ func (r *TableRenderer) lookupName(ctx context.Context, messageFullName protoref
 
 // renderCellAny renders any value type as a string.
 func (r *TableRenderer) renderCellAny(val ref.Val) error {
-	_, err := fmt.Fprintf(r.writer, "%s", val)
+	_, err := fmt.Fprintf(r.writer, "%v", val)
 	return err
 }

@@ -144,6 +144,55 @@ var _ = Describe("Table renderer", func() {
 		})
 	})
 
+	Describe("Integer columns", func() {
+		renderInstanceTypes := func(ctx context.Context, items []*publicv1.InstanceType) string {
+			objectHelper := makeObjectHelper(&publicv1.InstanceType{})
+			lookupHelper := makeLookupHelper()
+
+			helper := reflection.NewMockHelper(ctrl)
+			helper.EXPECT().
+				Lookup(objectHelper.String()).
+				Return(objectHelper).
+				AnyTimes()
+			helper.EXPECT().
+				Lookup(gomock.Any()).
+				Return(lookupHelper).
+				AnyTimes()
+
+			buffer := &bytes.Buffer{}
+			renderer, err := NewTableRenderer().
+				SetLogger(logger).
+				SetHelper(helper).
+				SetWriter(buffer).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			err = renderer.Render(ctx, items)
+			Expect(err).ToNot(HaveOccurred())
+			return buffer.String()
+		}
+
+		It("Renders integer fields as plain numbers", func(ctx context.Context) {
+			output := renderInstanceTypes(
+				ctx,
+				[]*publicv1.InstanceType{
+					publicv1.InstanceType_builder{
+						Id: "standard-4-16",
+						Metadata: publicv1.Metadata_builder{
+							Name: "standard-4-16",
+						}.Build(),
+						Spec: publicv1.InstanceTypeSpec_builder{
+							Cores:     4,
+							MemoryGib: 16,
+							State:     publicv1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE,
+						}.Build(),
+					}.Build(),
+				},
+			)
+			Expect(output).To(MatchRegexp(`4\s+16\s+ACTIVE`))
+			Expect(output).ToNot(ContainSubstring("%!s"))
+		})
+	})
+
 	It("Compiles CEL expressions successfully for all table definitions", func(ctx context.Context) {
 		// Collect all table definition files:
 		tableFiles, err := filepath.Glob("tables/*.yaml")
