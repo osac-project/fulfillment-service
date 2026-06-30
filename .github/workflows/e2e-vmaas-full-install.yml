@@ -29,7 +29,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  validate-fork:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR author is an org member
+        env:
+          AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+        run: |
+          case "${AUTHOR_ASSOCIATION}" in
+            OWNER|MEMBER|COLLABORATOR)
+              echo "PR author association is ${AUTHOR_ASSOCIATION} — allowing fork e2e."
+              ;;
+            *)
+              echo "::error::PR author association is '${AUTHOR_ASSOCIATION}'. Fork PRs require org membership."
+              exit 1
+              ;;
+          esac
+
   e2e-vmaas-full-install:
+    needs: [validate-fork]
+    if: ${{ !cancelled() && (needs.validate-fork.result == 'success' || needs.validate-fork.result == 'skipped') }}
     uses: osac-project/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@main
     with:
       test-suite: ${{ inputs.test-suite || 'vmaas' }}
@@ -37,7 +57,6 @@ jobs:
       # Build the component image from the PR's fork/branch
       component-repo: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       component-ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-      component-pr-author: ${{ github.event.pull_request.user.login || '' }}
       component-image-key: service.images.service
       # Checkout osac-test-infra for tests/Containerfile (not the caller repo)
       test-infra-repository: osac-project/osac-test-infra
