@@ -117,6 +117,42 @@ In summary:
 Some existing proto files document parent relationships via annotations. That is legacy guidance and
 should not be followed when designing new objects or refactoring existing ones.
 
+## Validation constraints
+
+All proto fields that have constraints (required, min/max length, format, etc.) must be annotated with
+`buf.validate` rules. The protovalidate library enforces these constraints at runtime via a gRPC
+interceptor, rejecting invalid requests with `InvalidArgument` errors that include field-level
+violation details.
+
+### Standard constraints
+
+Common validation patterns:
+
+- **Required string fields**: `[(buf.validate.field).string.min_len = 1]`
+- **DNS labels** (like `metadata.name`): `max_len: 63`, `pattern: "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)?$"`
+- **Enum fields**: `[(buf.validate.field).enum.defined_only = true]` to reject unknown values
+- **Numeric ranges**: `[(buf.validate.field).int32.gte = 0]`
+- **Map constraints**: Use `[(buf.validate.field).map.keys...]` and `[(buf.validate.field).map.values...]`
+
+### Cross-field validation
+
+For constraints that span multiple fields (e.g., "if field A is set, field B is required"), use CEL
+expressions in `buf.validate.message` annotations. Refer to the
+[protovalidate documentation](https://github.com/bufbuild/protovalidate) for CEL syntax.
+
+### When not to use protovalidate
+
+Constraints that require external state (database lookups, existence checks, uniqueness) cannot be
+expressed in proto annotations and must be implemented in server logic. Examples:
+
+- Resource name uniqueness (requires database query)
+- Foreign key validation (requires checking if referenced object exists)
+- Quota enforcement (requires tenant-level state)
+- Custom business rules that depend on multiple objects or system state
+
+For these cases, implement validation in the server's `Create` or `Update` methods and return
+`InvalidArgument` errors with descriptive messages.
+
 ## Declarative, intent-based design
 
 The API is declarative. Users express their intent by setting fields in `spec`, and the system works
