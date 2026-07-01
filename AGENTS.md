@@ -258,6 +258,21 @@ the full set of conventions and rules for the API, including object structure, n
 request/response patterns, REST transcoding, enums, conditions, object references, and
 documentation requirements.
 
+## Validation Constraints
+
+When adding new proto fields, always include `buf.validate` annotations for any constraints on the field:
+
+- **Required fields**: `[(buf.validate.field).string.min_len = 1]` or `[(buf.validate.field).repeated.min_items = 1]`
+- **Format validation**: `pattern` for regex, `email`, `uuid`, etc.
+- **Range constraints**: `gte`, `lte`, `gt`, `lt` for numeric fields
+- **Map validation**: Use `.map.keys` and `.map.values` for key/value constraints
+
+The protovalidate interceptor enforces these constraints before requests reach server handlers. Do not
+implement validation in Go code that can be expressed declaratively in proto.
+
+After modifying proto files with validation annotations, run `buf lint && buf generate` to ensure
+annotations compile cleanly and regenerate Go code.
+
 ## Common Pitfalls
 
 - Proto changes require both `buf lint` and `buf generate` before committing
