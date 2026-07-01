@@ -12,11 +12,12 @@
 # the License.
 #
 
-name: Setup Go
-description: Install and Go and Ginkgo
+name: Setup development tools
 runs:
   using: composite
   steps:
+
+  # Go and Ginkgo:
   - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
     with:
       go-version: '1.26.3'
@@ -34,3 +35,25 @@ runs:
       module="github.com/onsi/ginkgo/v2"
       version=$(go list -f '{{ .Version }}' -m "${module}")
       go install "${module}/ginkgo@${version}"
+
+  # Python, uv, and ruff:
+  - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+    with:
+      python-version: '3.14'
+  - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+  - shell: bash
+    run: uv tool install ruff==0.15.16
+
+  # Project-specific tools installed by 'dev.py'. The cache key includes the hash of 'dev/tools.py'
+  # because that file defines the tool names, versions, and checksums. Any change there means
+  # different binaries should be installed.
+  - id: dev-cache
+    uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+    with:
+      key: dev-${{ runner.os }}-${{ hashFiles('dev/tools.py') }}
+      path: bin
+  - if: steps.dev-cache.outputs.cache-hit != 'true'
+    shell: bash
+    run: uv run dev.py setup
+  - shell: bash
+    run: echo "${GITHUB_WORKSPACE}/bin" >> "${GITHUB_PATH}"
