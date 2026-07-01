@@ -96,7 +96,7 @@ func (m *ResourceManager) DeleteProjectGroups(ctx context.Context, tenant, proje
 		return fmt.Errorf("project name cannot contain '/' character")
 	}
 
-	// Delete the parent project group, which will cascade delete the viewers and managers subgroups
+	// Delete the parent project group, which will cascade delete the system:viewers and system:managers subgroups
 	projectGroupPath := fmt.Sprintf("/%s", projectName)
 
 	projectGroupID, err := m.getGroupIDByPath(ctx, tenant, projectGroupPath)
@@ -141,7 +141,7 @@ func (m *ResourceManager) getGroupIDByPath(ctx context.Context, organizationName
 }
 
 // CreateProjectGroups creates Keycloak organization groups for a project.
-// Creates hierarchical groups: /{project-name}/viewers and /{project-name}/managers
+// Creates hierarchical groups: /{project-name}/system:viewers and /{project-name}/system:managers
 // These groups are used by Authorino OPA policies for authorization.
 // Returns the managers group ID for immediate use (avoids timing issues with group lookup).
 func (m *ResourceManager) CreateProjectGroups(ctx context.Context, tenant, projectName string) (string, error) {
@@ -201,7 +201,7 @@ func (m *ResourceManager) CreateProjectGroups(ctx context.Context, tenant, proje
 	return managersGroupID, nil
 }
 
-// AddUserToProjectGroup adds a user to a project group (viewers or managers).
+// AddUserToProjectGroup adds a user to a project group (system:viewers or system:managers).
 func (m *ResourceManager) AddUserToProjectGroup(ctx context.Context, tenant, projectName, username, groupType string) error {
 	if tenant == "" {
 		return fmt.Errorf("tenant is required")
@@ -270,7 +270,7 @@ func (m *ResourceManager) AddUserToGroupByID(ctx context.Context, tenant, userna
 	return nil
 }
 
-// RemoveUserFromProjectGroup removes a user from a project group (viewers or managers).
+// RemoveUserFromProjectGroup removes a user from a project group (system:viewers or system:managers).
 func (m *ResourceManager) RemoveUserFromProjectGroup(ctx context.Context, tenant, projectName, username, groupType string) error {
 	if tenant == "" {
 		return fmt.Errorf("tenant is required")

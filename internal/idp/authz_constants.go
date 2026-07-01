@@ -13,12 +13,13 @@ language governing permissions and limitations under the License.
 
 package idp
 
-// Authorization group constants for hierarchical project access control.
-// These define the group names used in Keycloak organization groups.
+// Authorization group constants for hierarchical project access control. These define the group
+// names used in Keycloak organization groups. The "system:" prefix prevents collisions with
+// user-created project names, since the colon character is not valid in DNS labels.
 const (
-	// GroupNameViewers is the name for viewer access groups
-	GroupNameViewers = "viewers"
+	// GroupNameViewers is the name for viewer access groups.
+	GroupNameViewers = "system:viewers"
 
-	// GroupNameManagers is the name for manager access groups
-	GroupNameManagers = "managers"
+	// GroupNameManagers is the name for manager access groups.
+	GroupNameManagers = "system:managers"
 )

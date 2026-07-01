@@ -2480,7 +2480,7 @@ var _ = Describe("Keycloak Client", func() {
 						w.WriteHeader(http.StatusCreated)
 						return
 					}
-					// Create child group: viewers under /web-app
+					// Create child group: system:viewers under /web-app
 					if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/children") {
 						var payload map[string]interface{}
 						if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -2499,11 +2499,11 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				groupID, err := client.CreateAuthorizationGroup(ctx, "acme-corp", "viewers", "/web-app/viewers")
+				groupID, err := client.CreateAuthorizationGroup(ctx, "acme-corp", "system:viewers", "/web-app/system:viewers")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(groupID).To(Equal(createdGroups["viewers"]))
+				Expect(groupID).To(Equal(createdGroups["system:viewers"]))
 				Expect(createdGroups).To(HaveKey("web-app"))
-				Expect(createdGroups).To(HaveKey("viewers"))
+				Expect(createdGroups).To(HaveKey("system:viewers"))
 			})
 
 			It("should return error when organization is not found", func() {
@@ -2522,7 +2522,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				groupID, err := client.CreateAuthorizationGroup(ctx, "nonexistent-org", "viewers", "/web-app/viewers")
+				groupID, err := client.CreateAuthorizationGroup(ctx, "nonexistent-org", "system:viewers", "/web-app/system:viewers")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get organization"))
 				Expect(groupID).To(BeEmpty())
@@ -2587,10 +2587,10 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				groupID, err := client.CreateAuthorizationGroup(ctx, "acme-corp", "viewers", "/web-app/viewers")
+				groupID, err := client.CreateAuthorizationGroup(ctx, "acme-corp", "system:viewers", "/web-app/system:viewers")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(groupID).To(Equal(createdGroups["viewers"]))
-				Expect(createdGroups).To(HaveKey("viewers"))
+				Expect(groupID).To(Equal(createdGroups["system:viewers"]))
+				Expect(createdGroups).To(HaveKey("system:viewers"))
 			})
 		})
 
@@ -2702,8 +2702,8 @@ var _ = Describe("Keycloak Client", func() {
 							ID   string `json:"id"`
 							Path string `json:"path"`
 						}{
-							{ID: "group-123", Path: "/web-app/viewers"},
-							{ID: "group-456", Path: "/web-app/managers"},
+							{ID: "group-123", Path: "/web-app/system:viewers"},
+							{ID: "group-456", Path: "/web-app/system:managers"},
 						}
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -2718,7 +2718,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				groupID, err := client.GetGroupIDByPath(ctx, "acme-corp", "/web-app/viewers")
+				groupID, err := client.GetGroupIDByPath(ctx, "acme-corp", "/web-app/system:viewers")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(groupID).To(Equal("group-123"))
 			})
@@ -2739,7 +2739,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				_, err := client.GetGroupIDByPath(ctx, "nonexistent-org", "/web-app/viewers")
+				_, err := client.GetGroupIDByPath(ctx, "nonexistent-org", "/web-app/system:viewers")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get organization"))
 			})
@@ -2808,7 +2808,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				client = createTestClient(server.URL)
 
-				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/web-app/viewers")
+				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/web-app/system:viewers")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to list organization groups"))
 			})

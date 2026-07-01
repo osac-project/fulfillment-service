@@ -13,7 +13,7 @@
 
 -- Attach the immutable column trigger to the projects table to prevent mutation of server-assigned fields.
 -- The creator field is server-assigned at creation time and used by the project reconciler to grant
--- managers-group membership. Allowing clients to mutate this field would enable privilege escalation.
+-- system:managers group membership. Allowing clients to mutate this field would enable privilege escalation.
 create trigger check_immutable_columns
   before update on projects
   for each row

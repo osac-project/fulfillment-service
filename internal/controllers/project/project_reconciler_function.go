@@ -203,7 +203,7 @@ func (t *task) validateAndActivate(ctx context.Context) error {
 	}
 
 	// Create Keycloak groups for project authorization
-	// Returns the managers group ID to avoid timing issues with group lookup
+	// Returns the system:managers group ID to avoid timing issues with group lookup
 	managersGroupID, err := t.r.resourceManager.CreateProjectGroups(ctx,
 		t.project.GetMetadata().GetTenant(),
 		t.project.GetMetadata().GetName())
@@ -231,7 +231,7 @@ func (t *task) validateAndActivate(ctx context.Context) error {
 		return fmt.Errorf("failed to create Keycloak groups: %w", err)
 	}
 
-	// Add the project creator to the managers group using the ID from creation
+	// Add the project creator to the system:managers group using the ID from creation
 	// This avoids timing issues where the group isn't immediately visible in searches
 	creator := t.project.GetMetadata().GetCreator()
 	if creator != "" {

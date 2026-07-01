@@ -154,11 +154,11 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should create hierarchical viewers and managers groups", func() {
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameViewers, "/test-project/viewers").
+				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameViewers, "/test-project/system:viewers").
 				Return("viewers-group-id", nil)
 
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameManagers, "/test-project/managers").
+				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameManagers, "/test-project/system:managers").
 				Return("managers-group-id", nil)
 
 			managersID, err := manager.CreateProjectGroups(ctx, "test-org", "test-project")
@@ -168,11 +168,11 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should rollback viewers group when managers group creation fails", func() {
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameViewers, "/test-project/viewers").
+				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameViewers, "/test-project/system:viewers").
 				Return("viewers-group-id", nil)
 
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameManagers, "/test-project/managers").
+				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameManagers, "/test-project/system:managers").
 				Return("", errors.New("keycloak error"))
 
 			mockClient.EXPECT().
@@ -187,7 +187,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should return error when viewers group creation fails", func() {
 			mockClient.EXPECT().
-				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameViewers, "/test-project/viewers").
+				CreateAuthorizationGroup(gomock.Any(), "test-org", GroupNameViewers, "/test-project/system:viewers").
 				Return("", errors.New("keycloak error"))
 
 			managersID, err := manager.CreateProjectGroups(ctx, "test-org", "test-project")
@@ -239,7 +239,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should add user to managers group", func() {
 			mockClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/managers").
+				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/system:managers").
 				Return("managers-group-id", nil)
 
 			mockClient.EXPECT().
@@ -252,7 +252,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should add user to viewers group", func() {
 			mockClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/viewers").
+				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/system:viewers").
 				Return("viewers-group-id", nil)
 
 			mockClient.EXPECT().
@@ -289,7 +289,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should return error when group lookup fails", func() {
 			mockClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/managers").
+				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/system:managers").
 				Return("", errors.New("group not found"))
 
 			err := manager.AddUserToProjectGroup(ctx, "test-org", "test-project", "user-123", GroupNameManagers)
@@ -299,7 +299,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should return error when adding user to group fails", func() {
 			mockClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/managers").
+				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/system:managers").
 				Return("managers-group-id", nil)
 
 			mockClient.EXPECT().
@@ -338,7 +338,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should remove user from managers group", func() {
 			mockClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/managers").
+				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/system:managers").
 				Return("managers-group-id", nil)
 
 			mockClient.EXPECT().
@@ -351,7 +351,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should remove user from viewers group", func() {
 			mockClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/viewers").
+				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/system:viewers").
 				Return("viewers-group-id", nil)
 
 			mockClient.EXPECT().
@@ -388,7 +388,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should return error when group lookup fails", func() {
 			mockClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/managers").
+				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/system:managers").
 				Return("", errors.New("group not found"))
 
 			err := manager.RemoveUserFromProjectGroup(ctx, "test-org", "test-project", "user-123", GroupNameManagers)
@@ -398,7 +398,7 @@ var _ = Describe("ResourceManager", func() {
 
 		It("should return error when removing user from group fails", func() {
 			mockClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/managers").
+				GetGroupIDByPath(gomock.Any(), "test-org", "/test-project/system:managers").
 				Return("managers-group-id", nil)
 
 			mockClient.EXPECT().

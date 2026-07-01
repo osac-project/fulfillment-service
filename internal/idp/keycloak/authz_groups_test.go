@@ -36,12 +36,12 @@ var _ = Describe("searchGroupRecursively", func() {
 			Name: "web-app",
 			Path: "/web-app",
 			SubGroups: []groupNode{
-				{ID: "group-456", Name: "viewers", Path: "/web-app/viewers"},
-				{ID: "group-789", Name: "managers", Path: "/web-app/managers"},
+				{ID: "group-456", Name: "system:viewers", Path: "/web-app/system:viewers"},
+				{ID: "group-789", Name: "system:managers", Path: "/web-app/system:managers"},
 			},
 		}
 
-		id := searchGroupRecursively(group, "/web-app/viewers")
+		id := searchGroupRecursively(group, "/web-app/system:viewers")
 		Expect(id).To(Equal("group-456"))
 	})
 
@@ -56,14 +56,14 @@ var _ = Describe("searchGroupRecursively", func() {
 					Name: "child-project",
 					Path: "/parent-project/child-project",
 					SubGroups: []groupNode{
-						{ID: "group-viewers", Name: "viewers", Path: "/parent-project/child-project/viewers"},
-						{ID: "group-managers", Name: "managers", Path: "/parent-project/child-project/managers"},
+						{ID: "group-viewers", Name: "system:viewers", Path: "/parent-project/child-project/system:viewers"},
+						{ID: "group-managers", Name: "system:managers", Path: "/parent-project/child-project/system:managers"},
 					},
 				},
 			},
 		}
 
-		id := searchGroupRecursively(group, "/parent-project/child-project/viewers")
+		id := searchGroupRecursively(group, "/parent-project/child-project/system:viewers")
 		Expect(id).To(Equal("group-viewers"))
 	})
 
@@ -73,7 +73,7 @@ var _ = Describe("searchGroupRecursively", func() {
 			Name: "web-app",
 			Path: "/web-app",
 			SubGroups: []groupNode{
-				{ID: "group-456", Name: "viewers", Path: "/web-app/viewers"},
+				{ID: "group-456", Name: "system:viewers", Path: "/web-app/system:viewers"},
 			},
 		}
 
@@ -126,7 +126,7 @@ var _ = Describe("searchGroupRecursively", func() {
 		id := searchGroupRecursively(group, "/web-app")
 		Expect(id).To(Equal("group-123"))
 
-		id = searchGroupRecursively(group, "/web-app/viewers")
+		id = searchGroupRecursively(group, "/web-app/system:viewers")
 		Expect(id).To(Equal(""))
 	})
 })

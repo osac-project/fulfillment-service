@@ -30,12 +30,12 @@ import (
 // Organization groups are scoped to the organization and support hierarchical paths.
 //
 // Group path format examples:
-//   - Top-level project: "/{project-name}/{viewers|managers}"
-//     Example: "/web-app/viewers"
-//   - Nested project: "/{parent-project}/{sub-project}/{viewers|managers}"
-//     Example: "/web-app/api/viewers"
-//   - Deeper nesting: "/{project}/{sub-project}/{component}/{viewers|managers}"
-//     Example: "/platform/web-app/api/viewers"
+//   - Top-level project: "/{project-name}/{system:viewers|system:managers}"
+//     Example: "/web-app/system:viewers"
+//   - Nested project: "/{parent-project}/{sub-project}/{system:viewers|system:managers}"
+//     Example: "/web-app/api/system:viewers"
+//   - Deeper nesting: "/{project}/{sub-project}/{component}/{system:viewers|system:managers}"
+//     Example: "/platform/web-app/api/system:viewers"
 //
 // Organization groups are scoped per organization, so paths can be simple and readable.
 // This method creates the full hierarchy if parent groups don't exist.
@@ -54,8 +54,8 @@ func (c *Client) CreateAuthorizationGroup(ctx context.Context, organizationName,
 	}
 
 	// Parse the path to create parent groups if needed
-	// Path format: /web-app/viewers
-	// We need to ensure /web-app exists, then create viewers under it
+	// Path format: /web-app/system:viewers
+	// We need to ensure /web-app exists, then create system:viewers under it
 	// Use a cache to avoid redundant API calls within the same operation
 	cache := make(map[string]string) // path -> groupID
 	err = c.ensureGroupHierarchyWithCache(ctx, org.ID, groupPath, cache)
@@ -117,7 +117,7 @@ func (c *Client) DeleteAuthorizationGroup(ctx context.Context, organizationName,
 
 func (c *Client) ensureGroupHierarchyWithCache(ctx context.Context, orgID, groupPath string, cache map[string]string) error {
 	// Split path into segments (removing leading slash)
-	// "/web-app/viewers" -> ["web-app", "viewers"]
+	// "/web-app/system:viewers" -> ["web-app", "system:viewers"]
 	segments := strings.Split(strings.Trim(groupPath, "/"), "/")
 	if len(segments) == 0 {
 		return fmt.Errorf("invalid group path: %s", groupPath)
