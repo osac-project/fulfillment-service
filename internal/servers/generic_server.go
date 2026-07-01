@@ -942,6 +942,13 @@ func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metada
 // - Must be between 1 and 63 characters long
 // - Must only contain lowercase letters (a-z), digits (0-9) and hyphens (-)
 // - Cannot start or end with a hyphen
+//
+// TODO(OSAC-1275): This method is partially redundant with protovalidate annotations on the Metadata
+// message. The proto annotations enforce max length (63 chars) and basic pattern matching. This Go
+// validation remains in place during the migration to ensure backwards compatibility, but the name
+// field validation is now primarily handled by the protovalidate interceptor. Label and annotation
+// validation still requires this Go code due to complexity of the key/value rules that cannot be
+// fully expressed in proto regex patterns.
 func (s *GenericServer[O]) validateName(ctx context.Context, name string) error {
 	// Max length:
 	if len(name) > 63 {
@@ -984,6 +991,13 @@ func (s *GenericServer[O]) validateName(ctx context.Context, name string) error 
 	return nil
 }
 
+// validateLabels validates label keys and values.
+//
+// TODO(OSAC-1275): This method is partially redundant with protovalidate annotations on the Metadata
+// message. The proto annotations enforce length constraints (keys max 316 chars, values max 63 chars).
+// However, the complex character-level validation (DNS subdomain prefix rules, alphanumeric start/end,
+// special character restrictions) remains in Go code as it cannot be fully expressed in proto regex
+// patterns. This validation runs after protovalidate, providing additional checks.
 func (s *GenericServer[O]) validateLabels(labels map[string]string) error {
 	for key, value := range labels {
 		err := s.validateLabelKey("metadata.labels", key)
@@ -1001,6 +1015,13 @@ func (s *GenericServer[O]) validateLabels(labels map[string]string) error {
 	return nil
 }
 
+// validateAnnotations validates annotation keys.
+//
+// TODO(OSAC-1275): This method is partially redundant with protovalidate annotations on the Metadata
+// message. The proto annotations enforce key length constraints (max 316 chars). However, the complex
+// character-level validation (DNS subdomain prefix rules, alphanumeric start/end, special character
+// restrictions) remains in Go code as it cannot be fully expressed in proto regex patterns. This
+// validation runs after protovalidate, providing additional checks.
 func (s *GenericServer[O]) validateAnnotations(annotations map[string]string) error {
 	for key := range annotations {
 		err := s.validateLabelKey("metadata.annotations", key)
