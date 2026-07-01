@@ -27,6 +27,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/collections"
@@ -42,16 +43,45 @@ var _ = Describe("Generic DAO", func() {
 	)
 
 	var (
-		ctx     context.Context
-		ctrl    *gomock.Controller
-		tenancy *auth.MockTenancyLogic
-		tx      database.Tx
+		ctx         context.Context
+		ctrl        *gomock.Controller
+		tenancy     *auth.MockTenancyLogic
+		tx          database.Tx
+		tenantsDao  *GenericDAO[*privatev1.Tenant]
+		projectsDao *GenericDAO[*privatev1.Project]
 	)
 
 	sort := func(objects []*testsv1.Object) {
 		sort.Slice(objects, func(i, j int) bool {
 			return strings.Compare(objects[i].GetId(), objects[j].GetId()) < 0
 		})
+	}
+
+	// createTenant creates a tenant with the given name.
+	createTenant := func(ctx context.Context, name string) {
+		_, err := tenantsDao.Create().
+			SetObject(privatev1.Tenant_builder{
+				Id: name,
+				Metadata: privatev1.Metadata_builder{
+					Tenant: name,
+					Name:   name,
+				}.Build(),
+			}.Build()).
+			Do(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	}
+
+	// createProject creates a project with the given tenant and name.
+	createProject := func(ctx context.Context, tenant, name string) {
+		_, err := projectsDao.Create().
+			SetObject(privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenant: tenant,
+					Name:   name,
+				}.Build(),
+			}.Build()).
+			Do(ctx)
+		Expect(err).ToNot(HaveOccurred())
 	}
 
 	BeforeEach(func() {
@@ -94,53 +124,23 @@ var _ = Describe("Generic DAO", func() {
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
 
-		// Create the tenants used in the tests:
-		createTenant := func(name string) {
-			_, err = pool.Exec(ctx,
-				`
-				insert into tenants (
-					id,
-					tenant,
-					name,
-					data
-				)
-				values (
-					$1,
-					$2,
-					$3,
-					'{}'
-				)
-				`,
-				name, name, name,
-			)
-			Expect(err).ToNot(HaveOccurred())
-		}
-		createTenant("my-tenant")
+		// Create the DAOs for tenants and projects:
+		tenantsDao, err = NewGenericDAO[*privatev1.Tenant]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		projectsDao, err = NewGenericDAO[*privatev1.Project]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create the tenant used in the tests:
+		createTenant(ctx, "my-tenant")
 
 		// Create the projects used in the tests:
-		createProject := func(tenant, name string) {
-			_, err = pool.Exec(ctx,
-				`
-				insert into projects (
-					id,
-					tenant,
-					project,
-					name,
-					data
-				)
-				values (
-					uuidv7(),
-					$1,
-					'',
-					$2,
-					'{}'
-				)
-				`,
-				tenant, name,
-			)
-			Expect(err).ToNot(HaveOccurred())
-		}
-		createProject("my-tenant", "my-project")
+		createProject(ctx, "my-tenant", "my-project")
 	})
 
 	Describe("Creation", func() {
@@ -1540,864 +1540,1038 @@ var _ = Describe("Generic DAO", func() {
 			Expect(errors.As(err, &notFoundErr)).To(BeTrue())
 			Expect(notFoundErr.IDs).To(ConsistOf("does-not-exist"))
 		})
+	})
 
-		Describe("Filtering", func() {
-			It("Filters by identifier", func() {
-				for i := range 10 {
-					_, err := generic.Create().
-						SetObject(
-							testsv1.Object_builder{
-								Id: fmt.Sprintf("%d", i),
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-									Name:   fmt.Sprintf("my-object-%d", i),
-								}.Build(),
-							}.Build(),
-						).
-						Do(ctx)
-					Expect(err).ToNot(HaveOccurred())
-				}
-				response, err := generic.List().
-					SetFilter("this.id == '5'").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("5"))
-			})
+	Describe("Filtering", func() {
+		var objectsDao *GenericDAO[*testsv1.Object]
 
-			It("Filters by identifier set", func() {
-				for i := range 10 {
-					_, err := generic.Create().
-						SetObject(
-							testsv1.Object_builder{
-								Id: fmt.Sprintf("%d", i),
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-									Name:   fmt.Sprintf("my-object-%d", i),
-								}.Build(),
-							}.Build(),
-						).
-						Do(ctx)
-					Expect(err).ToNot(HaveOccurred())
-				}
-				response, err := generic.List().
-					SetFilter("this.id in ['1', '3', '5', '7', '9']").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				sort(items)
-				Expect(items).To(HaveLen(5))
-				Expect(items[0].GetId()).To(Equal("1"))
-				Expect(items[1].GetId()).To(Equal("3"))
-				Expect(items[2].GetId()).To(Equal("5"))
-				Expect(items[3].GetId()).To(Equal("7"))
-				Expect(items[4].GetId()).To(Equal("9"))
-			})
+		BeforeEach(func() {
+			var err error
 
-			It("Filters by string JSON field", func() {
-				for i := range 10 {
-					_, err := generic.Create().
-						SetObject(
-							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-									Name:   fmt.Sprintf("my-object-%d", i),
-								}.Build(),
-								MyString: fmt.Sprintf("my_value_%d", i),
-							}.Build(),
-						).
-						Do(ctx)
-					Expect(err).ToNot(HaveOccurred())
-				}
-				response, err := generic.List().
-					SetFilter("this.my_string == 'my_value_5'").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMyString()).To(Equal("my_value_5"))
-			})
+			// Create the DAO:
+			objectsDao, err = NewGenericDAO[*testsv1.Object]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).Build()
+			Expect(err).ToNot(HaveOccurred())
+		})
 
-			It("Filters by identifier or JSON field", func() {
-				for i := range 10 {
-					_, err := generic.Create().
-						SetObject(
-							testsv1.Object_builder{
-								Id: fmt.Sprintf("%d", i),
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-									Name:   fmt.Sprintf("my-object-%d", i),
-								}.Build(),
-								MyString: fmt.Sprintf("my_value_%d", i),
-							}.Build(),
-						).
-						Do(ctx)
-					Expect(err).ToNot(HaveOccurred())
-				}
-				response, err := generic.List().
-					SetFilter("this.id == '1' || this.my_string == 'my_value_3'").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				sort(items)
-				Expect(items).To(HaveLen(2))
-				Expect(items[0].GetId()).To(Equal("1"))
-				Expect(items[0].GetMyString()).To(Equal("my_value_1"))
-				Expect(items[1].GetId()).To(Equal("3"))
-				Expect(items[1].GetMyString()).To(Equal("my_value_3"))
-			})
-
-			It("Filters by identifier and JSON field", func() {
-				for i := range 10 {
-					_, err := generic.Create().
-						SetObject(
-							testsv1.Object_builder{
-								Id: fmt.Sprintf("%d", i),
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-									Name:   fmt.Sprintf("my-object-%d", i),
-								}.Build(),
-								MyString: fmt.Sprintf("my_value_%d", i),
-							}.Build(),
-						).
-						Do(ctx)
-					Expect(err).ToNot(HaveOccurred())
-				}
-				response, err := generic.List().
-					SetFilter("this.id == '1' && this.my_string == 'my_value_1'").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("1"))
-				Expect(items[0].GetMyString()).To(Equal("my_value_1"))
-			})
-
-			It("Filters by calculated value", func() {
-				for i := range 10 {
-					_, err := generic.Create().
-						SetObject(
-							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-									Name:   fmt.Sprintf("my-object-%d", i),
-								}.Build(),
-								MyInt32: int32(i),
-							}.Build(),
-						).Do(ctx)
-					Expect(err).ToNot(HaveOccurred())
-				}
-				response, err := generic.List().
-					SetFilter("(this.my_int32 + 1) == 2").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMyInt32()).To(BeNumerically("==", 1))
-			})
-
-			It("Filters by nested JSON string field", func() {
-				for i := range 10 {
-					_, err := generic.Create().
-						SetObject(
-							testsv1.Object_builder{
-								Metadata: testsv1.Metadata_builder{
-									Tenant: "my-tenant",
-									Name:   fmt.Sprintf("my-object-%d", i),
-								}.Build(),
-								Spec: testsv1.Spec_builder{
-									SpecString: fmt.Sprintf("my_value_%d", i),
-								}.Build(),
-							}.Build(),
-						).
-						Do(ctx)
-					Expect(err).ToNot(HaveOccurred())
-				}
-				response, err := generic.List().
-					SetFilter("this.spec.spec_string == 'my_value_5'").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetSpec().GetSpecString()).ToNot(BeNil())
-				Expect(items[0].GetSpec().GetSpecString()).To(Equal("my_value_5"))
-			})
-
-			It("Filters deleted", func() {
-				createResponse, err := generic.Create().
+		It("Filters by identifier", func() {
+			for i := range 10 {
+				_, err := objectsDao.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "0",
+							Id: fmt.Sprintf("%d", i),
 							Metadata: testsv1.Metadata_builder{
-								Finalizers: []string{"a"},
-								Tenant:     "my-tenant",
-								Name:       "my-object",
+								Tenant: "my-tenant",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				object := createResponse.GetObject()
-				_, err = generic.Delete().
-					SetId(object.GetId()).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("this.metadata.deletion_timestamp != null").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetId()).To(Equal("0"))
-			})
+			}
+			response, err := objectsDao.List().
+				SetFilter("this.id == '5'").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetId()).To(Equal("5"))
+		})
 
-			It("Filters not deleted", func() {
-				createResponse, err := generic.Create().
+		It("Filters by identifier set", func() {
+			for i := range 10 {
+				_, err := objectsDao.Create().
 					SetObject(
 						testsv1.Object_builder{
-							Id: "0",
+							Id: fmt.Sprintf("%d", i),
 							Metadata: testsv1.Metadata_builder{
-								Finalizers: []string{"a"},
-								Tenant:     "my-tenant",
-								Name:       "my-object",
+								Tenant: "my-tenant",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				object := createResponse.GetObject()
-				_, err = generic.Delete().
-					SetId(object.GetId()).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("this.metadata.deletion_timestamp == null").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(BeEmpty())
-			})
+			}
+			response, err := objectsDao.List().
+				SetFilter("this.id in ['1', '3', '5', '7', '9']").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			sort(items)
+			Expect(items).To(HaveLen(5))
+			Expect(items[0].GetId()).To(Equal("1"))
+			Expect(items[1].GetId()).To(Equal("3"))
+			Expect(items[2].GetId()).To(Equal("5"))
+			Expect(items[3].GetId()).To(Equal("7"))
+			Expect(items[4].GetId()).To(Equal("9"))
+		})
 
-			It("Filters by timestamp in the future", func() {
-				var err error
-				now := time.Now()
-				_, err = generic.Create().
+		It("Filters by string JSON field", func() {
+			for i := range 10 {
+				_, err := objectsDao.Create().
 					SetObject(
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
-								Name:   "old",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
-							MyTimestamp: timestamppb.New(now.Add(-time.Minute)),
+							MyString: fmt.Sprintf("my_value_%d", i),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Id: "new",
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "new",
-							}.Build(),
-							MyTimestamp: timestamppb.New(now.Add(+time.Minute)),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("this.my_timestamp > now").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("new"))
-			})
+			}
+			response, err := objectsDao.List().
+				SetFilter("this.my_string == 'my_value_5'").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMyString()).To(Equal("my_value_5"))
+		})
 
-			It("Filters by timestamp in the past", func() {
-				var err error
-				now := time.Now()
-				_, err = generic.Create().
+		It("Filters by identifier or JSON field", func() {
+			for i := range 10 {
+				_, err := objectsDao.Create().
 					SetObject(
 						testsv1.Object_builder{
+							Id: fmt.Sprintf("%d", i),
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
-								Name:   "old",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
-							MyTimestamp: timestamppb.New(now.Add(-time.Minute)),
+							MyString: fmt.Sprintf("my_value_%d", i),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "new",
-							}.Build(),
-							MyTimestamp: timestamppb.New(now.Add(+time.Minute)),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("this.my_timestamp < now").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("old"))
-			})
+			}
+			response, err := objectsDao.List().
+				SetFilter("this.id == '1' || this.my_string == 'my_value_3'").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			sort(items)
+			Expect(items).To(HaveLen(2))
+			Expect(items[0].GetId()).To(Equal("1"))
+			Expect(items[0].GetMyString()).To(Equal("my_value_1"))
+			Expect(items[1].GetId()).To(Equal("3"))
+			Expect(items[1].GetMyString()).To(Equal("my_value_3"))
+		})
 
-			It("Filters by presence of message field", func() {
-				var err error
-				_, err = generic.Create().
+		It("Filters by identifier and JSON field", func() {
+			for i := range 10 {
+				_, err := objectsDao.Create().
 					SetObject(
 						testsv1.Object_builder{
+							Id: fmt.Sprintf("%d", i),
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
-								Name:   "good",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
-							Spec: testsv1.Spec_builder{}.Build(),
+							MyString: fmt.Sprintf("my_value_%d", i),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "bad",
-							}.Build(),
-							Spec: nil,
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("has(this.spec)").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
-			})
+			}
+			response, err := objectsDao.List().
+				SetFilter("this.id == '1' && this.my_string == 'my_value_1'").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetId()).To(Equal("1"))
+			Expect(items[0].GetMyString()).To(Equal("my_value_1"))
+		})
 
-			It("Filters by presence of string field", func() {
-				var err error
-				_, err = generic.Create().
+		It("Filters by calculated value", func() {
+			for i := range 10 {
+				_, err := objectsDao.Create().
 					SetObject(
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
-								Name:   "good",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
-							MyString: "my value",
+							MyInt32: int32(i),
 						}.Build(),
-					).
-					Do(ctx)
+					).Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Id: "bad",
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "bad",
-							}.Build(),
-							MyString: "",
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("has(this.my_string)").Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
-			})
+			}
+			response, err := objectsDao.List().
+				SetFilter("(this.my_int32 + 1) == 2").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMyInt32()).To(BeNumerically("==", 1))
+		})
 
-			It("Filters by presence of deletion timestamp", func() {
-				createReponse, err := generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Finalizers: []string{"a"},
-								Tenant:     "my-tenant",
-								Name:       "good",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				goodObject := createReponse.GetObject()
-				goodId := goodObject.GetId()
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Finalizers: []string{"a"},
-								Tenant:     "my-tenant",
-								Name:       "bad",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Delete().
-					SetId(goodId).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("has(this.metadata.deletion_timestamp)").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
-			})
-
-			It("Filters by absence of deletion timestamp", func() {
-				_, err := generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Finalizers: []string{"a"},
-								Tenant:     "my-tenant",
-								Name:       "good",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				createReponse, err := generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Finalizers: []string{"a"},
-								Tenant:     "my-tenant",
-								Name:       "bad",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				badObject := createReponse.GetObject()
-				badId := badObject.GetId()
-				_, err = generic.Delete().
-					SetId(badId).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("!has(this.metadata.deletion_timestamp)").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
-			})
-
-			It("Filters by presence of nested string field", func() {
-				var err error
-				_, err = generic.Create().
+		It("Filters by nested JSON string field", func() {
+			for i := range 10 {
+				_, err := objectsDao.Create().
 					SetObject(
 						testsv1.Object_builder{
 							Metadata: testsv1.Metadata_builder{
 								Tenant: "my-tenant",
-								Name:   "good",
+								Name:   fmt.Sprintf("my-object-%d", i),
 							}.Build(),
 							Spec: testsv1.Spec_builder{
-								SpecString: "my value",
+								SpecString: fmt.Sprintf("my_value_%d", i),
 							}.Build(),
 						}.Build(),
 					).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "bad",
-							}.Build(),
-							Spec: testsv1.Spec_builder{
-								SpecString: "",
-							}.Build(),
+			}
+			response, err := objectsDao.List().
+				SetFilter("this.spec.spec_string == 'my_value_5'").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetSpec().GetSpecString()).ToNot(BeNil())
+			Expect(items[0].GetSpec().GetSpecString()).To(Equal("my_value_5"))
+		})
+
+		It("Filters deleted", func() {
+			createResponse, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Id: "0",
+						Metadata: testsv1.Metadata_builder{
+							Finalizers: []string{"a"},
+							Tenant:     "my-tenant",
+							Name:       "my-object",
 						}.Build(),
-					).
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			_, err = objectsDao.Delete().
+				SetId(object.GetId()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("this.metadata.deletion_timestamp != null").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetId()).To(Equal("0"))
+		})
+
+		It("Filters not deleted", func() {
+			createResponse, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Id: "0",
+						Metadata: testsv1.Metadata_builder{
+							Finalizers: []string{"a"},
+							Tenant:     "my-tenant",
+							Name:       "my-object",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			_, err = objectsDao.Delete().
+				SetId(object.GetId()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("this.metadata.deletion_timestamp == null").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(BeEmpty())
+		})
+
+		It("Filters by timestamp in the future", func() {
+			var err error
+			now := time.Now()
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "old",
+						}.Build(),
+						MyTimestamp: timestamppb.New(now.Add(-time.Minute)),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Id: "new",
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "new",
+						}.Build(),
+						MyTimestamp: timestamppb.New(now.Add(+time.Minute)),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("this.my_timestamp > now").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("new"))
+		})
+
+		It("Filters by timestamp in the past", func() {
+			var err error
+			now := time.Now()
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "old",
+						}.Build(),
+						MyTimestamp: timestamppb.New(now.Add(-time.Minute)),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "new",
+						}.Build(),
+						MyTimestamp: timestamppb.New(now.Add(+time.Minute)),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("this.my_timestamp < now").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("old"))
+		})
+
+		It("Filters by presence of message field", func() {
+			var err error
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "good",
+						}.Build(),
+						Spec: testsv1.Spec_builder{}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "bad",
+						}.Build(),
+						Spec: nil,
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("has(this.spec)").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Filters by presence of string field", func() {
+			var err error
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "good",
+						}.Build(),
+						MyString: "my value",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Id: "bad",
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "bad",
+						}.Build(),
+						MyString: "",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("has(this.my_string)").Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Filters by presence of deletion timestamp", func() {
+			createReponse, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Finalizers: []string{"a"},
+							Tenant:     "my-tenant",
+							Name:       "good",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			goodObject := createReponse.GetObject()
+			goodId := goodObject.GetId()
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Finalizers: []string{"a"},
+							Tenant:     "my-tenant",
+							Name:       "bad",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Delete().
+				SetId(goodId).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("has(this.metadata.deletion_timestamp)").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Filters by absence of deletion timestamp", func() {
+			_, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Finalizers: []string{"a"},
+							Tenant:     "my-tenant",
+							Name:       "good",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			createReponse, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Finalizers: []string{"a"},
+							Tenant:     "my-tenant",
+							Name:       "bad",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			badObject := createReponse.GetObject()
+			badId := badObject.GetId()
+			_, err = objectsDao.Delete().
+				SetId(badId).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("!has(this.metadata.deletion_timestamp)").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Filters by presence of nested string field", func() {
+			var err error
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "good",
+						}.Build(),
+						Spec: testsv1.Spec_builder{
+							SpecString: "my value",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "bad",
+						}.Build(),
+						Spec: testsv1.Spec_builder{
+							SpecString: "",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("has(this.spec.spec_string)").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Filters by string prefix", func() {
+			var err error
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "good",
+						}.Build(),
+						MyString: "my value",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "bad",
+						}.Build(),
+						MyString: "your value",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("this.my_string.startsWith('my')").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Filters by string suffix", func() {
+			var err error
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "good",
+						}.Build(),
+						MyString: "value my",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "bad",
+						}.Build(),
+						MyString: "value your",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("this.my_string.endsWith('my')").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Escapes percent in prefix", func() {
+			var err error
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "good",
+						}.Build(),
+						MyString: "my% value",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "bad",
+						}.Build(),
+						MyString: "my value",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("this.my_string.startsWith('my%')").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Escapes underscore in prefix", func() {
+			var err error
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "good",
+						}.Build(),
+						MyString: "my_ value",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "bad",
+						}.Build(),
+						MyString: "my value",
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			response, err := objectsDao.List().
+				SetFilter("this.my_string.startsWith('my_')").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+		})
+
+		It("Filters by tenant", func() {
+			// Create objects with 'my-tenant' set in metadata:
+			_, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "my-object",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "your-object",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Filter by the tenant that is set in the metadata:
+			response, err := objectsDao.List().
+				SetFilter("this.metadata.tenant == 'my-tenant'").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(2))
+			for _, item := range items {
+				Expect(item.GetMetadata().GetTenant()).To(Equal("my-tenant"))
+			}
+
+			// Filter by a non-existent tenant:
+			response, err = objectsDao.List().
+				SetFilter("this.metadata.tenant == 'non_existent_tenant'").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items = response.GetItems()
+			Expect(items).To(BeEmpty())
+		})
+
+		It("Filters by label key", func() {
+			_, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Labels: map[string]string{
+								"mylabel": "myvalue",
+							},
+							Tenant: "my-tenant",
+							Name:   "with-label",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "without-label",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			response, err := objectsDao.List().
+				SetFilter("'mylabel' in this.metadata.labels").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("with-label"))
+		})
+
+		It("Filters by absence of label key", func() {
+			// Create an object with a lable, and another without:
+			_, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "with-label",
+							Labels: map[string]string{
+								"my-label": "my-value",
+							},
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "without-label",
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			// List by absence of label and verify that we only get the object without the label:
+			response, err := objectsDao.List().
+				SetFilter("!('my-label' in this.metadata.labels)").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("without-label"))
+		})
+
+		It("Filters by enum field", func() {
+			_, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Name:   "enum-a",
+							Tenant: "my-tenant",
+						}.Build(),
+						Spec: testsv1.Spec_builder{
+							SpecEnum: testsv1.MyEnum_MY_ENUM_VALUE_A,
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Name:   "enum-b",
+							Tenant: "my-tenant",
+						}.Build(),
+						Spec: testsv1.Spec_builder{
+							SpecEnum: testsv1.MyEnum_MY_ENUM_VALUE_B,
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			response, err := objectsDao.List().
+				SetFilter(fmt.Sprintf("this.spec.spec_enum == %d",
+					int32(testsv1.MyEnum_MY_ENUM_VALUE_A))).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("enum-a"))
+
+			response, err = objectsDao.List().
+				SetFilter(fmt.Sprintf("this.spec.spec_enum != %d",
+					int32(testsv1.MyEnum_MY_ENUM_VALUE_A))).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items = response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("enum-b"))
+		})
+
+		It("Filters by boolean field", func() {
+			// Create two objects, one with the boolean set to 'true' and one with the boolean set to 'false':
+			_, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Name:   "my-true",
+							Tenant: "my-tenant",
+						}.Build(),
+						Spec: testsv1.Spec_builder{
+							SpecBool: true,
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Name:   "my-false",
+							Tenant: "my-tenant",
+						}.Build(),
+						Spec: testsv1.Spec_builder{
+							SpecBool: false,
+						}.Build(),
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Check that we can get only the object with the boolean set to 'true':
+			response, err := objectsDao.List().
+				SetFilter("this.spec.spec_bool").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("my-true"))
+
+			// Check that we can get only the object with the boolean set to 'false':
+			response, err = objectsDao.List().
+				SetFilter("!this.spec.spec_bool").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items = response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("my-false"))
+		})
+
+		Describe("Filter by project", func() {
+			// createobject creates an object with the given project and name.
+			createObject := func(ctx context.Context, project, name string) {
+				_, err := objectsDao.Create().
+					SetObject(testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant:  "my-tenant",
+							Project: project,
+							Name:    name,
+						}.Build(),
+					}.Build()).
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("has(this.spec.spec_string)").
+			}
+
+			It("Filters by project", func() {
+				// Create two projects with different names:
+				createProject(ctx, "my-tenant", "project-a")
+				createProject(ctx, "my-tenant", "project-b")
+
+				// Create two objects, each belonging to a different project:
+				createObject(ctx, "project-a", "object-a")
+				createObject(ctx, "project-b", "object-b")
+
+				// Filter by project and verify that we only get the object with the requested project:
+				response, err := objectsDao.List().
+					SetFilter("this.metadata.project == 'project-a'").
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+				objects := response.GetItems()
+				Expect(objects).To(HaveLen(1))
+				object := objects[0]
+				Expect(object.GetMetadata().GetName()).To(Equal("object-a"))
 			})
 
-			It("Filters by string prefix", func() {
-				var err error
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "good",
-							}.Build(),
-							MyString: "my value",
-						}.Build(),
-					).
+			It("Filters by project prefix", func() {
+				// Create two projects with different names:
+				createProject(ctx, "my-tenant", "a-project")
+				createProject(ctx, "my-tenant", "b-project")
+
+				// Create two objects, each belonging to a different project:
+				createObject(ctx, "a-project", "a-object")
+				createObject(ctx, "b-project", "b-object")
+
+				// Filter by project and verify that we only get the object with the requested project:
+				response, err := objectsDao.List().
+					SetFilter("this.metadata.project.startsWith('a-')").
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "bad",
-							}.Build(),
-							MyString: "your value",
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("this.my_string.startsWith('my')").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+				objects := response.GetItems()
+				Expect(objects).To(HaveLen(1))
+				object := objects[0]
+				Expect(object.GetMetadata().GetName()).To(Equal("a-object"))
 			})
 
-			It("Filters by string suffix", func() {
-				var err error
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "good",
-							}.Build(),
-							MyString: "value my",
-						}.Build(),
-					).
+			It("Filters by project suffix", func() {
+				// Create two projects with different names:
+				createProject(ctx, "my-tenant", "project-a")
+				createProject(ctx, "my-tenant", "project-b")
+
+				// Create two objects, each belonging to a different project:
+				createObject(ctx, "project-a", "object-a")
+				createObject(ctx, "project-b", "object-b")
+
+				// Filter by project and verify that we only get the object with the requested project:
+				response, err := objectsDao.List().
+					SetFilter("this.metadata.project.endsWith('-a')").
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "bad",
-							}.Build(),
-							MyString: "value your",
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("this.my_string.endsWith('my')").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+				objects := response.GetItems()
+				Expect(objects).To(HaveLen(1))
+				object := objects[0]
+				Expect(object.GetMetadata().GetName()).To(Equal("object-a"))
 			})
 
-			It("Escapes percent in prefix", func() {
-				var err error
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "good",
-							}.Build(),
-							MyString: "my% value",
-						}.Build(),
-					).
+			It("Filters by project contains", func() {
+				// Create two projects with different names:
+				createProject(ctx, "my-tenant", "my-a-project")
+				createProject(ctx, "my-tenant", "my-b-project")
+
+				// Create two objects, each belonging to a different project:
+				createObject(ctx, "my-a-project", "object-a")
+				createObject(ctx, "my-b-project", "object-b")
+
+				// Filter by project and verify that we only get the object with the requested project:
+				response, err := objectsDao.List().
+					SetFilter("this.metadata.project.contains('-a-')").
 					Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "bad",
-							}.Build(),
-							MyString: "my value",
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("this.my_string.startsWith('my%')").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
+				objects := response.GetItems()
+				Expect(objects).To(HaveLen(1))
+				object := objects[0]
+				Expect(object.GetMetadata().GetName()).To(Equal("object-a"))
 			})
+		})
+	})
 
-			It("Escapes underscore in prefix", func() {
-				var err error
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "good",
-							}.Build(),
-							MyString: "my_ value",
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "bad",
-							}.Build(),
-							MyString: "my value",
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				response, err := generic.List().
-					SetFilter("this.my_string.startsWith('my_')").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("good"))
-			})
+	Describe("Project filtering", func() {
+		It("Filters by name", func() {
+			// Create two projects with different names:
+			createProject(ctx, "my-tenant", "project-a")
+			createProject(ctx, "my-tenant", "project-b")
 
-			It("Filters by tenant", func() {
-				// Create objects with 'my-tenant' set in metadata:
-				_, err := generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "my-object",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "your-object",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
+			// Filter by name and verify that we only get the project with the requested name:
+			response, err := projectsDao.List().
+				SetFilter("this.metadata.name == 'project-a'").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			projects := response.GetItems()
+			Expect(projects).To(HaveLen(1))
+			project := projects[0]
+			Expect(project.GetMetadata().GetName()).To(Equal("project-a"))
+		})
 
-				// Filter by the tenant that is set in the metadata:
-				response, err := generic.List().
-					SetFilter("this.metadata.tenant == 'my-tenant'").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(2))
-				for _, item := range items {
-					Expect(item.GetMetadata().GetTenant()).To(Equal("my-tenant"))
-				}
+		It("Filters by name prefix", func() {
+			// Create two projects with different names:
+			createProject(ctx, "my-tenant", "a-project")
+			createProject(ctx, "my-tenant", "b-project")
 
-				// Filter by a non-existent tenant:
-				response, err = generic.List().
-					SetFilter("this.metadata.tenant == 'non_existent_tenant'").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items = response.GetItems()
-				Expect(items).To(BeEmpty())
-			})
+			// Filter by name and verify that we only get the project with the requested name:
+			response, err := projectsDao.List().
+				SetFilter("this.metadata.name.startsWith('a-')").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			projects := response.GetItems()
+			Expect(projects).To(HaveLen(1))
+			project := projects[0]
+			Expect(project.GetMetadata().GetName()).To(Equal("a-project"))
+		})
 
-			It("Filters by label key", func() {
-				_, err := generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Labels: map[string]string{
-									"mylabel": "myvalue",
-								},
-								Tenant: "my-tenant",
-								Name:   "with-label",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "without-label",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
+		It("Filters by name suffix", func() {
+			// Create two projects with different names:
+			createProject(ctx, "my-tenant", "project-a")
+			createProject(ctx, "my-tenant", "project-b")
 
-				response, err := generic.List().
-					SetFilter("'mylabel' in this.metadata.labels").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("with-label"))
-			})
+			// Filter by name and verify that we only get the project with the requested name:
+			response, err := projectsDao.List().
+				SetFilter("this.metadata.name.endsWith('-a')").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			projects := response.GetItems()
+			Expect(projects).To(HaveLen(1))
+			project := projects[0]
+			Expect(project.GetMetadata().GetName()).To(Equal("project-a"))
+		})
 
-			It("Filters by absence of label key", func() {
-				// Create an object with a lable, and another without:
-				_, err := generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "with-label",
-								Labels: map[string]string{
-									"my-label": "my-value",
-								},
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Tenant: "my-tenant",
-								Name:   "without-label",
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
+		It("Filters by name contains", func() {
+			// Create two projects with different names:
+			createProject(ctx, "my-tenant", "my-a-project")
+			createProject(ctx, "my-tenant", "my-b-project")
 
-				// List by absence of label and verify that we only get the object without the label:
-				response, err := generic.List().
-					SetFilter("!('my-label' in this.metadata.labels)").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("without-label"))
-			})
-
-			It("Filters by enum field", func() {
-				_, err := generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Name:   "enum-a",
-								Tenant: "my-tenant",
-							}.Build(),
-							Spec: testsv1.Spec_builder{
-								SpecEnum: testsv1.MyEnum_MY_ENUM_VALUE_A,
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Name:   "enum-b",
-								Tenant: "my-tenant",
-							}.Build(),
-							Spec: testsv1.Spec_builder{
-								SpecEnum: testsv1.MyEnum_MY_ENUM_VALUE_B,
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-
-				response, err := generic.List().
-					SetFilter(fmt.Sprintf("this.spec.spec_enum == %d",
-						int32(testsv1.MyEnum_MY_ENUM_VALUE_A))).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("enum-a"))
-
-				response, err = generic.List().
-					SetFilter(fmt.Sprintf("this.spec.spec_enum != %d",
-						int32(testsv1.MyEnum_MY_ENUM_VALUE_A))).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items = response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("enum-b"))
-			})
-
-			It("Filters by boolean field", func() {
-				// Create two objects, one with the boolean set to 'true' and one with the boolean set to 'false':
-				_, err := generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Name:   "my-true",
-								Tenant: "my-tenant",
-							}.Build(),
-							Spec: testsv1.Spec_builder{
-								SpecBool: true,
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = generic.Create().
-					SetObject(
-						testsv1.Object_builder{
-							Metadata: testsv1.Metadata_builder{
-								Name:   "my-false",
-								Tenant: "my-tenant",
-							}.Build(),
-							Spec: testsv1.Spec_builder{
-								SpecBool: false,
-							}.Build(),
-						}.Build(),
-					).
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-
-				// Check that we can get only the object with the boolean set to 'true':
-				response, err := generic.List().
-					SetFilter("this.spec.spec_bool").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items := response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("my-true"))
-
-				// Check that we can get only the object with the boolean set to 'false':
-				response, err = generic.List().
-					SetFilter("!this.spec.spec_bool").
-					Do(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				items = response.GetItems()
-				Expect(items).To(HaveLen(1))
-				Expect(items[0].GetMetadata().GetName()).To(Equal("my-false"))
-			})
+			// Filter by name and verify that we only get the project with the requested name:
+			response, err := projectsDao.List().
+				SetFilter("this.metadata.name.contains('a')").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			projects := response.GetItems()
+			Expect(projects).To(HaveLen(1))
+			project := projects[0]
+			Expect(project.GetMetadata().GetName()).To(Equal("my-a-project"))
 		})
 	})
 })

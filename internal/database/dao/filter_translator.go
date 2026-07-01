@@ -32,6 +32,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 )
 
 // FilterTranslatorBuilder contains the data and logic needed to create a filter translator. Don't create instances of
@@ -42,10 +44,11 @@ type FilterTranslatorBuilder[O proto.Message] struct {
 
 // FilterTranslator knows how to translate filter expressions into SQL where clauses.
 type FilterTranslator[O proto.Message] struct {
-	logger   *slog.Logger
-	tsDesc   protoreflect.MessageDescriptor
-	thisDesc protoreflect.MessageDescriptor
-	celEnv   *cel.Env
+	logger      *slog.Logger
+	tsDesc      protoreflect.MessageDescriptor
+	thisDesc    protoreflect.MessageDescriptor
+	projectDesc protoreflect.MessageDescriptor
+	celEnv      *cel.Env
 }
 
 // filterTranslatorResultKind is the type of the result inferred during the translation process.
@@ -61,6 +64,7 @@ const (
 	filterTranslatorMdKind
 	filterTranslatorJsonKind
 	filterTranslatorMapKind
+	filterTranslatorLtreeKind
 )
 
 // String returns a string representation of the translator result type.
@@ -84,6 +88,8 @@ func (t filterTranslatorResultKind) String() string {
 		return "json"
 	case filterTranslatorMapKind:
 		return "map"
+	case filterTranslatorLtreeKind:
+		return "ltree"
 	default:
 		return fmt.Sprintf("unknown:%d", t)
 	}
@@ -193,7 +199,10 @@ func (b *FilterTranslatorBuilder[O]) Build() (result *FilterTranslator[O], err e
 	var thisTempl O
 	thisDesc := thisTempl.ProtoReflect().Descriptor()
 
-	// Create the CEN environment:
+	var projectTempl *privatev1.Project
+	projectDesc := projectTempl.ProtoReflect().Descriptor()
+
+	// Create the CEL environment:
 	celEnv, err := b.createCelEnv()
 	if err != nil {
 		err = fmt.Errorf("failed to create CEL environment")
@@ -202,10 +211,11 @@ func (b *FilterTranslatorBuilder[O]) Build() (result *FilterTranslator[O], err e
 
 	// Create and populate the object:
 	result = &FilterTranslator[O]{
-		logger:   b.logger,
-		tsDesc:   tsDesc,
-		thisDesc: thisDesc,
-		celEnv:   celEnv,
+		logger:      b.logger,
+		tsDesc:      tsDesc,
+		thisDesc:    thisDesc,
+		projectDesc: projectDesc,
+		celEnv:      celEnv,
 	}
 	return
 }
@@ -791,6 +801,10 @@ func (t *FilterTranslator[O]) translateToLike(funcName string, target ast.Expr, 
 	if err != nil {
 		return
 	}
+	targetTr, err = t.castToString(targetTr)
+	if err != nil {
+		return
+	}
 	if targetTr.precedence < filterTranslatorInPrecedence {
 		buffer.WriteString("(")
 		buffer.WriteString(targetTr.sql)
@@ -885,7 +899,21 @@ func (t *FilterTranslator[O]) translateSelectThisMdField(fieldName string,
 			result.precedence = filterTranslatorMaxPrecedence
 		} else {
 			result.sql = fieldName
-			result.kind = filterTranslatorStringKind
+			if t.thisDesc == t.projectDesc {
+				result.kind = filterTranslatorLtreeKind
+			} else {
+				result.kind = filterTranslatorStringKind
+			}
+			result.precedence = filterTranslatorMaxPrecedence
+		}
+	case "project":
+		if testOnly {
+			result.sql = "true"
+			result.kind = filterTranslatorBooleanKind
+			result.precedence = filterTranslatorMaxPrecedence
+		} else {
+			result.sql = fieldName
+			result.kind = filterTranslatorLtreeKind
 			result.precedence = filterTranslatorMaxPrecedence
 		}
 	case "creation_timestamp":
@@ -925,7 +953,7 @@ func (t *FilterTranslator[O]) translateSelectThisMdField(fieldName string,
 			result.kind = filterTranslatorTimeKind
 			result.precedence = filterTranslatorMaxPrecedence
 		}
-	case "creator", "tenant", "project":
+	case "creator", "tenant":
 		if testOnly {
 			result.sql = fmt.Sprintf("%s != ''", fieldName)
 			result.kind = filterTranslatorBooleanKind
@@ -1003,5 +1031,17 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 		return
 	}
 	result.precedence = filterTranslatorMaxPrecedence
+	return
+}
+
+func (t *FilterTranslator[O]) castToString(input filterTranslatorResult) (result filterTranslatorResult, err error) {
+	switch input.kind {
+	case filterTranslatorStringKind:
+		result = input
+	default:
+		result.sql = fmt.Sprintf("cast(%s as text)", input.sql)
+		result.kind = filterTranslatorStringKind
+		result.precedence = filterTranslatorMaxPrecedence
+	}
 	return
 }
