@@ -15,6 +15,7 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 
 // Metadata common to all kinds of objects.
@@ -44,7 +45,10 @@ message Metadata {
   // - It isn't case sensitive.
   //
   // It is optional and not unique, so multiple objecs, even created by the same user or tenant, can have the same name.
-  string name = 6;
+  string name = 6 [(buf.validate.field).string = {
+    max_len: 63,
+    pattern: "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)?$"
+  }];
 
   // Labels contains key-value pairs for organizing and selecting objects.
   //
@@ -58,13 +62,32 @@ message Metadata {
   // rules as names.
   //
   // Labels are indexed and searchable.
-  map<string, string> labels = 7;
+  map<string, string> labels = 7 [(buf.validate.field).map = {
+    keys: {
+      string: {
+        min_len: 1,
+        max_len: 316  // 253 (prefix) + 1 (/) + 62 (name)
+      }
+    },
+    values: {
+      string: {
+        max_len: 63
+      }
+    }
+  }];
 
   // Annotations contains arbitrary metadata for objects.
   //
   // Keys follow the same rules as label keys, including the optional DNS subdomain prefix and the 1-63 character name
   // restrictions. Values can be any string.
-  map<string, string> annotations = 8;
+  map<string, string> annotations = 8 [(buf.validate.field).map = {
+    keys: {
+      string: {
+        min_len: 1,
+        max_len: 316  // 253 (prefix) + 1 (/) + 62 (name)
+      }
+    }
+  }];
 
   // Version is a numeric field that is automatically incremented with every change to the object.
   int32 version = 9;
