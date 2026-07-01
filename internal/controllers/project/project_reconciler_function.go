@@ -13,6 +13,7 @@ language governing permissions and limitations under the License.
 
 //go:generate mockgen -source=../../api/osac/private/v1/projects_service_grpc.pb.go -destination=projects_client_mock.go -package=project ProjectsClient
 //go:generate mockgen -source=../../api/osac/private/v1/tenants_service_grpc.pb.go -destination=tenants_client_mock.go -package=project TenantsClient
+//go:generate mockgen -source=../../api/osac/private/v1/users_service_grpc.pb.go -destination=users_client_mock.go -package=project UsersClient
 
 package project
 
@@ -25,6 +26,8 @@ import (
 	"strings"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -38,6 +41,7 @@ type FunctionBuilder struct {
 	logger          *slog.Logger
 	connection      *grpc.ClientConn
 	resourceManager *idp.ResourceManager
+	usersClient     privatev1.UsersClient
 }
 
 // NewFunction creates a builder that can be used to configure and create reconciler functions.
@@ -63,6 +67,12 @@ func (b *FunctionBuilder) SetResourceManager(value *idp.ResourceManager) *Functi
 	return b
 }
 
+// SetUsersClient sets the users client that the reconciler will use to look up user information.
+func (b *FunctionBuilder) SetUsersClient(value privatev1.UsersClient) *FunctionBuilder {
+	b.usersClient = value
+	return b
+}
+
 // Build uses the data stored in the builder to create and configure a new reconciler function.
 func (b *FunctionBuilder) Build() (result *function, err error) {
 	if b.logger == nil {
@@ -78,10 +88,16 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 		return
 	}
 
+	usersClient := b.usersClient
+	if usersClient == nil {
+		usersClient = privatev1.NewUsersClient(b.connection)
+	}
+
 	result = &function{
 		logger:          b.logger,
 		projectsClient:  privatev1.NewProjectsClient(b.connection),
 		tenantsClient:   privatev1.NewTenantsClient(b.connection),
+		usersClient:     usersClient,
 		resourceManager: b.resourceManager,
 		maskCalculator:  masks.NewCalculator().Build(),
 	}
@@ -93,6 +109,7 @@ type function struct {
 	logger          *slog.Logger
 	projectsClient  privatev1.ProjectsClient
 	tenantsClient   privatev1.TenantsClient
+	usersClient     privatev1.UsersClient
 	resourceManager *idp.ResourceManager
 	maskCalculator  *masks.Calculator
 }
@@ -228,26 +245,56 @@ func (t *task) validateAndActivate(ctx context.Context) error {
 
 	// Add the project creator to the system:managers group using the ID from creation
 	// This avoids timing issues where the group isn't immediately visible in searches
-	creator := t.project.GetMetadata().GetCreator()
-	if creator != "" {
-		if err := t.r.resourceManager.AddUserToGroupByID(ctx,
-			t.project.GetMetadata().GetTenant(),
-			creator,
-			managersGroupID); err != nil {
-			t.r.logger.WarnContext(ctx, "Failed to add creator to managers group",
-				slog.String("project", t.project.GetMetadata().GetName()),
-				slog.String("!creator", creator),
-				slog.String("managers_group_id", managersGroupID),
-				slog.Any("error", err),
-			)
+	creatorUsername := t.project.GetMetadata().GetCreator()
+	if creatorUsername != "" {
+		// Look up the user to get their Keycloak user ID
+		userResponse, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+			Id: creatorUsername,
+		}.Build())
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				t.r.logger.WarnContext(ctx, "Creator user not found, cannot add to managers group",
+					slog.String("project", t.project.GetMetadata().GetName()),
+					slog.String("!creator", creatorUsername),
+				)
+			} else {
+				t.r.logger.WarnContext(ctx, "Failed to look up creator user",
+					slog.String("project", t.project.GetMetadata().GetName()),
+					slog.String("!creator", creatorUsername),
+					slog.Any("error", err),
+				)
+			}
 			// Don't fail the reconciliation if this fails - the groups are still created
 			// The user can be added manually later
 		} else {
-			t.r.logger.InfoContext(ctx, "Added creator to project managers group",
-				slog.String("project", t.project.GetMetadata().GetName()),
-				slog.String("!creator", creator),
-				slog.String("managers_group_id", managersGroupID),
-			)
+			user := userResponse.GetObject()
+			keycloakUserID := user.GetStatus().GetKeycloakUserId()
+			if keycloakUserID == "" {
+				t.r.logger.WarnContext(ctx, "Creator user has no Keycloak user ID, cannot add to managers group",
+					slog.String("project", t.project.GetMetadata().GetName()),
+					slog.String("!creator", creatorUsername),
+				)
+			} else {
+				if err := t.r.resourceManager.AddUserToGroupByID(ctx,
+					t.project.GetMetadata().GetTenant(),
+					keycloakUserID,
+					managersGroupID); err != nil {
+					t.r.logger.WarnContext(ctx, "Failed to add creator to managers group",
+						slog.String("project", t.project.GetMetadata().GetName()),
+						slog.String("!creator", creatorUsername),
+						slog.String("managers_group_id", managersGroupID),
+						slog.Any("error", err),
+					)
+					// Don't fail the reconciliation if this fails - the groups are still created
+					// The user can be added manually later
+				} else {
+					t.r.logger.InfoContext(ctx, "Added creator to project managers group",
+						slog.String("project", t.project.GetMetadata().GetName()),
+						slog.String("!creator", creatorUsername),
+						slog.String("managers_group_id", managersGroupID),
+					)
+				}
+			}
 		}
 	}
 

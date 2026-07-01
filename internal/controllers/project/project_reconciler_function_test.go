@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -159,6 +160,7 @@ var _ = Describe("Validation and Activation", func() {
 	var (
 		ctrl            *gomock.Controller
 		mockClient      *MockProjectsClient
+		mockUsersClient *MockUsersClient
 		mockIdpClient   *idp.MockClient
 		resourceManager *idp.ResourceManager
 		ctx             context.Context
@@ -168,6 +170,7 @@ var _ = Describe("Validation and Activation", func() {
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = NewMockProjectsClient(ctrl)
+		mockUsersClient = NewMockUsersClient(ctrl)
 		mockIdpClient = idp.NewMockClient(ctrl)
 		ctx = context.Background()
 
@@ -181,6 +184,7 @@ var _ = Describe("Validation and Activation", func() {
 		functionObj = &function{
 			logger:          logger,
 			projectsClient:  mockClient,
+			usersClient:     mockUsersClient,
 			resourceManager: resourceManager,
 		}
 	})
@@ -527,6 +531,291 @@ var _ = Describe("Validation and Activation", func() {
 			Expect(project.GetStatus().GetMessage()).To(ContainSubstring(
 				"Parent project 'my-parent' is not in ACTIVE state (current state: PROJECT_STATE_FAILED)",
 			))
+		})
+	})
+
+	Context("Creator assignment", func() {
+		It("should add creator to managers group when user exists with Keycloak ID", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    "test-project",
+					Tenant:  "acme",
+					Creator: "alice",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			// Expect viewers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:viewers").
+				Return("viewers-id", nil)
+
+			// Expect managers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:managers").
+				Return("managers-id", nil)
+
+			// Expect user lookup to get Keycloak ID
+			mockUsersClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, req *privatev1.UsersGetRequest, _ ...grpc.CallOption) (*privatev1.UsersGetResponse, error) {
+					Expect(req.GetId()).To(Equal("alice"))
+					return &privatev1.UsersGetResponse{
+						Object: privatev1.User_builder{
+							Id: "alice",
+							Status: privatev1.UserStatus_builder{
+								KeycloakUserId: "keycloak-user-123",
+							}.Build(),
+						}.Build(),
+					}, nil
+				})
+
+			// Expect adding creator to managers group
+			mockIdpClient.EXPECT().
+				AddUserToGroup(gomock.Any(), "acme", "keycloak-user-123", "managers-id").
+				Return(nil)
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_ACTIVE))
+		})
+
+		It("should not fail activation when user lookup fails with NotFound", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    "test-project",
+					Tenant:  "acme",
+					Creator: "nonexistent-user",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			// Expect viewers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:viewers").
+				Return("viewers-id", nil)
+
+			// Expect managers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:managers").
+				Return("managers-id", nil)
+
+			// User not found
+			mockUsersClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(nil, status.Error(codes.NotFound, "user not found"))
+
+			// Should not attempt to add user to group
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_ACTIVE))
+		})
+
+		It("should not fail activation when user lookup fails with other error", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    "test-project",
+					Tenant:  "acme",
+					Creator: "alice",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			// Expect viewers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:viewers").
+				Return("viewers-id", nil)
+
+			// Expect managers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:managers").
+				Return("managers-id", nil)
+
+			// User lookup fails with internal error
+			mockUsersClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(nil, status.Error(codes.Internal, "database error"))
+
+			// Should not attempt to add user to group
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_ACTIVE))
+		})
+
+		It("should not fail activation when user has no Keycloak ID", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    "test-project",
+					Tenant:  "acme",
+					Creator: "alice",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			// Expect viewers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:viewers").
+				Return("viewers-id", nil)
+
+			// Expect managers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:managers").
+				Return("managers-id", nil)
+
+			// User found but no Keycloak ID
+			mockUsersClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersGetResponse{
+					Object: privatev1.User_builder{
+						Id:     "alice",
+						Status: privatev1.UserStatus_builder{
+							// No KeycloakUserId set
+						}.Build(),
+					}.Build(),
+				}, nil)
+
+			// Should not attempt to add user to group
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_ACTIVE))
+		})
+
+		It("should not fail activation when AddUserToGroup fails", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:    "test-project",
+					Tenant:  "acme",
+					Creator: "alice",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			// Expect viewers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:viewers").
+				Return("viewers-id", nil)
+
+			// Expect managers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:managers").
+				Return("managers-id", nil)
+
+			// Expect user lookup
+			mockUsersClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersGetResponse{
+					Object: privatev1.User_builder{
+						Id: "alice",
+						Status: privatev1.UserStatus_builder{
+							KeycloakUserId: "keycloak-user-123",
+						}.Build(),
+					}.Build(),
+				}, nil)
+
+			// Adding to group fails
+			mockIdpClient.EXPECT().
+				AddUserToGroup(gomock.Any(), "acme", "keycloak-user-123", "managers-id").
+				Return(status.Error(codes.Internal, "keycloak error"))
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_ACTIVE))
+		})
+
+		It("should not attempt to add creator when creator is empty", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:   "test-project",
+					Tenant: "acme",
+					// No creator
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Test Project",
+				}.Build(),
+				Status: privatev1.ProjectStatus_builder{
+					State: privatev1.ProjectState_PROJECT_STATE_PENDING,
+				}.Build(),
+			}.Build()
+
+			// Expect viewers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:viewers").
+				Return("viewers-id", nil)
+
+			// Expect managers group creation
+			mockIdpClient.EXPECT().
+				CreateAuthorizationGroup(gomock.Any(), "acme", "/test-project/system:managers").
+				Return("managers-id", nil)
+
+			// Should not attempt to look up user or add to group
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.validateAndActivate(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetStatus().GetState()).To(Equal(privatev1.ProjectState_PROJECT_STATE_ACTIVE))
 		})
 	})
 
