@@ -59,6 +59,7 @@ type EventsServer struct {
 	celEnv       *cel.Env
 	mapper       *GenericMapper[*privatev1.Event, *publicv1.Event]
 	tenancyLogic auth.TenancyLogic
+	payloadOneof protoreflect.OneofDescriptor
 }
 
 type eventsServerSubInfo struct {
@@ -120,7 +121,13 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 		return
 	}
 
-	// Create the object early so that whe can use its methods as callback functions:
+	// Look up the payload oneof and metadata field descriptors:
+	payloadOneof, err := b.findPayloadOneof()
+	if err != nil {
+		return
+	}
+
+	// Create the object early so that we can use its methods as callback functions:
 	result = &EventsServer{
 		logger:       b.logger,
 		listener:     b.listener,
@@ -129,7 +136,25 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 		celEnv:       celEnv,
 		mapper:       mapper,
 		tenancyLogic: b.tenancyLogic,
+		payloadOneof: payloadOneof,
 	}
+	return
+}
+
+// findPayloadOneof returns the descriptor of the payload oneof field in the event message. Returns an error if the
+// oneof is not found.
+func (b *EventsServerBuilder) findPayloadOneof() (result protoreflect.OneofDescriptor, err error) {
+	var eventTempl *privatev1.Event
+	eventDesc := eventTempl.ProtoReflect().Descriptor()
+	payloadDesc := eventDesc.Oneofs().ByName(eventsServerPayloadOneofField)
+	if payloadDesc == nil {
+		err = fmt.Errorf(
+			"event message '%s' has no '%s' oneof",
+			eventDesc.FullName(), eventsServerPayloadOneofField,
+		)
+		return
+	}
+	result = payloadDesc
 	return
 }
 
@@ -177,6 +202,14 @@ func (b *EventsServerBuilder) createCelEnv() (result *cel.Env, err error) {
 // operation, and will return only when the context is canceled.
 func (s *EventsServer) Start(ctx context.Context) error {
 	return s.listener.Listen(ctx, s.processPayload)
+}
+
+// Subscriptions returns the number of active subscriptions. This is intended for use in tests, where it is important
+// to wait for a subscription to be registered before sending events.
+func (s *EventsServer) Subscriptions() int {
+	s.subsLock.RLock()
+	defer s.subsLock.RUnlock()
+	return len(s.subs)
 }
 
 func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
@@ -235,7 +268,7 @@ func (s *EventsServer) Watch(request *publicv1.EventsWatchRequest,
 	s.subsLock.Lock()
 	s.subs[subId] = subInfo
 	s.subsLock.Unlock()
-	logger.DebugContext(ctx, "Created subcription")
+	logger.DebugContext(ctx, "Created subscription")
 	defer func() {
 		s.subsLock.Lock()
 		defer s.subsLock.Unlock()
@@ -327,36 +360,43 @@ func (s *EventsServer) processPayload(ctx context.Context, payload proto.Message
 	return s.processEvent(ctx, public, private)
 }
 
+// extractMetadata extracts the metadata from the event payload. Returns nil if the metadata is not found.
 func (s *EventsServer) extractMetadata(ctx context.Context, event *privatev1.Event) *privatev1.Metadata {
-	switch {
-	case event.HasCluster():
-		return event.GetCluster().GetMetadata()
-	case event.HasClusterTemplate():
-		return event.GetClusterTemplate().GetMetadata()
-	case event.HasHostType():
-		return event.GetHostType().GetMetadata()
-	case event.HasComputeInstanceTemplate():
-		return event.GetComputeInstanceTemplate().GetMetadata()
-	case event.HasComputeInstance():
-		return event.GetComputeInstance().GetMetadata()
-	case event.HasTenant():
-		return event.GetTenant().GetMetadata()
-	case event.HasUser():
-		return event.GetUser().GetMetadata()
-	case event.HasRole():
-		return event.GetRole().GetMetadata()
-	case event.HasRoleBinding():
-		return event.GetRoleBinding().GetMetadata()
-	case event.HasProject():
-		return event.GetProject().GetMetadata()
-	default:
+	payloadMessage, err := s.extractPayload(ctx, event)
+	if err != nil || payloadMessage == nil {
+		return nil
+	}
+	type payloadIface interface {
+		GetMetadata() *privatev1.Metadata
+	}
+	payload, ok := payloadMessage.(payloadIface)
+	if !ok {
 		s.logger.ErrorContext(
 			ctx,
-			"Unexpected event type",
-			slog.Any("event", event),
+			"Event payload does not have a method to get the metadata",
+			slog.Any("payload", fmt.Sprintf("%T", payloadMessage)),
 		)
 		return nil
 	}
+	return payload.GetMetadata()
+}
+
+// extractPayload extracts the payload from the event message. For example, if the event is about a cluster, it will
+// get the value of the 'cluster' field of the payload oneof. Returns nil if there is no payload.
+func (s *EventsServer) extractPayload(ctx context.Context, event *privatev1.Event) (result proto.Message, err error) {
+	eventReflect := event.ProtoReflect()
+	payloadDesc := eventReflect.WhichOneof(s.payloadOneof)
+	if payloadDesc == nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Event has no payload field",
+		)
+		return
+	}
+	payloadValue := eventReflect.Get(payloadDesc)
+	payloadReflect := payloadValue.Message()
+	result = payloadReflect.Interface()
+	return
 }
 
 func (s *EventsServer) processEvent(ctx context.Context, public *publicv1.Event, private *privatev1.Event) error {
@@ -406,3 +446,8 @@ func (s *EventsServer) processEvent(ctx context.Context, public *publicv1.Event,
 	}
 	return nil
 }
+
+// Names of fields:
+const (
+	eventsServerPayloadOneofField = "payload"
+)

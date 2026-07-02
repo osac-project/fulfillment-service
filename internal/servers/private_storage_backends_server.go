@@ -74,6 +74,7 @@ func (b *PrivateStorageBackendsServerBuilder) SetMetricsRegisterer(value prometh
 }
 
 func (b *PrivateStorageBackendsServerBuilder) Build() (result *PrivateStorageBackendsServer, err error) {
+	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
 		return
@@ -83,10 +84,17 @@ func (b *PrivateStorageBackendsServerBuilder) Build() (result *PrivateStorageBac
 		return
 	}
 
-	generic, err := NewGenericServer[*privatev1.StorageBackend]().
+	// Create the server early so that we can use its functions to set up other objects:
+	s := &PrivateStorageBackendsServer{
+		logger: b.logger,
+	}
+
+	// Create the generic server:
+	s.generic, err = NewGenericServer[*privatev1.StorageBackend]().
 		SetLogger(b.logger).
 		SetService(privatev1.StorageBackends_ServiceDesc.ServiceName).
 		SetNotifier(b.notifier).
+		SetRedactFunc(s.redact).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
@@ -95,11 +103,23 @@ func (b *PrivateStorageBackendsServerBuilder) Build() (result *PrivateStorageBac
 		return
 	}
 
-	result = &PrivateStorageBackendsServer{
-		logger:  b.logger,
-		generic: generic,
-	}
+	// Return the server:
+	result = s
 	return
+}
+
+// redact clears sensitive fields from the storage backend before it is included in event notification payloads.
+func (s *PrivateStorageBackendsServer) redact(object *privatev1.StorageBackend) *privatev1.StorageBackend {
+	spec := object.GetSpec()
+	if spec == nil {
+		return object
+	}
+	credentials := spec.GetCredentials()
+	if credentials == nil {
+		return object
+	}
+	credentials.SetPassword("")
+	return object
 }
 
 func (s *PrivateStorageBackendsServer) List(ctx context.Context,

@@ -14,13 +14,16 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 var _ = Describe("Private hubs server", func() {
@@ -277,5 +280,48 @@ var _ = Describe("Private hubs server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(getResponse.GetObject().GetMetadata().GetDeletionTimestamp()).ToNot(BeNil())
 		})
+	})
+
+	It("Redacts event payload", func() {
+		// Create a mock notifier that captures the event:
+		var event *privatev1.Event
+		notifier := events.NewMockNotifier(ctrl)
+		notifier.EXPECT().
+			Notify(gomock.Any(), gomock.Any()).
+			DoAndReturn(
+				func(ctx context.Context, payload proto.Message) error {
+					event = payload.(*privatev1.Event)
+					return nil
+				},
+			)
+
+		// Create the server configured with the mock notifier:
+		server, err := NewPrivateHubsServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetNotifier(notifier).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create the object:
+		response, err := server.Create(
+			ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+
+		// Verify the event:
+		Expect(event).ToNot(BeNil())
+		Expect(event.GetType()).To(Equal(privatev1.EventType_EVENT_TYPE_OBJECT_CREATED))
+		object := event.GetHub()
+		Expect(object).ToNot(BeNil())
+		Expect(object.GetSpec().GetKubeconfig()).To(BeEmpty())
 	})
 })

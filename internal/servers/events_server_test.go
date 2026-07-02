@@ -69,25 +69,23 @@ func (c *eventsCollector) Events() []*publicv1.Event {
 
 var _ = Describe("Events server visibility", func() {
 	var (
-		ctrl     *gomock.Controller
 		listener *events.MockListener
 		callback events.Callback
 	)
 
 	BeforeEach(func() {
-		// Create the mock controller:
-		ctrl = gomock.NewController(GinkgoT())
-		DeferCleanup(ctrl.Finish)
-
 		// Create a mock listener that captures the callback and blocks until the context is canceled:
 		listener = events.NewMockListener(ctrl)
-		listener.EXPECT().Listen(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(ctx context.Context, cb events.Callback) error {
-				callback = cb
-				<-ctx.Done()
-				return ctx.Err()
-			},
-		).AnyTimes()
+		listener.EXPECT().
+			Listen(gomock.Any(), gomock.Any()).
+			DoAndReturn(
+				func(ctx context.Context, cb events.Callback) error {
+					callback = cb
+					<-ctx.Done()
+					return ctx.Err()
+				},
+			).
+			AnyTimes()
 	})
 
 	// sendEvent delivers an event directly through the captured listener callback.
@@ -96,23 +94,9 @@ var _ = Describe("Events server visibility", func() {
 		Expect(err).ToNot(HaveOccurred())
 	}
 
-	// makeEvent builds a private event with the given tenant and project.
-	makeEvent := func(tenant string) *privatev1.Event {
-		return privatev1.Event_builder{
-			Id:   uuid.New(),
-			Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
-			Cluster: privatev1.Cluster_builder{
-				Id: uuid.New(),
-				Metadata: privatev1.Metadata_builder{
-					Tenant: tenant,
-				}.Build(),
-			}.Build(),
-		}.Build()
-	}
-
 	// startServer creates an events server with the mock listener and given tenancy, starts it behind a bufconn
-	// gRPC server, and returns a connected client.
-	startServer := func(tenancy auth.TenancyLogic) publicv1.EventsClient {
+	// gRPC server, and returns the events server and a connected client.
+	startServer := func(tenancy auth.TenancyLogic) (*EventsServer, publicv1.EventsClient) {
 		// Create the events server:
 		eventsServer, err := NewEventsServer().
 			SetLogger(logger).
@@ -153,7 +137,7 @@ var _ = Describe("Events server visibility", func() {
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(grpcConnection.Close)
 
-		return publicv1.NewEventsClient(grpcConnection)
+		return eventsServer, publicv1.NewEventsClient(grpcConnection)
 	}
 
 	// makeTenancy creates a mock tenancy logic returning the given visible tenants:
@@ -165,54 +149,169 @@ var _ = Describe("Events server visibility", func() {
 		return mock
 	}
 
-	// startWatch opens a Watch stream and returns a collector that accumulates received events.
-	startWatch := func(client publicv1.EventsClient) (collector *eventsCollector, cancel context.CancelFunc) {
+	// startWatch opens a Watch stream, waits for the subscription to be registered server-side, and returns a
+	// collector that accumulates received events.
+	startWatch := func(server *EventsServer, client publicv1.EventsClient) (collector *eventsCollector,
+		cancel context.CancelFunc) {
+		// Start the watch stream. Note that due to the way gRPC works, this will return immediately once the
+		// transport is established, even though the subscription is not yet registered. That is why we need to
+		// explicitly wait for the subscription to be registered.
 		watchCtx, watchCancel := context.WithCancel(context.Background())
-		stream, err := client.Watch(watchCtx, publicv1.EventsWatchRequest_builder{}.Build())
+		watchStream, err := client.Watch(watchCtx, publicv1.EventsWatchRequest_builder{}.Build())
 		Expect(err).ToNot(HaveOccurred())
-		collector = &eventsCollector{}
-		collector.Collect(stream)
-		return collector, watchCancel
+
+		// Start collecting events from the stream:
+		watchCollector := &eventsCollector{}
+		watchCollector.Collect(watchStream)
+
+		// Wait for the subscription to be registered:
+		Eventually(server.Subscriptions, time.Second).Should(BeNumerically(">=", 1))
+
+		// Return the collector and the context cancel function:
+		collector = watchCollector
+		cancel = watchCancel
+		return
 	}
 
 	It("Delivers events when tenant is visible", func() {
-		client := startServer(makeTenancy(
+		// Send an event for a visible tenant:
+		server, client := startServer(makeTenancy(
 			collections.NewSet("tenant-a"),
 		))
-		collector, cancel := startWatch(client)
+		collector, cancel := startWatch(server, client)
 		defer cancel()
-		Eventually(
-			func() int {
-				sendEvent(makeEvent("tenant-a"))
-				return len(collector.Events())
-			},
-			10*time.Second,
-		).Should(BeNumerically(">=", 1))
+		sendEvent(
+			privatev1.Event_builder{
+				Id:   uuid.New(),
+				Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
+				Cluster: privatev1.Cluster_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "tenant-a",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
+
+		// Wait till there is one event in the collector:
+		Eventually(collector.Events, time.Second).Should(HaveLen(1))
+
+		// Verify that the event is for the visible tenant:
+		Expect(collector.Events()[0].GetCluster().GetMetadata().GetTenant()).To(Equal("tenant-a"))
 	})
 
 	It("Filters out events when tenant is not visible", func() {
-		client := startServer(makeTenancy(
+		server, client := startServer(makeTenancy(
 			collections.NewSet("tenant-b"),
 		))
-		collector, cancel := startWatch(client)
+		collector, cancel := startWatch(server, client)
 		defer cancel()
-		sendEvent(makeEvent("tenant-a"))
+		sendEvent(
+			privatev1.Event_builder{
+				Id:   uuid.New(),
+				Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
+				Cluster: privatev1.Cluster_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "tenant-a",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
 		Consistently(collector.Events, time.Second).Should(BeEmpty())
 	})
 
 	It("Delivers only visible events when multiple are sent", func() {
-		client := startServer(makeTenancy(
+		// Send two events, one for a visible tenant and one for a non-visible tenant:
+		server, client := startServer(makeTenancy(
 			collections.NewSet("tenant-a"),
 		))
-		collector, cancel := startWatch(client)
+		collector, cancel := startWatch(server, client)
 		defer cancel()
-		Eventually(
-			func() int {
-				sendEvent(makeEvent("tenant-a"))
-				sendEvent(makeEvent("tenant-b"))
-				return len(collector.Events())
-			},
-			10*time.Second,
-		).Should(BeNumerically("==", 1))
+		sendEvent(
+			privatev1.Event_builder{
+				Id:   uuid.New(),
+				Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
+				Cluster: privatev1.Cluster_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "tenant-a",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
+		sendEvent(
+			privatev1.Event_builder{
+				Id:   uuid.New(),
+				Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
+				Cluster: privatev1.Cluster_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "tenant-b",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
+
+		// Wait till there is one event in the collector:
+		Eventually(collector.Events, time.Second).Should(HaveLen(1))
+		Expect(collector.Events()[0].GetCluster().GetMetadata().GetTenant()).To(Equal("tenant-a"))
+
+		// Verify that no more events are delivered:
+		Consistently(collector.Events, time.Second).Should(HaveLen(1))
+	})
+
+	It("Delivers event with cluster payload", func() {
+		// Send an event with cluster payload:
+		server, client := startServer(makeTenancy(
+			collections.NewSet("tenant-a"),
+		))
+		collector, cancel := startWatch(server, client)
+		defer cancel()
+		sendEvent(
+			privatev1.Event_builder{
+				Id:   uuid.New(),
+				Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
+				Cluster: privatev1.Cluster_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "tenant-a",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
+
+		// Wait till the event is delivered:
+		Eventually(collector.Events, time.Second).Should(HaveLen(1))
+
+		// Verify that the payload of the event is a cluster:
+		Expect(collector.Events()[0].HasCluster()).To(BeTrue())
+	})
+
+	It("Delivers event with compute instance payload", func() {
+		// Send an event with compute instance payload:
+		server, client := startServer(makeTenancy(
+			collections.NewSet("tenant-a"),
+		))
+		collector, cancel := startWatch(server, client)
+		defer cancel()
+		sendEvent(
+			privatev1.Event_builder{
+				Id:   uuid.New(),
+				Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
+				ComputeInstance: privatev1.ComputeInstance_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "tenant-a",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
+
+		// Wait till the event is delivered:
+		Eventually(collector.Events, time.Second).Should(HaveLen(1))
+
+		// Verify that the payload of the event is a compute instance:
+		Expect(collector.Events()[0].HasComputeInstance()).To(BeTrue())
 	})
 })
