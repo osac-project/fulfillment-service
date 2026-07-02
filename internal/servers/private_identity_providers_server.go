@@ -85,11 +85,17 @@ func (b *PrivateIdentityProvidersServerBuilder) Build() (result *PrivateIdentity
 		return
 	}
 
+	// Create the server early so that we can use its functions to set up other objects:
+	s := &PrivateIdentityProvidersServer{
+		logger: b.logger,
+	}
+
 	// Create the generic server:
-	generic, err := NewGenericServer[*privatev1.IdentityProvider]().
+	s.generic, err = NewGenericServer[*privatev1.IdentityProvider]().
 		SetLogger(b.logger).
 		SetService(privatev1.IdentityProviders_ServiceDesc.ServiceName).
 		SetNotifier(b.notifier).
+		SetRedactFunc(s.redact).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
@@ -99,7 +105,7 @@ func (b *PrivateIdentityProvidersServerBuilder) Build() (result *PrivateIdentity
 	}
 
 	// Create the DAO:
-	dao, err := dao.NewGenericDAO[*privatev1.IdentityProvider]().
+	s.dao, err = dao.NewGenericDAO[*privatev1.IdentityProvider]().
 		SetLogger(b.logger).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
@@ -108,13 +114,26 @@ func (b *PrivateIdentityProvidersServerBuilder) Build() (result *PrivateIdentity
 		return
 	}
 
-	// Create and populate the object:
-	result = &PrivateIdentityProvidersServer{
-		logger:  b.logger,
-		generic: generic,
-		dao:     dao,
-	}
+	// Return the server:
+	result = s
 	return
+}
+
+// redact clears sensitive fields from the identity provider before it is included in event notification payloads.
+func (s *PrivateIdentityProvidersServer) redact(
+	object *privatev1.IdentityProvider) *privatev1.IdentityProvider {
+	spec := object.GetSpec()
+	if spec != nil {
+		oidc := spec.GetOidc()
+		if oidc != nil {
+			oidc.SetClientSecret("")
+		}
+		ldap := spec.GetLdap()
+		if ldap != nil {
+			ldap.SetBindCredential("")
+		}
+	}
+	return object
 }
 
 func (s *PrivateIdentityProvidersServer) Create(ctx context.Context,

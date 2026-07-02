@@ -47,6 +47,7 @@ type GenericServerBuilder[O dao.Object] struct {
 	ignoredFields     []any
 	notifier          events.Notifier
 	nameValidator     func(context.Context, string) error
+	redactFunc        func(O) O
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -76,6 +77,8 @@ type GenericServer[O dao.Object] struct {
 	signalRequest    proto.Message
 	signalResponse   proto.Message
 	notifier         events.Notifier
+	redactFunc       func(O) O
+	payloadField     protoreflect.FieldDescriptor
 	pathCompiler     *masks.PathCompiler[O]
 	pathCache        map[string]*masks.Path[O]
 	pathCacheLock    *sync.Mutex
@@ -148,6 +151,14 @@ func (b *GenericServerBuilder[O]) SetNameValidator(value func(context.Context, s
 	return b
 }
 
+// SetRedactFunc sets a function that will be called to redact sensitive fields from objects before they are included in
+// event notification payloads. The function receives a clone of the object and should return it with the sensitive
+// fields cleared. This is optional.
+func (b *GenericServerBuilder[O]) SetRedactFunc(value func(O) O) *GenericServerBuilder[O] {
+	b.redactFunc = value
+	return b
+}
+
 // SetAttributionLogic sets the logic that will be used to determine the creator for objects.
 func (b *GenericServerBuilder[O]) SetAttributionLogic(value auth.AttributionLogic) *GenericServerBuilder[O] {
 	b.attributionLogic = value
@@ -216,6 +227,9 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		s.nameValidator = s.validateName
 	}
 
+	// Set the redact function:
+	s.redactFunc = b.redactFunc
+
 	// Create the DAO:
 	daoBuilder := dao.NewGenericDAO[O]()
 	daoBuilder.SetLogger(b.logger)
@@ -282,6 +296,12 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		return
 	}
 
+	// Find the payload field in the event message:
+	s.payloadField, err = b.findPayloadField()
+	if err != nil {
+		return
+	}
+
 	result = s
 	return
 }
@@ -305,16 +325,6 @@ func (b *GenericServerBuilder[O]) findService() (result protoreflect.ServiceDesc
 	}
 	return
 }
-
-// Names of gRPC methods:
-const (
-	listMethod   = "List"
-	getMethod    = "Get"
-	createMethod = "Create"
-	updateMethod = "Update"
-	deleteMethod = "Delete"
-	signalMethod = "Signal"
-)
 
 // findRequestAndResponse finds the request and response message types for the given method.
 func (b *GenericServerBuilder[O]) findRequestAndResponse(service protoreflect.ServiceDescriptor,
@@ -342,6 +352,30 @@ func (b *GenericServerBuilder[O]) findRequestAndResponse(service protoreflect.Se
 		}
 	}
 	err = fmt.Errorf("failed to find method '%s' in service '%s'", methodName, service.FullName())
+	return
+}
+
+// findPayloadField finds the field in the event message that corresponds to this object type. This is used later to
+// set the payload of event notifications without having to iterate the oneof fields every time. Returns nil if there
+// is no such field.
+func (b *GenericServerBuilder[O]) findPayloadField() (result protoreflect.FieldDescriptor, err error) {
+	var objectTempl O
+	objectDesc := objectTempl.ProtoReflect().Descriptor()
+	var eventTempl *privatev1.Event
+	eventDesc := eventTempl.ProtoReflect().Descriptor()
+	oneofDesc := eventDesc.Oneofs().ByName(eventPayloadField)
+	if oneofDesc == nil {
+		err = fmt.Errorf("failed to find the 'payload' field of the event type '%s'", eventDesc.FullName())
+		return
+	}
+	oneofFields := oneofDesc.Fields()
+	for i := range oneofFields.Len() {
+		payloadField := oneofFields.Get(i)
+		if payloadField.Message() != nil && payloadField.Message() == objectDesc {
+			result = payloadField
+			break
+		}
+	}
 	return
 }
 
@@ -857,96 +891,16 @@ func (s *GenericServer[O]) notifyEvent(ctx context.Context, e dao.Event) error {
 	return s.notifier.Notify(ctx, event)
 }
 
-func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Message) error { //nolint:gocyclo
-	// TODO: This is the only part of the generic server that depends on specific object types. Is there a way
-	// to avoid that?
-	switch object := object.(type) {
-	case *privatev1.ClusterTemplate:
-		event.SetClusterTemplate(object)
-	case *privatev1.Cluster:
-		event.SetCluster(object)
-	case *privatev1.HostType:
-		event.SetHostType(object)
-	case *privatev1.Hub:
-		// TODO: We need to remove the Kubeconfig from the payload of the notification because that usually
-		// exceeds the default limit of 8000 bytes of the PostgreSQL notification mechanism. A better way to
-		// do this would be to store the payloads in a separate table. We will do that later.
-		object = proto.Clone(object).(*privatev1.Hub)
-		spec := object.GetSpec()
-		if spec != nil {
-			spec.SetKubeconfig(nil)
-		}
-		event.SetHub(object)
-	case *privatev1.InstanceType:
-		event.SetInstanceType(object)
-	case *privatev1.ComputeInstanceTemplate:
-		event.SetComputeInstanceTemplate(object)
-	case *privatev1.ComputeInstance:
-		event.SetComputeInstance(object)
-	case *privatev1.NetworkClass:
-		event.SetNetworkClass(object)
-	case *privatev1.VirtualNetwork:
-		event.SetVirtualNetwork(object)
-	case *privatev1.Subnet:
-		event.SetSubnet(object)
-	case *privatev1.SecurityGroup:
-		event.SetSecurityGroup(object)
-	case *privatev1.PublicIPPool:
-		event.SetPublicIpPool(object)
-	case *privatev1.PublicIP:
-		event.SetPublicIp(object)
-	case *privatev1.PublicIPAttachment:
-		event.SetPublicIpAttachment(object)
-	case *privatev1.ExternalIPPool:
-		event.SetExternalIpPool(object)
-	case *privatev1.ExternalIP:
-		event.SetExternalIp(object)
-	case *privatev1.ExternalIPAttachment:
-		event.SetExternalIpAttachment(object)
-	case *privatev1.Tenant:
-		event.SetTenant(object)
-	case *privatev1.User:
-		event.SetUser(object)
-	case *privatev1.Role:
-		event.SetRole(object)
-	case *privatev1.RoleBinding:
-		event.SetRoleBinding(object)
-	case *privatev1.Project:
-		event.SetProject(object)
-	case *privatev1.ProjectMembership:
-		event.SetProjectMembership(object)
-	case *privatev1.ClusterCatalogItem:
-		event.SetClusterCatalogItem(object)
-	case *privatev1.ComputeInstanceCatalogItem:
-		event.SetComputeInstanceCatalogItem(object)
-	case *privatev1.BareMetalInstance:
-		event.SetBareMetalInstance(object)
-	case *privatev1.BareMetalInstanceTemplate:
-		event.SetBareMetalInstanceTemplate(object)
-	case *privatev1.BareMetalInstanceCatalogItem:
-		event.SetBareMetalInstanceCatalogItem(object)
-	case *privatev1.StorageBackend:
-		object = proto.Clone(object).(*privatev1.StorageBackend)
-		if object.GetSpec().GetCredentials() != nil {
-			object.GetSpec().GetCredentials().SetPassword("")
-		}
-		event.SetStorageBackend(object)
-	case *privatev1.IdentityProvider:
-		// Redact sensitive fields before publishing - controller will fetch them separately via API
-		object = proto.Clone(object).(*privatev1.IdentityProvider)
-		spec := object.GetSpec()
-		if spec != nil {
-			if oidc := spec.GetOidc(); oidc != nil {
-				oidc.SetClientSecret("")
-			}
-			if ldap := spec.GetLdap(); ldap != nil {
-				ldap.SetBindCredential("")
-			}
-		}
-		event.SetIdentityProvider(object)
-	default:
-		return fmt.Errorf("unknown object type '%T'", object)
+// setPayload sets the payload of the event message. If the payload field is not found the event is left unchanged. If a
+// redact function has been configured, the object is cloned and redacted before being set.
+func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Message) error {
+	if s.payloadField == nil {
+		return nil
 	}
+	if s.redactFunc != nil {
+		object = s.redactFunc(proto.Clone(object).(O))
+	}
+	event.ProtoReflect().Set(s.payloadField, protoreflect.ValueOfMessage(object.ProtoReflect()))
 	return nil
 }
 
@@ -1409,3 +1363,18 @@ func (s *GenericServer[O]) equivalentMetadata(x, y protoreflect.Message) bool {
 	}
 	return true
 }
+
+// Names of gRPC methods:
+const (
+	listMethod   = "List"
+	getMethod    = "Get"
+	createMethod = "Create"
+	updateMethod = "Update"
+	deleteMethod = "Delete"
+	signalMethod = "Signal"
+)
+
+// Names of fields:
+const (
+	eventPayloadField = "payload"
+)
