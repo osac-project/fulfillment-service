@@ -26,7 +26,7 @@ require (
 	github.com/neilotoole/jsoncolor v0.9.1
 	github.com/open-policy-agent/opa v1.18.1
 	github.com/osac-project/bare-metal-fulfillment-operator v0.0.5
-	github.com/osac-project/osac-operator/api v0.0.5
+	github.com/osac-project/osac-operator/api v0.0.6
 	github.com/prometheus/client_golang v1.23.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966

@@ -54,6 +54,15 @@ var PublicIPAttachmentUuid = fmt.Sprintf("%s/%s", group, "publicipattachment-uui
 // BareMetalInstanceUuid is the label where the fulfillment API will write the identifier of the bare metal instance.
 var BareMetalInstanceUuid = fmt.Sprintf("%s/%s", group, "baremetalinstance-uuid")
 
+// ExternalIPPoolUuid is the label where the fulfillment API will write the identifier of the external IP pool.
+var ExternalIPPoolUuid = fmt.Sprintf("%s/%s", group, "externalippool-uuid")
+
+// ExternalIPUuid is the label where the fulfillment API will write the identifier of the external IP.
+var ExternalIPUuid = fmt.Sprintf("%s/%s", group, "externalip-uuid")
+
+// ExternalIPAttachmentUuid is the label where the fulfillment API will write the identifier of the external IP attachment.
+var ExternalIPAttachmentUuid = fmt.Sprintf("%s/%s", group, "externalipattachment-uuid")
+
 // TenantUuid is the label where the fulfillment API will write the identifier of the tenant.
 var TenantUuid = fmt.Sprintf("%s/%s", group, "tenant-uuid")
 

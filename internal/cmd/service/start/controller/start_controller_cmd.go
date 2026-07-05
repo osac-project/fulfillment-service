@@ -44,6 +44,9 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/baremetalinstance"
 	"github.com/osac-project/fulfillment-service/internal/controllers/cluster"
 	"github.com/osac-project/fulfillment-service/internal/controllers/computeinstance"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalip"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalipattachment"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalippool"
 	"github.com/osac-project/fulfillment-service/internal/controllers/identityprovider"
 	"github.com/osac-project/fulfillment-service/internal/controllers/onboarding"
 	"github.com/osac-project/fulfillment-service/internal/controllers/project"
@@ -706,6 +709,117 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			r.logger.InfoContext(
 				ctx,
 				"Public IP attachment reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the external IP pool reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP pool reconciler")
+	externalIPPoolReconcilerFunction, err := externalippool.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP pool reconciler function: %w", err)
+	}
+	externalIPPoolReconciler, err := controllers.NewReconciler[*privatev1.ExternalIPPool]().
+		SetLogger(r.logger).
+		SetName("external_ip_pool").
+		SetClient(r.client).
+		SetFunction(externalIPPoolReconcilerFunction).
+		SetEventFilter("has(event.external_ip_pool) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP pool reconciler: %w", err)
+	}
+
+	// Start the external IP pool reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP pool reconciler")
+	go func() {
+		err := externalIPPoolReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP pool reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP pool reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the external IP reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP reconciler")
+	externalIPReconcilerFunction, err := externalip.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP reconciler function: %w", err)
+	}
+	externalIPReconciler, err := controllers.NewReconciler[*privatev1.ExternalIP]().
+		SetLogger(r.logger).
+		SetName("external_ip").
+		SetClient(r.client).
+		SetFunction(externalIPReconcilerFunction).
+		SetEventFilter("has(event.external_ip) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP reconciler: %w", err)
+	}
+
+	// Start the external IP reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP reconciler")
+	go func() {
+		err := externalIPReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the external IP attachment reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP attachment reconciler")
+	externalIPAttachmentReconcilerFunction, err := externalipattachment.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP attachment reconciler function: %w", err)
+	}
+	externalIPAttachmentReconciler, err := controllers.NewReconciler[*privatev1.ExternalIPAttachment]().
+		SetLogger(r.logger).
+		SetName("external_ip_attachment").
+		SetClient(r.client).
+		SetFunction(externalIPAttachmentReconcilerFunction).
+		SetEventFilter("has(event.external_ip_attachment) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP attachment reconciler: %w", err)
+	}
+
+	// Start the external IP attachment reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP attachment reconciler")
+	go func() {
+		err := externalIPAttachmentReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP attachment reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP attachment reconciler failed",
 				slog.Any("error", err),
 			)
 		}
