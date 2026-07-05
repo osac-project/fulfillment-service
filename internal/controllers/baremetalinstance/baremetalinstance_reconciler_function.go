@@ -591,6 +591,9 @@ func (t *task) mutateBMI(ctx context.Context, object *bmfov1alpha1.BareMetalInst
 	if t.userDataSecretName != "" {
 		params["userDataSecret"] = t.userDataSecretName
 	}
+	if t.bareMetalInstance.GetSpec().HasImage() {
+		params["imageURL"] = t.bareMetalInstance.GetSpec().GetImage().GetSourceRef()
+	}
 	if len(params) > 0 {
 		paramsJSON, err := json.Marshal(params)
 		if err != nil {
