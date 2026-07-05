@@ -76,7 +76,7 @@ func Cmd() *cobra.Command {
 		"",
 		targetEndpointFlagHelp,
 	)
-	result.MarkFlagRequired("externalip")                                                      //nolint:errcheck
+	result.MarkFlagRequired("externalip") //nolint:errcheck
 	result.MarkFlagsMutuallyExclusive("compute-instance", "cluster", "baremetal-instance")
 	return result
 }
@@ -87,7 +87,7 @@ type runnerContext struct {
 		externalIP        string
 		computeInstance   string
 		cluster           string
-		baremetalInstance  string
+		baremetalInstance string
 		targetEndpoint    string
 	}
 	logger  *slog.Logger

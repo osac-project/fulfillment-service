@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/externalippool"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/kubeconfig"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/password"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/publicippool"
@@ -62,6 +63,7 @@ func Cmd() *cobra.Command {
 		Long:                  longHelp,
 		RunE:                  runner.run,
 	}
+	result.AddCommand(externalippool.Cmd())
 	result.AddCommand(kubeconfig.Cmd())
 	result.AddCommand(password.Cmd())
 	result.AddCommand(publicippool.Cmd())
