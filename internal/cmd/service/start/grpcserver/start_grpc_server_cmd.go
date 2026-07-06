@@ -462,22 +462,13 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return fmt.Errorf("failed to start notifier: %w", err)
 	}
 
-	// Create the public attribution logic:
-	c.logger.InfoContext(ctx, "Creating public attribution logic")
-	publicAttributionLogic, err := auth.NewDefaultAttributionLogic().
+	// Create the attribution logic:
+	c.logger.InfoContext(ctx, "Creating attribution logic")
+	attributionLogic, err := auth.NewDefaultAttributionLogic().
 		SetLogger(c.logger).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create public attribution logic: %w", err)
-	}
-
-	// Create the private attribution logic:
-	c.logger.InfoContext(ctx, "Creating private attribution logic")
-	privateAttributionLogic, err := auth.NewSystemAttributionLogic().
-		SetLogger(c.logger).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create system attribution logic: %w", err)
 	}
 
 	// Create the capabilities servers:
@@ -504,7 +495,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	clusterTemplatesServer, err := servers.NewClusterTemplatesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -518,7 +509,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	clusterCatalogItemsServer, err := servers.NewClusterCatalogItemsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -532,7 +523,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	computeInstanceCatalogItemsServer, err := servers.NewComputeInstanceCatalogItemsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -546,7 +537,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateClusterTemplatesServer, err := servers.NewPrivateClusterTemplatesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -560,7 +551,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateClusterCatalogItemsServer, err := servers.NewPrivateClusterCatalogItemsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -574,7 +565,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateComputeInstanceCatalogItemsServer, err := servers.NewPrivateComputeInstanceCatalogItemsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -594,7 +585,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	clustersServer, err := servers.NewClustersServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		SetScheme(hubScheme).
@@ -609,7 +600,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateClustersServer, err := servers.NewPrivateClustersServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -623,7 +614,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	hostTypesServer, err := servers.NewHostTypesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -637,7 +628,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateHostTypesServer, err := servers.NewPrivateHostTypesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -651,7 +642,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	computeInstanceTemplatesServer, err := servers.NewComputeInstanceTemplatesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -665,7 +656,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateComputeInstanceTemplatesServer, err := servers.NewPrivateComputeInstanceTemplatesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -679,7 +670,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	computeInstancesServer, err := servers.NewComputeInstancesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -693,7 +684,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateComputeInstancesServer, err := servers.NewPrivateComputeInstancesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -707,7 +698,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	bareMetalInstanceTemplatesServer, err := servers.NewBareMetalInstanceTemplatesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -721,7 +712,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	bareMetalInstanceCatalogItemsServer, err := servers.NewBareMetalInstanceCatalogItemsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -735,7 +726,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	bareMetalInstancesServer, err := servers.NewBareMetalInstancesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -749,7 +740,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateBareMetalInstanceTemplatesServer, err := servers.NewPrivateBareMetalInstanceTemplatesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -763,7 +754,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateBareMetalInstanceCatalogItemsServer, err := servers.NewPrivateBareMetalInstanceCatalogItemsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -777,7 +768,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateBareMetalInstancesServer, err := servers.NewPrivateBareMetalInstancesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -791,7 +782,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateHubsServer, err := servers.NewPrivateHubsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -805,7 +796,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	virtualNetworksServer, err := servers.NewVirtualNetworksServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -819,7 +810,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateVirtualNetworksServer, err := servers.NewPrivateVirtualNetworksServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -833,7 +824,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	subnetsServer, err := servers.NewSubnetsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -847,7 +838,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateSubnetsServer, err := servers.NewPrivateSubnetsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -861,7 +852,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	securityGroupsServer, err := servers.NewSecurityGroupsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -875,7 +866,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateSecurityGroupsServer, err := servers.NewPrivateSecurityGroupsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -889,7 +880,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	networkClassesServer, err := servers.NewNetworkClassesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -903,7 +894,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateNetworkClassesServer, err := servers.NewPrivateNetworkClassesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -917,7 +908,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	instanceTypesServer, err := servers.NewInstanceTypesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -931,7 +922,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateInstanceTypesServer, err := servers.NewPrivateInstanceTypesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -945,7 +936,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateStorageBackendsServer, err := servers.NewPrivateStorageBackendsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -959,7 +950,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	rolesServer, err := servers.NewRolesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -973,7 +964,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateRolesServer, err := servers.NewPrivateRolesServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -987,7 +978,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	roleBindingsServer, err := servers.NewRoleBindingsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1001,7 +992,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateRoleBindingsServer, err := servers.NewPrivateRoleBindingsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1015,7 +1006,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	projectMembershipsServer, err := servers.NewProjectMembershipsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1029,7 +1020,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateProjectMembershipsServer, err := servers.NewPrivateProjectMembershipsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1043,7 +1034,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	publicIPsServer, err := servers.NewPublicIPsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1057,7 +1048,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	publicIPPoolsServer, err := servers.NewPublicIPPoolsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1071,7 +1062,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privatePublicIPPoolsServer, err := servers.NewPrivatePublicIPPoolsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1085,7 +1076,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privatePublicIPsServer, err := servers.NewPrivatePublicIPsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1099,7 +1090,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privatePublicIPAttachmentsServer, err := servers.NewPrivatePublicIPAttachmentsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1113,7 +1104,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	publicIPAttachmentsServer, err := servers.NewPublicIPAttachmentsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1127,7 +1118,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	externalIPPoolsServer, err := servers.NewExternalIPPoolsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1141,7 +1132,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateExternalIPPoolsServer, err := servers.NewPrivateExternalIPPoolsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1155,7 +1146,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	externalIPsServer, err := servers.NewExternalIPsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1169,7 +1160,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateExternalIPsServer, err := servers.NewPrivateExternalIPsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1183,7 +1174,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	externalIPAttachmentsServer, err := servers.NewExternalIPAttachmentsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1197,7 +1188,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateExternalIPAttachmentsServer, err := servers.NewPrivateExternalIPAttachmentsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1211,7 +1202,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	publicTenantsServer, err := servers.NewTenantsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1225,7 +1216,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateTenantsServer, err := servers.NewPrivateTenantsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1239,7 +1230,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	publicIdentityProvidersServer, err := servers.NewIdentityProvidersServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1253,7 +1244,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateIdentityProvidersServer, err := servers.NewPrivateIdentityProvidersServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1267,7 +1258,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	publicProjectsServer, err := servers.NewProjectsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1281,7 +1272,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateProjectsServer, err := servers.NewPrivateProjectsServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1295,7 +1286,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	publicUsersServer, err := servers.NewUsersServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(publicAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
@@ -1309,7 +1300,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	privateUsersServer, err := servers.NewPrivateUsersServer().
 		SetLogger(c.logger).
 		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
+		SetAttributionLogic(attributionLogic).
 		SetTenancyLogic(tenancyLogic).
 		SetMetricsRegisterer(metricsRegisterer).
 		Build()
