@@ -210,4 +210,25 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		Expect(status.Message()).To(ContainSubstring("validation"))
 	})
+
+	It("Rejects Tenant with dots (proves IGNORE_ALWAYS is working for Projects)", func() {
+		// Tenants DON'T use IGNORE_ALWAYS, so dots should be rejected by Metadata pattern.
+		// This proves that when Projects accept dots, it's because IGNORE_ALWAYS is working.
+		nameWithDots := "org.team"
+
+		_, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: nameWithDots,
+				}.Build(),
+			}.Build(),
+		}.Build())
+
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		// Should be rejected by Metadata.name pattern (doesn't allow dots)
+		Expect(status.Message()).To(ContainSubstring("validation"))
+	})
 })
