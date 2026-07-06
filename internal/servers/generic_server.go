@@ -917,7 +917,6 @@ func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metada
 	return nil
 }
 
-
 // validateLabels validates label keys and values according to Kubernetes label naming conventions.
 //
 // This validation complements protovalidate annotations on the Metadata message:

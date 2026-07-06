@@ -274,8 +274,8 @@ var _ = Describe("Protovalidate interceptor", func() {
 			validMetadata := &publicv1.Metadata{
 				Name: "valid-name",
 				Labels: map[string]string{
-					"key1":                   "value1",
-					"example.com/key2":       "value2",
+					"key1":                    "value1",
+					"example.com/key2":        "value2",
 					"subdomain.example.com/k": "v",
 				},
 			}

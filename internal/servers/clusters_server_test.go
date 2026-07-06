@@ -1193,7 +1193,6 @@ var _ = Describe("Clusters server", func() {
 		// at the gRPC layer, not by the server code. Unit tests that call the server directly
 		// bypass the interceptor, so they cannot test name validation.
 
-
 		DescribeTable(
 			"Accepts creation with valid names",
 			func(name string) {
