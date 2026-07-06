@@ -174,12 +174,6 @@ func (s *PrivateProjectsServer) Create(ctx context.Context,
 	}
 	metadata.SetProject(project)
 
-	// Validate the project name (dot-separated segments):
-	err = s.validateName(ctx, name)
-	if err != nil {
-		return
-	}
-
 	// Call the generic server to create the project:
 	err = s.generic.Create(ctx, request, &response)
 	return
@@ -187,20 +181,6 @@ func (s *PrivateProjectsServer) Create(ctx context.Context,
 
 func (s *PrivateProjectsServer) Update(ctx context.Context,
 	request *privatev1.ProjectsUpdateRequest) (response *privatev1.ProjectsUpdateResponse, err error) {
-	// Validate the project name if it's being updated:
-	object := request.GetObject()
-	if object != nil {
-		metadata := object.GetMetadata()
-		if metadata != nil {
-			name := metadata.GetName()
-			if name != "" {
-				err = s.validateName(ctx, name)
-				if err != nil {
-					return
-				}
-			}
-		}
-	}
 
 	err = s.generic.Update(ctx, request, &response)
 	return
@@ -216,62 +196,4 @@ func (s *PrivateProjectsServer) Signal(ctx context.Context,
 	request *privatev1.ProjectsSignalRequest) (response *privatev1.ProjectsSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)
 	return
-}
-
-func (s *PrivateProjectsServer) validateName(ctx context.Context, name string) error {
-	// Empty project name is allowed (represents the default/root project).
-	if name == "" {
-		return nil
-	}
-
-	// Project names are dot-separated DNS labels (e.g., "org.team.project").
-	// Protovalidate annotations enforce constraints on the FULL name string,
-	// but we also need to validate that each dot-separated segment is a valid DNS label.
-	parts := strings.Split(name, ".")
-	for i, part := range parts {
-		if part == "" {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"project 'metadata.name' must not contain empty segments",
-			)
-		}
-
-		// Validate each segment as a DNS label (max 63 chars, lowercase a-z/0-9/hyphen, no leading/trailing hyphen):
-		if len(part) > 63 {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"project 'metadata.name' segment '%s' (at position %d) must be at most 63 characters long, but it has %d characters",
-				part, i, len(part),
-			)
-		}
-
-		for j, c := range part {
-			isLower := c >= 'a' && c <= 'z'
-			isDigit := c >= '0' && c <= '9'
-			isHyphen := c == '-'
-			if !isLower && !isDigit && !isHyphen {
-				return grpcstatus.Errorf(
-					grpccodes.InvalidArgument,
-					"project 'metadata.name' segment '%s' (at position %d) must only contain lowercase letters (a-z), digits (0-9) and hyphens (-), but contains '%c' at position %d",
-					part, i, c, j,
-				)
-			}
-		}
-
-		if strings.HasPrefix(part, "-") {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"project 'metadata.name' segment '%s' (at position %d) cannot start with a hyphen",
-				part, i,
-			)
-		}
-		if strings.HasSuffix(part, "-") {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"project 'metadata.name' segment '%s' (at position %d) cannot end with a hyphen",
-				part, i,
-			)
-		}
-	}
-	return nil
 }
