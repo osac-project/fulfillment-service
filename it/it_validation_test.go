@@ -15,6 +15,7 @@ package it
 
 import (
 	"context"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -37,6 +38,18 @@ var _ = Describe("Protovalidate validation", func() {
 		tenantClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
 		vnetClient = privatev1.NewVirtualNetworksClient(tool.InternalView().AdminConn())
 		projectsClient = privatev1.NewProjectsClient(tool.InternalView().AdminConn())
+
+		// Create test tenant for Project tests
+		_, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: "my-tenant",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		if err != nil && !strings.Contains(err.Error(), "already exists") {
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	It("Rejects Tenant with invalid metadata name (too long)", func() {
