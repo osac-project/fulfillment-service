@@ -141,7 +141,7 @@ var _ = Describe("Protovalidate validation", func() {
 					Name: "",
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					Ipv4Cidr: "10.0.0.0/16",
+					Ipv4Cidr: new("10.0.0.0/16"),
 				}.Build(),
 			}.Build(),
 		}.Build())
