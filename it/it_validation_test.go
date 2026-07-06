@@ -26,15 +26,17 @@ import (
 
 var _ = Describe("Protovalidate validation", func() {
 	var (
-		ctx          context.Context
-		tenantClient privatev1.TenantsClient
-		vnetClient   privatev1.VirtualNetworksClient
+		ctx            context.Context
+		tenantClient   privatev1.TenantsClient
+		vnetClient     privatev1.VirtualNetworksClient
+		projectsClient privatev1.ProjectsClient
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		tenantClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
 		vnetClient = privatev1.NewVirtualNetworksClient(tool.InternalView().AdminConn())
+		projectsClient = privatev1.NewProjectsClient(tool.InternalView().AdminConn())
 	})
 
 	It("Rejects Tenant with invalid metadata name (too long)", func() {
@@ -156,5 +158,56 @@ var _ = Describe("Protovalidate validation", func() {
 				Id: response.Object.Id,
 			}.Build())
 		})
+	})
+
+	It("Accepts Project with dot-separated hierarchical name", func() {
+		// Projects use field-level CEL validation that allows dot-separated names
+		// like "org.team.project" (each segment is a DNS label, connected with dots)
+		hierarchicalName := "org.team-a.frontend"
+
+		response, err := projectsClient.Create(ctx, privatev1.ProjectsCreateRequest_builder{
+			Object: privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   hierarchicalName,
+					Tenant: "my-tenant",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Frontend Team",
+				}.Build(),
+			}.Build(),
+		}.Build())
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+		Expect(response.Object.Metadata.Name).To(Equal(hierarchicalName))
+		// Server should derive parent project from the hierarchical name:
+		Expect(response.Object.Metadata.Project).To(Equal("org.team-a"))
+
+		// Clean up:
+		DeferCleanup(func() {
+			_, _ = projectsClient.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+				Id: response.Object.Id,
+			}.Build())
+		})
+	})
+
+	It("Rejects Project with invalid segment in hierarchical name", func() {
+		// Each dot-separated segment must be a valid DNS label
+		invalidName := "org.Team-A.frontend" // "Team-A" has uppercase
+
+		_, err := projectsClient.Create(ctx, privatev1.ProjectsCreateRequest_builder{
+			Object: privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   invalidName,
+					Tenant: "my-tenant",
+				}.Build(),
+			}.Build(),
+		}.Build())
+
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		Expect(status.Message()).To(ContainSubstring("validation"))
 	})
 })
