@@ -26,21 +26,21 @@ import (
 
 var _ = Describe("Protovalidate validation", func() {
 	var (
-		ctx         context.Context
-		capClient   privatev1.CapabilitiesClient
+		ctx          context.Context
+		tenantClient privatev1.TenantsClient
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		capClient = privatev1.NewCapabilitiesClient(tool.InternalView().AdminConn())
+		tenantClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
 	})
 
-	It("Rejects Capability with invalid metadata name (too long)", func() {
-		// Create a Capability with name > 63 chars:
+	It("Rejects Tenant with invalid metadata name (too long)", func() {
+		// Create a Tenant with name > 63 chars:
 		invalidName := "this-name-is-way-too-long-and-exceeds-the-sixty-three-character-limit-for-dns-labels"
 
-		_, err := capClient.Create(ctx, privatev1.CapabilitiesCreateRequest_builder{
-			Object: privatev1.Capability_builder{
+		_, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: invalidName,
 				}.Build(),
@@ -56,12 +56,12 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(status.Message()).To(ContainSubstring("name"))
 	})
 
-	It("Rejects Capability with invalid metadata name pattern", func() {
-		// Create a Capability with uppercase (invalid for DNS label):
+	It("Rejects Tenant with invalid metadata name pattern", func() {
+		// Create a Tenant with uppercase (invalid for DNS label):
 		invalidName := "Invalid-Name-With-Uppercase"
 
-		_, err := capClient.Create(ctx, privatev1.CapabilitiesCreateRequest_builder{
-			Object: privatev1.Capability_builder{
+		_, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: invalidName,
 				}.Build(),
@@ -75,15 +75,15 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(status.Message()).To(ContainSubstring("validation"))
 	})
 
-	It("Rejects Capability with label key that is too long", func() {
+	It("Rejects Tenant with label key that is too long", func() {
 		// Create a label key > 316 chars:
 		longKey := ""
 		for i := 0; i < 320; i++ {
 			longKey = longKey + "a"
 		}
 
-		_, err := capClient.Create(ctx, privatev1.CapabilitiesCreateRequest_builder{
-			Object: privatev1.Capability_builder{
+		_, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "valid-name",
 					Labels: map[string]string{
@@ -100,11 +100,11 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(status.Message()).To(ContainSubstring("validation"))
 	})
 
-	It("Accepts Capability with valid metadata", func() {
-		validName := "valid-capability-name"
+	It("Accepts Tenant with valid metadata", func() {
+		validName := "valid-tenant-name"
 
-		response, err := capClient.Create(ctx, privatev1.CapabilitiesCreateRequest_builder{
-			Object: privatev1.Capability_builder{
+		response, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: validName,
 					Labels: map[string]string{
@@ -124,15 +124,15 @@ var _ = Describe("Protovalidate validation", func() {
 
 		// Clean up:
 		DeferCleanup(func() {
-			_, _ = capClient.Delete(ctx, privatev1.CapabilitiesDeleteRequest_builder{
+			_, _ = tenantClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
 				Id: response.Object.Id,
 			}.Build())
 		})
 	})
 
-	It("Accepts Capability with empty name (optional field)", func() {
-		response, err := capClient.Create(ctx, privatev1.CapabilitiesCreateRequest_builder{
-			Object: privatev1.Capability_builder{
+	It("Accepts Tenant with empty name (optional field)", func() {
+		response, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "",
 				}.Build(),
@@ -145,7 +145,7 @@ var _ = Describe("Protovalidate validation", func() {
 
 		// Clean up:
 		DeferCleanup(func() {
-			_, _ = capClient.Delete(ctx, privatev1.CapabilitiesDeleteRequest_builder{
+			_, _ = tenantClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
 				Id: response.Object.Id,
 			}.Build())
 		})
