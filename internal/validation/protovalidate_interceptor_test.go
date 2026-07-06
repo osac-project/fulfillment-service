@@ -111,10 +111,10 @@ var _ = Describe("Protovalidate interceptor", func() {
 			Expect(status.Message()).To(ContainSubstring("validation failed"))
 		})
 
-		It("Rejects requests with invalid name pattern", func() {
-			// Create Metadata with invalid characters:
+		It("Rejects requests with invalid name pattern (uppercase)", func() {
+			// Create Metadata with uppercase letters (invalid):
 			invalidMetadata := &publicv1.Metadata{
-				Name: "Invalid_Name",
+				Name: "MyCluster",
 			}
 
 			mockHandler := func(ctx context.Context, req any) (any, error) {
@@ -134,6 +134,85 @@ var _ = Describe("Protovalidate interceptor", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("validation failed"))
+		})
+
+		It("Rejects requests with invalid name pattern (underscore)", func() {
+			// Create Metadata with underscore (invalid):
+			invalidMetadata := &publicv1.Metadata{
+				Name: "my_cluster",
+			}
+
+			mockHandler := func(ctx context.Context, req any) (any, error) {
+				Fail("Handler should not be called for invalid request")
+				return nil, nil
+			}
+
+			response, err := interceptor.UnaryServer(
+				context.Background(),
+				invalidMetadata,
+				&grpc.UnaryServerInfo{FullMethod: "/test.Service/Method"},
+				mockHandler,
+			)
+
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("validation failed"))
+		})
+
+		It("Rejects requests with name starting with hyphen", func() {
+			// Create Metadata with leading hyphen (invalid):
+			invalidMetadata := &publicv1.Metadata{
+				Name: "-mycluster",
+			}
+
+			mockHandler := func(ctx context.Context, req any) (any, error) {
+				Fail("Handler should not be called for invalid request")
+				return nil, nil
+			}
+
+			response, err := interceptor.UnaryServer(
+				context.Background(),
+				invalidMetadata,
+				&grpc.UnaryServerInfo{FullMethod: "/test.Service/Method"},
+				mockHandler,
+			)
+
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("validation failed"))
+		})
+
+		It("Rejects requests with name ending with hyphen", func() {
+			// Create Metadata with trailing hyphen (invalid):
+			invalidMetadata := &publicv1.Metadata{
+				Name: "mycluster-",
+			}
+
+			mockHandler := func(ctx context.Context, req any) (any, error) {
+				Fail("Handler should not be called for invalid request")
+				return nil, nil
+			}
+
+			response, err := interceptor.UnaryServer(
+				context.Background(),
+				invalidMetadata,
+				&grpc.UnaryServerInfo{FullMethod: "/test.Service/Method"},
+				mockHandler,
+			)
+
+			Expect(err).To(HaveOccurred())
+			Expect(response).To(BeNil())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("validation failed"))
 		})
 
 		It("Rejects requests with label keys that are too long", func() {
