@@ -28,11 +28,13 @@ var _ = Describe("Protovalidate validation", func() {
 	var (
 		ctx          context.Context
 		tenantClient privatev1.TenantsClient
+		vnetClient   privatev1.VirtualNetworksClient
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		tenantClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
+		vnetClient = privatev1.NewVirtualNetworksClient(tool.InternalView().AdminConn())
 	})
 
 	It("Rejects Tenant with invalid metadata name (too long)", func() {
@@ -125,6 +127,32 @@ var _ = Describe("Protovalidate validation", func() {
 		// Clean up:
 		DeferCleanup(func() {
 			_, _ = tenantClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
+				Id: response.Object.Id,
+			}.Build())
+		})
+	})
+
+	It("Accepts VirtualNetwork with empty name (protovalidate allows empty strings)", func() {
+		// VirtualNetwork doesn't require a name (unlike Tenant), so we can test
+		// that protovalidate's regex pattern allows empty strings
+		response, err := vnetClient.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
+			Object: privatev1.VirtualNetwork_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: "",
+				}.Build(),
+				Spec: privatev1.VirtualNetworkSpec_builder{
+					Ipv4Cidr: "10.0.0.0/16",
+				}.Build(),
+			}.Build(),
+		}.Build())
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+		Expect(response.Object.Metadata.Name).To(Equal(""))
+
+		// Clean up:
+		DeferCleanup(func() {
+			_, _ = vnetClient.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
 				Id: response.Object.Id,
 			}.Build())
 		})
