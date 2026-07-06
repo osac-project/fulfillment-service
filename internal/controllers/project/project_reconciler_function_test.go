@@ -15,6 +15,7 @@ package project
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -585,17 +586,19 @@ var _ = Describe("Validation and Activation", func() {
 
 var _ = Describe("Deletion Cleanup", func() {
 	var (
-		ctrl            *gomock.Controller
-		mockClient      *MockProjectsClient
-		mockIdpClient   *idp.MockClient
-		resourceManager *idp.ResourceManager
-		ctx             context.Context
-		functionObj     *function
+		ctrl              *gomock.Controller
+		mockClient        *MockProjectsClient
+		mockTenantsClient *MockTenantsClient
+		mockIdpClient     *idp.MockClient
+		resourceManager   *idp.ResourceManager
+		ctx               context.Context
+		functionObj       *function
 	)
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = NewMockProjectsClient(ctrl)
+		mockTenantsClient = NewMockTenantsClient(ctrl)
 		mockIdpClient = idp.NewMockClient(ctrl)
 		ctx = context.Background()
 
@@ -609,6 +612,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		functionObj = &function{
 			logger:          logger,
 			projectsClient:  mockClient,
+			tenantsClient:   mockTenantsClient,
 			resourceManager: resourceManager,
 		}
 	})
@@ -684,7 +688,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		Expect(project.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
 	})
 
-	It("should remove finalizer even if Keycloak group deletion fails", func() {
+	It("should remove finalizer when Keycloak group is already gone", func() {
 		project := privatev1.Project_builder{
 			Id: "project-1",
 			Metadata: privatev1.Metadata_builder{
@@ -701,10 +705,10 @@ var _ = Describe("Deletion Cleanup", func() {
 				Size: 0,
 			}, nil)
 
-		// Expect parent project group ID lookup to fail (groups already deleted or never existed)
+		// Group already deleted — DeleteProjectGroups swallows "not found" internally
 		mockIdpClient.EXPECT().
 			GetGroupIDByPath(gomock.Any(), "acme", "/test-project").
-			Return("", status.Error(codes.NotFound, "group not found"))
+			Return("", fmt.Errorf("organization group not found: /test-project"))
 
 		task := &task{
 			r:       functionObj,
@@ -713,11 +717,43 @@ var _ = Describe("Deletion Cleanup", func() {
 
 		err := task.delete(ctx)
 		Expect(err).ToNot(HaveOccurred())
-		// Finalizer should still be removed even though Keycloak deletion failed
 		Expect(project.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
 	})
 
-	It("should handle missing tenant gracefully during deletion", func() {
+	It("should return error and keep finalizer on transient Keycloak failure", func() {
+		project := privatev1.Project_builder{
+			Id: "project-1",
+			Metadata: privatev1.Metadata_builder{
+				Name:       "test-project",
+				Tenant:     "acme",
+				Finalizers: []string{finalizers.Controller},
+			}.Build(),
+		}.Build()
+
+		// Expect query for children (returns 0)
+		mockClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectsListResponse{
+				Size: 0,
+			}, nil)
+
+		// Transient failure — should NOT swallow
+		mockIdpClient.EXPECT().
+			GetGroupIDByPath(gomock.Any(), "acme", "/test-project").
+			Return("", status.Error(codes.Unavailable, "connection refused"))
+
+		task := &task{
+			r:       functionObj,
+			project: project,
+		}
+
+		err := task.delete(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to delete Keycloak groups"))
+		Expect(project.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+	})
+
+	It("should return error when tenant is missing during deletion", func() {
 		project := privatev1.Project_builder{
 			Id: "project-1",
 			Metadata: privatev1.Metadata_builder{
@@ -734,26 +770,24 @@ var _ = Describe("Deletion Cleanup", func() {
 				Size: 0,
 			}, nil)
 
-		// No IDP client calls expected - DeleteProjectGroups will return error for missing tenant
-		// but deletion continues
-
 		task := &task{
 			r:       functionObj,
 			project: project,
 		}
 
 		err := task.delete(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(project.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to delete Keycloak groups"))
+		Expect(project.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
 	})
 
-	It("should handle missing project name gracefully during deletion", func() {
+	It("should skip Keycloak cleanup and signal tenant for root project deletion", func() {
 		project := privatev1.Project_builder{
 			Id: "project-1",
 			Metadata: privatev1.Metadata_builder{
 				Tenant:     "acme",
 				Finalizers: []string{finalizers.Controller},
-				// Missing name
+				// Empty name = root project
 			}.Build(),
 		}.Build()
 
@@ -764,8 +798,24 @@ var _ = Describe("Deletion Cleanup", func() {
 				Size: 0,
 			}, nil)
 
-		// No IDP client calls expected - DeleteProjectGroups will return error for missing name
-		// but deletion continues
+		// Root project goes through Keycloak cleanup — group at "/" not found, swallowed
+		mockIdpClient.EXPECT().
+			GetGroupIDByPath(gomock.Any(), "acme", "/").
+			Return("", fmt.Errorf("organization group not found: /"))
+
+		// Root project triggers tenant signal after finalizer removal
+		mockTenantsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.TenantsListResponse_builder{
+				Items: []*privatev1.Tenant{
+					privatev1.Tenant_builder{Id: "tenant-id-1"}.Build(),
+				},
+				Size: 1,
+			}.Build(), nil)
+
+		mockTenantsClient.EXPECT().
+			Signal(gomock.Any(), gomock.Any()).
+			Return(privatev1.TenantsSignalResponse_builder{}.Build(), nil)
 
 		task := &task{
 			r:       functionObj,

@@ -219,6 +219,9 @@ func (c *Client) DeleteTenant(ctx context.Context, tenantName string) error {
 
 	org, err := c.GetTenant(ctx, tenantName)
 	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil
+		}
 		return fmt.Errorf("failed to get organization: %w", err)
 	}
 	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, fmt.Sprintf("/admin/realms/%s/organizations/%s", c.realmName, org.ID), nil)

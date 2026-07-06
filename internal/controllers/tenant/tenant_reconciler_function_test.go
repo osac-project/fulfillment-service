@@ -569,11 +569,12 @@ var _ = Describe("Builtin Tenant Detection", func() {
 
 var _ = Describe("Deletion", func() {
 	var (
-		ctx        context.Context
-		ctrl       *gomock.Controller
-		mockClient *idp.MockClient
-		idpManager *idp.TenantManager
-		reconciler *function
+		ctx                context.Context
+		ctrl               *gomock.Controller
+		mockClient         *idp.MockClient
+		mockProjectsClient *MockProjectsClient
+		idpManager         *idp.TenantManager
+		reconciler         *function
 	)
 
 	BeforeEach(func() {
@@ -581,6 +582,7 @@ var _ = Describe("Deletion", func() {
 		ctx = context.Background()
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = idp.NewMockClient(ctrl)
+		mockProjectsClient = NewMockProjectsClient(ctrl)
 
 		idpManager, err = idp.NewTenantManager().
 			SetLogger(logger).
@@ -589,8 +591,9 @@ var _ = Describe("Deletion", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		reconciler = &function{
-			logger:     logger,
-			idpManager: idpManager,
+			logger:         logger,
+			projectsClient: mockProjectsClient,
+			idpManager:     idpManager,
 		}
 	})
 
@@ -609,6 +612,11 @@ var _ = Describe("Deletion", func() {
 				BreakGlassUserId: "user-123",
 			}.Build(),
 		}.Build()
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			Times(1)
 
 		mockClient.EXPECT().
 			DeleteTenant(gomock.Any(), "test-org").
@@ -639,6 +647,11 @@ var _ = Describe("Deletion", func() {
 			}.Build(),
 		}.Build()
 
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			Times(1)
+
 		task := &task{
 			r:      reconciler,
 			tenant: tenant,
@@ -663,6 +676,11 @@ var _ = Describe("Deletion", func() {
 				IdpTenantName: "",
 			}.Build(),
 		}.Build()
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			Times(1)
 
 		task := &task{
 			r:      reconciler,
@@ -690,6 +708,11 @@ var _ = Describe("Deletion", func() {
 			}.Build(),
 		}.Build()
 
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			Times(1)
+
 		mockClient.EXPECT().
 			DeleteTenant(gomock.Any(), "test-org").
 			Return(fmt.Errorf("IDP connection timeout")).
@@ -704,6 +727,72 @@ var _ = Describe("Deletion", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("failed to delete IDP tenant"))
 		Expect(err.Error()).To(ContainSubstring("IDP connection timeout"))
+		Expect(tenant.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+	})
+
+	It("should block deletion when projects remain", func() {
+		deletionTimestamp := timestamppb.New(time.Now())
+		tenant := privatev1.Tenant_builder{
+			Id: "org-123",
+			Metadata: privatev1.Metadata_builder{
+				Name:              "test-org",
+				Finalizers:        []string{finalizers.Controller},
+				DeletionTimestamp: deletionTimestamp,
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				State:            privatev1.TenantState_TENANT_STATE_SYNCED,
+				IdpTenantName:    "test-org",
+				BreakGlassUserId: "user-123",
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{
+				Total: 2,
+			}.Build(), nil).
+			Times(1)
+
+		task := &task{
+			r:      reconciler,
+			tenant: tenant,
+		}
+
+		err := task.delete(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("project(s) pending deletion"))
+		Expect(tenant.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+	})
+
+	It("should return error when project query fails during deletion", func() {
+		deletionTimestamp := timestamppb.New(time.Now())
+		tenant := privatev1.Tenant_builder{
+			Id: "org-123",
+			Metadata: privatev1.Metadata_builder{
+				Name:              "test-org",
+				Finalizers:        []string{finalizers.Controller},
+				DeletionTimestamp: deletionTimestamp,
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				State:            privatev1.TenantState_TENANT_STATE_SYNCED,
+				IdpTenantName:    "test-org",
+				BreakGlassUserId: "user-123",
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(nil, fmt.Errorf("connection refused")).
+			Times(1)
+
+		task := &task{
+			r:      reconciler,
+			tenant: tenant,
+		}
+
+		err := task.delete(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to query remaining projects"))
 		Expect(tenant.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
 	})
 

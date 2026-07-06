@@ -12,6 +12,7 @@ language governing permissions and limitations under the License.
 */
 
 //go:generate mockgen -source=../../api/osac/private/v1/projects_service_grpc.pb.go -destination=projects_client_mock.go -package=project ProjectsClient
+//go:generate mockgen -source=../../api/osac/private/v1/tenants_service_grpc.pb.go -destination=tenants_client_mock.go -package=project TenantsClient
 
 package project
 
@@ -80,6 +81,7 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 	result = &function{
 		logger:          b.logger,
 		projectsClient:  privatev1.NewProjectsClient(b.connection),
+		tenantsClient:   privatev1.NewTenantsClient(b.connection),
 		resourceManager: b.resourceManager,
 		maskCalculator:  masks.NewCalculator().Build(),
 	}
@@ -90,6 +92,7 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 type function struct {
 	logger          *slog.Logger
 	projectsClient  privatev1.ProjectsClient
+	tenantsClient   privatev1.TenantsClient
 	resourceManager *idp.ResourceManager
 	maskCalculator  *masks.Calculator
 }
@@ -288,8 +291,8 @@ func (t *task) findProjectByName(ctx context.Context, name string) (*privatev1.P
 func (t *task) delete(ctx context.Context) error {
 	// Check for child projects before deletion
 	listFilter := fmt.Sprintf(
-		"this.metadata.tenant == %q && this.metadata.project == %q",
-		t.project.GetMetadata().GetTenant(), t.project.GetMetadata().GetName(),
+		"this.metadata.tenant == %q && this.metadata.project == %q && this.metadata.name != %q",
+		t.project.GetMetadata().GetTenant(), t.project.GetMetadata().GetName(), t.project.GetMetadata().GetName(),
 	)
 	listResp, err := t.r.projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
 		Filter: new(listFilter),
@@ -320,15 +323,23 @@ func (t *task) delete(ctx context.Context) error {
 		t.project.GetMetadata().GetTenant(),
 		t.project.GetMetadata().GetName())
 	if err != nil {
-		t.r.logger.WarnContext(ctx, "Failed to delete Keycloak groups",
+		t.r.logger.ErrorContext(ctx, "Failed to delete Keycloak groups",
 			slog.String("project_id", t.project.GetId()),
 			slog.String("tenant", t.project.GetMetadata().GetTenant()),
 			slog.String("project_name", t.project.GetMetadata().GetName()),
 			slog.Any("error", err),
 		)
+		return fmt.Errorf("failed to delete Keycloak groups: %w", err)
 	}
 
 	t.removeFinalizer()
+
+	// When the root project (empty name) is deleted, signal the parent tenant
+	// so it re-reconciles and can proceed with its own deletion.
+	if t.project.GetMetadata().GetName() == "" {
+		t.signalTenant(ctx)
+	}
+
 	return nil
 }
 
@@ -393,6 +404,37 @@ func (t *task) removeFinalizer() {
 			return item == finalizers.Controller
 		})
 		t.project.GetMetadata().SetFinalizers(list)
+	}
+}
+
+// signalTenant looks up the parent tenant by name and signals it so that the
+// tenant reconciler re-runs. This is used when the root project is deleted to
+// unblock the tenant's own deletion.
+func (t *task) signalTenant(ctx context.Context) {
+	tenantName := t.project.GetMetadata().GetTenant()
+	listResp, err := t.r.tenantsClient.List(ctx, privatev1.TenantsListRequest_builder{
+		Filter: new(fmt.Sprintf("this.metadata.name == %q", tenantName)),
+		Limit:  new(int32(1)),
+	}.Build())
+	if err != nil {
+		t.r.logger.WarnContext(ctx, "Failed to look up tenant for signaling",
+			slog.String("tenant_name", tenantName),
+			slog.Any("error", err),
+		)
+		return
+	}
+	items := listResp.GetItems()
+	if len(items) == 0 {
+		return
+	}
+	_, err = t.r.tenantsClient.Signal(ctx, privatev1.TenantsSignalRequest_builder{
+		Id: items[0].GetId(),
+	}.Build())
+	if err != nil {
+		t.r.logger.WarnContext(ctx, "Failed to signal tenant after root project deletion",
+			slog.String("tenant_id", items[0].GetId()),
+			slog.Any("error", err),
+		)
 	}
 }
 

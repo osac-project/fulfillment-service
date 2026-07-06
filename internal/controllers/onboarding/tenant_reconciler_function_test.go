@@ -70,14 +70,19 @@ func newFunction(
 	hubCache controllers.HubCache,
 	hubsClient privatev1.HubsClient,
 	tenantsClient privatev1.TenantsClient,
+	projectsClient ...privatev1.ProjectsClient,
 ) *function {
-	return &function{
+	f := &function{
 		logger:         logger,
 		hubCache:       hubCache,
 		hubsClient:     hubsClient,
 		tenantsClient:  tenantsClient,
 		maskCalculator: masks.NewCalculator().Build(),
 	}
+	if len(projectsClient) > 0 {
+		f.projectsClient = projectsClient[0]
+	}
+	return f
 }
 
 var _ = Describe("addFinalizer", func() {
@@ -183,6 +188,7 @@ var _ = Describe("run", func() {
 		mockHubCache *controllers.MockHubCache
 		mockHubs     *controllers.MockHubsClient
 		mockTenants  *MockTenantsClient
+		mockProjects *MockProjectsClient
 		scheme       *runtime.Scheme
 	)
 
@@ -192,6 +198,11 @@ var _ = Describe("run", func() {
 		mockHubCache = controllers.NewMockHubCache(ctrl)
 		mockHubs = controllers.NewMockHubsClient(ctrl)
 		mockTenants = NewMockTenantsClient(ctrl)
+		mockProjects = NewMockProjectsClient(ctrl)
+		mockProjects.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			AnyTimes()
 		scheme = newScheme()
 	})
 
@@ -215,7 +226,7 @@ var _ = Describe("run", func() {
 						return &privatev1.TenantsUpdateResponse{Object: req.GetObject()}, nil
 					})
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -261,7 +272,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -327,7 +338,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -387,7 +398,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -413,7 +424,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).To(MatchError(ContainSubstring("hubs unavailable")))
@@ -447,7 +458,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).To(MatchError(ContainSubstring("cache temporarily unavailable")))
@@ -491,7 +502,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -542,7 +553,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).To(MatchError(ContainSubstring("create failed")))
@@ -589,7 +600,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -636,7 +647,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -674,7 +685,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -714,7 +725,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -750,7 +761,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).To(MatchError(ContainSubstring("cache temporarily unavailable")))
@@ -774,7 +785,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).To(MatchError(ContainSubstring("hubs unavailable")))
@@ -818,7 +829,7 @@ var _ = Describe("run", func() {
 					}.Build(),
 				}.Build()
 
-				f := newFunction(mockHubCache, mockHubs, mockTenants)
+				f := newFunction(mockHubCache, mockHubs, mockTenants, mockProjects)
 				err := f.run(ctx, tenant)
 
 				Expect(err).To(MatchError(expectedErr))

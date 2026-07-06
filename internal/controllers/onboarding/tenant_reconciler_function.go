@@ -15,6 +15,7 @@ language governing permissions and limitations under the License.
 package onboarding
 
 //go:generate mockgen -source=../../api/osac/private/v1/tenants_service_grpc.pb.go -destination=tenants_client_mock.go -package=onboarding TenantsClient
+//go:generate mockgen -source=../../api/osac/private/v1/projects_service_grpc.pb.go -destination=projects_client_mock.go -package=onboarding ProjectsClient
 
 import (
 	"context"
@@ -49,6 +50,7 @@ type function struct {
 	logger         *slog.Logger
 	hubCache       controllers.HubCache
 	tenantsClient  privatev1.TenantsClient
+	projectsClient privatev1.ProjectsClient
 	hubsClient     privatev1.HubsClient
 	maskCalculator *masks.Calculator
 }
@@ -94,6 +96,7 @@ func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privat
 	object := &function{
 		logger:         b.logger,
 		tenantsClient:  privatev1.NewTenantsClient(b.connection),
+		projectsClient: privatev1.NewProjectsClient(b.connection),
 		hubsClient:     privatev1.NewHubsClient(b.connection),
 		hubCache:       b.hubCache,
 		maskCalculator: masks.NewCalculator().Build(),
@@ -283,6 +286,20 @@ func (t *task) delete(ctx context.Context) error {
 		}
 
 		return nil
+	}
+
+	// Wait for all projects to be archived before removing the finalizer —
+	// otherwise the DAO archive hits FK violations from the projects table.
+	listFilter := fmt.Sprintf("this.metadata.tenant == %q", t.tenant.GetMetadata().GetName())
+	listResp, err := t.r.projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+		Filter: new(listFilter),
+		Limit:  new(int32(0)),
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to query for remaining projects: %w", err)
+	}
+	if listResp.GetTotal() > 0 {
+		return fmt.Errorf("tenant still has %d project(s) pending deletion", listResp.GetTotal())
 	}
 
 	t.removeFinalizer()

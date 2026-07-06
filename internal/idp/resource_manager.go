@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path"
 	"strings"
 )
 
@@ -84,9 +85,6 @@ func (b *ResourceManagerBuilder) Build() (result *ResourceManager, err error) {
 func (m *ResourceManager) DeleteProjectGroups(ctx context.Context, tenant, projectName string) error {
 	if tenant == "" {
 		return fmt.Errorf("tenant is required")
-	}
-	if projectName == "" {
-		return fmt.Errorf("project name is required")
 	}
 	// Validate inputs to prevent path traversal attacks
 	if strings.Contains(projectName, "..") {
@@ -158,19 +156,13 @@ func (m *ResourceManager) CreateProjectGroups(ctx context.Context, tenant, proje
 		slog.String("project_path", projectPath),
 	)
 
-	// Make sure the project path starts with a slash (unless it's empty for tenant-level groups):
-	if projectPath != "" && !strings.HasPrefix(projectPath, "/") {
+	// Make sure the project path starts with a slash:
+	if !strings.HasPrefix(projectPath, "/") {
 		projectPath = fmt.Sprintf("/%s", projectPath)
 	}
 
 	// Create the viewers group:
-	var viewersGroupPath string
-	if projectPath == "" {
-		// Tenant-level project (empty name) - create group at root level
-		viewersGroupPath = fmt.Sprintf("/%s", GroupNameViewers)
-	} else {
-		viewersGroupPath = fmt.Sprintf("%s/%s", projectPath, GroupNameViewers)
-	}
+	viewersGroupPath := path.Join(projectPath, GroupNameViewers)
 	viewersGroupID, err := m.client.CreateAuthorizationGroup(ctx, tenant, viewersGroupPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create viewers group: %w", err)
@@ -185,13 +177,7 @@ func (m *ResourceManager) CreateProjectGroups(ctx context.Context, tenant, proje
 	)
 
 	// Create the managers group:
-	var managersGroupPath string
-	if projectPath == "" {
-		// Tenant-level project (empty name) - create group at root level
-		managersGroupPath = fmt.Sprintf("/%s", GroupNameManagers)
-	} else {
-		managersGroupPath = fmt.Sprintf("%s/%s", projectPath, GroupNameManagers)
-	}
+	managersGroupPath := path.Join(projectPath, GroupNameManagers)
 	managersGroupID, err := m.client.CreateAuthorizationGroup(ctx, tenant, managersGroupPath)
 	if err != nil {
 		// Clean up viewers group on failure

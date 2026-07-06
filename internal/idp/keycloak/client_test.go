@@ -828,7 +828,39 @@ var _ = Describe("Keycloak Client", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("returns an error if the organization is not found", func() {
+		It("succeeds if the organization is already deleted from Keycloak", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Break-glass user query returns empty (already deleted)
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/users" {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode([]keycloakUser{}); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				// Organization query returns empty (already deleted)
+				if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					if err := json.NewEncoder(w).Encode([]keycloakOrganization{}); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					return
+				}
+
+				w.WriteHeader(http.StatusBadRequest)
+			}))
+
+			client = createTestClient(server.URL)
+			err := client.DeleteTenant(ctx, "test-org")
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("returns an error if the Keycloak API returns an HTTP error", func() {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 			}))
