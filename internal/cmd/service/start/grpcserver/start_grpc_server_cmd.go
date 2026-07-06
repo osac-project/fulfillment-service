@@ -54,6 +54,27 @@ import (
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
 )
 
+// userIDResolver implements auth.UserIDResolver by querying the users DAO.
+type userIDResolver struct {
+	usersDAO *dao.GenericDAO[*privatev1.User]
+}
+
+func (r *userIDResolver) GetID(ctx context.Context, username string) (string, error) {
+	filter := fmt.Sprintf("this.spec.username==%q", username)
+	listResponse, err := r.usersDAO.List().
+		SetFilter(filter).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get user ID: %w", err)
+	}
+	if listResponse.GetSize() == 0 {
+		return "", nil
+	}
+	user := listResponse.GetItems()[0]
+	return user.GetId(), nil
+}
+
 // Cmd creates and returns the `start grpc-server` command.
 func Cmd() *cobra.Command {
 	var err error
@@ -476,10 +497,25 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	healthServer := health.NewServer()
 	healthv1.RegisterHealthServer(grpcServer, healthServer)
 
+	// Create the users DAO for user ID resolution in attribution:
+	c.logger.InfoContext(ctx, "Creating users DAO for attribution")
+	usersDAO, err2 := dao.NewGenericDAO[*privatev1.User]().
+		SetLogger(c.logger).
+		SetTableName("users").
+		SetTenancyLogic(tenancyLogic).
+		Build()
+	if err2 != nil {
+		return fmt.Errorf("failed to create users DAO: %w", err2)
+	}
+
+	// Create user ID resolver implementation:
+	userIDResolver := &userIDResolver{usersDAO: usersDAO}
+
 	// Create the public attribution logic:
 	c.logger.InfoContext(ctx, "Creating public attribution logic")
 	publicAttributionLogic, err := auth.NewDefaultAttributionLogic().
 		SetLogger(c.logger).
+		SetUserIDResolver(userIDResolver).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create public attribution logic: %w", err)

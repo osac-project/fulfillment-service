@@ -15,9 +15,11 @@ package auth
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 )
 
 var _ = Describe("Default attribution logic", func() {
@@ -46,7 +48,17 @@ var _ = Describe("Default attribution logic", func() {
 	})
 
 	Describe("Behavior", func() {
-		It("Returns user name when subject exists in context", func() {
+		var ctrl *gomock.Controller
+
+		BeforeEach(func() {
+			ctrl = gomock.NewController(GinkgoT())
+		})
+
+		AfterEach(func() {
+			ctrl.Finish()
+		})
+
+		It("Returns username when no resolver is configured", func() {
 			logic, err := NewDefaultAttributionLogic().
 				SetLogger(logger).
 				Build()
@@ -58,6 +70,66 @@ var _ = Describe("Default attribution logic", func() {
 			creator, err := logic.DetermineAssignedCreator(ctx)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(creator).To(Equal("my_creator"))
+		})
+
+		It("Returns user ID when resolver successfully resolves username", func() {
+			resolver := NewMockUserIDResolver(ctrl)
+			resolver.EXPECT().
+				GetID(gomock.Any(), "my_creator").
+				Return("user-uuid-123", nil)
+
+			logic, err := NewDefaultAttributionLogic().
+				SetLogger(logger).
+				SetUserIDResolver(resolver).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			subject := &Subject{
+				User: "my_creator",
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			creator, err := logic.DetermineAssignedCreator(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(creator).To(Equal("user-uuid-123"))
+		})
+
+		It("Returns username when resolver returns empty ID", func() {
+			resolver := NewMockUserIDResolver(ctrl)
+			resolver.EXPECT().
+				GetID(gomock.Any(), "service_account").
+				Return("", nil)
+
+			logic, err := NewDefaultAttributionLogic().
+				SetLogger(logger).
+				SetUserIDResolver(resolver).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			subject := &Subject{
+				User: "service_account",
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			creator, err := logic.DetermineAssignedCreator(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(creator).To(Equal("service_account"))
+		})
+
+		It("Returns username when resolver returns an error", func() {
+			resolver := NewMockUserIDResolver(ctrl)
+			resolver.EXPECT().
+				GetID(gomock.Any(), "system").
+				Return("", fmt.Errorf("database error"))
+
+			logic, err := NewDefaultAttributionLogic().
+				SetLogger(logger).
+				SetUserIDResolver(resolver).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			subject := &Subject{
+				User: "system",
+			}
+			ctx = ContextWithSubject(ctx, subject)
+			creator, err := logic.DetermineAssignedCreator(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(creator).To(Equal("system"))
 		})
 
 		It("Panics when there is no subject in the context", func() {
