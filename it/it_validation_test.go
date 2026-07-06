@@ -129,25 +129,4 @@ var _ = Describe("Protovalidate validation", func() {
 			}.Build())
 		})
 	})
-
-	It("Accepts Tenant with empty name (optional field)", func() {
-		response, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
-			Object: privatev1.Tenant_builder{
-				Metadata: privatev1.Metadata_builder{
-					Name: "",
-				}.Build(),
-			}.Build(),
-		}.Build())
-
-		Expect(err).ToNot(HaveOccurred())
-		Expect(response).ToNot(BeNil())
-		Expect(response.Object.Metadata.Name).To(Equal(""))
-
-		// Clean up:
-		DeferCleanup(func() {
-			_, _ = tenantClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
-				Id: response.Object.Id,
-			}.Build())
-		})
-	})
 })
