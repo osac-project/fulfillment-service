@@ -27,11 +27,11 @@ import (
 
 var _ = Describe("Protovalidate validation", func() {
 	var (
-		ctx                 context.Context
-		tenantClient        privatev1.TenantsClient
-		vnetClient          privatev1.VirtualNetworksClient
-		networkClassClient  privatev1.NetworkClassesClient
-		projectsClient      privatev1.ProjectsClient
+		ctx                context.Context
+		tenantClient       privatev1.TenantsClient
+		vnetClient         privatev1.VirtualNetworksClient
+		networkClassClient privatev1.NetworkClassesClient
+		projectsClient     privatev1.ProjectsClient
 	)
 
 	BeforeEach(func() {
