@@ -823,3 +823,89 @@ var _ = Describe("ensureUserDataSecret", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 })
+
+var _ = Describe("setReconciliationFailed", func() {
+	It("should set state to FAILED and update PROVISIONED condition", func() {
+		ci := privatev1.ComputeInstance_builder{
+			Id: "test-ci-fail",
+			Status: privatev1.ComputeInstanceStatus_builder{
+				State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+			}.Build(),
+		}.Build()
+
+		t := &task{
+			r:               &function{logger: logger},
+			computeInstance: ci,
+		}
+
+		reconcileErr := errors.New("spec.runStrategy: Unsupported value: \"\": supported values: \"Always\", \"Halted\"")
+		t.setReconciliationFailed(reconcileErr)
+
+		Expect(ci.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED))
+
+		var provisionedCondition *privatev1.ComputeInstanceCondition
+		for _, c := range ci.GetStatus().GetConditions() {
+			if c.GetType() == privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED {
+				provisionedCondition = c
+				break
+			}
+		}
+		Expect(provisionedCondition).ToNot(BeNil())
+		Expect(provisionedCondition.GetStatus()).To(Equal(privatev1.ConditionStatus_CONDITION_STATUS_FALSE))
+		Expect(provisionedCondition.GetReason()).To(Equal("ReconciliationFailed"))
+		Expect(provisionedCondition.GetMessage()).To(ContainSubstring("runStrategy"))
+	})
+
+	It("should create status if not present", func() {
+		ci := privatev1.ComputeInstance_builder{
+			Id: "test-ci-no-status",
+		}.Build()
+
+		t := &task{
+			r:               &function{logger: logger},
+			computeInstance: ci,
+		}
+
+		t.setReconciliationFailed(errors.New("hub not found"))
+
+		Expect(ci.HasStatus()).To(BeTrue())
+		Expect(ci.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED))
+	})
+
+	It("should update existing PROVISIONED condition rather than creating duplicate", func() {
+		reason := "WaitingForVM"
+		message := "initial state"
+		ci := privatev1.ComputeInstance_builder{
+			Id: "test-ci-existing-condition",
+			Status: privatev1.ComputeInstanceStatus_builder{
+				State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+				Conditions: []*privatev1.ComputeInstanceCondition{
+					privatev1.ComputeInstanceCondition_builder{
+						Type:    privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED,
+						Status:  privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+						Reason:  &reason,
+						Message: &message,
+					}.Build(),
+				},
+			}.Build(),
+		}.Build()
+
+		t := &task{
+			r:               &function{logger: logger},
+			computeInstance: ci,
+		}
+
+		t.setReconciliationFailed(errors.New("create failed"))
+
+		conditions := ci.GetStatus().GetConditions()
+		provisionedCount := 0
+		for _, c := range conditions {
+			if c.GetType() == privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED {
+				provisionedCount++
+				Expect(c.GetReason()).To(Equal("ReconciliationFailed"))
+				Expect(c.GetMessage()).To(ContainSubstring("create failed"))
+			}
+		}
+		Expect(provisionedCount).To(Equal(1))
+	})
+})
