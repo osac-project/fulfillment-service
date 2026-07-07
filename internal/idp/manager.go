@@ -27,13 +27,13 @@ import (
 // TenantManager handles the lifecycle of tenants in Keycloak.
 type TenantManager struct {
 	logger *slog.Logger
-	client *Client
+	client ClientInterface
 }
 
 // TenantManagerBuilder builds the manager.
 type TenantManagerBuilder struct {
 	logger *slog.Logger
-	client *Client
+	client ClientInterface
 }
 
 // NewTenantManager creates a builder for the tenant manager.
@@ -48,7 +48,7 @@ func (b *TenantManagerBuilder) SetLogger(value *slog.Logger) *TenantManagerBuild
 }
 
 // SetClient sets the Keycloak client.
-func (b *TenantManagerBuilder) SetClient(value *Client) *TenantManagerBuilder {
+func (b *TenantManagerBuilder) SetClient(value ClientInterface) *TenantManagerBuilder {
 	b.client = value
 	return b
 }

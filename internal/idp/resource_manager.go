@@ -36,13 +36,13 @@ type ResourceManagerInterface interface {
 // ResourceManager handles Keycloak group operations for authorization.
 type ResourceManager struct {
 	logger *slog.Logger
-	client *Client
+	client ClientInterface
 }
 
 // ResourceManagerBuilder builds the resource manager.
 type ResourceManagerBuilder struct {
 	logger *slog.Logger
-	client *Client
+	client ClientInterface
 }
 
 // NewResourceManager creates a builder for the resource manager.
@@ -57,7 +57,7 @@ func (b *ResourceManagerBuilder) SetLogger(value *slog.Logger) *ResourceManagerB
 }
 
 // SetClient sets the Keycloak client.
-func (b *ResourceManagerBuilder) SetClient(value *Client) *ResourceManagerBuilder {
+func (b *ResourceManagerBuilder) SetClient(value ClientInterface) *ResourceManagerBuilder {
 	b.client = value
 	return b
 }
