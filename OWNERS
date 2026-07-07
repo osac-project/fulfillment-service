@@ -13,6 +13,7 @@ filters:
     - rgolangh
     - ygalblum
     - eliorerz
+    - sk-ilya
     reviewers:
     - jhernand
     - adriengentil
@@ -26,3 +27,4 @@ filters:
     - rgolangh
     - ygalblum
     - eliorerz
+    - sk-ilya
