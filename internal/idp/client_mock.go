@@ -330,6 +330,21 @@ func (mr *MockClientMockRecorder) GetUser(ctx, tenantName, idpUserID any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUser", reflect.TypeOf((*MockClient)(nil).GetUser), ctx, tenantName, idpUserID)
 }
 
+// GetUserByUsername mocks base method.
+func (m *MockClient) GetUserByUsername(ctx context.Context, tenantName, username string) (*User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserByUsername", ctx, tenantName, username)
+	ret0, _ := ret[0].(*User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserByUsername indicates an expected call of GetUserByUsername.
+func (mr *MockClientMockRecorder) GetUserByUsername(ctx, tenantName, username any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserByUsername", reflect.TypeOf((*MockClient)(nil).GetUserByUsername), ctx, tenantName, username)
+}
+
 // GetUserClientRoles mocks base method.
 func (m *MockClient) GetUserClientRoles(ctx context.Context, tenantName, idpUserID, clientID string) ([]*Role, error) {
 	m.ctrl.T.Helper()

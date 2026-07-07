@@ -58,6 +58,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/securitygroup"
 	"github.com/osac-project/fulfillment-service/internal/controllers/subnet"
 	"github.com/osac-project/fulfillment-service/internal/controllers/tenant"
+	"github.com/osac-project/fulfillment-service/internal/controllers/user"
 	"github.com/osac-project/fulfillment-service/internal/controllers/virtualnetwork"
 	internalhealth "github.com/osac-project/fulfillment-service/internal/health"
 	"github.com/osac-project/fulfillment-service/internal/idp"
@@ -930,6 +931,43 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			r.logger.InfoContext(
 				ctx,
 				"Tenant reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the user reconciler:
+	r.logger.InfoContext(ctx, "Creating user reconciler")
+	userReconcilerFunction, err := user.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create user reconciler function: %w", err)
+	}
+	userReconciler, err := controllers.NewReconciler[*privatev1.User]().
+		SetLogger(r.logger).
+		SetName("user").
+		SetClient(r.client).
+		SetFunction(userReconcilerFunction.Run).
+		SetEventFilter("has(event.user)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create user reconciler: %w", err)
+	}
+
+	// Start the user reconciler:
+	r.logger.InfoContext(ctx, "Starting user reconciler")
+	go func() {
+		err := userReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "User reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"User reconciler failed",
 				slog.Any("error", err),
 			)
 		}

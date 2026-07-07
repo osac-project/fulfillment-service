@@ -661,6 +661,13 @@ func (c *Client) AssignIdpManagerPermissions(ctx context.Context, userID string)
 	return nil
 }
 
+// GetUserByUsername implements the Client interface method.
+// Note: tenantName is accepted for interface compatibility but not used in the Keycloak implementation
+// since users in Keycloak are realm-scoped, not organization-scoped.
+func (c *Client) GetUserByUsername(ctx context.Context, tenantName, username string) (*idp.User, error) {
+	return c.getUserByUsername(ctx, username)
+}
+
 // getUserByUsername retrieves a user by username from the realm.
 // Returns nil if the user is not found.
 func (c *Client) getUserByUsername(ctx context.Context, username string) (*idp.User, error) {

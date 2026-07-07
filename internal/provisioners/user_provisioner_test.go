@@ -17,17 +17,16 @@ import (
 	"context"
 	"log/slog"
 	"testing"
-	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
@@ -37,13 +36,11 @@ func TestUserProvisioner(t *testing.T) {
 }
 
 var (
-	ctx      context.Context
-	ctrl     *gomock.Controller
-	logger   *slog.Logger
-	server   *database.Container
-	usersDAO *dao.GenericDAO[*privatev1.User]
-	tenancy  *auth.MockTenancyLogic
-	prov     *UserProvisioner
+	ctx         context.Context
+	ctrl        *gomock.Controller
+	logger      *slog.Logger
+	usersServer *MockUsersServer
+	prov        *UserProvisioner
 )
 
 var _ = BeforeSuite(func() {
@@ -59,34 +56,6 @@ var _ = BeforeSuite(func() {
 		SetWriter(GinkgoWriter).
 		Build()
 	Expect(err).ToNot(HaveOccurred())
-
-	// Create the tenancy logic:
-	tenancy = auth.NewMockTenancyLogic(ctrl)
-	tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-		Return(auth.AllTenants, nil).
-		AnyTimes()
-	tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
-		Return(auth.SystemTenant, nil).
-		AnyTimes()
-	tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-		Return(auth.AllTenants, nil).
-		AnyTimes()
-
-	// Create the database server:
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	DeferCleanup(cancel)
-	server, err = database.NewContainer().
-		SetLogger(logger).
-		Build()
-	Expect(err).ToNot(HaveOccurred())
-	err = server.Start(ctx)
-	Expect(err).ToNot(HaveOccurred())
-	DeferCleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		err = server.Stop(ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
 })
 
 var _ = BeforeEach(func() {
@@ -95,40 +64,13 @@ var _ = BeforeEach(func() {
 	// Create a context:
 	ctx = context.Background()
 
-	// Prepare the database pool:
-	db, err := server.NewInstance().Build()
-	Expect(err).ToNot(HaveOccurred())
-	DeferCleanup(db.Close)
-	pool, err := db.Pool(ctx)
-	Expect(err).ToNot(HaveOccurred())
-	DeferCleanup(pool.Close)
-
-	// Create the transaction manager:
-	tm, err := database.NewTxManager().
-		SetLogger(logger).
-		SetPool(pool).
-		Build()
-	Expect(err).ToNot(HaveOccurred())
-
-	// Start a transaction and add it to the context:
-	tx, err := tm.Begin(ctx)
-	Expect(err).ToNot(HaveOccurred())
-	DeferCleanup(func() {
-		err := tx.End(ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
-	ctx = database.TxIntoContext(ctx, tx)
-
-	// Create users DAO:
-	usersDAO, err = dao.NewGenericDAO[*privatev1.User]().
-		SetLogger(logger).
-		SetTenancyLogic(tenancy).
-		Build()
-	Expect(err).ToNot(HaveOccurred())
+	// Create mock users server:
+	usersServer = NewMockUsersServer(ctrl)
 
 	// Create provisioner:
 	prov, err = NewUserProvisioner().
-		SetUsersDAO(usersDAO).
+		SetLogger(logger).
+		SetUsersServer(usersServer).
 		Build()
 	Expect(err).ToNot(HaveOccurred())
 })
@@ -136,16 +78,18 @@ var _ = BeforeEach(func() {
 var _ = Describe("UserProvisioner", func() {
 
 	Describe("Builder validation", func() {
-		It("Requires users DAO", func() {
+		It("Requires users server", func() {
 			_, err := NewUserProvisioner().
+				SetLogger(logger).
 				Build()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("users DAO is mandatory"))
+			Expect(err.Error()).To(ContainSubstring("users server is mandatory"))
 		})
 
 		It("Builds successfully with all required parameters", func() {
 			p, err := NewUserProvisioner().
-				SetUsersDAO(usersDAO).
+				SetLogger(logger).
+				SetUsersServer(usersServer).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(p).ToNot(BeNil())
@@ -158,17 +102,26 @@ var _ = Describe("UserProvisioner", func() {
 				"email": "alice@example.com",
 			}
 
+			// Mock List to return no existing users
+			usersServer.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersListResponse{Size: 0}, nil)
+
+			// Mock Create to succeed
+			var capturedRequest *privatev1.UsersCreateRequest
+			usersServer.EXPECT().
+				Create(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, req *privatev1.UsersCreateRequest) (*privatev1.UsersCreateResponse, error) {
+					capturedRequest = req
+					return &privatev1.UsersCreateResponse{Object: req.GetObject()}, nil
+				})
+
 			err := prov.Provision(ctx, "alice", auth.SystemTenant, claims)
 			Expect(err).ToNot(HaveOccurred())
 
-			// Verify user was created:
-			listResp, err := usersDAO.List().
-				SetFilter("this.spec.username=='alice'").
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(listResp.GetSize()).To(Equal(int32(1)))
-
-			user := listResp.GetItems()[0]
+			// Verify the created user had correct fields:
+			Expect(capturedRequest).ToNot(BeNil())
+			user := capturedRequest.GetObject()
 			Expect(user.GetMetadata().GetName()).To(Equal("alice"))
 			Expect(user.GetMetadata().GetTenant()).To(Equal(auth.SystemTenant))
 			Expect(user.GetSpec().GetUsername()).To(Equal("alice"))
@@ -179,17 +132,26 @@ var _ = Describe("UserProvisioner", func() {
 		It("Creates a user with minimal claims", func() {
 			claims := jwt.MapClaims{}
 
+			// Mock List to return no existing users
+			usersServer.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersListResponse{Size: 0}, nil)
+
+			// Mock Create to succeed
+			var capturedRequest *privatev1.UsersCreateRequest
+			usersServer.EXPECT().
+				Create(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, req *privatev1.UsersCreateRequest) (*privatev1.UsersCreateResponse, error) {
+					capturedRequest = req
+					return &privatev1.UsersCreateResponse{Object: req.GetObject()}, nil
+				})
+
 			err := prov.Provision(ctx, "bob", auth.SystemTenant, claims)
 			Expect(err).ToNot(HaveOccurred())
 
-			// Verify user was created:
-			listResp, err := usersDAO.List().
-				SetFilter("this.spec.username=='bob'").
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(listResp.GetSize()).To(Equal(int32(1)))
-
-			user := listResp.GetItems()[0]
+			// Verify the created user had correct fields:
+			Expect(capturedRequest).ToNot(BeNil())
+			user := capturedRequest.GetObject()
 			Expect(user.GetMetadata().GetName()).To(Equal("bob"))
 			Expect(user.GetMetadata().GetTenant()).To(Equal(auth.SystemTenant))
 			Expect(user.GetSpec().GetUsername()).To(Equal("bob"))
@@ -202,20 +164,21 @@ var _ = Describe("UserProvisioner", func() {
 				"email": "eve@example.com",
 			}
 
-			// Create user first time:
+			// Mock List to return an existing user
+			existingUser := privatev1.User_builder{
+				Metadata: privatev1.Metadata_builder{Name: "eve"}.Build(),
+				Spec:     privatev1.UserSpec_builder{Username: "eve"}.Build(),
+			}.Build()
+			usersServer.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersListResponse{
+					Size:  1,
+					Items: []*privatev1.User{existingUser},
+				}, nil)
+
+			// Create should not be called since user already exists
 			err := prov.Provision(ctx, "eve", auth.SystemTenant, claims)
 			Expect(err).ToNot(HaveOccurred())
-
-			// Try to create same user again:
-			err = prov.Provision(ctx, "eve", auth.SystemTenant, claims)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Verify only one user exists:
-			listResp, err := usersDAO.List().
-				SetFilter("this.spec.username=='eve'").
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(listResp.GetSize()).To(Equal(int32(1)))
 		})
 
 		It("Handles email claim as non-string gracefully", func() {
@@ -223,28 +186,123 @@ var _ = Describe("UserProvisioner", func() {
 				"email": 12345, // Number instead of string
 			}
 
+			// Mock List to return no existing users
+			usersServer.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersListResponse{Size: 0}, nil)
+
+			// Mock Create to succeed
+			var capturedRequest *privatev1.UsersCreateRequest
+			usersServer.EXPECT().
+				Create(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, req *privatev1.UsersCreateRequest) (*privatev1.UsersCreateResponse, error) {
+					capturedRequest = req
+					return &privatev1.UsersCreateResponse{Object: req.GetObject()}, nil
+				})
+
 			err := prov.Provision(ctx, "harry", auth.SystemTenant, claims)
 			Expect(err).ToNot(HaveOccurred())
 
-			listResp, err := usersDAO.List().
-				SetFilter("this.spec.username=='harry'").
-				Do(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(listResp.GetSize()).To(Equal(int32(1)))
-
-			user := listResp.GetItems()[0]
-			Expect(user.GetSpec().GetEmail()).To(Equal("")) // Defaults to empty string for non-string
+			// Verify email defaults to empty string for non-string
+			Expect(capturedRequest).ToNot(BeNil())
+			user := capturedRequest.GetObject()
+			Expect(user.GetSpec().GetEmail()).To(Equal(""))
 		})
 
-		It("Returns error when tenant doesn't exist", func() {
+		It("Handles AlreadyExists error during concurrent creation", func() {
 			claims := jwt.MapClaims{
-				"email": "orphan@example.com",
+				"email": "concurrent@example.com",
 			}
 
-			// Try to provision a user in a non-existent tenant:
-			err := prov.Provision(ctx, "orphan", "nonexistent_tenant", claims)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("tenant 'nonexistent_tenant' doesn't exist"))
+			// Mock List to return no users (race window)
+			usersServer.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersListResponse{Size: 0}, nil)
+
+			// Mock Create to return AlreadyExists (another request won the race)
+			usersServer.EXPECT().
+				Create(gomock.Any(), gomock.Any()).
+				Return(nil, status.Error(codes.AlreadyExists, "user already exists"))
+
+			// Should not return error (treat race condition as success)
+			err := prov.Provision(ctx, "concurrent", auth.SystemTenant, claims)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Sanitizes username for DNS-1123 compliance in metadata.name", func() {
+			claims := jwt.MapClaims{
+				"email": "service@example.com",
+			}
+
+			// Mock List to return no existing users
+			usersServer.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersListResponse{Size: 0}, nil)
+
+			// Mock Create to succeed
+			var capturedRequest *privatev1.UsersCreateRequest
+			usersServer.EXPECT().
+				Create(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, req *privatev1.UsersCreateRequest) (*privatev1.UsersCreateResponse, error) {
+					capturedRequest = req
+					return &privatev1.UsersCreateResponse{Object: req.GetObject()}, nil
+				})
+
+			err := prov.Provision(ctx, "service_account", auth.SystemTenant, claims)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify metadata.name has underscores replaced with hyphens
+			Expect(capturedRequest).ToNot(BeNil())
+			user := capturedRequest.GetObject()
+			Expect(user.GetMetadata().GetName()).To(Equal("service-account"))
+			// But spec.username preserves the original
+			Expect(user.GetSpec().GetUsername()).To(Equal("service_account"))
+		})
+
+		It("Converts uppercase to lowercase in metadata.name", func() {
+			claims := jwt.MapClaims{}
+
+			usersServer.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersListResponse{Size: 0}, nil)
+
+			var capturedRequest *privatev1.UsersCreateRequest
+			usersServer.EXPECT().
+				Create(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, req *privatev1.UsersCreateRequest) (*privatev1.UsersCreateResponse, error) {
+					capturedRequest = req
+					return &privatev1.UsersCreateResponse{Object: req.GetObject()}, nil
+				})
+
+			err := prov.Provision(ctx, "John.Doe", auth.SystemTenant, claims)
+			Expect(err).ToNot(HaveOccurred())
+
+			user := capturedRequest.GetObject()
+			Expect(user.GetMetadata().GetName()).To(Equal("john-doe"))
+			Expect(user.GetSpec().GetUsername()).To(Equal("John.Doe"))
+		})
+
+		It("Removes leading and trailing hyphens from metadata.name", func() {
+			claims := jwt.MapClaims{}
+
+			usersServer.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.UsersListResponse{Size: 0}, nil)
+
+			var capturedRequest *privatev1.UsersCreateRequest
+			usersServer.EXPECT().
+				Create(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, req *privatev1.UsersCreateRequest) (*privatev1.UsersCreateResponse, error) {
+					capturedRequest = req
+					return &privatev1.UsersCreateResponse{Object: req.GetObject()}, nil
+				})
+
+			err := prov.Provision(ctx, "_user@domain_", auth.SystemTenant, claims)
+			Expect(err).ToNot(HaveOccurred())
+
+			user := capturedRequest.GetObject()
+			Expect(user.GetMetadata().GetName()).To(Equal("user-domain"))
+			Expect(user.GetSpec().GetUsername()).To(Equal("_user@domain_"))
 		})
 
 	})

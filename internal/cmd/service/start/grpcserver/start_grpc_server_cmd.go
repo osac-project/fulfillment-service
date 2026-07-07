@@ -335,19 +335,48 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return fmt.Errorf("failed to create Rego authorization interceptor: %w", err)
 	}
 
-	// Create the users DAO and user provisioner for just-in-time user provisioning:
-	c.logger.InfoContext(ctx, "Creating users DAO for JIT provisioning")
-	usersDAO, err := dao.NewGenericDAO[*privatev1.User]().
+	// Create the notifier:
+	c.logger.InfoContext(ctx, "Creating notifier")
+	notifier, err := database.NewNotifier().
 		SetLogger(c.logger).
-		SetTenancyLogic(tenancyLogic).
+		SetChannel("events").
+		SetPool(dbPool).
 		Build()
 	if err != nil {
-		return fmt.Errorf("failed to create users DAO: %w", err)
+		return fmt.Errorf("failed to create notifier: %w", err)
+	}
+	err = notifier.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start notifier: %w", err)
 	}
 
+	// Create the private attribution logic:
+	c.logger.InfoContext(ctx, "Creating private attribution logic")
+	privateAttributionLogic, err := auth.NewSystemAttributionLogic().
+		SetLogger(c.logger).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create system attribution logic: %w", err)
+	}
+
+	// Create the private users server:
+	c.logger.InfoContext(ctx, "Creating private users server")
+	privateUsersServer, err := servers.NewPrivateUsersServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private users server: %w", err)
+	}
+
+	// Create the user provisioner:
 	c.logger.InfoContext(ctx, "Creating user provisioner for JIT provisioning")
 	userProvisioner, err := provisioners.NewUserProvisioner().
-		SetUsersDAO(usersDAO).
+		SetLogger(c.logger).
+		SetUsersServer(privateUsersServer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create user provisioner: %w", err)
@@ -447,21 +476,6 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	healthServer := health.NewServer()
 	healthv1.RegisterHealthServer(grpcServer, healthServer)
 
-	// Create the notifier:
-	c.logger.InfoContext(ctx, "Creating notifier")
-	notifier, err := database.NewNotifier().
-		SetLogger(c.logger).
-		SetChannel("events").
-		SetPool(dbPool).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create notifier: %w", err)
-	}
-	err = notifier.Start(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to start notifier: %w", err)
-	}
-
 	// Create the public attribution logic:
 	c.logger.InfoContext(ctx, "Creating public attribution logic")
 	publicAttributionLogic, err := auth.NewDefaultAttributionLogic().
@@ -469,15 +483,6 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create public attribution logic: %w", err)
-	}
-
-	// Create the private attribution logic:
-	c.logger.InfoContext(ctx, "Creating private attribution logic")
-	privateAttributionLogic, err := auth.NewSystemAttributionLogic().
-		SetLogger(c.logger).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create system attribution logic: %w", err)
 	}
 
 	// Create the capabilities servers:
@@ -1304,18 +1309,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	publicv1.RegisterUsersServer(grpcServer, publicUsersServer)
 
-	// Create the private users server:
-	c.logger.InfoContext(ctx, "Creating private users server")
-	privateUsersServer, err := servers.NewPrivateUsersServer().
-		SetLogger(c.logger).
-		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
-		SetTenancyLogic(tenancyLogic).
-		SetMetricsRegisterer(metricsRegisterer).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create private users server: %w", err)
-	}
+	// Register the private users server:
 	privatev1.RegisterUsersServer(grpcServer, privateUsersServer)
 
 	// Create the token sealer (sign + encrypt infrastructure):

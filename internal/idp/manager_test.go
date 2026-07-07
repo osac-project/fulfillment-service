@@ -123,6 +123,15 @@ func (m *mockClient) GetUser(ctx context.Context, tenantName, userID string) (*U
 	return nil, nil
 }
 
+func (m *mockClient) GetUserByUsername(ctx context.Context, tenantName, username string) (*User, error) {
+	for _, user := range m.createdUsers {
+		if user.Username == username {
+			return user, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *mockClient) ListUsers(ctx context.Context, tenantName string) ([]*User, error) {
 	return m.createdUsers, nil
 }

@@ -39,6 +39,7 @@ type Client interface {
 	// Controllers should fetch the OSAC User object and extract status.keycloak_user_id before calling these methods.
 	CreateUser(ctx context.Context, tenantName string, user *User) (*User, error)
 	GetUser(ctx context.Context, tenantName, idpUserID string) (*User, error)
+	GetUserByUsername(ctx context.Context, tenantName, username string) (*User, error)
 	ListUsers(ctx context.Context, tenantName string) ([]*User, error)
 	DeleteUser(ctx context.Context, tenantName, idpUserID string) error
 
