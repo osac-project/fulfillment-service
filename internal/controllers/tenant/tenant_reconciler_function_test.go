@@ -172,7 +172,7 @@ var _ = Describe("IDP Sync", func() {
 	var (
 		ctx        context.Context
 		ctrl       *gomock.Controller
-		mockClient *idp.MockClient
+		mockClient *idp.MockClientInterface
 		idpManager *idp.TenantManager
 		reconciler *function
 	)
@@ -181,7 +181,7 @@ var _ = Describe("IDP Sync", func() {
 		var err error
 		ctx = context.Background()
 		ctrl = gomock.NewController(GinkgoT())
-		mockClient = idp.NewMockClient(ctrl)
+		mockClient = idp.NewMockClientInterface(ctrl)
 
 		idpManager, err = idp.NewTenantManager().
 			SetLogger(logger).
@@ -601,7 +601,7 @@ var _ = Describe("Deletion", func() {
 	var (
 		ctx                context.Context
 		ctrl               *gomock.Controller
-		mockClient         *idp.MockClient
+		mockClient         *idp.MockClientInterface
 		mockProjectsClient *MockProjectsClient
 		idpManager         *idp.TenantManager
 		reconciler         *function
@@ -611,7 +611,7 @@ var _ = Describe("Deletion", func() {
 		var err error
 		ctx = context.Background()
 		ctrl = gomock.NewController(GinkgoT())
-		mockClient = idp.NewMockClient(ctrl)
+		mockClient = idp.NewMockClientInterface(ctrl)
 		mockProjectsClient = NewMockProjectsClient(ctrl)
 
 		idpManager, err = idp.NewTenantManager().
@@ -862,7 +862,7 @@ var _ = Describe("Deletion", func() {
 var _ = Describe("Skip Reconciliation", func() {
 	It("should call updateIDP for synced tenants", func() {
 		ctrl := gomock.NewController(GinkgoT())
-		mockClient := idp.NewMockClient(ctrl)
+		mockClient := idp.NewMockClientInterface(ctrl)
 
 		idpManager, err := idp.NewTenantManager().
 			SetLogger(logger).

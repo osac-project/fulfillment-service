@@ -25,13 +25,13 @@ import (
 var _ = Describe("ResourceManager", func() {
 	var (
 		ctrl       *gomock.Controller
-		mockClient *MockClient
+		mockClient *MockClientInterface
 		ctx        = context.Background()
 	)
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
-		mockClient = NewMockClient(ctrl)
+		mockClient = NewMockClientInterface(ctrl)
 	})
 
 	AfterEach(func() {

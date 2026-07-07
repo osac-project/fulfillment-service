@@ -135,7 +135,7 @@ var _ = Describe("Project Group Path Building", func() {
 		mockProjectsClient           *MockProjectsClient
 		mockProjectMembershipsClient *MockProjectMembershipsClient
 		mockUsersClient              *MockUsersClient
-		mockIdpClient                *idp.MockClient
+		mockIdpClient                *idp.MockClientInterface
 		ctx                          context.Context
 		functionObj                  *function
 	)
@@ -145,7 +145,7 @@ var _ = Describe("Project Group Path Building", func() {
 		mockProjectsClient = NewMockProjectsClient(ctrl)
 		mockProjectMembershipsClient = NewMockProjectMembershipsClient(ctrl)
 		mockUsersClient = NewMockUsersClient(ctrl)
-		mockIdpClient = idp.NewMockClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
 		functionObj = &function{
@@ -393,7 +393,7 @@ var _ = Describe("Synchronization", func() {
 		mockProjectsClient           *MockProjectsClient
 		mockProjectMembershipsClient *MockProjectMembershipsClient
 		mockUsersClient              *MockUsersClient
-		mockIdpClient                *idp.MockClient
+		mockIdpClient                *idp.MockClientInterface
 		ctx                          context.Context
 		functionObj                  *function
 	)
@@ -403,7 +403,7 @@ var _ = Describe("Synchronization", func() {
 		mockProjectsClient = NewMockProjectsClient(ctrl)
 		mockProjectMembershipsClient = NewMockProjectMembershipsClient(ctrl)
 		mockUsersClient = NewMockUsersClient(ctrl)
-		mockIdpClient = idp.NewMockClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
 		functionObj = &function{
@@ -680,7 +680,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		mockProjectsClient           *MockProjectsClient
 		mockProjectMembershipsClient *MockProjectMembershipsClient
 		mockUsersClient              *MockUsersClient
-		mockIdpClient                *idp.MockClient
+		mockIdpClient                *idp.MockClientInterface
 		ctx                          context.Context
 		functionObj                  *function
 	)
@@ -690,7 +690,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		mockProjectsClient = NewMockProjectsClient(ctrl)
 		mockProjectMembershipsClient = NewMockProjectMembershipsClient(ctrl)
 		mockUsersClient = NewMockUsersClient(ctrl)
-		mockIdpClient = idp.NewMockClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
 		functionObj = &function{

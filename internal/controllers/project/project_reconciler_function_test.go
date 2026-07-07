@@ -161,7 +161,7 @@ var _ = Describe("Validation and Activation", func() {
 		ctrl            *gomock.Controller
 		mockClient      *MockProjectsClient
 		mockUsersClient *MockUsersClient
-		mockIdpClient   *idp.MockClient
+		mockIdpClient   *idp.MockClientInterface
 		resourceManager *idp.ResourceManager
 		ctx             context.Context
 		functionObj     *function
@@ -171,7 +171,7 @@ var _ = Describe("Validation and Activation", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = NewMockProjectsClient(ctrl)
 		mockUsersClient = NewMockUsersClient(ctrl)
-		mockIdpClient = idp.NewMockClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
 		var err error
@@ -878,7 +878,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		ctrl              *gomock.Controller
 		mockClient        *MockProjectsClient
 		mockTenantsClient *MockTenantsClient
-		mockIdpClient     *idp.MockClient
+		mockIdpClient     *idp.MockClientInterface
 		resourceManager   *idp.ResourceManager
 		ctx               context.Context
 		functionObj       *function
@@ -888,7 +888,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = NewMockProjectsClient(ctrl)
 		mockTenantsClient = NewMockTenantsClient(ctrl)
-		mockIdpClient = idp.NewMockClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
 		var err error

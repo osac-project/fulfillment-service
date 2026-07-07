@@ -33,14 +33,14 @@ var _ = Describe("User Reconciler", func() {
 	var (
 		ctx        context.Context
 		ctrl       *gomock.Controller
-		mockClient *idp.MockClient
+		mockClient *idp.MockClientInterface
 		function   *function
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		ctrl = gomock.NewController(GinkgoT())
-		mockClient = idp.NewMockClient(ctrl)
+		mockClient = idp.NewMockClientInterface(ctrl)
 
 		// Create a minimal gRPC connection (won't be used in these tests)
 		conn := &grpc.ClientConn{}

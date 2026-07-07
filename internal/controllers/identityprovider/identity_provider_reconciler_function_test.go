@@ -385,13 +385,13 @@ var _ = Describe("Config Building", func() {
 var _ = Describe("IDP Sync", func() {
 	var (
 		ctrl       *gomock.Controller
-		mockClient *idp.MockClient
+		mockClient *idp.MockClientInterface
 		reconciler *function
 	)
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
-		mockClient = idp.NewMockClient(ctrl)
+		mockClient = idp.NewMockClientInterface(ctrl)
 
 		reconciler = &function{
 			logger:    logger,
@@ -755,13 +755,13 @@ var _ = Describe("Skip Reconciliation", func() {
 var _ = Describe("Deletion", func() {
 	var (
 		ctrl       *gomock.Controller
-		mockClient *idp.MockClient
+		mockClient *idp.MockClientInterface
 		reconciler *function
 	)
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
-		mockClient = idp.NewMockClient(ctrl)
+		mockClient = idp.NewMockClientInterface(ctrl)
 
 		reconciler = &function{
 			logger:    logger,

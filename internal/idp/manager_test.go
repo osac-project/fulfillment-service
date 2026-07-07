@@ -711,3 +711,33 @@ var _ = Describe("TenantManager", func() {
 		})
 	})
 })
+
+// Stub methods to satisfy ClientInterface (not used in manager tests)
+
+func (m *mockClient) AddUserToOrganization(ctx context.Context, tenantName string, userID string) error {
+	return fmt.Errorf("not implemented in test mock")
+}
+
+func (m *mockClient) CreateUserInRealm(ctx context.Context, user *User) (*User, error) {
+	return nil, fmt.Errorf("not implemented in test mock")
+}
+
+func (m *mockClient) DeleteUserFromOrganization(ctx context.Context, tenantName, userID string) error {
+	return fmt.Errorf("not implemented in test mock")
+}
+
+func (m *mockClient) DeleteUserFromRealm(ctx context.Context, userID string) error {
+	return fmt.Errorf("not implemented in test mock")
+}
+
+func (m *mockClient) GetRealmClientByClientID(ctx context.Context, clientID, realmName string) (string, error) {
+	return "", fmt.Errorf("not implemented in test mock")
+}
+
+func (m *mockClient) GetRealmRole(ctx context.Context, roleName string) (keycloakRole, error) {
+	return keycloakRole{}, fmt.Errorf("not implemented in test mock")
+}
+
+func (m *mockClient) RemoveRealmRolesFromUser(ctx context.Context, userID string, roles []*Role) error {
+	return fmt.Errorf("not implemented in test mock")
+}
