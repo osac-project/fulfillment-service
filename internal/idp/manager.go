@@ -24,17 +24,16 @@ import (
 	"time"
 )
 
-// TenantManager handles the lifecycle of tenants in the identity provider.
-// It works with any IdP client implementation.
+// TenantManager handles the lifecycle of tenants in Keycloak.
 type TenantManager struct {
 	logger *slog.Logger
-	client Client
+	client *Client
 }
 
 // TenantManagerBuilder builds the manager.
 type TenantManagerBuilder struct {
 	logger *slog.Logger
-	client Client
+	client *Client
 }
 
 // NewTenantManager creates a builder for the tenant manager.
@@ -48,8 +47,8 @@ func (b *TenantManagerBuilder) SetLogger(value *slog.Logger) *TenantManagerBuild
 	return b
 }
 
-// SetClient sets the IdP client implementation.
-func (b *TenantManagerBuilder) SetClient(value Client) *TenantManagerBuilder {
+// SetClient sets the Keycloak client.
+func (b *TenantManagerBuilder) SetClient(value *Client) *TenantManagerBuilder {
 	b.client = value
 	return b
 }

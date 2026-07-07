@@ -34,16 +34,15 @@ type ResourceManagerInterface interface {
 }
 
 // ResourceManager handles Keycloak group operations for authorization.
-// Works with any IdP client that implements group management.
 type ResourceManager struct {
 	logger *slog.Logger
-	client Client
+	client *Client
 }
 
 // ResourceManagerBuilder builds the resource manager.
 type ResourceManagerBuilder struct {
 	logger *slog.Logger
-	client Client
+	client *Client
 }
 
 // NewResourceManager creates a builder for the resource manager.
@@ -57,8 +56,8 @@ func (b *ResourceManagerBuilder) SetLogger(value *slog.Logger) *ResourceManagerB
 	return b
 }
 
-// SetClient sets the IdP client implementation.
-func (b *ResourceManagerBuilder) SetClient(value Client) *ResourceManagerBuilder {
+// SetClient sets the Keycloak client.
+func (b *ResourceManagerBuilder) SetClient(value *Client) *ResourceManagerBuilder {
 	b.client = value
 	return b
 }
