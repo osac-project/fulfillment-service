@@ -27,16 +27,18 @@ import (
 
 var _ = Describe("Protovalidate validation", func() {
 	var (
-		ctx            context.Context
-		tenantClient   privatev1.TenantsClient
-		vnetClient     privatev1.VirtualNetworksClient
-		projectsClient privatev1.ProjectsClient
+		ctx                 context.Context
+		tenantClient        privatev1.TenantsClient
+		vnetClient          privatev1.VirtualNetworksClient
+		networkClassClient  privatev1.NetworkClassesClient
+		projectsClient      privatev1.ProjectsClient
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		tenantClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
 		vnetClient = privatev1.NewVirtualNetworksClient(tool.InternalView().AdminConn())
+		networkClassClient = privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
 		projectsClient = privatev1.NewProjectsClient(tool.InternalView().AdminConn())
 
 		// Create test tenant for Project tests
@@ -151,8 +153,8 @@ var _ = Describe("Protovalidate validation", func() {
 		// VirtualNetwork doesn't require a name (unlike Tenant), so we can test
 		// that protovalidate's regex pattern allows empty strings
 
-		// First get the default NetworkClass
-		listResp, err := vnetClient.ListNetworkClasses(ctx, privatev1.VirtualNetworksListNetworkClassesRequest_builder{}.Build())
+		// First get a NetworkClass
+		listResp, err := networkClassClient.List(ctx, privatev1.NetworkClassesListRequest_builder{}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.Items).ToNot(BeEmpty(), "at least one NetworkClass must exist")
 		networkClass := listResp.Items[0].Metadata.Name
