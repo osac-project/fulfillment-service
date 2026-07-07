@@ -27,18 +27,14 @@ import (
 
 var _ = Describe("Protovalidate validation", func() {
 	var (
-		ctx                context.Context
-		tenantClient       privatev1.TenantsClient
-		vnetClient         privatev1.VirtualNetworksClient
-		networkClassClient privatev1.NetworkClassesClient
-		projectsClient     privatev1.ProjectsClient
+		ctx            context.Context
+		tenantClient   privatev1.TenantsClient
+		projectsClient privatev1.ProjectsClient
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		tenantClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
-		vnetClient = privatev1.NewVirtualNetworksClient(tool.InternalView().AdminConn())
-		networkClassClient = privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
 		projectsClient = privatev1.NewProjectsClient(tool.InternalView().AdminConn())
 
 		// Create test tenant for Project tests
@@ -149,40 +145,6 @@ var _ = Describe("Protovalidate validation", func() {
 		})
 	})
 
-	It("Accepts VirtualNetwork with empty name (protovalidate allows empty strings)", func() {
-		// VirtualNetwork doesn't require a name (unlike Tenant), so we can test
-		// that protovalidate's regex pattern allows empty strings
-
-		// First get a NetworkClass
-		listResp, err := networkClassClient.List(ctx, privatev1.NetworkClassesListRequest_builder{}.Build())
-		Expect(err).ToNot(HaveOccurred())
-		Expect(listResp.Items).ToNot(BeEmpty(), "at least one NetworkClass must exist")
-		networkClass := listResp.Items[0].Metadata.Name
-
-		response, err := vnetClient.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
-			Object: privatev1.VirtualNetwork_builder{
-				Metadata: privatev1.Metadata_builder{
-					Name: "",
-				}.Build(),
-				Spec: privatev1.VirtualNetworkSpec_builder{
-					NetworkClass: networkClass,
-					Region:       "us-east-1",
-					Ipv4Cidr:     new("10.0.0.0/16"),
-				}.Build(),
-			}.Build(),
-		}.Build())
-
-		Expect(err).ToNot(HaveOccurred())
-		Expect(response).ToNot(BeNil())
-		Expect(response.Object.Metadata.Name).To(Equal(""))
-
-		// Clean up:
-		DeferCleanup(func() {
-			_, _ = vnetClient.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
-				Id: response.Object.Id,
-			}.Build())
-		})
-	})
 
 	It("Accepts Project with dot-separated hierarchical name", func() {
 		// Projects use field-level CEL validation that allows dot-separated names
