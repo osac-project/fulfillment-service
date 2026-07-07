@@ -48,7 +48,7 @@ message Project {
     cel: {
       id: "project_name_segments"
       message: "project name must be empty (root project) or dot-separated DNS labels (each segment: max 63 chars, lowercase a-z/0-9/hyphen, alphanumeric start/end)"
-      expression: "this.name == '' || this.name.split('.').all(segment, segment.size() > 0 && segment.size() <= 63 && segment.matches('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'))"
+      expression: "this.name == '' || this.name.split('.').all(segment, segment.size() > 0 && segment.size() <= 63 && segment.matches('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?'))"
     }
   }];
 

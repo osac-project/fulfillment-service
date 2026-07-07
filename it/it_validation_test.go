@@ -150,14 +150,22 @@ var _ = Describe("Protovalidate validation", func() {
 	It("Accepts VirtualNetwork with empty name (protovalidate allows empty strings)", func() {
 		// VirtualNetwork doesn't require a name (unlike Tenant), so we can test
 		// that protovalidate's regex pattern allows empty strings
+
+		// First get the default NetworkClass
+		listResp, err := vnetClient.ListNetworkClasses(ctx, privatev1.VirtualNetworksListNetworkClassesRequest_builder{}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(listResp.Items).ToNot(BeEmpty(), "at least one NetworkClass must exist")
+		networkClass := listResp.Items[0].Metadata.Name
+
 		response, err := vnetClient.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 			Object: privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name: "",
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					Region:   "us-east-1",
-					Ipv4Cidr: new("10.0.0.0/16"),
+					NetworkClass: networkClass,
+					Region:       "us-east-1",
+					Ipv4Cidr:     new("10.0.0.0/16"),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -177,8 +185,45 @@ var _ = Describe("Protovalidate validation", func() {
 	It("Accepts Project with dot-separated hierarchical name", func() {
 		// Projects use field-level CEL validation that allows dot-separated names
 		// like "org.team.project" (each segment is a DNS label, connected with dots)
-		hierarchicalName := "org.team-a.frontend"
 
+		// Create parent project hierarchy first: org -> org.team-a -> org.team-a.frontend
+		orgProject, err := projectsClient.Create(ctx, privatev1.ProjectsCreateRequest_builder{
+			Object: privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "org",
+					Tenant: "my-tenant",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Organization",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			_, _ = projectsClient.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+				Id: orgProject.Object.Id,
+			}.Build())
+		})
+
+		teamProject, err := projectsClient.Create(ctx, privatev1.ProjectsCreateRequest_builder{
+			Object: privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "org.team-a",
+					Tenant: "my-tenant",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Team A",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			_, _ = projectsClient.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+				Id: teamProject.Object.Id,
+			}.Build())
+		})
+
+		hierarchicalName := "org.team-a.frontend"
 		response, err := projectsClient.Create(ctx, privatev1.ProjectsCreateRequest_builder{
 			Object: privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
@@ -215,6 +260,9 @@ var _ = Describe("Protovalidate validation", func() {
 					Name:   invalidName,
 					Tenant: "my-tenant",
 				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Invalid Project",
+				}.Build(),
 			}.Build(),
 		}.Build())
 
@@ -222,7 +270,8 @@ var _ = Describe("Protovalidate validation", func() {
 		status, ok := grpcstatus.FromError(err)
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-		Expect(status.Message()).To(ContainSubstring("validation"))
+		// Should be rejected by CEL validation (project_name_segments)
+		Expect(status.Message()).To(ContainSubstring("project name must be"))
 	})
 
 	It("Rejects Tenant with dots (proves IGNORE_ALWAYS is working for Projects)", func() {
