@@ -55,6 +55,14 @@ message IdentityProviderSpec {
     // Configuration for OpenID Connect providers.
     OidcConfig oidc = 4;
   }
+
+  // This field is used to trigger a health check of the identity provider.
+  // The user can write any value here; the actual value doesn't matter.
+  // The only important thing is that when it changes, the system will eventually
+  // initiate a health check and report the result in the status.
+  // The user can set this to any string (e.g., a timestamp or random value) to request a new check.
+  // Common pattern: use a timestamp or increment a counter when requesting a check.
+  optional string health_check_trigger = 6;
 }
 
 // OidcConfig contains configuration for OpenID Connect identity providers.
@@ -129,6 +137,16 @@ message IdentityProviderStatus {
 
   // Conditions represent specific aspects of the identity provider's status.
   repeated IdentityProviderCondition conditions = 3;
+
+  // This is used by the system to track when the spec.health_check_trigger has changed
+  // and to acknowledge that the health check process has started.
+  // The system will update it to match spec.health_check_trigger when the check begins.
+  // Users can compare this to spec.health_check_trigger to see if their check request has been acknowledged.
+  optional string health_check_trigger = 4;
+
+  // Health check results from the last health check that completed.
+  // This is populated after a health check triggered by spec.health_check_trigger completes.
+  optional IdentityProviderHealth health = 5;
 }
 
 // IdentityProviderCondition represents a specific condition of the identity provider.
