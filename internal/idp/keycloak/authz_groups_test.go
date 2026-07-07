@@ -14,87 +14,9 @@ language governing permissions and limitations under the License.
 package keycloak
 
 import (
-	"strings"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-var _ = Describe("ensureGroupHierarchyWithCache path normalization", func() {
-	It("should normalize path with double leading slashes", func() {
-		// When a project path is empty, we might get "//system:viewers"
-		// This should be normalized to "/system:viewers"
-		groupPath := "//system:viewers"
-
-		// The normalization should:
-		// 1. Trim leading/trailing slashes: "system:viewers"
-		// 2. Replace double slashes: (already done after trim)
-		// 3. Split into segments: ["system:viewers"]
-		// 4. Build path as "/system:viewers"
-
-		// We expect the normalized path to be stored in cache as "/system:viewers"
-		expectedNormalizedPath := "/system:viewers"
-
-		// Verify the normalization logic matches what we expect
-		normalizedPath := strings.Trim(groupPath, "/")
-		normalizedPath = strings.ReplaceAll(normalizedPath, "//", "/")
-		Expect(normalizedPath).To(Equal("system:viewers"))
-
-		// After building the path, it should be stored with leading slash
-		segments := strings.Split(normalizedPath, "/")
-		Expect(segments).To(Equal([]string{"system:viewers"}))
-
-		builtPath := "/" + segments[0]
-		Expect(builtPath).To(Equal(expectedNormalizedPath))
-	})
-
-	It("should normalize path with double slashes", func() {
-		// The main use case is handling empty project paths that result in "//system:viewers"
-		groupPath := "/web-app//system:viewers"
-
-		normalizedPath := strings.Trim(groupPath, "/")
-		normalizedPath = strings.ReplaceAll(normalizedPath, "//", "/")
-
-		// After trimming: "web-app//system:viewers"
-		// After replacing "//": "web-app/system:viewers"
-		Expect(normalizedPath).To(Equal("web-app/system:viewers"))
-	})
-
-	It("should handle normal path without modification", func() {
-		groupPath := "/web-app/system:viewers"
-
-		normalizedPath := strings.Trim(groupPath, "/")
-		normalizedPath = strings.ReplaceAll(normalizedPath, "//", "/")
-
-		Expect(normalizedPath).To(Equal("web-app/system:viewers"))
-	})
-
-	It("should handle single segment path", func() {
-		groupPath := "/system:viewers"
-
-		normalizedPath := strings.Trim(groupPath, "/")
-		normalizedPath = strings.ReplaceAll(normalizedPath, "//", "/")
-
-		segments := strings.Split(normalizedPath, "/")
-		Expect(segments).To(Equal([]string{"system:viewers"}))
-	})
-
-	It("should detect empty path as invalid", func() {
-		groupPath := "/"
-
-		normalizedPath := strings.Trim(groupPath, "/")
-		segments := strings.Split(normalizedPath, "/")
-
-		// Empty string splits into one segment with empty string
-		Expect(segments).To(HaveLen(1))
-		Expect(segments[0]).To(Equal(""))
-
-		// This should trigger the error condition:
-		// len(segments) == 1 && segments[0] == ""
-		isInvalid := len(segments) == 0 || (len(segments) == 1 && segments[0] == "")
-		Expect(isInvalid).To(BeTrue())
-	})
-})
 
 var _ = Describe("searchGroupRecursively", func() {
 	It("should find a top-level group", func() {

@@ -2728,15 +2728,30 @@ var _ = Describe("Keycloak Client", func() {
 						}
 						return
 					}
-					// Second request: list organization groups (no search parameter - returns all groups)
+					// Second request: list top-level organization groups to find "web-app"
 					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
-						// Return all groups - implementation searches recursively through the list
 						groups := []struct {
 							ID   string `json:"id"`
-							Path string `json:"path"`
+							Name string `json:"name"`
 						}{
-							{ID: "group-123", Path: "/web-app/system:viewers"},
-							{ID: "group-456", Path: "/web-app/system:managers"},
+							{ID: "group-parent", Name: "web-app"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(groups); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					// Third request: list children of "web-app" group to find "system:viewers"
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups/group-parent/children" {
+						groups := []struct {
+							ID   string `json:"id"`
+							Name string `json:"name"`
+						}{
+							{ID: "group-123", Name: "system:viewers"},
+							{ID: "group-456", Name: "system:managers"},
 						}
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -2792,11 +2807,11 @@ var _ = Describe("Keycloak Client", func() {
 						}
 						return
 					}
-					// Second request: search returns empty
+					// Second request: list top-level groups returns empty (group not found)
 					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
 						groups := []struct {
 							ID   string `json:"id"`
-							Path string `json:"path"`
+							Name string `json:"name"`
 						}{}
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -2813,7 +2828,7 @@ var _ = Describe("Keycloak Client", func() {
 
 				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/nonexistent-group")
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("organization group not found"))
+				Expect(err.Error()).To(ContainSubstring("not found"))
 			})
 
 			It("should return error when list fails", func() {
@@ -2831,7 +2846,7 @@ var _ = Describe("Keycloak Client", func() {
 						}
 						return
 					}
-					// Second request: list fails
+					// Second request: list groups fails
 					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
 						w.WriteHeader(http.StatusInternalServerError)
 						return
@@ -2843,7 +2858,187 @@ var _ = Describe("Keycloak Client", func() {
 
 				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/web-app/system:viewers")
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failed to list organization groups"))
+				Expect(err.Error()).To(ContainSubstring("failed to list groups"))
+			})
+
+			It("should find a deeply nested group with three levels", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// First request: get organization
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=acme-corp" {
+						orgs := []keycloakOrganization{
+							{ID: "org-123", Name: "acme-corp"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(orgs); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					// Second request: list top-level groups to find "parent"
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
+						groups := []struct {
+							ID   string `json:"id"`
+							Name string `json:"name"`
+						}{
+							{ID: "group-parent", Name: "parent"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(groups); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					// Third request: list children of "parent" to find "child"
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups/group-parent/children" {
+						groups := []struct {
+							ID   string `json:"id"`
+							Name string `json:"name"`
+						}{
+							{ID: "group-child", Name: "child"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(groups); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					// Fourth request: list children of "child" to find "system:managers"
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups/group-child/children" {
+						groups := []struct {
+							ID   string `json:"id"`
+							Name string `json:"name"`
+						}{
+							{ID: "group-managers", Name: "system:managers"},
+							{ID: "group-viewers", Name: "system:viewers"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(groups); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				groupID, err := client.GetGroupIDByPath(ctx, "acme-corp", "/parent/child/system:managers")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(groupID).To(Equal("group-managers"))
+			})
+
+			It("should return error when intermediate segment is not found", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// First request: get organization
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=acme-corp" {
+						orgs := []keycloakOrganization{
+							{ID: "org-123", Name: "acme-corp"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(orgs); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					// Second request: list top-level groups - "parent" exists
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups" {
+						groups := []struct {
+							ID   string `json:"id"`
+							Name string `json:"name"`
+						}{
+							{ID: "group-parent", Name: "parent"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(groups); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					// Third request: list children of "parent" - "missing-child" not found
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations/org-123/groups/group-parent/children" {
+						groups := []struct {
+							ID   string `json:"id"`
+							Name string `json:"name"`
+						}{}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(groups); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/parent/missing-child/system:viewers")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to find group segment 1"))
+				Expect(err.Error()).To(ContainSubstring("missing-child"))
+			})
+
+			It("should handle empty path error", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// First request: get organization
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=acme-corp" {
+						orgs := []keycloakOrganization{
+							{ID: "org-123", Name: "acme-corp"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(orgs); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("empty group path"))
+			})
+
+			It("should handle path with only slashes as empty", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// First request: get organization
+					if r.Method == http.MethodGet && r.URL.Path == "/admin/realms/osac/organizations" && r.URL.RawQuery == "exact=true&search=acme-corp" {
+						orgs := []keycloakOrganization{
+							{ID: "org-123", Name: "acme-corp"},
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						if err := json.NewEncoder(w).Encode(orgs); err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
+							return
+						}
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+
+				client = createTestClient(server.URL)
+
+				_, err := client.GetGroupIDByPath(ctx, "acme-corp", "/")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("empty group path"))
 			})
 		})
 	})

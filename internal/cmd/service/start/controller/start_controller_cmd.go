@@ -50,6 +50,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/identityprovider"
 	"github.com/osac-project/fulfillment-service/internal/controllers/onboarding"
 	"github.com/osac-project/fulfillment-service/internal/controllers/project"
+	"github.com/osac-project/fulfillment-service/internal/controllers/projectmembership"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicip"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicipattachment"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicippool"
@@ -1042,6 +1043,43 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			r.logger.InfoContext(
 				ctx,
 				"Project reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the project membership reconciler:
+	r.logger.InfoContext(ctx, "Creating project membership reconciler")
+	projectMembershipReconcilerFunction, err := projectmembership.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build project membership reconciler function: %w", err)
+	}
+	projectMembershipReconciler, err := controllers.NewReconciler[*privatev1.ProjectMembership]().
+		SetLogger(r.logger).
+		SetName("project_membership").
+		SetClient(r.client).
+		SetFunction(projectMembershipReconcilerFunction.Run).
+		SetEventFilter("has(event.project_membership)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build project membership reconciler: %w", err)
+	}
+
+	// Start the project membership reconciler:
+	r.logger.InfoContext(ctx, "Starting project membership reconciler")
+	go func() {
+		err := projectMembershipReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Project membership reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Project membership reconciler failed",
 				slog.Any("error", err),
 			)
 		}

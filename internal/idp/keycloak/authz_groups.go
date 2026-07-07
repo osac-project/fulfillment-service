@@ -268,35 +268,32 @@ type groupNode struct {
 // getGroupIDByPathWithOrgID returns the group ID for a path using orgID directly (not organization name).
 // This is used internally when we already have the orgID to avoid an extra lookup.
 func (c *Client) getGroupIDByPathWithOrgID(ctx context.Context, orgID, groupPath string) (result string, err error) {
-	// Send the request to list all groups in the organization:
-	path := fmt.Sprintf(
-		"/admin/realms/%s/organizations/%s/groups",
-		url.PathEscape(c.realmName), url.PathEscape(orgID),
-	)
-	var response *http.Response
-	response, err = c.httpClient.DoRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		err = fmt.Errorf("failed to list organization groups: %w", err)
-		return
-	}
-	defer response.Body.Close()
-	var groups []groupNode
-	err = json.NewDecoder(response.Body).Decode(&groups)
-	if err != nil {
-		err = fmt.Errorf("failed to decode organization groups: %w", err)
-		return
-	}
+	// The Keycloak organization groups list API does not populate subgroups, sowe manually traverse the hierarchy by splitting the path and fetching each level.
 
-	// Search recursively through the group hierarchy:
-	for _, group := range groups {
-		result = searchGroupRecursively(group, groupPath)
-		if result != "" {
+	// Normalize and split the path: "/bens-project/system:managers" -> ["bens-project", "system:managers"]
+	normalizedPath := strings.Trim(groupPath, "/")
+	if normalizedPath == "" {
+		err = fmt.Errorf("empty group path")
+		return
+	}
+	segments := strings.Split(normalizedPath, "/")
+
+	// Start at the top level and traverse down
+	var currentParentID string // empty for top level
+	for i, segment := range segments {
+		// Get the group ID for this segment
+		groupID, lookupErr := c.getGroupIDByName(ctx, orgID, currentParentID, segment)
+		if lookupErr != nil {
+			err = fmt.Errorf("failed to find group segment %d '%s' (parent: %s): %w", i, segment, currentParentID, lookupErr)
 			return
 		}
+
+		// This segment becomes the parent for the next iteration
+		currentParentID = groupID
 	}
 
-	// We didn't find the group:
-	err = fmt.Errorf("organization group not found: %s", groupPath)
+	// The last segment's ID is the final group ID
+	result = currentParentID
 	return
 }
 

@@ -318,9 +318,9 @@ func (t *task) syncProjectMembership(ctx context.Context) error {
 func (t *task) mapRoleToGroupSuffix(role privatev1.ProjectMembershipRole) string {
 	switch role {
 	case privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER:
-		return "viewers"
+		return "system:viewers"
 	case privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER:
-		return "managers"
+		return "system:managers"
 	default:
 		return ""
 	}
@@ -472,7 +472,8 @@ func (t *task) cleanupProjectMembership(ctx context.Context) error {
 	groupID, err := t.r.idpClient.GetGroupIDByPath(ctx, organizationName, groupPath)
 	if err != nil {
 		// Only ignore NotFound - propagate transient errors for retry
-		if status.Code(err) == codes.NotFound {
+		// Check both gRPC status code and error message since IDP client wraps errors
+		if status.Code(err) == codes.NotFound || strings.Contains(err.Error(), "not found") {
 			t.r.logger.DebugContext(ctx, "Authorization group not found during cleanup, skipping",
 				slog.String("group_path", groupPath))
 			return nil
