@@ -251,23 +251,6 @@ var _ = Describe("Tenant Validation", func() {
 })
 
 var _ = Describe("Provider Type Detection", func() {
-	It("should return ldap for LDAP config", func() {
-		identityProvider := privatev1.IdentityProvider_builder{
-			Spec: privatev1.IdentityProviderSpec_builder{
-				Ldap: privatev1.LdapConfig_builder{
-					ConnectionUrl: "ldap://example.com",
-				}.Build(),
-			}.Build(),
-		}.Build()
-
-		task := &task{
-			identityProvider: identityProvider,
-		}
-
-		providerType := task.determineProviderTypeFromIdp(identityProvider)
-		Expect(providerType).To(Equal("ldap"))
-	})
-
 	It("should return oidc for OIDC config", func() {
 		identityProvider := privatev1.IdentityProvider_builder{
 			Spec: privatev1.IdentityProviderSpec_builder{
@@ -297,52 +280,9 @@ var _ = Describe("Provider Type Detection", func() {
 		providerType := task.determineProviderTypeFromIdp(identityProvider)
 		Expect(providerType).To(BeEmpty())
 	})
-
-	It("should prioritize LDAP when both configs are set", func() {
-		identityProvider := privatev1.IdentityProvider_builder{
-			Spec: privatev1.IdentityProviderSpec_builder{
-				Ldap: privatev1.LdapConfig_builder{
-					ConnectionUrl: "ldap://example.com",
-				}.Build(),
-				Oidc: privatev1.OidcConfig_builder{
-					Issuer: "https://example.com",
-				}.Build(),
-			}.Build(),
-		}.Build()
-
-		task := &task{
-			identityProvider: identityProvider,
-		}
-
-		providerType := task.determineProviderTypeFromIdp(identityProvider)
-		Expect(providerType).To(Equal("ldap"))
-	})
 })
 
 var _ = Describe("Config Building", func() {
-	It("should build LDAP config correctly", func() {
-		identityProvider := privatev1.IdentityProvider_builder{
-			Spec: privatev1.IdentityProviderSpec_builder{
-				Ldap: privatev1.LdapConfig_builder{
-					ConnectionUrl:  "ldap://example.com:389",
-					BindDn:         "cn=admin,dc=example,dc=com",
-					BindCredential: "secret",
-					UsersDn:        "ou=users,dc=example,dc=com",
-				}.Build(),
-			}.Build(),
-		}.Build()
-
-		task := &task{
-			identityProvider: identityProvider,
-		}
-
-		config := task.buildConfigFromIdp(identityProvider)
-		Expect(config).To(HaveKeyWithValue("connectionUrl", "ldap://example.com:389"))
-		Expect(config).To(HaveKeyWithValue("bindDn", "cn=admin,dc=example,dc=com"))
-		Expect(config).To(HaveKeyWithValue("bindCredential", "secret"))
-		Expect(config).To(HaveKeyWithValue("usersDn", "ou=users,dc=example,dc=com"))
-	})
-
 	It("should build OIDC config correctly", func() {
 		identityProvider := privatev1.IdentityProvider_builder{
 			Spec: privatev1.IdentityProviderSpec_builder{
@@ -401,53 +341,6 @@ var _ = Describe("IDP Sync", func() {
 
 	AfterEach(func() {
 		ctrl.Finish()
-	})
-
-	It("should sync identity provider to IDP successfully with LDAP config", func() {
-		identityProvider := privatev1.IdentityProvider_builder{
-			Id: "idp-123",
-			Metadata: privatev1.Metadata_builder{
-				Name:       "corporate-ldap",
-				Tenant:     "tenant-1",
-				Finalizers: []string{finalizers.Controller},
-			}.Build(),
-			Spec: privatev1.IdentityProviderSpec_builder{
-				Title:   "Corporate LDAP",
-				Enabled: true,
-				Ldap: privatev1.LdapConfig_builder{
-					ConnectionUrl:  "ldap://ldap.example.com:389",
-					BindDn:         "cn=admin,dc=example,dc=com",
-					BindCredential: "secret",
-					UsersDn:        "ou=users,dc=example,dc=com",
-				}.Build(),
-			}.Build(),
-		}.Build()
-
-		mockClient.EXPECT().
-			CreateIdentityProvider(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, tenantName string, idpProvider *idp.IdentityProvider) (*idp.IdentityProvider, error) {
-				Expect(tenantName).To(Equal("tenant-1"))
-				Expect(idpProvider.Alias).To(Equal("tenant-1-corporate-ldap"))
-				Expect(idpProvider.DisplayName).To(Equal("Corporate LDAP"))
-				Expect(idpProvider.Type).To(Equal("ldap"))
-				Expect(idpProvider.Enabled).To(BeTrue())
-				Expect(idpProvider.Config).To(HaveKeyWithValue("connectionUrl", "ldap://ldap.example.com:389"))
-				Expect(idpProvider.Config).To(HaveKeyWithValue("bindDn", "cn=admin,dc=example,dc=com"))
-				return idpProvider, nil
-			}).
-			Times(1)
-
-		task := &task{
-			r:                reconciler,
-			identityProvider: identityProvider,
-		}
-
-		err := task.update(ctx)
-		Expect(err).ToNot(HaveOccurred())
-
-		Expect(identityProvider.GetStatus().GetPhase()).To(Equal(privatev1.IdentityProviderPhase_IDENTITY_PROVIDER_PHASE_READY))
-		Expect(identityProvider.GetStatus().GetMessage()).To(ContainSubstring("Identity provider created successfully"))
-		Expect(identityProvider.GetStatus().GetMessage()).To(ContainSubstring("tenant-1-corporate-ldap"))
 	})
 
 	It("should sync identity provider with OIDC config", func() {
@@ -589,8 +482,8 @@ var _ = Describe("IDP Sync", func() {
 			Spec: privatev1.IdentityProviderSpec_builder{
 				Title:   "Test IDP",
 				Enabled: true,
-				Ldap: privatev1.LdapConfig_builder{
-					ConnectionUrl: "ldap://example.com",
+				Oidc: privatev1.OidcConfig_builder{
+					Issuer: "https://example.com",
 				}.Build(),
 			}.Build(),
 		}.Build()
@@ -616,14 +509,14 @@ var _ = Describe("IDP Sync", func() {
 	It("should set ERROR state on IDP creation failure", func() {
 		identityProvider := privatev1.IdentityProvider_builder{
 			Metadata: privatev1.Metadata_builder{
-				Name:       "test-ldap",
+				Name:       "test-oidc",
 				Tenant:     "tenant-1",
 				Finalizers: []string{finalizers.Controller},
 			}.Build(),
 			Spec: privatev1.IdentityProviderSpec_builder{
-				Title: "Test LDAP",
-				Ldap: privatev1.LdapConfig_builder{
-					ConnectionUrl: "ldap://example.com",
+				Title: "Test OIDC",
+				Oidc: privatev1.OidcConfig_builder{
+					Issuer: "https://example.com",
 				}.Build(),
 			}.Build(),
 		}.Build()
@@ -654,8 +547,8 @@ var _ = Describe("IDP Sync", func() {
 				Finalizers: []string{finalizers.Controller},
 			}.Build(),
 			Spec: privatev1.IdentityProviderSpec_builder{
-				Ldap: privatev1.LdapConfig_builder{
-					ConnectionUrl: "ldap://example.com",
+				Oidc: privatev1.OidcConfig_builder{
+					Issuer: "https://example.com",
 				}.Build(),
 			}.Build(),
 		}.Build()
@@ -677,15 +570,15 @@ var _ = Describe("IDP Sync", func() {
 	It("should sync disabled identity provider", func() {
 		identityProvider := privatev1.IdentityProvider_builder{
 			Metadata: privatev1.Metadata_builder{
-				Name:       "disabled-ldap",
+				Name:       "disabled-oidc",
 				Tenant:     "tenant-1",
 				Finalizers: []string{finalizers.Controller},
 			}.Build(),
 			Spec: privatev1.IdentityProviderSpec_builder{
-				Title:   "Disabled LDAP",
+				Title:   "Disabled OIDC",
 				Enabled: false,
-				Ldap: privatev1.LdapConfig_builder{
-					ConnectionUrl: "ldap://example.com",
+				Oidc: privatev1.OidcConfig_builder{
+					Issuer: "https://example.com",
 				}.Build(),
 			}.Build(),
 		}.Build()

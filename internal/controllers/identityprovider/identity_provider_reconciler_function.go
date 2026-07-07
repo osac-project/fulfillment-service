@@ -207,9 +207,6 @@ func (t *task) syncToIDP(ctx context.Context) error {
 // determineProviderTypeFromIdp returns the provider type based on which config is set.
 func (t *task) determineProviderTypeFromIdp(idp *privatev1.IdentityProvider) string {
 	spec := idp.GetSpec()
-	if spec.HasLdap() {
-		return "ldap"
-	}
 	if spec.HasOidc() {
 		return "oidc"
 	}
@@ -220,13 +217,6 @@ func (t *task) determineProviderTypeFromIdp(idp *privatev1.IdentityProvider) str
 func (t *task) buildConfigFromIdp(idp *privatev1.IdentityProvider) map[string]string {
 	config := make(map[string]string)
 	spec := idp.GetSpec()
-
-	if ldap := spec.GetLdap(); ldap != nil {
-		config["connectionUrl"] = ldap.GetConnectionUrl()
-		config["bindDn"] = ldap.GetBindDn()
-		config["bindCredential"] = ldap.GetBindCredential()
-		config["usersDn"] = ldap.GetUsersDn()
-	}
 
 	if oidc := spec.GetOidc(); oidc != nil {
 		config["authorizationUrl"] = oidc.GetAuthorizationUrl()
