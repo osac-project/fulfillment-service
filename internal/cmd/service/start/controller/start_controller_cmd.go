@@ -63,7 +63,6 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/virtualnetwork"
 	internalhealth "github.com/osac-project/fulfillment-service/internal/health"
 	"github.com/osac-project/fulfillment-service/internal/idp"
-	"github.com/osac-project/fulfillment-service/internal/idp/keycloak"
 	hubscheme "github.com/osac-project/fulfillment-service/internal/kubernetes/scheme"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/network"
@@ -129,9 +128,10 @@ func Cmd() *cobra.Command {
 	flags.StringVar(
 		&runner.args.idpProvider,
 		"idp-provider",
-		idp.ProviderKeycloak,
+		"",
 		idpProviderFlagHelp,
 	)
+	_ = flags.MarkDeprecated("idp-provider", "This flag is deprecated and ignored. Only Keycloak is supported as the identity provider.")
 	flags.StringVar(
 		&runner.args.idpURL,
 		"idp-url",
@@ -1264,7 +1264,7 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 }
 
 // createIDPClient creates the IDP client. The IDP URL and credentials are mandatory.
-func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPool) (idp.Client, error) {
+func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPool) (*idp.Client, error) {
 	if r.args.idpURL == "" {
 		return nil, fmt.Errorf("flag '--idp-url' is required")
 	}
@@ -1345,28 +1345,20 @@ func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPo
 		return nil, fmt.Errorf("failed to create IDP token source: %w", err)
 	}
 
-	// Create IDP client based on provider type
-	r.logger.InfoContext(ctx, "Creating IDP client",
-		slog.String("provider", r.args.idpProvider),
-	)
+	// Create Keycloak IDP client:
+	r.logger.InfoContext(ctx, "Creating Keycloak IDP client")
 
-	var idpClient idp.Client
-	switch r.args.idpProvider {
-	case idp.ProviderKeycloak:
-		idpClient, err = keycloak.NewClient().
-			SetLogger(r.logger).
-			SetBaseURL(r.args.idpURL).
-			SetTokenSource(idpTokenSource).
-			SetCaPool(caPool).
-			Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported IDP provider: %s (supported: %s)", r.args.idpProvider, strings.Join(idp.ValidProviders, ", "))
+	idpClient, err := idp.NewClient().
+		SetLogger(r.logger).
+		SetBaseURL(r.args.idpURL).
+		SetTokenSource(idpTokenSource).
+		SetCaPool(caPool).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
 	}
 
-	r.logger.InfoContext(ctx, "IDP client created successfully")
+	r.logger.InfoContext(ctx, "Keycloak IDP client created successfully")
 	return idpClient, nil
 }
 
@@ -1427,7 +1419,8 @@ authentication with the API. Mutually exclusive with
 `
 
 const idpProviderFlagHelp = `
-_PROVIDER_ - Identity provider type. Valid values are {{ bt }}keycloak{{ bt }}.
+_DEPRECATED_ - This flag is deprecated and no longer has any effect.
+Only Keycloak is supported as the identity provider.
 `
 
 const idpUrlFlagHelp = `
