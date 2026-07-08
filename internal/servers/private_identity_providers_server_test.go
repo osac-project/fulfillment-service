@@ -32,8 +32,7 @@ import (
 var _ = Describe("Private identity providers server", func() {
 	const (
 		// Test fixture values for credentials (not real secrets)
-		testLdapBindCredential = "test-bind-credential-fixture"
-		testOidcClientSecret   = "test-client-secret-fixture"
+		testOidcClientSecret = "test-client-secret-fixture"
 	)
 
 	BeforeEach(func() {
@@ -77,17 +76,18 @@ var _ = Describe("Private identity providers server", func() {
 			request := privatev1.IdentityProvidersCreateRequest_builder{
 				Object: privatev1.IdentityProvider_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   "test-ldap",
+						Name:   "test-oidc",
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title:   "Test LDAP",
+						Title:   "Test OIDC",
 						Enabled: true,
-						Ldap: privatev1.LdapConfig_builder{
-							ConnectionUrl:  "ldap://ldap.example.com:389",
-							BindDn:         "cn=admin,dc=example,dc=com",
-							BindCredential: testLdapBindCredential,
-							UsersDn:        "ou=users,dc=example,dc=com",
+						Oidc: privatev1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							ClientId:         "client-id",
+							ClientSecret:     testOidcClientSecret,
+							Issuer:           "https://example.com",
 						}.Build(),
 					}.Build(),
 				}.Build(),
@@ -99,11 +99,11 @@ var _ = Describe("Private identity providers server", func() {
 			Expect(response).ToNot(BeNil())
 			Expect(response.Object).ToNot(BeNil())
 			Expect(response.Object.Id).ToNot(BeEmpty())
-			Expect(response.Object.Metadata.Name).To(Equal("test-ldap"))
-			Expect(response.Object.Spec.Title).To(Equal("Test LDAP"))
+			Expect(response.Object.Metadata.Name).To(Equal("test-oidc"))
+			Expect(response.Object.Spec.Title).To(Equal("Test OIDC"))
 			Expect(response.Object.Spec.Enabled).To(BeTrue())
-			Expect(response.Object.Spec.GetLdap()).ToNot(BeNil())
-			Expect(response.Object.Spec.GetLdap().ConnectionUrl).To(Equal("ldap://ldap.example.com:389"))
+			Expect(response.Object.Spec.GetOidc()).ToNot(BeNil())
+			Expect(response.Object.Spec.GetOidc().Issuer).To(Equal("https://example.com"))
 		})
 
 		It("Sets tenant from the request context for identity providers", func() {
@@ -142,17 +142,18 @@ var _ = Describe("Private identity providers server", func() {
 			createReq := privatev1.IdentityProvidersCreateRequest_builder{
 				Object: privatev1.IdentityProvider_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   "test-ldap",
+						Name:   "test-oidc",
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title:   "Test LDAP",
+						Title:   "Test OIDC",
 						Enabled: true,
-						Ldap: privatev1.LdapConfig_builder{
-							ConnectionUrl:  "ldap://ldap.example.com:389",
-							BindDn:         "cn=admin,dc=example,dc=com",
-							BindCredential: testLdapBindCredential,
-							UsersDn:        "ou=users,dc=example,dc=com",
+						Oidc: privatev1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							ClientId:         "client-id",
+							ClientSecret:     testOidcClientSecret,
+							Issuer:           "https://example.com",
 						}.Build(),
 					}.Build(),
 				}.Build(),
@@ -162,12 +163,12 @@ var _ = Describe("Private identity providers server", func() {
 
 			// List identity providers:
 			listResp, err := server.List(ctx, &privatev1.IdentityProvidersListRequest{
-				Filter: new("this.metadata.name == 'test-ldap'"),
+				Filter: new("this.metadata.name == 'test-oidc'"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResp.Size).To(Equal(int32(1)))
 			Expect(listResp.Items).To(HaveLen(1))
-			Expect(listResp.Items[0].Metadata.Name).To(Equal("test-ldap"))
+			Expect(listResp.Items[0].Metadata.Name).To(Equal("test-oidc"))
 		})
 
 		It("Gets an identity provider by ID", func() {
@@ -175,17 +176,18 @@ var _ = Describe("Private identity providers server", func() {
 			createReq := privatev1.IdentityProvidersCreateRequest_builder{
 				Object: privatev1.IdentityProvider_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   "test-ldap",
+						Name:   "test-oidc",
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title:   "Test LDAP",
+						Title:   "Test OIDC",
 						Enabled: true,
-						Ldap: privatev1.LdapConfig_builder{
-							ConnectionUrl:  "ldap://ldap.example.com:389",
-							BindDn:         "cn=admin,dc=example,dc=com",
-							BindCredential: testLdapBindCredential,
-							UsersDn:        "ou=users,dc=example,dc=com",
+						Oidc: privatev1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							ClientId:         "client-id",
+							ClientSecret:     testOidcClientSecret,
+							Issuer:           "https://example.com",
 						}.Build(),
 					}.Build(),
 				}.Build(),
@@ -199,7 +201,7 @@ var _ = Describe("Private identity providers server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(getResp.Object.Id).To(Equal(createResp.Object.Id))
-			Expect(getResp.Object.Metadata.Name).To(Equal("test-ldap"))
+			Expect(getResp.Object.Metadata.Name).To(Equal("test-oidc"))
 		})
 
 		It("Deletes an identity provider", func() {
@@ -207,17 +209,18 @@ var _ = Describe("Private identity providers server", func() {
 			createReq := privatev1.IdentityProvidersCreateRequest_builder{
 				Object: privatev1.IdentityProvider_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   "test-ldap",
+						Name:   "test-oidc",
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title:   "Test LDAP",
+						Title:   "Test OIDC",
 						Enabled: true,
-						Ldap: privatev1.LdapConfig_builder{
-							ConnectionUrl:  "ldap://ldap.example.com:389",
-							BindDn:         "cn=admin,dc=example,dc=com",
-							BindCredential: testLdapBindCredential,
-							UsersDn:        "ou=users,dc=example,dc=com",
+						Oidc: privatev1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							ClientId:         "client-id",
+							ClientSecret:     testOidcClientSecret,
+							Issuer:           "https://example.com",
 						}.Build(),
 					}.Build(),
 				}.Build(),
@@ -237,17 +240,18 @@ var _ = Describe("Private identity providers server", func() {
 			createReq := privatev1.IdentityProvidersCreateRequest_builder{
 				Object: privatev1.IdentityProvider_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   "test-ldap",
+						Name:   "test-oidc",
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title:   "Test LDAP",
+						Title:   "Test OIDC",
 						Enabled: true,
-						Ldap: privatev1.LdapConfig_builder{
-							ConnectionUrl:  "ldap://ldap.example.com:389",
-							BindDn:         "cn=admin,dc=example,dc=com",
-							BindCredential: testLdapBindCredential,
-							UsersDn:        "ou=users,dc=example,dc=com",
+						Oidc: privatev1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							ClientId:         "client-id",
+							ClientSecret:     testOidcClientSecret,
+							Issuer:           "https://example.com",
 						}.Build(),
 					}.Build(),
 				}.Build(),
@@ -260,7 +264,7 @@ var _ = Describe("Private identity providers server", func() {
 				Object: privatev1.IdentityProvider_builder{
 					Id: createResp.Object.Id,
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title: "Updated LDAP Title",
+						Title: "Updated OIDC Title",
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -271,7 +275,7 @@ var _ = Describe("Private identity providers server", func() {
 			}.Build()
 			updateResp, err := server.Update(ctx, updateReq)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(updateResp.Object.Spec.Title).To(Equal("Updated LDAP Title"))
+			Expect(updateResp.Object.Spec.Title).To(Equal("Updated OIDC Title"))
 		})
 
 		It("Accepts creation of an identity provider without a name", func() {
@@ -282,13 +286,14 @@ var _ = Describe("Private identity providers server", func() {
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title:   "Test LDAP",
+						Title:   "Test OIDC",
 						Enabled: true,
-						Ldap: privatev1.LdapConfig_builder{
-							ConnectionUrl:  "ldap://ldap.example.com:389",
-							BindDn:         "cn=admin,dc=example,dc=com",
-							BindCredential: testLdapBindCredential,
-							UsersDn:        "ou=users,dc=example,dc=com",
+						Oidc: privatev1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							ClientId:         "client-id",
+							ClientSecret:     testOidcClientSecret,
+							Issuer:           "https://example.com",
 						}.Build(),
 					}.Build(),
 				}.Build(),
@@ -303,17 +308,18 @@ var _ = Describe("Private identity providers server", func() {
 			createResponse, err := server.Create(ctx, privatev1.IdentityProvidersCreateRequest_builder{
 				Object: privatev1.IdentityProvider_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   "test-ldap",
+						Name:   "test-oidc",
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title:   "Test LDAP",
+						Title:   "Test OIDC",
 						Enabled: true,
-						Ldap: privatev1.LdapConfig_builder{
-							ConnectionUrl:  "ldap://ldap.example.com:389",
-							BindDn:         "cn=admin,dc=example,dc=com",
-							BindCredential: testLdapBindCredential,
-							UsersDn:        "ou=users,dc=example,dc=com",
+						Oidc: privatev1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							ClientId:         "client-id",
+							ClientSecret:     testOidcClientSecret,
+							Issuer:           "https://example.com",
 						}.Build(),
 					}.Build(),
 				}.Build(),
@@ -348,17 +354,18 @@ var _ = Describe("Private identity providers server", func() {
 			createResponse, err := server.Create(ctx, privatev1.IdentityProvidersCreateRequest_builder{
 				Object: privatev1.IdentityProvider_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:   "test-ldap",
+						Name:   "test-oidc",
 						Tenant: "my-tenant",
 					}.Build(),
 					Spec: privatev1.IdentityProviderSpec_builder{
-						Title:   "Test LDAP",
+						Title:   "Test OIDC",
 						Enabled: true,
-						Ldap: privatev1.LdapConfig_builder{
-							ConnectionUrl:  "ldap://ldap.example.com:389",
-							BindDn:         "cn=admin,dc=example,dc=com",
-							BindCredential: testLdapBindCredential,
-							UsersDn:        "ou=users,dc=example,dc=com",
+						Oidc: privatev1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							ClientId:         "client-id",
+							ClientSecret:     testOidcClientSecret,
+							Issuer:           "https://example.com",
 						}.Build(),
 					}.Build(),
 				}.Build(),
@@ -427,17 +434,18 @@ var _ = Describe("Private identity providers server", func() {
 				request := privatev1.IdentityProvidersCreateRequest_builder{
 					Object: privatev1.IdentityProvider_builder{
 						Metadata: privatev1.Metadata_builder{
-							Name:   "test-ldap",
+							Name:   "test-oidc",
 							Tenant: "shared",
 						}.Build(),
 						Spec: privatev1.IdentityProviderSpec_builder{
-							Title:   "Test LDAP",
+							Title:   "Test OIDC",
 							Enabled: true,
-							Ldap: privatev1.LdapConfig_builder{
-								ConnectionUrl:  "ldap://ldap.example.com:389",
-								BindDn:         "cn=admin,dc=example,dc=com",
-								BindCredential: testLdapBindCredential,
-								UsersDn:        "ou=users,dc=example,dc=com",
+							Oidc: privatev1.OidcConfig_builder{
+								AuthorizationUrl: "https://example.com/auth",
+								TokenUrl:         "https://example.com/token",
+								ClientId:         "client-id",
+								ClientSecret:     testOidcClientSecret,
+								Issuer:           "https://example.com",
 							}.Build(),
 						}.Build(),
 					}.Build(),
@@ -455,17 +463,18 @@ var _ = Describe("Private identity providers server", func() {
 				request := privatev1.IdentityProvidersCreateRequest_builder{
 					Object: privatev1.IdentityProvider_builder{
 						Metadata: privatev1.Metadata_builder{
-							Name:   "test-ldap",
+							Name:   "test-oidc",
 							Tenant: "system",
 						}.Build(),
 						Spec: privatev1.IdentityProviderSpec_builder{
-							Title:   "Test LDAP",
+							Title:   "Test OIDC",
 							Enabled: true,
-							Ldap: privatev1.LdapConfig_builder{
-								ConnectionUrl:  "ldap://ldap.example.com:389",
-								BindDn:         "cn=admin,dc=example,dc=com",
-								BindCredential: testLdapBindCredential,
-								UsersDn:        "ou=users,dc=example,dc=com",
+							Oidc: privatev1.OidcConfig_builder{
+								AuthorizationUrl: "https://example.com/auth",
+								TokenUrl:         "https://example.com/token",
+								ClientId:         "client-id",
+								ClientSecret:     testOidcClientSecret,
+								Issuer:           "https://example.com",
 							}.Build(),
 						}.Build(),
 					}.Build(),
@@ -568,39 +577,6 @@ var _ = Describe("Private identity providers server", func() {
 			object := event.GetIdentityProvider()
 			Expect(object).ToNot(BeNil())
 			Expect(object.GetSpec().GetOidc().GetClientSecret()).To(BeEmpty())
-		})
-
-		It("LDAP", func() {
-			// Create the object:
-			_, err := server.Create(
-				ctx,
-				privatev1.IdentityProvidersCreateRequest_builder{
-					Object: privatev1.IdentityProvider_builder{
-						Metadata: privatev1.Metadata_builder{
-							Tenant: "my-tenant",
-							Name:   "my-ldap",
-						}.Build(),
-						Spec: privatev1.IdentityProviderSpec_builder{
-							Title:   "My LDAP",
-							Enabled: true,
-							Ldap: privatev1.LdapConfig_builder{
-								ConnectionUrl:  "ldap://ldap.example.com:389",
-								BindDn:         "cn=admin,dc=example,dc=com",
-								BindCredential: testLdapBindCredential,
-								UsersDn:        "ou=users,dc=example,dc=com",
-							}.Build(),
-						}.Build(),
-					}.Build(),
-				}.Build(),
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Verify the event:
-			Expect(event).ToNot(BeNil())
-			Expect(event.GetType()).To(Equal(privatev1.EventType_EVENT_TYPE_OBJECT_CREATED))
-			object := event.GetIdentityProvider()
-			Expect(object).ToNot(BeNil())
-			Expect(object.GetSpec().GetLdap().GetBindCredential()).To(BeEmpty())
 		})
 	})
 })

@@ -128,10 +128,6 @@ func (s *PrivateIdentityProvidersServer) redact(
 		if oidc != nil {
 			oidc.SetClientSecret("")
 		}
-		ldap := spec.GetLdap()
-		if ldap != nil {
-			ldap.SetBindCredential("")
-		}
 	}
 	return object
 }
