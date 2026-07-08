@@ -78,7 +78,10 @@ auth:
   #
   # The keys of the ConfigMap and Secret don't need to match the parameter names. In the above example the client
   # identifier is in an `id` key but the credential parameter name is `client-id`.
-  controllerCredentials:
+  controllerCredentialsSecret:
+    create: false
+    clientId: ""
+    clientSecret: ""
 
   # List of names of Kubernetes service accounts that are allowed to access the private API with administrator
   # permissions. These are intended only for emergency situations, for example when the regular authentication
@@ -183,3 +186,19 @@ idp:
   #
   # This parameter is mandatory.
   credentials:
+
+hubAccess:
+  enabled: false
+
+bundledPostgres:
+  enabled: false
+  database:
+    name: service
+    user: service
+
+dbMigrate:
+  enabled: false
+  image: ""
+  backoffLimit: 3
+  dbUrl: ""
+  dbUrlFile: ""

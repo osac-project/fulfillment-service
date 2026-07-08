@@ -38,3 +38,12 @@ Return the hostname for the fulfillment internal API. Fails if 'internalHostname
 {{- define "fulfillment-internal-api.hostname" -}}
 {{- required "internalHostname is required" .Values.internalHostname -}}
 {{- end -}}
+
+{{/*
+Common labels
+*/}}
+{{- define "fulfillment-service.labels" -}}
+app.kubernetes.io/part-of: fulfillment-service
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
