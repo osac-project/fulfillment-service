@@ -146,7 +146,6 @@ var _ = Describe("Protovalidate validation", func() {
 		})
 	})
 
-
 	It("Accepts Project with dot-separated hierarchical name", func() {
 		// Projects use field-level CEL validation that allows dot-separated names
 		// like "org.team.project" (each segment is a DNS label, connected with dots)
