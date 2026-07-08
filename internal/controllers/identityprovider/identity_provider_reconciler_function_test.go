@@ -59,14 +59,6 @@ func (m *mockIdentityProvidersClient) Signal(ctx context.Context, req *privatev1
 	return nil, nil
 }
 
-func (m *mockIdentityProvidersClient) Assign(ctx context.Context, req *privatev1.IdentityProvidersAssignRequest, _ ...grpc.CallOption) (*privatev1.IdentityProvidersAssignResponse, error) {
-	return nil, nil
-}
-
-func (m *mockIdentityProvidersClient) Unassign(ctx context.Context, req *privatev1.IdentityProvidersUnassignRequest, _ ...grpc.CallOption) (*privatev1.IdentityProvidersUnassignResponse, error) {
-	return nil, nil
-}
-
 var _ = Describe("Finalizer Management", func() {
 	It("should add finalizer on first call", func() {
 		identityProvider := privatev1.IdentityProvider_builder{

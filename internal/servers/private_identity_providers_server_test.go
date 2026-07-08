@@ -488,30 +488,6 @@ var _ = Describe("Private identity providers server", func() {
 				Expect(status.Message()).To(ContainSubstring("cannot belong to 'system' tenant"))
 			})
 		})
-
-		Describe("Assign and Unassign", func() {
-			It("Returns not implemented for Assign", func() {
-				_, err := server.Assign(ctx, &privatev1.IdentityProvidersAssignRequest{
-					Name:       "test-ldap",
-					TenantName: "my-tenant",
-				})
-				Expect(err).To(HaveOccurred())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.Unimplemented))
-			})
-
-			It("Returns not implemented for Unassign", func() {
-				_, err := server.Unassign(ctx, &privatev1.IdentityProvidersUnassignRequest{
-					Name:       "test-ldap",
-					TenantName: "my-tenant",
-				})
-				Expect(err).To(HaveOccurred())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.Unimplemented))
-			})
-		})
 	})
 
 	Describe("Redacts event payload", func() {

@@ -200,16 +200,6 @@ func (s *PrivateIdentityProvidersServer) Delete(ctx context.Context,
 	return
 }
 
-func (s *PrivateIdentityProvidersServer) Assign(ctx context.Context,
-	request *privatev1.IdentityProvidersAssignRequest) (response *privatev1.IdentityProvidersAssignResponse, err error) {
-	return nil, grpcstatus.Error(grpccodes.Unimplemented, "not implemented")
-}
-
-func (s *PrivateIdentityProvidersServer) Unassign(ctx context.Context,
-	request *privatev1.IdentityProvidersUnassignRequest) (response *privatev1.IdentityProvidersUnassignResponse, err error) {
-	return nil, grpcstatus.Error(grpccodes.Unimplemented, "not implemented")
-}
-
 func (s *PrivateIdentityProvidersServer) Signal(ctx context.Context,
 	request *privatev1.IdentityProvidersSignalRequest) (response *privatev1.IdentityProvidersSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)

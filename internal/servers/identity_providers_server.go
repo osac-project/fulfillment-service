@@ -189,13 +189,3 @@ func (s *IdentityProvidersServer) Delete(ctx context.Context,
 	request *publicv1.IdentityProvidersDeleteRequest) (response *publicv1.IdentityProvidersDeleteResponse, err error) {
 	return nil, errors.New("not implemented")
 }
-
-func (s *IdentityProvidersServer) Assign(ctx context.Context,
-	request *publicv1.IdentityProvidersAssignRequest) (response *publicv1.IdentityProvidersAssignResponse, err error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *IdentityProvidersServer) Unassign(ctx context.Context,
-	request *publicv1.IdentityProvidersUnassignRequest) (response *publicv1.IdentityProvidersUnassignResponse, err error) {
-	return nil, errors.New("not implemented")
-}

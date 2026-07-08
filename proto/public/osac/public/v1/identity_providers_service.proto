@@ -121,26 +121,6 @@ message IdentityProvidersDeleteRequest {
 // Response for delete operation.
 message IdentityProvidersDeleteResponse {}
 
-// Request to assign an identity provider to a tenant.
-// The tenant is inferred from the authenticated user's context.
-message IdentityProvidersAssignRequest {
-  // Name of the identity provider to assign.
-  string name = 1;
-}
-
-// Response for assign operation.
-message IdentityProvidersAssignResponse {}
-
-// Request to unassign an identity provider from a tenant.
-// The tenant is inferred from the authenticated user's context.
-message IdentityProvidersUnassignRequest {
-  // Name of the identity provider to unassign.
-  string name = 1;
-}
-
-// Response for unassign operation.
-message IdentityProvidersUnassignResponse {}
-
 // IdentityProviders service provides operations for managing tenant identity providers.
 // Users can only access identity providers for their tenant.
 // Identity providers enable users to authenticate using their existing corporate credentials
@@ -189,24 +169,6 @@ service IdentityProviders {
   rpc Delete(IdentityProvidersDeleteRequest) returns (IdentityProvidersDeleteResponse) {
     option (google.api.http) = {
       delete: "/api/fulfillment/v1/identity_providers/{id}"
-    };
-  }
-
-  // Assigns an identity provider to a tenant.
-  // The tenant is specified in metadata.tenant.
-  rpc Assign(IdentityProvidersAssignRequest) returns (IdentityProvidersAssignResponse) {
-    option (google.api.http) = {
-      post: "/api/fulfillment/v1/identity_providers/{name}:assign"
-      body: "*"
-    };
-  }
-
-  // Unassigns an identity provider from a tenant.
-  // The tenant is specified in metadata.tenant.
-  rpc Unassign(IdentityProvidersUnassignRequest) returns (IdentityProvidersUnassignResponse) {
-    option (google.api.http) = {
-      post: "/api/fulfillment/v1/identity_providers/{name}:unassign"
-      body: "*"
     };
   }
 }
