@@ -258,4 +258,47 @@ var _ = Describe("Protovalidate validation", func() {
 		// Should be rejected by Metadata.name pattern (doesn't allow dots)
 		Expect(status.Message()).To(ContainSubstring("validation"))
 	})
+
+	It("Rejects Project Update with invalid segment in hierarchical name", func() {
+		// Create a valid project first
+		validProject, err := projectsClient.Create(ctx, privatev1.ProjectsCreateRequest_builder{
+			Object: privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "valid-project",
+					Tenant: "my-tenant",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Valid Project",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			_, _ = projectsClient.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+				Id: validProject.Object.Id,
+			}.Build())
+		})
+
+		// Try to update with invalid name containing uppercase
+		invalidName := "Invalid-Name-With-Uppercase"
+		_, err = projectsClient.Update(ctx, privatev1.ProjectsUpdateRequest_builder{
+			Object: privatev1.Project_builder{
+				Id: validProject.Object.Id,
+				Metadata: privatev1.Metadata_builder{
+					Name:   invalidName,
+					Tenant: "my-tenant",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Updated Title",
+				}.Build(),
+			}.Build(),
+		}.Build())
+
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		// Should be rejected by message-level CEL validation
+		Expect(status.Message()).To(ContainSubstring("project name must be"))
+	})
 })

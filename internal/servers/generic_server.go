@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"buf.build/go/protovalidate"
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -80,6 +81,7 @@ type GenericServer[O dao.Object] struct {
 	pathCompiler     *masks.PathCompiler[O]
 	pathCache        map[string]*masks.Path[O]
 	pathCacheLock    *sync.Mutex
+	validator        protovalidate.Validator
 }
 
 type metadataIface interface {
@@ -199,6 +201,13 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		return
 	}
 
+	// Create the protovalidate validator:
+	validator, err := protovalidate.New()
+	if err != nil {
+		err = fmt.Errorf("failed to create protovalidate validator: %w", err)
+		return
+	}
+
 	// Create the object early so that we can use its methods as callbacks:
 	s := &GenericServer[O]{
 		logger:           b.logger,
@@ -209,6 +218,7 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		pathCompiler:     pathCompiler,
 		pathCache:        map[string]*masks.Path[O]{},
 		pathCacheLock:    &sync.Mutex{},
+		validator:        validator,
 	}
 
 	// Set the redact function:
@@ -625,6 +635,15 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		}
 	} else {
 		tmpObject = requestObject
+	}
+
+	// Validate the merged object using protovalidate.
+	// This ensures all validation constraints are checked after applying the update mask,
+	// avoiding false positives from partial request objects.
+	err = s.validator.Validate(tmpObject)
+	if err != nil {
+		s.logger.DebugContext(ctx, "Object validation failed after mask merge", "error", err.Error())
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "validation failed: %s", err.Error())
 	}
 
 	// Validate the resulting metadata:

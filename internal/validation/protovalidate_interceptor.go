@@ -140,6 +140,15 @@ func (i *ProtovalidateInterceptor) validate(message any) error {
 		return nil
 	}
 
+	// Skip validation for Update requests - they are validated in the server after mask merging.
+	// This avoids false validation errors when clients send partial objects with update_mask.
+	type updateRequest interface {
+		GetUpdateMask() any
+	}
+	if _, isUpdate := message.(updateRequest); isUpdate {
+		return nil
+	}
+
 	// Validate using protovalidate:
 	err := i.validator.Validate(protoMessage)
 	if err != nil {
