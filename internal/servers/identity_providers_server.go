@@ -167,25 +167,131 @@ func (s *IdentityProvidersServer) Create(ctx context.Context,
 
 func (s *IdentityProvidersServer) List(ctx context.Context,
 	request *publicv1.IdentityProvidersListRequest) (response *publicv1.IdentityProvidersListResponse, err error) {
-	return nil, errors.New("not implemented")
-}
+	// Create private request with same parameters:
+	privateRequest := &privatev1.IdentityProvidersListRequest{}
+	privateRequest.SetOffset(request.GetOffset())
+	privateRequest.SetLimit(request.GetLimit())
+	privateRequest.SetFilter(request.GetFilter())
 
-func (s *IdentityProvidersServer) ListAvailable(ctx context.Context,
-	request *publicv1.IdentityProvidersListAvailableRequest) (response *publicv1.IdentityProvidersListAvailableResponse, err error) {
-	return nil, errors.New("not implemented")
+	// Delegate to private server:
+	privateResponse, err := s.private.List(ctx, privateRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map private response to public format:
+	privateItems := privateResponse.GetItems()
+	publicItems := make([]*publicv1.IdentityProvider, len(privateItems))
+	for i, privateItem := range privateItems {
+		publicItem := &publicv1.IdentityProvider{}
+		err = s.outMapper.Copy(ctx, privateItem, publicItem)
+		if err != nil {
+			s.logger.ErrorContext(
+				ctx,
+				"Failed to map private identity provider to public",
+				slog.Any("error", err),
+			)
+			return nil, err
+		}
+		publicItems[i] = publicItem
+	}
+
+	// Create the public response:
+	response = &publicv1.IdentityProvidersListResponse{}
+	response.SetSize(privateResponse.GetSize())
+	response.SetTotal(privateResponse.GetTotal())
+	response.SetItems(publicItems)
+	return
 }
 
 func (s *IdentityProvidersServer) Get(ctx context.Context,
 	request *publicv1.IdentityProvidersGetRequest) (response *publicv1.IdentityProvidersGetResponse, err error) {
-	return nil, errors.New("not implemented")
+	// Create private request:
+	privateRequest := &privatev1.IdentityProvidersGetRequest{}
+	privateRequest.SetId(request.GetId())
+
+	// Delegate to private server:
+	privateResponse, err := s.private.Get(ctx, privateRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map private response to public format:
+	privateObject := privateResponse.GetObject()
+	publicObject := &publicv1.IdentityProvider{}
+	err = s.outMapper.Copy(ctx, privateObject, publicObject)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to map private identity provider to public",
+			slog.Any("error", err),
+		)
+		return nil, err
+	}
+
+	// Create the public response:
+	response = &publicv1.IdentityProvidersGetResponse{}
+	response.SetObject(publicObject)
+	return
 }
 
 func (s *IdentityProvidersServer) Update(ctx context.Context,
 	request *publicv1.IdentityProvidersUpdateRequest) (response *publicv1.IdentityProvidersUpdateResponse, err error) {
-	return nil, errors.New("not implemented")
+	// Map public request to private format:
+	privateObject := &privatev1.IdentityProvider{}
+	err = s.inMapper.Copy(ctx, request.GetObject(), privateObject)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to map public identity provider to private",
+			slog.Any("error", err),
+		)
+		return nil, err
+	}
+
+	// Create private request:
+	privateRequest := &privatev1.IdentityProvidersUpdateRequest{}
+	privateRequest.SetObject(privateObject)
+	privateRequest.SetUpdateMask(request.GetUpdateMask())
+	privateRequest.SetLock(request.GetLock())
+
+	// Delegate to private server:
+	privateResponse, err := s.private.Update(ctx, privateRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map private response to public format:
+	publicObject := &publicv1.IdentityProvider{}
+	err = s.outMapper.Copy(ctx, privateResponse.GetObject(), publicObject)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to map private identity provider to public",
+			slog.Any("error", err),
+		)
+		return nil, err
+	}
+
+	// Build and return the response:
+	response = &publicv1.IdentityProvidersUpdateResponse{}
+	response.SetObject(publicObject)
+	return
 }
 
 func (s *IdentityProvidersServer) Delete(ctx context.Context,
 	request *publicv1.IdentityProvidersDeleteRequest) (response *publicv1.IdentityProvidersDeleteResponse, err error) {
-	return nil, errors.New("not implemented")
+	// Create private request:
+	privateRequest := &privatev1.IdentityProvidersDeleteRequest{}
+	privateRequest.SetId(request.GetId())
+
+	// Delegate to private server:
+	_, err = s.private.Delete(ctx, privateRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the public response:
+	response = &publicv1.IdentityProvidersDeleteResponse{}
+	return
 }

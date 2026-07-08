@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -71,6 +73,149 @@ var _ = Describe("Identity Providers Server", func() {
 	Describe("Interface compliance", func() {
 		It("implements IdentityProvidersServer interface", func() {
 			var _ publicv1.IdentityProvidersServer = (*IdentityProvidersServer)(nil)
+		})
+	})
+
+	Describe("CRUD operations", func() {
+		var (
+			publicServer *IdentityProvidersServer
+			ctx          context.Context
+		)
+
+		BeforeEach(func() {
+			var err error
+			ctx = context.Background()
+
+			publicServer, err = NewIdentityProvidersServer().
+				SetLogger(logger).
+				SetAttributionLogic(attribution).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("creates and retrieves an identity provider", func() {
+			createResp, err := publicServer.Create(ctx, publicv1.IdentityProvidersCreateRequest_builder{
+				Object: publicv1.IdentityProvider_builder{
+					Metadata: publicv1.Metadata_builder{
+						Name:   "test-idp",
+						Tenant: "tenant-1",
+					}.Build(),
+					Spec: publicv1.IdentityProviderSpec_builder{
+						Title:   "Test Identity Provider",
+						Enabled: true,
+						Oidc: publicv1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							Issuer:           "https://example.com",
+							ClientId:         "test-client-id",
+							ClientSecret:     "test-secret",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(createResp.GetObject().GetId()).ToNot(BeEmpty())
+			Expect(createResp.GetObject().GetMetadata().GetName()).To(Equal("test-idp"))
+
+			getResp, err := publicServer.Get(ctx, publicv1.IdentityProvidersGetRequest_builder{
+				Id: createResp.GetObject().GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getResp.GetObject().GetId()).To(Equal(createResp.GetObject().GetId()))
+			Expect(getResp.GetObject().GetMetadata().GetName()).To(Equal("test-idp"))
+		})
+
+		It("lists identity providers", func() {
+			for i := range 3 {
+				name := "test-idp-" + string(rune('a'+i))
+				_, err := publicServer.Create(ctx, publicv1.IdentityProvidersCreateRequest_builder{
+					Object: publicv1.IdentityProvider_builder{
+						Metadata: publicv1.Metadata_builder{
+							Name:   name,
+							Tenant: "tenant-1",
+						}.Build(),
+						Spec: publicv1.IdentityProviderSpec_builder{
+							Title:   "Test IDP " + name,
+							Enabled: true,
+							Oidc: publicv1.OidcConfig_builder{
+								AuthorizationUrl: "https://example.com/auth",
+								TokenUrl:         "https://example.com/token",
+								Issuer:           "https://example.com",
+								ClientId:         "client-id",
+								ClientSecret:     "secret",
+							}.Build(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			filter := "metadata.tenant == 'tenant-1'"
+			listResp, err := publicServer.List(ctx, publicv1.IdentityProvidersListRequest_builder{
+				Filter: &filter,
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(listResp.GetItems()).To(HaveLen(3))
+		})
+
+		It("updates an identity provider", func() {
+			createResp, err := publicServer.Create(ctx, publicv1.IdentityProvidersCreateRequest_builder{
+				Object: publicv1.IdentityProvider_builder{
+					Metadata: publicv1.Metadata_builder{
+						Name:   "test-idp",
+						Tenant: "tenant-1",
+					}.Build(),
+					Spec: publicv1.IdentityProviderSpec_builder{
+						Title:   "Original Title",
+						Enabled: true,
+						Oidc: publicv1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							Issuer:           "https://example.com",
+							ClientId:         "client-id",
+							ClientSecret:     "secret",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			object := createResp.GetObject()
+			object.GetSpec().SetTitle("Updated Title")
+			updateResp, err := publicServer.Update(ctx, publicv1.IdentityProvidersUpdateRequest_builder{
+				Object: object,
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updateResp.GetObject().GetSpec().GetTitle()).To(Equal("Updated Title"))
+		})
+
+		It("deletes an identity provider", func() {
+			createResp, err := publicServer.Create(ctx, publicv1.IdentityProvidersCreateRequest_builder{
+				Object: publicv1.IdentityProvider_builder{
+					Metadata: publicv1.Metadata_builder{
+						Name:   "test-idp",
+						Tenant: "tenant-1",
+					}.Build(),
+					Spec: publicv1.IdentityProviderSpec_builder{
+						Title:   "Test IDP",
+						Enabled: true,
+						Oidc: publicv1.OidcConfig_builder{
+							AuthorizationUrl: "https://example.com/auth",
+							TokenUrl:         "https://example.com/token",
+							Issuer:           "https://example.com",
+							ClientId:         "client-id",
+							ClientSecret:     "secret",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = publicServer.Delete(ctx, publicv1.IdentityProvidersDeleteRequest_builder{
+				Id: createResp.GetObject().GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 })
