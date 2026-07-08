@@ -301,4 +301,151 @@ var _ = Describe("Protovalidate validation", func() {
 		// Should be rejected by message-level CEL validation
 		Expect(status.Message()).To(ContainSubstring("project name must be"))
 	})
+
+	It("Accepts partial Update with empty name not in mask (update_mask bypass)", func() {
+		// Critical test for update_mask flow:
+		// - Interceptor skips validation for Update requests
+		// - Server merges partial request with DB object
+		// - Server validates the merged result (not the partial request)
+
+		// Create a valid project
+		validProject, err := projectsClient.Create(ctx, privatev1.ProjectsCreateRequest_builder{
+			Object: privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "valid-project",
+					Tenant: "my-tenant",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Original Title",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			_, _ = projectsClient.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+				Id: validProject.Object.Id,
+			}.Build())
+		})
+
+		// Partial update: only update title, send minimal/invalid data for other fields
+		// Name is empty (would fail validation), but it's NOT in the mask
+		response, err := projectsClient.Update(ctx, privatev1.ProjectsUpdateRequest_builder{
+			Object: privatev1.Project_builder{
+				Id: validProject.Object.Id,
+				Metadata: privatev1.Metadata_builder{
+					Name: "", // Empty! Would fail validation if interceptor ran
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Updated Title",
+				}.Build(),
+			}.Build(),
+			UpdateMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"spec.title"}, // Only updating title, NOT name
+			},
+		}.Build())
+
+		// Should succeed because:
+		// 1. Interceptor skips validation (has update_mask)
+		// 2. Server merges: takes title from request, name from DB
+		// 3. Server validates merged object (has valid name from DB)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+		Expect(response.Object.Spec.Title).To(Equal("Updated Title"))
+		Expect(response.Object.Metadata.Name).To(Equal("valid-project")) // Unchanged from DB
+	})
+
+	It("Rejects Update with invalid name in mask (validates merged object)", func() {
+		// Tests that server validation runs on the merged object:
+		// - Client explicitly updates name to invalid value (in mask)
+		// - Server merges and validates
+		// - Validation rejects the invalid merged object
+
+		// Create a valid project
+		validProject, err := projectsClient.Create(ctx, privatev1.ProjectsCreateRequest_builder{
+			Object: privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "valid-project",
+					Tenant: "my-tenant",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{
+					Title: "Original Title",
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			_, _ = projectsClient.Delete(ctx, privatev1.ProjectsDeleteRequest_builder{
+				Id: validProject.Object.Id,
+			}.Build())
+		})
+
+		// Try to update name to invalid value WITH name in the mask
+		invalidName := "Invalid-Name-With-Uppercase"
+		_, err = projectsClient.Update(ctx, privatev1.ProjectsUpdateRequest_builder{
+			Object: privatev1.Project_builder{
+				Id: validProject.Object.Id,
+				Metadata: privatev1.Metadata_builder{
+					Name:   invalidName,
+					Tenant: "my-tenant",
+				}.Build(),
+			}.Build(),
+			UpdateMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"metadata.name"}, // Explicitly updating name
+			},
+		}.Build())
+
+		// Should fail - server validates merged object with invalid name
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		// Should be rejected by message-level CEL validation
+		Expect(status.Message()).To(ContainSubstring("project name must be"))
+	})
+
+	It("Rejects Update with invalid label in mask (protovalidate on labels)", func() {
+		// Tests protovalidate constraints on labels work in Update flow
+
+		// Create a valid tenant
+		validTenant, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: "update-labels-test",
+					Labels: map[string]string{
+						"key1": "value1",
+					},
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			_, _ = tenantClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
+				Id: validTenant.Object.Id,
+			}.Build())
+		})
+
+		// Try to update with label key > 316 chars
+		longKey := strings.Repeat("a", 320)
+
+		_, err = tenantClient.Update(ctx, privatev1.TenantsUpdateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Id: validTenant.Object.Id,
+				Metadata: privatev1.Metadata_builder{
+					Labels: map[string]string{
+						longKey: "value",
+					},
+				}.Build(),
+			}.Build(),
+			UpdateMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"metadata.labels"},
+			},
+		}.Build())
+
+		// Should fail - protovalidate max_len constraint on label keys
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		Expect(status.Message()).To(ContainSubstring("validation"))
+	})
 })
