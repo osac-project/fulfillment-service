@@ -248,27 +248,6 @@ func (m *mockClient) AssignIdpManagerPermissions(ctx context.Context, userID str
 	return m.AssignClientRolesToUser(ctx, "", userID, "realm-management", roles)
 }
 
-func (m *mockClient) CreateAuthorizationResource(ctx context.Context, resource *AuthorizationResource) (*AuthorizationResource, error) {
-	return &AuthorizationResource{
-		ID:         "resource-id",
-		Name:       resource.Name,
-		Type:       resource.Type,
-		Scopes:     resource.Scopes,
-		Attributes: resource.Attributes,
-	}, nil
-}
-
-func (m *mockClient) GetAuthorizationResource(ctx context.Context, resourceID string) (*AuthorizationResource, error) {
-	return &AuthorizationResource{
-		ID:   resourceID,
-		Name: "PROJECT-test-project",
-	}, nil
-}
-
-func (m *mockClient) DeleteAuthorizationResource(ctx context.Context, resourceID string) error {
-	return nil
-}
-
 // Identity Provider stub methods
 func (m *mockClient) CreateIdentityProvider(ctx context.Context, tenantName string, idp *IdentityProvider) (*IdentityProvider, error) {
 	return idp, nil
@@ -734,8 +713,8 @@ func (m *mockClient) GetRealmClientByClientID(ctx context.Context, clientID, rea
 	return "", fmt.Errorf("not implemented in test mock")
 }
 
-func (m *mockClient) GetRealmRole(ctx context.Context, roleName string) (keycloakRole, error) {
-	return keycloakRole{}, fmt.Errorf("not implemented in test mock")
+func (m *mockClient) GetRealmRole(ctx context.Context, roleName string) (*Role, error) {
+	return nil, fmt.Errorf("not implemented in test mock")
 }
 
 func (m *mockClient) RemoveRealmRolesFromUser(ctx context.Context, userID string, roles []*Role) error {

@@ -43,7 +43,6 @@ type Client struct {
 	// realmName is the single Keycloak realm that contains all OSAC organizations
 	realmName               string
 	realmManagementClientID string
-	authorizationClientUUID string // Cached internal UUID of the authorization services client
 }
 
 // ClientBuilder builds a Keycloak client.
@@ -421,13 +420,9 @@ func (c *Client) ListClientRoles(ctx context.Context, tenantName, clientID strin
 // AssignTenantRolesToUser adds tenant-level roles to a user.
 func (c *Client) AssignTenantRolesToUser(ctx context.Context, tenantName, userID string, roles []*Role) error {
 	// Fetch full role objects from Keycloak to get their IDs
-	kcRoles := make([]keycloakRole, 0, len(roles))
-	for _, role := range roles {
-		kcRole, err := c.GetRealmRole(ctx, role.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get realm role %s: %w", role.Name, err)
-		}
-		kcRoles = append(kcRoles, kcRole)
+	kcRoles, err := c.fetchAndConvertRealmRoles(ctx, roles)
+	if err != nil {
+		return err
 	}
 
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/realm", c.realmName, url.PathEscape(userID)), kcRoles)
@@ -450,10 +445,7 @@ func (c *Client) AssignClientRolesToUser(ctx context.Context, tenantName, userID
 		return fmt.Errorf("failed to resolve client ID: %w", err)
 	}
 
-	kcRoles := make([]keycloakRole, len(roles))
-	for i, role := range roles {
-		kcRoles[i] = *toKeycloakRole(role)
-	}
+	kcRoles := c.convertRolesToKeycloak(roles)
 
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/clients/%s", c.realmName, url.PathEscape(userID), url.PathEscape(internalID)), kcRoles)
 	if err != nil {
@@ -466,13 +458,9 @@ func (c *Client) AssignClientRolesToUser(ctx context.Context, tenantName, userID
 // RemoveTenantRolesFromUser removes tenant-level roles from a user.
 func (c *Client) RemoveTenantRolesFromUser(ctx context.Context, tenantName, userID string, roles []*Role) error {
 	// Fetch full role objects from Keycloak to get their IDs
-	kcRoles := make([]keycloakRole, 0, len(roles))
-	for _, role := range roles {
-		kcRole, err := c.GetRealmRole(ctx, role.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get realm role %s: %w", role.Name, err)
-		}
-		kcRoles = append(kcRoles, kcRole)
+	kcRoles, err := c.fetchAndConvertRealmRoles(ctx, roles)
+	if err != nil {
+		return err
 	}
 
 	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/realm", c.realmName, url.PathEscape(userID)), kcRoles)
@@ -485,10 +473,7 @@ func (c *Client) RemoveTenantRolesFromUser(ctx context.Context, tenantName, user
 
 // RemoveRealmRolesFromUser removes realm-level roles from a user.
 func (c *Client) RemoveRealmRolesFromUser(ctx context.Context, userID string, roles []*Role) error {
-	kcRoles := make([]keycloakRole, len(roles))
-	for i, role := range roles {
-		kcRoles[i] = *toKeycloakRole(role)
-	}
+	kcRoles := c.convertRolesToKeycloak(roles)
 
 	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/realm", c.realmName, url.PathEscape(userID)), kcRoles)
 	if err != nil {
@@ -510,10 +495,7 @@ func (c *Client) RemoveClientRolesFromUser(ctx context.Context, tenantName, user
 		return fmt.Errorf("failed to resolve client ID: %w", err)
 	}
 
-	kcRoles := make([]keycloakRole, len(roles))
-	for i, role := range roles {
-		kcRoles[i] = *toKeycloakRole(role)
-	}
+	kcRoles := c.convertRolesToKeycloak(roles)
 
 	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/clients/%s", c.realmName, url.PathEscape(userID), url.PathEscape(internalID)), kcRoles)
 	if err != nil {
@@ -625,17 +607,17 @@ func (c *Client) AssignTenantAdminPermissions(ctx context.Context, tenantName, u
 	return nil
 }
 
-func (c *Client) GetRealmRole(ctx context.Context, roleName string) (keycloakRole, error) {
+func (c *Client) GetRealmRole(ctx context.Context, roleName string) (*Role, error) {
 	response, err := c.httpClient.DoRequest(ctx, http.MethodGet, fmt.Sprintf("/admin/realms/%s/roles/%s", c.realmName, url.PathEscape(roleName)), nil)
 	if err != nil {
-		return keycloakRole{}, fmt.Errorf("failed to get role: %w", err)
+		return nil, fmt.Errorf("failed to get role: %w", err)
 	}
 	defer response.Body.Close()
 	var kcRole keycloakRole
 	if err = json.NewDecoder(response.Body).Decode(&kcRole); err != nil {
-		return keycloakRole{}, fmt.Errorf("failed to decode role response: %w", err)
+		return nil, fmt.Errorf("failed to decode role response: %w", err)
 	}
-	return kcRole, nil
+	return fromKeycloakRole(&kcRole), nil
 }
 
 // AssignIdpManagerPermissions grants limited IdP management permissions to the specified user.
@@ -644,12 +626,12 @@ func (c *Client) GetRealmRole(ctx context.Context, roleName string) (keycloakRol
 // Intended for the break-glass account which can manage user roles and identity providers but cannot modify critical
 // organization settings, realm settings, or authorization policies.
 func (c *Client) AssignIdpManagerPermissions(ctx context.Context, userID string) error {
-	role, err := c.GetRealmRole(ctx, "tenant-idp-manager")
+	domainRole, err := c.GetRealmRole(ctx, "tenant-idp-manager")
 	if err != nil {
 		return fmt.Errorf("failed to get tenant-idp-manager role from Keycloak: %w", err)
 	}
 	// Keycloak role assignment API expects an array of roles
-	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/realm", c.realmName, url.PathEscape(userID)), []keycloakRole{role})
+	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, fmt.Sprintf("/admin/realms/%s/users/%s/role-mappings/realm", c.realmName, url.PathEscape(userID)), []keycloakRole{*toKeycloakRole(domainRole)})
 	if err != nil {
 		return fmt.Errorf("failed to assign role to user: %w", err)
 	}
@@ -712,100 +694,6 @@ func (c *Client) deleteBreakGlassAccount(ctx context.Context, tenantName, breakG
 	if err != nil {
 		return fmt.Errorf("failed to delete break-glass user: %w", err)
 	}
-
-	return nil
-}
-
-// getAuthorizationClientUUID retrieves and caches the internal UUID of the authorization services client.
-// The first call queries Keycloak; subsequent calls return the cached value.
-func (c *Client) getAuthorizationClientUUID(ctx context.Context) (string, error) {
-	// Return cached value if available
-	if c.authorizationClientUUID != "" {
-		return c.authorizationClientUUID, nil
-	}
-
-	// First call - look up the UUID using existing function
-	clientUUID, err := c.GetRealmClientByClientID(ctx, authorizationClientID, c.realmName)
-	if err != nil {
-		return "", err
-	}
-
-	// Cache the result
-	c.authorizationClientUUID = clientUUID
-	return clientUUID, nil
-}
-
-// CreateAuthorizationResource creates a new authorization resource in Keycloak Authorization Services.
-func (c *Client) CreateAuthorizationResource(ctx context.Context, resource *AuthorizationResource) (*AuthorizationResource, error) {
-	if resource == nil {
-		return nil, fmt.Errorf("authorization resource is nil")
-	}
-	if resource.Type == "" {
-		resource.Type = ResourceTypeProject
-	}
-	kcResource := toKeycloakAuthorizationResource(resource)
-
-	clientInternalID, err := c.getAuthorizationClientUUID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get authorization client ID: %w", err)
-	}
-
-	// Create the resource via Keycloak Authorization Services REST API
-	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/resource", c.realmName, clientInternalID)
-	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, path, kcResource)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create authorization resource: %w", err)
-	}
-	defer response.Body.Close()
-
-	// Decode the created resource (includes the assigned ID)
-	var createdResource keycloakAuthorizationResource
-	if err = json.NewDecoder(response.Body).Decode(&createdResource); err != nil {
-		return nil, fmt.Errorf("failed to decode authorization resource response: %w", err)
-	}
-
-	return fromKeycloakAuthorizationResource(&createdResource), nil
-}
-
-// GetAuthorizationResource retrieves an authorization resource by ID from Keycloak Authorization Services.
-func (c *Client) GetAuthorizationResource(ctx context.Context, resourceID string) (*AuthorizationResource, error) {
-	clientInternalID, err := c.getAuthorizationClientUUID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get authorization client ID: %w", err)
-	}
-
-	// Get the resource via Keycloak Authorization Services REST API
-	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/resource/%s",
-		c.realmName, clientInternalID, url.PathEscape(resourceID))
-	response, err := c.httpClient.DoRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get authorization resource: %w", err)
-	}
-	defer response.Body.Close()
-
-	var kcResource keycloakAuthorizationResource
-	if err = json.NewDecoder(response.Body).Decode(&kcResource); err != nil {
-		return nil, fmt.Errorf("failed to decode authorization resource response: %w", err)
-	}
-
-	return fromKeycloakAuthorizationResource(&kcResource), nil
-}
-
-// DeleteAuthorizationResource deletes an authorization resource by ID from Keycloak Authorization Services.
-func (c *Client) DeleteAuthorizationResource(ctx context.Context, resourceID string) error {
-	clientInternalID, err := c.getAuthorizationClientUUID(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get authorization client ID: %w", err)
-	}
-
-	// Delete the resource via Keycloak Authorization Services REST API
-	path := fmt.Sprintf("/admin/realms/%s/clients/%s/authz/resource-server/resource/%s",
-		c.realmName, clientInternalID, url.PathEscape(resourceID))
-	response, err := c.httpClient.DoRequest(ctx, http.MethodDelete, path, nil)
-	if err != nil {
-		return fmt.Errorf("failed to delete authorization resource: %w", err)
-	}
-	defer response.Body.Close()
 
 	return nil
 }
@@ -996,4 +884,31 @@ func (c *Client) ListIdentityProviders(ctx context.Context, tenantName string) (
 	)
 
 	return idps, nil
+}
+
+// Helper methods for role conversion
+
+// fetchAndConvertRealmRoles fetches full realm role objects from Keycloak by name
+// and converts them to keycloakRole format. This is needed when assigning/removing
+// realm roles because Keycloak requires the full role representation including ID.
+func (c *Client) fetchAndConvertRealmRoles(ctx context.Context, roles []*Role) ([]keycloakRole, error) {
+	kcRoles := make([]keycloakRole, 0, len(roles))
+	for _, role := range roles {
+		domainRole, err := c.GetRealmRole(ctx, role.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get realm role %s: %w", role.Name, err)
+		}
+		kcRoles = append(kcRoles, *toKeycloakRole(domainRole))
+	}
+	return kcRoles, nil
+}
+
+// convertRolesToKeycloak converts domain Role objects to keycloakRole format.
+// This is used when the caller already has complete role information (including ID).
+func (c *Client) convertRolesToKeycloak(roles []*Role) []keycloakRole {
+	kcRoles := make([]keycloakRole, len(roles))
+	for i, role := range roles {
+		kcRoles[i] = *toKeycloakRole(role)
+	}
+	return kcRoles
 }

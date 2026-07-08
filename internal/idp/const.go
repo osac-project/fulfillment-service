@@ -13,27 +13,18 @@ language governing permissions and limitations under the License.
 
 package idp
 
-// Authorization scope constants define actions that can be performed on protected resources.
-// These are used with Keycloak Authorization Services to control fine-grained access to Projects.
-const (
-	// ScopeViewProject allows viewing project details and status
-	ScopeViewProject = "VIEW_PROJECT"
-
-	// ScopeManageProject allows updating project metadata, deleting project, and managing permissions
-	ScopeManageProject = "MANAGE_PROJECT"
-)
-
 // realmManagementClientID is the clientId of the built-in Keycloak client that contains
 // all administrative roles for managing a realm. This client exists by default in every
 // realm and is the only client we interact with for role assignments.
 const realmManagementClientID = "realm-management"
 
-// authorizationClientID is the clientId of the Keycloak client that has Authorization Services enabled.
-// This client manages authorization resources for Projects and other protected resources.
-const authorizationClientID = "osac-authorization"
-
-// Authorization resource type constants define the types of protected resources.
+// Authorization group constants for hierarchical project access control. These define the group
+// names used in Keycloak organization groups. The "system:" prefix prevents collisions with
+// user-created project names, since the colon character is not valid in DNS labels.
 const (
-	// ResourceTypeProject is the type identifier for Project authorization resources
-	ResourceTypeProject = "urn:osac:resources:project"
+	// GroupNameViewers is the name for viewer access groups.
+	GroupNameViewers = "system:viewers"
+
+	// GroupNameManagers is the name for manager access groups.
+	GroupNameManagers = "system:managers"
 )

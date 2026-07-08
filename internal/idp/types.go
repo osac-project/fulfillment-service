@@ -13,12 +13,8 @@ language governing permissions and limitations under the License.
 
 package idp
 
-// Tenant represents a logical grouping of users, groups, and applications in an IdP.
-// Different providers call this different things:
-// - Keycloak: Organization
-// - Auth0: Tenant
-// - Okta: Organization
-// - Azure AD: Tenant
+// Tenant represents a Keycloak Organization - a logical grouping of users, groups, and applications.
+// This type provides a Go-idiomatic API over the raw Keycloak JSON representation.
 type Tenant struct {
 	ID          string
 	Name        string
@@ -28,7 +24,8 @@ type Tenant struct {
 	Attributes  map[string][]string
 }
 
-// User represents a user in the identity provider.
+// User represents a Keycloak user.
+// This type provides a Go-idiomatic API over the raw Keycloak JSON representation.
 type User struct {
 	ID              string
 	Username        string
@@ -50,8 +47,9 @@ type Credential struct {
 	Temporary bool
 }
 
-// Role represents a role that can be assigned to users.
-// Roles can be at the tenant level or client level.
+// Role represents a Keycloak role that can be assigned to users.
+// Roles can be at the realm/tenant level or client level.
+// This type provides a Go-idiomatic API over the raw Keycloak JSON representation.
 type Role struct {
 	ID          string
 	Name        string
@@ -60,27 +58,6 @@ type Role struct {
 	ClientRole  bool   // true if client-level, false if tenant-level
 	ContainerID string // The ID of the tenant or client that contains this role
 	Attributes  map[string][]string
-}
-
-// AuthorizationResource represents a protected resource in an authorization system.
-type AuthorizationResource struct {
-	// ID is the unique identifier assigned by the authorization system
-	ID string
-
-	// Name is the resource name (e.g., "PROJECT-acme-web-app")
-	Name string
-
-	// Type is the resource type (e.g., "urn:osac:resources:project")
-	Type string
-
-	// Scopes are the actions that can be performed on this resource
-	Scopes []string
-
-	// URIs are optional resource URIs
-	URIs []string
-
-	// Attributes for additional metadata
-	Attributes map[string][]string
 }
 
 // IdentityProvider represents an external identity provider configuration.
@@ -163,24 +140,6 @@ type keycloakOrganizationDomain struct {
 	Verified bool   `json:"verified,omitempty"`
 }
 
-// Authorization Services types
-// These map to Keycloak Authorization Services (UMA 2.0) REST API.
-// See: https://www.keycloak.org/docs/latest/authorization_services/
-
-type keycloakAuthorizationScope struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
-}
-
-type keycloakAuthorizationResource struct {
-	ID         string                       `json:"_id,omitempty"`
-	Name       string                       `json:"name,omitempty"`
-	Type       string                       `json:"type,omitempty"`
-	Scopes     []keycloakAuthorizationScope `json:"scopes,omitempty"`
-	URIs       []string                     `json:"uris,omitempty"`
-	Attributes map[string][]string          `json:"attributes,omitempty"`
-}
-
 // Identity Provider types
 // These map to Keycloak Identity Provider REST API.
 // See: https://www.keycloak.org/docs-api/latest/rest-api/index.html#_identity_providers_resource
@@ -196,7 +155,9 @@ type keycloakIdentityProvider struct {
 	Config      map[string]string `json:"config,omitempty"` // Provider-specific configuration
 }
 
-// Conversion functions from generic types to Keycloak types
+// Conversion functions between Go-idiomatic types and Keycloak JSON types.
+// The domain types (User, Tenant, Role) provide clean Go APIs with bool instead of *bool.
+// The keycloak* types match the Keycloak REST API JSON structure for marshaling.
 
 func toKeycloakUser(user *User) *keycloakUser {
 	emailVerified := user.EmailVerified
@@ -340,37 +301,6 @@ func fromKeycloakOrganization(kcOrg *keycloakOrganization) *Tenant {
 		Enabled:     enabled,
 		Domains:     domains,
 		Attributes:  kcOrg.Attributes,
-	}
-}
-
-// Conversion functions for authorization resources
-func toKeycloakAuthorizationResource(resource *AuthorizationResource) *keycloakAuthorizationResource {
-	scopes := make([]keycloakAuthorizationScope, len(resource.Scopes))
-	for i, scopeName := range resource.Scopes {
-		scopes[i] = keycloakAuthorizationScope{Name: scopeName}
-	}
-	return &keycloakAuthorizationResource{
-		ID:         resource.ID,
-		Name:       resource.Name,
-		Type:       resource.Type,
-		Scopes:     scopes,
-		URIs:       resource.URIs,
-		Attributes: resource.Attributes,
-	}
-}
-
-func fromKeycloakAuthorizationResource(kcResource *keycloakAuthorizationResource) *AuthorizationResource {
-	scopeNames := make([]string, len(kcResource.Scopes))
-	for i, scope := range kcResource.Scopes {
-		scopeNames[i] = scope.Name
-	}
-	return &AuthorizationResource{
-		ID:         kcResource.ID,
-		Name:       kcResource.Name,
-		Type:       kcResource.Type,
-		Scopes:     scopeNames,
-		URIs:       kcResource.URIs,
-		Attributes: kcResource.Attributes,
 	}
 }
 

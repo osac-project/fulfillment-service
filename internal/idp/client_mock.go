@@ -139,21 +139,6 @@ func (mr *MockClientInterfaceMockRecorder) CreateAuthorizationGroup(ctx, tenantN
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAuthorizationGroup", reflect.TypeOf((*MockClientInterface)(nil).CreateAuthorizationGroup), ctx, tenantName, groupPath)
 }
 
-// CreateAuthorizationResource mocks base method.
-func (m *MockClientInterface) CreateAuthorizationResource(ctx context.Context, resource *AuthorizationResource) (*AuthorizationResource, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateAuthorizationResource", ctx, resource)
-	ret0, _ := ret[0].(*AuthorizationResource)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateAuthorizationResource indicates an expected call of CreateAuthorizationResource.
-func (mr *MockClientInterfaceMockRecorder) CreateAuthorizationResource(ctx, resource any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAuthorizationResource", reflect.TypeOf((*MockClientInterface)(nil).CreateAuthorizationResource), ctx, resource)
-}
-
 // CreateIdentityProvider mocks base method.
 func (m *MockClientInterface) CreateIdentityProvider(ctx context.Context, tenantName string, idpProvider *IdentityProvider) (*IdentityProvider, error) {
 	m.ctrl.T.Helper()
@@ -228,20 +213,6 @@ func (mr *MockClientInterfaceMockRecorder) DeleteAuthorizationGroup(ctx, tenantN
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAuthorizationGroup", reflect.TypeOf((*MockClientInterface)(nil).DeleteAuthorizationGroup), ctx, tenantName, groupID)
 }
 
-// DeleteAuthorizationResource mocks base method.
-func (m *MockClientInterface) DeleteAuthorizationResource(ctx context.Context, resourceID string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAuthorizationResource", ctx, resourceID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteAuthorizationResource indicates an expected call of DeleteAuthorizationResource.
-func (mr *MockClientInterfaceMockRecorder) DeleteAuthorizationResource(ctx, resourceID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAuthorizationResource", reflect.TypeOf((*MockClientInterface)(nil).DeleteAuthorizationResource), ctx, resourceID)
-}
-
 // DeleteIdentityProvider mocks base method.
 func (m *MockClientInterface) DeleteIdentityProvider(ctx context.Context, tenantName, alias string) error {
 	m.ctrl.T.Helper()
@@ -312,21 +283,6 @@ func (mr *MockClientInterfaceMockRecorder) DeleteUserFromRealm(ctx, userID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserFromRealm", reflect.TypeOf((*MockClientInterface)(nil).DeleteUserFromRealm), ctx, userID)
 }
 
-// GetAuthorizationResource mocks base method.
-func (m *MockClientInterface) GetAuthorizationResource(ctx context.Context, resourceID string) (*AuthorizationResource, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAuthorizationResource", ctx, resourceID)
-	ret0, _ := ret[0].(*AuthorizationResource)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetAuthorizationResource indicates an expected call of GetAuthorizationResource.
-func (mr *MockClientInterfaceMockRecorder) GetAuthorizationResource(ctx, resourceID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuthorizationResource", reflect.TypeOf((*MockClientInterface)(nil).GetAuthorizationResource), ctx, resourceID)
-}
-
 // GetGroupIDByPath mocks base method.
 func (m *MockClientInterface) GetGroupIDByPath(ctx context.Context, tenantName, groupPath string) (string, error) {
 	m.ctrl.T.Helper()
@@ -373,10 +329,10 @@ func (mr *MockClientInterfaceMockRecorder) GetRealmClientByClientID(ctx, clientI
 }
 
 // GetRealmRole mocks base method.
-func (m *MockClientInterface) GetRealmRole(ctx context.Context, roleName string) (keycloakRole, error) {
+func (m *MockClientInterface) GetRealmRole(ctx context.Context, roleName string) (*Role, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRealmRole", ctx, roleName)
-	ret0, _ := ret[0].(keycloakRole)
+	ret0, _ := ret[0].(*Role)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

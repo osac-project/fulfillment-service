@@ -44,12 +44,9 @@ type ClientInterface interface {
 	GetUserClientRoles(ctx context.Context, tenantName, userID, clientID string) ([]*Role, error)
 	GetRealmClientByClientID(ctx context.Context, clientID, realmName string) (string, error)
 	AssignTenantAdminPermissions(ctx context.Context, tenantName, userID string) error
-	GetRealmRole(ctx context.Context, roleName string) (keycloakRole, error)
+	GetRealmRole(ctx context.Context, roleName string) (*Role, error)
 	AssignIdpManagerPermissions(ctx context.Context, userID string) error
 	GetUserByUsername(ctx context.Context, tenantName, username string) (*User, error)
-	CreateAuthorizationResource(ctx context.Context, resource *AuthorizationResource) (*AuthorizationResource, error)
-	GetAuthorizationResource(ctx context.Context, resourceID string) (*AuthorizationResource, error)
-	DeleteAuthorizationResource(ctx context.Context, resourceID string) error
 	CreateIdentityProvider(ctx context.Context, tenantName string, idpProvider *IdentityProvider) (*IdentityProvider, error)
 	GetIdentityProvider(ctx context.Context, tenantName, alias string) (*IdentityProvider, error)
 	DeleteIdentityProvider(ctx context.Context, tenantName, alias string) error
