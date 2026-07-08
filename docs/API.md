@@ -120,9 +120,18 @@ should not be followed when designing new objects or refactoring existing ones.
 ## Validation constraints
 
 All proto fields that have constraints (required, min/max length, format, etc.) must be annotated with
-`buf.validate` rules. The protovalidate library enforces these constraints at runtime via a gRPC
-interceptor, rejecting invalid requests with `InvalidArgument` errors that include field-level
-violation details.
+`buf.validate` rules. The protovalidate library enforces these constraints at runtime, rejecting
+invalid requests with `InvalidArgument` errors that include field-level violation details.
+
+### Validation flow
+
+- **Create requests**: Validated by protovalidate interceptor before reaching server handlers
+- **Update requests**: Server validates the merged object after applying `update_mask`
+  - Interceptor skips validation to avoid false errors on partial objects
+  - Server merges request fields (per mask) with database object
+  - Server validates the complete merged result with protovalidate
+
+This ensures validation always runs on the actual final state, not partial input.
 
 ### Standard constraints
 
@@ -134,11 +143,49 @@ Common validation patterns:
 - **Numeric ranges**: `[(buf.validate.field).int32.gte = 0]`
 - **Map constraints**: Use `[(buf.validate.field).map.keys...]` and `[(buf.validate.field).map.values...]`
 
-### Cross-field validation
+### CEL expressions
 
-For constraints that span multiple fields (e.g., "if field A is set, field B is required"), use CEL
-expressions in `buf.validate.message` annotations. Refer to the
-[protovalidate documentation](https://github.com/bufbuild/protovalidate) for CEL syntax.
+For complex validation logic, use CEL (Common Expression Language):
+
+**Field-level CEL** - validates a single field:
+```protobuf
+string name = 1 [(buf.validate.field).cel = {
+  id: "name_check"
+  message: "name must start with 'prod-'"
+  expression: "this.startsWith('prod-')"
+}];
+```
+
+**Message-level CEL** - validates across fields or with resource-specific logic:
+```protobuf
+message Project {
+  option (buf.validate.message).cel = {
+    id: "hierarchical_name"
+    expression: "this.metadata.name.split('.').all(segment, segment.matches('^[a-z0-9]...'))"
+  };
+  
+  Metadata metadata = 2;
+}
+```
+
+### Overriding embedded validation
+
+To skip standard validation on an embedded message and apply resource-specific rules:
+1. Use `ignore: IGNORE_ALWAYS` on the field to skip its embedded validation
+2. Add message-level CEL to validate with custom logic
+
+Example (Projects allow dots in names, other resources don't):
+```protobuf
+message Project {
+  option (buf.validate.message).cel = {
+    expression: "this.metadata.name.split('.').all(segment, segment.matches(...))"
+  };
+  
+  Metadata metadata = 2 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+}
+```
+
+Refer to the [protovalidate documentation](https://github.com/bufbuild/protovalidate) for full CEL syntax.
 
 ### When not to use protovalidate
 
