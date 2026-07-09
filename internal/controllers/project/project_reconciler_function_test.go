@@ -158,13 +158,13 @@ var _ = Describe("Finalizer Removal", func() {
 
 var _ = Describe("Validation and Activation", func() {
 	var (
-		ctrl            *gomock.Controller
-		mockClient      *MockProjectsClient
-		mockUsersClient *MockUsersClient
-		mockIdpClient   *idp.MockClientInterface
-		resourceManager *idp.ProjectGroupManager
-		ctx             context.Context
-		functionObj     *function
+		ctrl                *gomock.Controller
+		mockClient          *MockProjectsClient
+		mockUsersClient     *MockUsersClient
+		mockIdpClient       *idp.MockClientInterface
+		projectGroupManager *idp.ProjectGroupManager
+		ctx                 context.Context
+		functionObj         *function
 	)
 
 	BeforeEach(func() {
@@ -175,7 +175,7 @@ var _ = Describe("Validation and Activation", func() {
 		ctx = context.Background()
 
 		var err error
-		resourceManager, err = idp.NewProjectGroupManager().
+		projectGroupManager, err = idp.NewProjectGroupManager().
 			SetLogger(logger).
 			SetClient(mockIdpClient).
 			Build()
@@ -185,7 +185,7 @@ var _ = Describe("Validation and Activation", func() {
 			logger:              logger,
 			projectsClient:      mockClient,
 			usersClient:         mockUsersClient,
-			projectGroupManager: resourceManager,
+			projectGroupManager: projectGroupManager,
 		}
 	})
 

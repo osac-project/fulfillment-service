@@ -373,7 +373,7 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return fmt.Errorf("failed to create IDP tenant manager: %w", err)
 	}
 
-	// Create the IDP resource manager:
+	// Create the IDP project group manager:
 	r.logger.InfoContext(ctx, "Creating IDP project group manager")
 	projectGroupManager, err := idp.NewProjectGroupManager().
 		SetLogger(r.logger).
