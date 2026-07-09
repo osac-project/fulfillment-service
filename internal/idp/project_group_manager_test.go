@@ -52,7 +52,7 @@ var _ = Describe("ProjectGroupManager", func() {
 				SetLogger(logger).
 				Build()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("IdP client is mandatory"))
+			Expect(err.Error()).To(ContainSubstring("client is mandatory"))
 		})
 	})
 

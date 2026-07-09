@@ -60,7 +60,7 @@ func (b *TenantManagerBuilder) Build() (result *TenantManager, err error) {
 		return
 	}
 	if b.client == nil {
-		err = errors.New("IdP client is mandatory")
+		err = errors.New("client is mandatory")
 		return
 	}
 
@@ -336,7 +336,6 @@ func (m *TenantManager) createBreakGlassAccount(ctx context.Context, config *Ten
 // assignIdpManagerPermissions assigns limited IdP manager permissions to a user.
 // This grants the user permissions to manage user roles and identity providers but not
 // critical realm settings.
-// The implementation is provider-specific (delegated to the IdP client).
 func (m *TenantManager) assignIdpManagerPermissions(ctx context.Context, userID string) error {
 	m.logger.InfoContext(ctx, "Assigning IdP manager permissions to user",
 		slog.String("user_id", userID),
@@ -353,8 +352,7 @@ func (m *TenantManager) assignIdpManagerPermissions(ctx context.Context, userID 
 	return nil
 }
 
-// DeleteTenant deletes a tenant from the IdP and all its resources.
-// The implementation handles provider-specific cleanup (e.g., Keycloak deletes break-glass account first).
+// DeleteTenant deletes a tenant from the IdP and all of its resources.
 func (m *TenantManager) DeleteTenant(ctx context.Context, tenantName string) error {
 	m.logger.InfoContext(ctx, "Deleting tenant from IdP",
 		slog.String("tenant", tenantName),

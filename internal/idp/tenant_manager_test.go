@@ -21,7 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// mockClient is a mock IdP client for testing.
+// mockClient is a mock Keycloak client for testing.
 type mockClient struct {
 	createdTenant       *Tenant
 	createdUsers        []*User

@@ -58,7 +58,7 @@ func (b *ProjectGroupManagerBuilder) Build() (result *ProjectGroupManager, err e
 		return
 	}
 	if b.client == nil {
-		err = errors.New("IdP client is mandatory")
+		err = errors.New("client is mandatory")
 		return
 	}
 
