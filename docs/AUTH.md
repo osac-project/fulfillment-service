@@ -1,21 +1,17 @@
 # Keycloak Setup and Configuration Guide
 
-This guide explains how to set up Keycloak as an Identity Provider (IDP) for the fulfillment service
+This guide explains how to set up Keycloak as an Identity Provider (IDP) broker for the fulfillment service
 and configure the necessary mappings and authorization rules.
 
-> **Note**: While this guide focuses on Keycloak (including deployment steps using the provided Helm
-> chart), the fulfillment service is designed to work with **any OAuth-compatible Identity
-> Provider**. The service only requires:
+> **Note**: The fulfillment service uses Keycloak as the identity provider broker.
+> The Keycloak setup requires:
 >
 > - A valid OAuth issuer URL
 > - JWT tokens containing a username claim (`preferred_username` or `username`) and optionally
 >   tenant claims (`organization`, `organizations`, or `groups`)
 > - The ability to validate tokens using the issuer's public keys
 >
-> If you're using a different OAuth IDP (such as Okta, Auth0, Azure AD, Google Identity, etc.), you
-> can skip the Keycloak installation sections and proceed directly to the [Fulfillment Service
-> Configuration](#fulfillment-service-configuration) section, adapting the configuration steps to
-> your IDP's specific requirements.
+
 
 ## Table of Contents
 
@@ -353,16 +349,18 @@ The fulfillment service maintains a single list of trusted token issuers, config
 
 ## User and Group Mapping
 
-The fulfillment service maps users and groups from Keycloak (or any OAuth IDP) to its internal user
+The fulfillment service maps users and groups from Keycloak to its internal user
 and tenant concepts.
 
 ### Key Concepts
 
 - **Users**: Represent individual authenticated entities (users or service accounts)
-- **Tenants**: Represent groups of users. In Keycloak, these map to **groups**, but the fulfillment
+- **Tenants**: Represent groups of users. In Keycloak, these map to **Organizations**, but the fulfillment
   service refers to them as **tenants**
 - **Organizations**: The fulfillment service does **not** have an explicit "organization" concept.
   Organizations and tenants are defined and managed in the external identity provider (Keycloak)
+- **Projects**: Represents hierarchical directories within a **tenant**. It groups objects together, and provides
+  a boundary to allow certain groups of users to view those objects.
 
 ### Subject Resolution
 
@@ -577,8 +575,7 @@ The authorization policy distinguishes between the following subject categories:
    role. They inherit all client permissions. When IdP management APIs are implemented, they will
    also gain access to those methods.
 
-4. **Client Subjects**: All other authenticated users (JWT tokens from Keycloak or other service
-   accounts that are not admin, tenant-admin, or tenant-idp-manager).
+4. **Client Subjects**: All other authenticated users (JWT tokens from Keycloak that are not admin, tenant-admin, or tenant-idp-manager).
 
 ### Authorization Logic
 
@@ -666,7 +663,7 @@ The fulfillment service uses built-in gRPC interceptors for authentication and a
 ### Step-by-Step Authorization Process
 
 1. **User Authentication**:
-   - User logs in through Keycloak (OAuth IDP) using `osac login`
+   - User logs in through Keycloak using `osac login`
    - Receives a JWT access token containing:
      - Username (`preferred_username` claim, falling back to `username`)
      - Tenant source (resolved in priority order): `organization` claim, then `organizations`,
