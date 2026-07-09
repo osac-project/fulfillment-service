@@ -14,8 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"strings"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
