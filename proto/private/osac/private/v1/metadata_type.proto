@@ -62,32 +62,13 @@ message Metadata {
   // rules as names.
   //
   // Labels are indexed and searchable.
-  map<string, string> labels = 7 [(buf.validate.field).map = {
-    keys: {
-      string: {
-        min_len: 1,
-        max_len: 316  // 253 (prefix) + 1 (/) + 62 (name)
-      }
-    },
-    values: {
-      string: {
-        max_len: 63
-      }
-    }
-  }];
+  map<string, string> labels = 7;
 
   // Annotations contains arbitrary metadata for objects.
   //
   // Keys follow the same rules as label keys, including the optional DNS subdomain prefix and the 1-63 character name
   // restrictions. Values can be any string.
-  map<string, string> annotations = 8 [(buf.validate.field).map = {
-    keys: {
-      string: {
-        min_len: 1,
-        max_len: 316  // 253 (prefix) + 1 (/) + 62 (name)
-      }
-    }
-  }];
+  map<string, string> annotations = 8;
 
   // Version is a numeric field that is automatically incremented with every change to the object.
   int32 version = 9;

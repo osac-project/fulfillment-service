@@ -962,15 +962,6 @@ func (s *GenericServer[O]) validateLabels(labels map[string]string) error {
 	return nil
 }
 
-// validateAnnotations validates annotation keys according to Kubernetes annotation naming conventions.
-//
-// This validation complements protovalidate annotations on the Metadata message:
-// - Proto annotations enforce key length constraints (1-316 chars)
-// - This Go code enforces complex DNS subdomain rules that cannot be expressed in simple regex:
-//   - Prefix/name structure (optional "prefix/" followed by name)
-//   - Each dot-separated segment must be a valid DNS label
-//   - Character restrictions (alphanumeric, hyphens, underscores, dots)
-//   - Alphanumeric start/end requirements
 func (s *GenericServer[O]) validateAnnotations(annotations map[string]string) error {
 	for key := range annotations {
 		err := s.validateLabelKey("metadata.annotations", key)

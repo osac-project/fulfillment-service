@@ -68,8 +68,9 @@ var _ = Describe("Protovalidate validation", func() {
 		status, ok := grpcstatus.FromError(err)
 		Expect(ok).To(BeTrue(), "error should be a gRPC status error")
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument), "should return InvalidArgument")
-		Expect(status.Message()).To(ContainSubstring("validation"))
-		Expect(status.Message()).To(ContainSubstring("name"))
+		Expect(status.Message()).To(ContainSubstring("validation failed"))
+		Expect(status.Message()).To(ContainSubstring("metadata.name"))
+		Expect(status.Message()).To(ContainSubstring("must be at most 63 characters"))
 	})
 
 	It("Rejects Tenant with invalid metadata name pattern", func() {
@@ -88,11 +89,13 @@ var _ = Describe("Protovalidate validation", func() {
 		status, ok := grpcstatus.FromError(err)
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-		Expect(status.Message()).To(ContainSubstring("validation"))
+		Expect(status.Message()).To(ContainSubstring("validation failed"))
+		Expect(status.Message()).To(ContainSubstring("metadata.name"))
+		Expect(status.Message()).To(ContainSubstring("does not match regex pattern"))
 	})
 
 	It("Rejects Tenant with label key that is too long", func() {
-		// Create a label key > 316 chars:
+		// Create a label key > 316 chars (253 prefix + 1 slash + 62 name):
 		longKey := ""
 		for i := 0; i < 320; i++ {
 			longKey = longKey + "a"
@@ -113,7 +116,9 @@ var _ = Describe("Protovalidate validation", func() {
 		status, ok := grpcstatus.FromError(err)
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-		Expect(status.Message()).To(ContainSubstring("validation"))
+		// Go validation enforces DNS subdomain format (max 63 chars per segment)
+		Expect(status.Message()).To(ContainSubstring("metadata.labels"))
+		Expect(status.Message()).To(ContainSubstring("must be at most 63 characters"))
 	})
 
 	It("Accepts Tenant with valid metadata", func() {
@@ -235,7 +240,8 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		// Should be rejected by CEL validation (project_name_segments)
-		Expect(status.Message()).To(ContainSubstring("project name must be"))
+		Expect(status.Message()).To(ContainSubstring("validation failed"))
+		Expect(status.Message()).To(ContainSubstring("project name must be empty (root project) or dot-separated DNS labels"))
 	})
 
 	It("Rejects Tenant with dots (proves IGNORE_ALWAYS is working for Projects)", func() {
@@ -256,7 +262,9 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		// Should be rejected by Metadata.name pattern (doesn't allow dots)
-		Expect(status.Message()).To(ContainSubstring("validation"))
+		Expect(status.Message()).To(ContainSubstring("validation failed"))
+		Expect(status.Message()).To(ContainSubstring("metadata.name"))
+		Expect(status.Message()).To(ContainSubstring("does not match regex pattern"))
 	})
 
 	It("Rejects Project Update with invalid segment in hierarchical name", func() {
@@ -299,7 +307,8 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		// Should be rejected by message-level CEL validation
-		Expect(status.Message()).To(ContainSubstring("project name must be"))
+		Expect(status.Message()).To(ContainSubstring("validation failed"))
+		Expect(status.Message()).To(ContainSubstring("project name must be empty (root project) or dot-separated DNS labels"))
 	})
 
 	It("Accepts partial Update with empty name not in mask (update_mask bypass)", func() {
@@ -400,11 +409,12 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		// Should be rejected by message-level CEL validation
-		Expect(status.Message()).To(ContainSubstring("project name must be"))
+		Expect(status.Message()).To(ContainSubstring("validation failed"))
+		Expect(status.Message()).To(ContainSubstring("project name must be empty (root project) or dot-separated DNS labels"))
 	})
 
-	It("Rejects Update with invalid label in mask (protovalidate on labels)", func() {
-		// Tests protovalidate constraints on labels work in Update flow
+	It("Rejects Update with invalid label in mask (Go validation on labels)", func() {
+		// Tests Go validation on labels works in Update flow
 
 		// Create a valid tenant
 		validTenant, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
@@ -424,8 +434,8 @@ var _ = Describe("Protovalidate validation", func() {
 			}.Build())
 		})
 
-		// Try to update with label key > 316 chars
-		longKey := strings.Repeat("a", 320)
+		// Try to update with label key > 63 chars (DNS label limit)
+		longKey := strings.Repeat("a", 70)
 
 		_, err = tenantClient.Update(ctx, privatev1.TenantsUpdateRequest_builder{
 			Object: privatev1.Tenant_builder{
@@ -441,11 +451,12 @@ var _ = Describe("Protovalidate validation", func() {
 			},
 		}.Build())
 
-		// Should fail - protovalidate max_len constraint on label keys
+		// Should fail - Go DNS label validation (max 63 chars per segment)
 		Expect(err).To(HaveOccurred())
 		status, ok := grpcstatus.FromError(err)
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-		Expect(status.Message()).To(ContainSubstring("validation"))
+		Expect(status.Message()).To(ContainSubstring("metadata.labels"))
+		Expect(status.Message()).To(ContainSubstring("must be at most 63 characters"))
 	})
 })
