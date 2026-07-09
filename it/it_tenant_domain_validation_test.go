@@ -364,6 +364,9 @@ var _ = Describe("Tenant domain validation (protovalidate)", func() {
 		updated, err := tenantClient.Update(ctx, privatev1.TenantsUpdateRequest_builder{
 			Object: privatev1.Tenant_builder{
 				Id: created.Object.Id,
+				Metadata: privatev1.Metadata_builder{
+					Name: created.Object.Metadata.Name,
+				}.Build(),
 				Spec: privatev1.TenantSpec_builder{
 					Domains: []string{"upd-new-" + created.Object.Id + ".com", "upd-another-" + created.Object.Id + ".org"},
 				}.Build(),
