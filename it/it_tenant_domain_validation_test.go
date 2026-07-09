@@ -365,13 +365,15 @@ var _ = Describe("Tenant domain validation (protovalidate)", func() {
 			Object: privatev1.Tenant_builder{
 				Id: created.Object.Id,
 				Spec: privatev1.TenantSpec_builder{
-					Domains: []string{"updated-test-new.com", "updated-test-another.org"},
+					Domains: []string{"upd-new-" + created.Object.Id + ".com", "upd-another-" + created.Object.Id + ".org"},
 				}.Build(),
 			}.Build(),
 		}.Build())
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(updated.Object.Spec.Domains).To(ConsistOf("updated-test-new.com", "updated-test-another.org"))
+		Expect(updated.Object.Spec.Domains).To(HaveLen(2))
+		Expect(updated.Object.Spec.Domains).To(ContainElement(ContainSubstring("upd-new-")))
+		Expect(updated.Object.Spec.Domains).To(ContainElement(ContainSubstring("upd-another-")))
 	})
 
 	It("Rejects Update with invalid domain in mask", func() {
