@@ -340,4 +340,74 @@ var _ = Describe("Tenant domain validation (protovalidate)", func() {
 		Expect(status.Message()).To(ContainSubstring("spec.domains"))
 		Expect(status.Message()).To(ContainSubstring("unique"))
 	})
+
+	It("Accepts Update with valid domains in mask", func() {
+		// Create tenant with initial domain
+		created, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: "update-test-tenant",
+				}.Build(),
+				Spec: privatev1.TenantSpec_builder{
+					Domains: []string{"example.com"},
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			_, _ = tenantClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
+				Id: created.Object.Id,
+			}.Build())
+		})
+
+		// Update domains to new valid values
+		updated, err := tenantClient.Update(ctx, privatev1.TenantsUpdateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Id: created.Object.Id,
+				Spec: privatev1.TenantSpec_builder{
+					Domains: []string{"new.com", "another.org"},
+				}.Build(),
+			}.Build(),
+		}.Build())
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(updated.Object.Spec.Domains).To(ConsistOf("new.com", "another.org"))
+	})
+
+	It("Rejects Update with invalid domain in mask", func() {
+		// Create tenant with valid domain
+		created, err := tenantClient.Create(ctx, privatev1.TenantsCreateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: "update-test-tenant-2",
+				}.Build(),
+				Spec: privatev1.TenantSpec_builder{
+					Domains: []string{"example.com"},
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() {
+			_, _ = tenantClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
+				Id: created.Object.Id,
+			}.Build())
+		})
+
+		// Try to update with invalid domain (only one label)
+		_, err = tenantClient.Update(ctx, privatev1.TenantsUpdateRequest_builder{
+			Object: privatev1.Tenant_builder{
+				Id: created.Object.Id,
+				Spec: privatev1.TenantSpec_builder{
+					Domains: []string{"invalid"},
+				}.Build(),
+			}.Build(),
+		}.Build())
+
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		Expect(status.Message()).To(ContainSubstring("validation failed"))
+		Expect(status.Message()).To(ContainSubstring("must have at least two labels"))
+	})
 })
