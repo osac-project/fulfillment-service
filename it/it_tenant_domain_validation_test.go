@@ -86,13 +86,13 @@ var _ = Describe("Tenant domain validation (protovalidate)", func() {
 					Name: "valid-tenant-3",
 				}.Build(),
 				Spec: privatev1.TenantSpec_builder{
-					Domains: []string{"example.com", "example.org", "test.example.net"},
+					Domains: []string{"domain-validation-test-1.com", "domain-validation-test-2.org", "test.domain-validation.net"},
 				}.Build(),
 			}.Build(),
 		}.Build())
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(response.Object.Spec.Domains).To(ConsistOf("example.com", "example.org", "test.example.net"))
+		Expect(response.Object.Spec.Domains).To(ConsistOf("domain-validation-test-1.com", "domain-validation-test-2.org", "test.domain-validation.net"))
 
 		DeferCleanup(func() {
 			_, _ = tenantClient.Delete(ctx, privatev1.TenantsDeleteRequest_builder{
@@ -349,7 +349,7 @@ var _ = Describe("Tenant domain validation (protovalidate)", func() {
 					Name: "update-test-tenant",
 				}.Build(),
 				Spec: privatev1.TenantSpec_builder{
-					Domains: []string{"example.com"},
+					Domains: []string{"initial-update-test.com"},
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -365,13 +365,13 @@ var _ = Describe("Tenant domain validation (protovalidate)", func() {
 			Object: privatev1.Tenant_builder{
 				Id: created.Object.Id,
 				Spec: privatev1.TenantSpec_builder{
-					Domains: []string{"new.com", "another.org"},
+					Domains: []string{"updated-test-new.com", "updated-test-another.org"},
 				}.Build(),
 			}.Build(),
 		}.Build())
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(updated.Object.Spec.Domains).To(ConsistOf("new.com", "another.org"))
+		Expect(updated.Object.Spec.Domains).To(ConsistOf("updated-test-new.com", "updated-test-another.org"))
 	})
 
 	It("Rejects Update with invalid domain in mask", func() {
@@ -382,7 +382,7 @@ var _ = Describe("Tenant domain validation (protovalidate)", func() {
 					Name: "update-test-tenant-2",
 				}.Build(),
 				Spec: privatev1.TenantSpec_builder{
-					Domains: []string{"example.com"},
+					Domains: []string{"update-invalid-test.com"},
 				}.Build(),
 			}.Build(),
 		}.Build())
