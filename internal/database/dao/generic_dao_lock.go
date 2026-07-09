@@ -63,9 +63,15 @@ func (r *LockRequest[O]) Do(ctx context.Context) (response *LockResponse[O], err
 }
 
 func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err error) {
-	// Add tenant visibility filter:
-	err = r.addTenancyFilter(ctx)
+	// Check visibility:
+	ok, err := r.addVisibilityFilter()
 	if err != nil {
+		return
+	}
+	if !ok {
+		err = &ErrNotFound{
+			IDs: r.ids,
+		}
 		return
 	}
 

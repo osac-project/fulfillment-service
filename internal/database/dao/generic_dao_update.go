@@ -57,18 +57,28 @@ func (r *UpdateRequest[O]) Do(ctx context.Context) (response *UpdateResponse[O],
 }
 
 func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O], err error) {
-	// Add the where clause to filter by tenant:
-	err = r.addTenancyFilter(ctx)
-	if err != nil {
-		return
-	}
-
-	// Add the where clause to filter by identifier:
+	// Check parameters:
 	id := r.object.GetId()
 	if id == "" {
 		err = errors.New("object identifier is mandatory")
 		return
 	}
+
+	// Check visibility:
+	ok, err := r.addVisibilityFilter()
+	if err != nil {
+		return
+	}
+	if !ok {
+		err = &ErrNotFound{
+			IDs: []string{
+				id,
+			},
+		}
+		return
+	}
+
+	// Add the where clause to filter by identifier:
 	r.sql.params = append(r.sql.params, id)
 	if r.sql.filter.Len() > 0 {
 		r.sql.filter.WriteString(` and`)

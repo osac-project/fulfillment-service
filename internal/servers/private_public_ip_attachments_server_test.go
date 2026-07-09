@@ -603,6 +603,10 @@ var _ = Describe("Private public IP attachments server", func() {
 			otherTenantCtrl := gomock.NewController(GinkgoT())
 			DeferCleanup(otherTenantCtrl.Finish)
 
+			restrictedVisibility, err := auth.NewVisibility().
+				AddProject(auth.SharedTenant, auth.DefaultProject).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
 			restrictedTenancy := auth.NewMockTenancyLogic(otherTenantCtrl)
 			restrictedTenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
 				Return(collections.NewSet("shared"), nil).
@@ -610,8 +614,8 @@ var _ = Describe("Private public IP attachments server", func() {
 			restrictedTenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
 				Return("shared", nil).
 				AnyTimes()
-			restrictedTenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-				Return(collections.NewSet("shared"), nil).
+			restrictedTenancy.EXPECT().DetermineVisibility(gomock.Any()).
+				Return(restrictedVisibility, nil).
 				AnyTimes()
 
 			restrictedServer, err := NewPrivatePublicIPAttachmentsServer().
@@ -659,6 +663,10 @@ var _ = Describe("Private public IP attachments server", func() {
 			otherTenantCtrl := gomock.NewController(GinkgoT())
 			DeferCleanup(otherTenantCtrl.Finish)
 
+			restrictedVisibility, err := auth.NewVisibility().
+				AddProject(auth.SharedTenant, auth.DefaultProject).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
 			restrictedTenancy := auth.NewMockTenancyLogic(otherTenantCtrl)
 			restrictedTenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
 				Return(collections.NewSet("shared"), nil).
@@ -666,8 +674,8 @@ var _ = Describe("Private public IP attachments server", func() {
 			restrictedTenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
 				Return("shared", nil).
 				AnyTimes()
-			restrictedTenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-				Return(collections.NewSet("shared"), nil).
+			restrictedTenancy.EXPECT().DetermineVisibility(gomock.Any()).
+				Return(restrictedVisibility, nil).
 				AnyTimes()
 
 			restrictedServer, err := NewPrivatePublicIPAttachmentsServer().

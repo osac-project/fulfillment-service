@@ -65,8 +65,12 @@ func (r *ListRequest[O]) Do(ctx context.Context) (response *ListResponse[O], err
 
 func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err error) {
 	// Add tenant visibility filter:
-	err = r.addTenancyFilter(ctx)
+	ok, err := r.addVisibilityFilter()
 	if err != nil {
+		return
+	}
+	if !ok {
+		response = &ListResponse[O]{}
 		return
 	}
 

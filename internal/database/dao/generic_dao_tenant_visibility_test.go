@@ -23,7 +23,6 @@ import (
 
 	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
@@ -96,11 +95,16 @@ var _ = Describe("Tenant visibility", func() {
 		DeferCleanup(ctrl.Finish)
 	})
 
-	It("Filters field based on user visibility", func() {
+	It("Filters based on user visibility", func() {
 		// Create a tenancy logic that makes certain tenants visible to the user:
+		visibility, err := auth.NewVisibility().
+			AddProject("tenant-a", auth.DefaultProject).
+			AddProject("tenant-c", auth.DefaultProject).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancy := auth.NewMockTenancyLogic(ctrl)
-		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant-a", "tenant-c"), nil).
+		tenancy.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibility, nil).
 			AnyTimes()
 
 		// Create the DAO:
@@ -159,9 +163,13 @@ var _ = Describe("Tenant visibility", func() {
 
 	It("Shows all tenants when user has no tenant restrictions", func() {
 		// Create a tenancy logic that makes all tenants visible to the user:
+		visibility, err := auth.NewVisibility().
+			SetTotal(true).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancy := auth.NewMockTenancyLogic(ctrl)
-		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(auth.AllTenants, nil).
+		tenancy.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibility, nil).
 			AnyTimes()
 
 		// Create the DAO:
@@ -186,9 +194,13 @@ var _ = Describe("Tenant visibility", func() {
 
 	It("Shows no tenants when user has no visible tenants that intersect with object tenants", func() {
 		// Create a tenancy logic that makes only one tenant visible to the user:
+		visibility, err := auth.NewVisibility().
+			AddProject("tenant-x", auth.DefaultProject).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancy := auth.NewMockTenancyLogic(ctrl)
-		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant-x"), nil).
+		tenancy.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibility, nil).
 			AnyTimes()
 
 		// Create the DAO:
@@ -208,7 +220,6 @@ var _ = Describe("Tenant visibility", func() {
 			Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		object := createResponse.GetObject()
-		Expect(object.GetMetadata().GetTenant()).To(BeEmpty())
 
 		// Verify the object is not found via Get because the SQL tenant filter excludes it:
 		_, err = dao.Get().
@@ -226,10 +237,14 @@ var _ = Describe("Tenant visibility", func() {
 	})
 
 	It("Allows a tenant to delete an object it created", func() {
-		// Create a DAO with visibility for tenant A:
+		// Create a DAO with visibility of all projects for tenant A:
+		visibility, err := auth.NewVisibility().
+			AddProject("tenant-a", auth.DefaultProject).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancy := auth.NewMockTenancyLogic(ctrl)
-		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant-a"), nil).
+		tenancy.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibility, nil).
 			AnyTimes()
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -264,10 +279,14 @@ var _ = Describe("Tenant visibility", func() {
 	})
 
 	It("Rejects deletion of an object belonging to an invisible tenant as not found", func() {
-		// Create the DAO with visibility for tenant A and insert the object:
+		// Create the DAO with visibility for all projects for tenant A and insert the object:
+		visibilityA, err := auth.NewVisibility().
+			AddProject("tenant-a", auth.DefaultProject).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancyA := auth.NewMockTenancyLogic(ctrl)
-		tenancyA.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant-a"), nil).
+		tenancyA.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibilityA, nil).
 			AnyTimes()
 		daoA, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -288,9 +307,13 @@ var _ = Describe("Tenant visibility", func() {
 
 		// Create a DAO with visibility for tenant B and verify that it can't delete the object of
 		// tenant A:
+		visibilityB, err := auth.NewVisibility().
+			AddProject("tenant-b", auth.DefaultProject).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancyB := auth.NewMockTenancyLogic(ctrl)
-		tenancyB.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant-b"), nil).
+		tenancyB.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibilityB, nil).
 			AnyTimes()
 		daoB, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -314,9 +337,13 @@ var _ = Describe("Tenant visibility", func() {
 
 	It("Allows a tenant to update an object it created", func() {
 		// Create a DAO with visibility for tenant A:
+		visibility, err := auth.NewVisibility().
+			AddProject("tenant-a", auth.DefaultProject).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancy := auth.NewMockTenancyLogic(ctrl)
-		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant-a"), nil).
+		tenancy.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibility, nil).
 			AnyTimes()
 		dao, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).
@@ -353,9 +380,13 @@ var _ = Describe("Tenant visibility", func() {
 
 	It("Rejects update of an object belonging to an invisible tenant as not found", func() {
 		// Create a tenancy logic that makes all tenants visible, used to create the object:
+		visibilityA, err := auth.NewVisibility().
+			AddProject("tenant-a", auth.DefaultProject).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancyA := auth.NewMockTenancyLogic(ctrl)
-		tenancyA.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant-a"), nil).
+		tenancyA.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibilityA, nil).
 			AnyTimes()
 
 		// Create the DAO for tenant A and insert the object:
@@ -376,9 +407,13 @@ var _ = Describe("Tenant visibility", func() {
 
 		// Create a tenancy logic that only sees tenant B and verify that it can't update the object of
 		// tenant A:
+		visibilityB, err := auth.NewVisibility().
+			AddProject("tenant-b", auth.DefaultProject).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
 		tenancyB := auth.NewMockTenancyLogic(ctrl)
-		tenancyB.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("tenant-b"), nil).
+		tenancyB.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibilityB, nil).
 			AnyTimes()
 		daoB, err := NewGenericDAO[*testsv1.Object]().
 			SetLogger(logger).

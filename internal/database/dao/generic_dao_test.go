@@ -30,7 +30,6 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
@@ -120,8 +119,8 @@ var _ = Describe("Generic DAO", func() {
 
 		// Create a tenancy logic without restrictions:
 		tenancy = auth.NewMockTenancyLogic(ctrl)
-		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewUniversalSet[string](), nil).
+		tenancy.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(auth.TotalVisibility, nil).
 			AnyTimes()
 
 		// Create the DAOs for tenants and projects:

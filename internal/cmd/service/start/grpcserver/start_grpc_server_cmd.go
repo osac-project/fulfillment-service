@@ -316,7 +316,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		slog.String("type", c.args.tenancyLogic),
 	)
 	var tenancyLogic auth.TenancyLogic
-	tenancyLogic, err = auth.NewDefaultTenancyLogic().
+	tenancyLogic, err = servers.NewDefaultTenancyLogic().
 		SetLogger(c.logger).
 		Build()
 	if err != nil {

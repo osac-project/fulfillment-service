@@ -63,9 +63,10 @@ var _ = Describe("Generic DAO events", func() {
 
 		// Create a tenancy logic without restrictions:
 		tenancy = auth.NewMockTenancyLogic(ctrl)
-		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(auth.AllTenants, nil).
+		tenancy.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(auth.TotalVisibility, nil).
 			AnyTimes()
+
 		// Create the tenant used in the tests:
 		tenantsDao, err := NewGenericDAO[*privatev1.Tenant]().
 			SetLogger(logger).

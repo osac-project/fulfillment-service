@@ -1189,19 +1189,15 @@ func (s *GenericServer[O]) setCreator(ctx context.Context, object O, creator str
 // being created or updated. In case of error it returns a gRPC error that can be directly returned to the client.
 func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 	requestObject, currentObject O) (result string, err error) {
-	// Check that there are visible tenants:
-	visibleTenants, err := s.tenancyLogic.DetermineVisibleTenants(ctx)
+	// Determine the visibility:
+	visibility, err := s.tenancyLogic.DetermineVisibility(ctx)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,
-			"Failed to determine visible tenants",
+			"Failed to determine visibility",
 			slog.Any("error", err),
 		)
-		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine visible tenants")
-		return
-	}
-	if visibleTenants.Empty() {
-		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no visible tenants")
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine visibility")
 		return
 	}
 
@@ -1243,7 +1239,7 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 
 	// If the request specifies a tenant, check that it is visible and assignable:
 	if requestTenant != "" {
-		if !visibleTenants.Contains(requestTenant) {
+		if !visibility.HasTenant(requestTenant) {
 			s.logger.WarnContext(
 				ctx,
 				"User is trying to assign a tenant that is invisible to them",

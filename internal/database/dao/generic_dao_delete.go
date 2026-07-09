@@ -58,17 +58,27 @@ func (r *DeleteRequest[O]) Do(ctx context.Context) (response *DeleteResponse, er
 }
 
 func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, err error) {
-	// Add the tenancy filter:
-	err = r.addTenancyFilter(ctx)
-	if err != nil {
-		return
-	}
-
-	// Add the id parameter:
+	// Check parameters:
 	if r.args.id == "" {
 		err = errors.New("object identifier is mandatory")
 		return
 	}
+
+	// Add the tenancy filter:
+	ok, err := r.addVisibilityFilter()
+	if err != nil {
+		return
+	}
+	if !ok {
+		err = &ErrNotFound{
+			IDs: []string{
+				r.args.id,
+			},
+		}
+		return
+	}
+
+	// Add the id parameter:
 	if r.sql.filter.Len() > 0 {
 		r.sql.filter.WriteString(` and`)
 	}

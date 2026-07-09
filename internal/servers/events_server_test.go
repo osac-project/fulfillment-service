@@ -31,7 +31,6 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
@@ -141,10 +140,17 @@ var _ = Describe("Events server visibility", func() {
 	}
 
 	// makeTenancy creates a mock tenancy logic returning the given visible tenants:
-	makeTenancy := func(tenants collections.Set[string]) *auth.MockTenancyLogic {
+	makeTenancy := func(tenants ...string) *auth.MockTenancyLogic {
+		builder := auth.NewVisibility()
+		builder.AddProject(auth.SharedTenant, auth.DefaultProject)
+		for _, tenant := range tenants {
+			builder.AddProject(tenant, auth.DefaultProject)
+		}
+		visibility, err := builder.Build()
+		Expect(err).ToNot(HaveOccurred())
 		mock := auth.NewMockTenancyLogic(ctrl)
-		mock.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(tenants, nil).
+		mock.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(visibility, nil).
 			AnyTimes()
 		return mock
 	}
@@ -175,9 +181,7 @@ var _ = Describe("Events server visibility", func() {
 
 	It("Delivers events when tenant is visible", func() {
 		// Send an event for a visible tenant:
-		server, client := startServer(makeTenancy(
-			collections.NewSet("tenant-a"),
-		))
+		server, client := startServer(makeTenancy("tenant-a"))
 		collector, cancel := startWatch(server, client)
 		defer cancel()
 		sendEvent(
@@ -201,9 +205,7 @@ var _ = Describe("Events server visibility", func() {
 	})
 
 	It("Filters out events when tenant is not visible", func() {
-		server, client := startServer(makeTenancy(
-			collections.NewSet("tenant-b"),
-		))
+		server, client := startServer(makeTenancy("tenant-b"))
 		collector, cancel := startWatch(server, client)
 		defer cancel()
 		sendEvent(
@@ -223,9 +225,7 @@ var _ = Describe("Events server visibility", func() {
 
 	It("Delivers only visible events when multiple are sent", func() {
 		// Send two events, one for a visible tenant and one for a non-visible tenant:
-		server, client := startServer(makeTenancy(
-			collections.NewSet("tenant-a"),
-		))
+		server, client := startServer(makeTenancy("tenant-a"))
 		collector, cancel := startWatch(server, client)
 		defer cancel()
 		sendEvent(
@@ -263,9 +263,7 @@ var _ = Describe("Events server visibility", func() {
 
 	It("Delivers event with cluster payload", func() {
 		// Send an event with cluster payload:
-		server, client := startServer(makeTenancy(
-			collections.NewSet("tenant-a"),
-		))
+		server, client := startServer(makeTenancy("tenant-a"))
 		collector, cancel := startWatch(server, client)
 		defer cancel()
 		sendEvent(
@@ -290,9 +288,7 @@ var _ = Describe("Events server visibility", func() {
 
 	It("Delivers event with compute instance payload", func() {
 		// Send an event with compute instance payload:
-		server, client := startServer(makeTenancy(
-			collections.NewSet("tenant-a"),
-		))
+		server, client := startServer(makeTenancy("tenant-a"))
 		collector, cancel := startWatch(server, client)
 		defer cancel()
 		sendEvent(

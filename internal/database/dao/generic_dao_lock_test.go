@@ -25,7 +25,6 @@ import (
 
 	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
@@ -65,8 +64,8 @@ var _ = Describe("Lock", func() {
 
 		// Create a tenancy logic without restrictions:
 		tenancy := auth.NewMockTenancyLogic(ctrl)
-		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewUniversalSet[string](), nil).
+		tenancy.EXPECT().DetermineVisibility(gomock.Any()).
+			Return(auth.TotalVisibility, nil).
 			AnyTimes()
 		DeferCleanup(ctrl.Finish)
 

@@ -31,10 +31,9 @@ type TenancyLogic interface {
 	// without an explicit tenant in the request.
 	DetermineDefaultTenant(ctx context.Context) (string, error)
 
-	// DetermineVisibleTenants calculates and returns the list of tenant names that the current user has permission
-	// to see. Database queries will be filtered to only return objects where the tenants column has a non-empty
-	// intersection with the values returned by this method.
-	DetermineVisibleTenants(ctx context.Context) (collections.Set[string], error)
+	// DetermineVisibility calculates and returns the visibility of the current user. The returned visibility is
+	// frozen and must not be modified.
+	DetermineVisibility(ctx context.Context) (*Visibility, error)
 }
 
 // SystemTenant is the tenant that is assigned to objects that are only visible to the system.
@@ -51,3 +50,6 @@ var SharedTenants = collections.NewSet(SharedTenant)
 
 // AllTenants is the set of all tenants that are possible.
 var AllTenants = collections.NewUniversalSet[string]()
+
+// DefaultProject is the default project of a tenant.
+const DefaultProject = ""
