@@ -118,7 +118,7 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		// Go validation enforces DNS subdomain format (max 63 chars per segment)
 		Expect(status.Message()).To(ContainSubstring("metadata.labels"))
-		Expect(status.Message()).To(ContainSubstring("must be at most 63 characters"))
+		Expect(status.Message()).To(ContainSubstring("must be between 1 and 63 characters long"))
 	})
 
 	It("Accepts Tenant with valid metadata", func() {
@@ -457,6 +457,6 @@ var _ = Describe("Protovalidate validation", func() {
 		Expect(ok).To(BeTrue())
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		Expect(status.Message()).To(ContainSubstring("metadata.labels"))
-		Expect(status.Message()).To(ContainSubstring("must be at most 63 characters"))
+		Expect(status.Message()).To(ContainSubstring("must be between 1 and 63 characters long"))
 	})
 })
