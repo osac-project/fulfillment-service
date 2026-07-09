@@ -48,6 +48,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/externalipattachment"
 	"github.com/osac-project/fulfillment-service/internal/controllers/externalippool"
 	"github.com/osac-project/fulfillment-service/internal/controllers/identityprovider"
+	"github.com/osac-project/fulfillment-service/internal/controllers/natgateway"
 	"github.com/osac-project/fulfillment-service/internal/controllers/onboarding"
 	"github.com/osac-project/fulfillment-service/internal/controllers/project"
 	"github.com/osac-project/fulfillment-service/internal/controllers/projectmembership"
@@ -822,6 +823,43 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			r.logger.InfoContext(
 				ctx,
 				"External IP attachment reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the NAT gateway reconciler:
+	r.logger.InfoContext(ctx, "Creating NAT gateway reconciler")
+	natGatewayReconcilerFunction, err := natgateway.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create NAT gateway reconciler function: %w", err)
+	}
+	natGatewayReconciler, err := controllers.NewReconciler[*privatev1.NATGateway]().
+		SetLogger(r.logger).
+		SetName("nat_gateway").
+		SetClient(r.client).
+		SetFunction(natGatewayReconcilerFunction).
+		SetEventFilter("has(event.nat_gateway) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create NAT gateway reconciler: %w", err)
+	}
+
+	// Start the NAT gateway reconciler:
+	r.logger.InfoContext(ctx, "Starting NAT gateway reconciler")
+	go func() {
+		err := natGatewayReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "NAT gateway reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"NAT gateway reconciler failed",
 				slog.Any("error", err),
 			)
 		}

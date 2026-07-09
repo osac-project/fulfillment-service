@@ -269,8 +269,8 @@ github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJw
 github.com/opencontainers/image-spec v1.1.1/go.mod h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=
 github.com/osac-project/bare-metal-fulfillment-operator v0.0.8 h1:TutJkRIpsWeDQnXjW/Q4eJZgVdP/eM+Te4KqKl0s5xk=
 github.com/osac-project/bare-metal-fulfillment-operator v0.0.8/go.mod h1:LJGnVRRKpI733XgICpxR/sI4vFhj+WEiej9o4SFnWXo=
-github.com/osac-project/osac-operator/api v0.0.6 h1:JgAknP81QsPFST0P7lzntCu1y1siQsuHbb+WuUy5o/g=
-github.com/osac-project/osac-operator/api v0.0.6/go.mod h1:wcH0RYPhb97nJqXAURseGHELe9Oeo7YgsYixMjlBJCw=
+github.com/osac-project/osac-operator/api v0.0.7 h1:NXyrjPkJhg2DK3rXkbR+g5+xHwTOV+WuHcWjKqVmpYo=
+github.com/osac-project/osac-operator/api v0.0.7/go.mod h1:wcH0RYPhb97nJqXAURseGHELe9Oeo7YgsYixMjlBJCw=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

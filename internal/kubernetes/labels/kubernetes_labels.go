@@ -63,6 +63,9 @@ var ExternalIPUuid = fmt.Sprintf("%s/%s", group, "externalip-uuid")
 // ExternalIPAttachmentUuid is the label where the fulfillment API will write the identifier of the external IP attachment.
 var ExternalIPAttachmentUuid = fmt.Sprintf("%s/%s", group, "externalipattachment-uuid")
 
+// NATGatewayUuid is the label where the fulfillment API will write the identifier of the NAT gateway.
+var NATGatewayUuid = fmt.Sprintf("%s/%s", group, "natgateway-uuid")
+
 // TenantUuid is the label where the fulfillment API will write the identifier of the tenant.
 var TenantUuid = fmt.Sprintf("%s/%s", group, "tenant-uuid")
 
