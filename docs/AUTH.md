@@ -1,21 +1,17 @@
 # Keycloak Setup and Configuration Guide
 
-This guide explains how to set up Keycloak as an Identity Provider (IDP) for the fulfillment service
+This guide explains how to set up Keycloak as an Identity Provider (IDP) broker for the fulfillment service
 and configure the necessary mappings and authorization rules.
 
-> **Note**: While this guide focuses on Keycloak (including deployment steps using the provided Helm
-> chart), the fulfillment service is designed to work with **any OAuth-compatible Identity
-> Provider**. The service only requires:
+> **Note**: The fulfillment service uses Keycloak as the identity provider broker.
+> The Keycloak setup requires:
 >
 > - A valid OAuth issuer URL
-> - JWT tokens containing a username claim (`preferred_username` or `username`) and optionally
->   tenant claims (`organization`, `organizations`, or `groups`)
+> - JWT tokens containing a username claim (`preferred_username` or `username`)
+> - JWT tokens containing an `organization` claim for tenant membership (required to create objects)
 > - The ability to validate tokens using the issuer's public keys
 >
-> If you're using a different OAuth IDP (such as Okta, Auth0, Azure AD, Google Identity, etc.), you
-> can skip the Keycloak installation sections and proceed directly to the [Fulfillment Service
-> Configuration](#fulfillment-service-configuration) section, adapting the configuration steps to
-> your IDP's specific requirements.
+
 
 ## Table of Contents
 
@@ -353,16 +349,18 @@ The fulfillment service maintains a single list of trusted token issuers, config
 
 ## User and Group Mapping
 
-The fulfillment service maps users and groups from Keycloak (or any OAuth IDP) to its internal user
+The fulfillment service maps users and groups from Keycloak to its internal user
 and tenant concepts.
 
 ### Key Concepts
 
 - **Users**: Represent individual authenticated entities (users or service accounts)
-- **Tenants**: Represent groups of users. In Keycloak, these map to **groups**, but the fulfillment
+- **Tenants**: Represent groups of users. In Keycloak, these map to **Organizations**, but the fulfillment
   service refers to them as **tenants**
 - **Organizations**: The fulfillment service does **not** have an explicit "organization" concept.
   Organizations and tenants are defined and managed in the external identity provider (Keycloak)
+- **Projects**: Represents hierarchical directories within a **tenant**. It groups objects together, and provides
+  a boundary to allow certain groups of users to view those objects. In Keycloak, this maps to **Organization Groups**.
 
 ### Subject Resolution
 
@@ -370,11 +368,13 @@ The mapping from authentication details to the fulfillment service's internal `u
 fields is performed by the service's built-in authentication and authorization interceptors.
 
 For JWT-authenticated users, the `user` is taken from the `preferred_username` claim (falling back
-to `username` if not present). The `tenants` are resolved in the following priority order:
+to `username` if not present). The `tenants` are resolved from the **`organization` claim** (from
+Keycloak Organizations when the user belongs to an organization). This claim can be in two formats:
+- Array format: `["org-name"]`
+- Object format: `{"org-name": {"groups": [...]}}`
 
-1. **`organization` claim** — from Keycloak Organizations (when the user belongs to an organization)
-2. **`organizations` claim** — plural form (alternative format)
-3. **`groups` claim** — fallback when neither organization claim is present
+JWT users without an `organization` claim will have an empty tenant list and **cannot create objects**
+(they can only view objects in the `shared` tenant).
 
 For Kubernetes service accounts, the namespace is used as the tenant and the short service account
 name as the user.
@@ -385,36 +385,31 @@ For admin users (those matching `emergency_service_accounts`, `admin_service_acc
 The authorization rules are implemented via the built-in Rego policy in the gRPC authorization
 interceptor.
 
-### Configuring Keycloak to Include Groups in Tokens
+### Configuring Keycloak Organizations
 
-To ensure that user groups are included in the JWT tokens issued by Keycloak:
+The fulfillment service relies on Keycloak Organizations to provide tenant membership via the
+`organization` claim in JWT tokens. The pre-configured `osac` realm includes an
+`oidc-organization-membership-mapper` that automatically adds this claim when a user belongs to an
+organization.
+
+To configure organization membership:
 
 1. **Access the Keycloak Admin Console**
    (see [Accessing Keycloak Admin Console](#accessing-keycloak-admin-console))
 
-2. **Navigate to the Client**:
-   - Go to **Clients** → Select your client (e.g., `osac-cli`)
+2. **Create Organizations**:
+   - Go to **Organizations** (in the left menu)
+   - Click **Create organization**
+   - Set the organization name (this becomes the tenant name in the fulfillment service)
+   - Create as many organizations as needed
 
-3. **Configure Client Scopes**:
-   - Go to **Client scopes** tab
-   - Ensure the `groups` scope is assigned to the client
-   - Or create a custom mapper to include groups in the token
+3. **Add Users to Organizations**:
+   - Go to **Organizations** → Select an organization → **Members** tab
+   - Click **Add member** and select users to add
+   - **Note**: In Keycloak, a user can only be a member of one organization at a time
 
-4. **Create a Group Mapper** (if needed):
-   - Go to **Client scopes** → `groups` → **Mappers** tab
-   - Click **Add mapper** → **By configuration**
-   - Select **Group Membership** mapper
-   - Configure:
-     - **Name**: `groups`
-     - **Token Claim Name**: `groups`
-     - **Full group path**: `false` (or `true` if you want full
-       paths like `/tenant-a/team-1`)
-     - **Add to access token**: `true`
-     - **Add to ID token**: `true` (if needed)
-
-5. **Assign Users to Groups**:
-   - Go to **Users** → Select a user → **Groups** tab
-   - Assign the user to the appropriate groups (these will become tenants)
+The `organization` claim will be automatically included in JWT tokens for users who are members of
+organizations.
 
 ## Tenancy Logic
 
@@ -450,9 +445,9 @@ fulfillment service. Valid values are `default` and `guest`.
    to the system itself. Resources assigned to the `system` tenant are not visible to regular users.
    This is used internally for system-level resources.
 
-3. **Multi-Tenant Users**: A user can belong to multiple tenants. This is configured in Keycloak by
-   assigning the user to multiple groups. The fulfillment service will reflect this in the
-   assignable and visible tenant sets. However, each resource is assigned to exactly one tenant.
+3. **Single-Organization Limitation**: In Keycloak, a user can only be a member of one organization
+   at a time. This means JWT users have access to exactly one tenant (plus the `shared` tenant for
+   visibility). Each resource is assigned to exactly one tenant.
 
 4. **Tenant Assignment**: When a user creates a resource:
 
@@ -486,14 +481,14 @@ JWT token claims (see [Subject Resolution](#subject-resolution)).
   universal set, all tenants are visible.
 
 Example with a JWT user:
-- User `alice` belongs to groups: `["team-a", "team-b"]`
-- The service maps these groups into tenants: `["team-a", "team-b"]`
-- Assignable tenants: `["team-a", "team-b"]`
+- User `alice` is a member of Keycloak organization: `"team-a"`
+- The service receives this as the `organization` claim: `["team-a"]`
+- Assignable tenants: `["team-a"]`
 - Default tenant: `"team-a"`
 - When `alice` creates a cluster without specifying a tenant:
   - The cluster is assigned to tenant: `"team-a"`
 - When `alice` lists clusters:
-  - She can see clusters from: `["team-a", "team-b", "shared"]`
+  - She can see clusters from: `["team-a", "shared"]`
 
 Example with a service account:
 - Service account `system:serviceaccount:osac:client`
@@ -527,26 +522,13 @@ Example:
 
 ### Configuring Tenancy in Keycloak
 
-To configure multi-tenant access in Keycloak:
-
-1. **Create Groups** (these become tenants):
-   - Go to **Groups** → **Create group**
-   - Name the group (e.g., `team-a`, `tenant-1`, `organization-1`)
-   - Create as many groups as needed
-
-2. **Assign Users to Groups**:
-   - Go to **Users** → Select a user → **Groups** tab
-   - Click **Join group** and select the groups the user should belong to
-   - A user can belong to multiple groups
-
-3. **Configure Group Mapper** (as described in [Configuring
-   Keycloak to Include Groups in
-   Tokens](#configuring-keycloak-to-include-groups-in-tokens))
+To configure multi-tenant access in Keycloak, use Keycloak Organizations as described in
+[Configuring Keycloak Organizations](#configuring-keycloak-organizations). Each organization
+becomes a tenant in the fulfillment service.
 
 ### Future Enhancements
 
 Future enhancements may include:
-- Support for an additional "organization" layer (requiring development)
 - Custom tenant naming conventions
 - Additional tenancy logic implementations for specific use cases
 
@@ -577,8 +559,7 @@ The authorization policy distinguishes between the following subject categories:
    role. They inherit all client permissions. When IdP management APIs are implemented, they will
    also gain access to those methods.
 
-4. **Client Subjects**: All other authenticated users (JWT tokens from Keycloak or other service
-   accounts that are not admin, tenant-admin, or tenant-idp-manager).
+4. **Client Subjects**: All other authenticated users (JWT tokens from Keycloak that are not admin, tenant-admin, or tenant-idp-manager).
 
 ### Authorization Logic
 
@@ -666,11 +647,10 @@ The fulfillment service uses built-in gRPC interceptors for authentication and a
 ### Step-by-Step Authorization Process
 
 1. **User Authentication**:
-   - User logs in through Keycloak (OAuth IDP) using `osac login`
+   - User logs in through Keycloak using `osac login`
    - Receives a JWT access token containing:
      - Username (`preferred_username` claim, falling back to `username`)
-     - Tenant source (resolved in priority order): `organization` claim, then `organizations`,
-       then `groups` as a fallback
+     - Tenant membership from the `organization` claim (from Keycloak Organizations)
      - Realm roles (`realm_access.roles`) — used for tenant-admin / IdP-manager authorization
      - Audience (`aud: "osac-api"`) — API audience claim
 
