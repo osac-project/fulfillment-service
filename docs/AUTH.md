@@ -156,8 +156,7 @@ The realm includes the following roles used by the authorization policy:
 | Role | Description |
 |------|-------------|
 | `tenant-admin` | Tenant administrator with full user and IdP management permissions |
-| `tenant-user-manager` | Tenant user manager with user management permissions |
-| `tenant-idp-manager` | Tenant IdP manager with IdP configuration and role assignment permissions |
+| `tenant-idp-manager` | Tenant IdP manager with IdP configuration permissions only (no user management) |
 
 Assign these roles to users via the Keycloak Admin Console under **Users** → Select user →
 **Role mapping** tab.
@@ -551,13 +550,14 @@ The authorization policy distinguishes between the following subject categories:
      (e.g., `service-account-osac-admin`, `service-account-osac-controller`)
    - **Admin groups**: Users belonging to admin groups (e.g., the `admins` group)
 
-2. **Tenant Admin Subjects**: Users with the `tenant-admin` or `tenant-user-manager` realm role.
+2. **Tenant Admin Subjects**: Users with the `tenant-admin` realm role.
    They inherit all client permissions **plus** access to user management methods
-   (`Users/Create`, `Users/Get`, `Users/List`, `Users/Update`, `Users/Delete`).
+   (`Users/Create`, `Users/Get`, `Users/List`, `Users/Update`, `Users/Delete`) and IdP management
+   methods (`IdentityProviders/Create`, `Get`, `List`, `Update`, `Delete`).
 
-3. **Tenant IdP Manager Subjects**: Users with the `tenant-admin` or `tenant-idp-manager` realm
-   role. They inherit all client permissions. When IdP management APIs are implemented, they will
-   also gain access to those methods.
+3. **Tenant IdP Manager Subjects**: Users with the `tenant-idp-manager` realm role.
+   They inherit all client permissions **plus** access to IdP management methods
+   (`IdentityProviders/Create`, `Get`, `List`, `Update`, `Delete`). They cannot manage users.
 
 4. **Client Subjects**: All other authenticated users (JWT tokens from Keycloak that are not admin, tenant-admin, or tenant-idp-manager).
 
@@ -597,10 +597,133 @@ The authorization policy allows:
 4. **Admin Users**:
    - All methods (full access)
 
+### Authorization Levels
+
+The fulfillment service implements a comprehensive authorization model that combines OPA policy (method-level authorization), application-layer logic (resource-level filtering via tenancy), and Keycloak group membership (project-level RBAC). The following authorization levels are defined:
+
+#### 1. Admin (`is_admin`)
+
+**Who qualifies:**
+- Emergency service accounts (configured externally via `--grpc-authz-opa-emergency-service-accounts`)
+- Admin service accounts: `service-account-osac-admin`, `service-account-osac-controller`
+- Members of the `admins` group
+
+**Tenancy:** Universal tenant access (`*` - all tenants)
+
+**Permissions:** Full access to all methods (see `is_admin` rule in `authz.rego`)
+
+#### 2. Tenant Admin (`is_tenant_admin`)
+
+**Who qualifies:** Users with realm role: `tenant-admin`
+
+**Tenancy:** Scoped to their assigned tenant(s)
+
+**Permissions:**
+- All client-level permissions (inherits from `has_client_permissions`)
+- User management (Create/Get/List/Update/Delete users within their tenant)
+- IdP management (Full CRUD on IdentityProviders within their tenant)
+- Bare-metal catalog item management (Create/Update/Delete tenant-scoped catalog items)
+- Project creation
+
+**Note:** Tenant admins can manage both users AND IdP configuration.
+
+#### 3. Tenant IdP Manager (`is_tenant_idp_manager`)
+
+**Who qualifies:** Users with realm role: `tenant-idp-manager`
+
+**Tenancy:** Scoped to their assigned tenant(s)
+
+**Permissions:**
+- All client-level permissions (inherits from `has_client_permissions`)
+- IdP management (Full CRUD on IdentityProviders within their tenant)
+
+**Note:** Tenant IdP managers can ONLY manage IdP configuration, NOT users (unlike tenant admins).
+
+#### 4. Project Manager
+
+**Who qualifies:** JWT users with organization group matching `/<project-name>/system:managers`
+
+**Authorization:** Enforced via OPA policy (see project Update/Delete authorization rule in `authz.rego`)
+
+**Permissions:**
+- Project Update and Delete for their specific project
+- All Project Viewer permissions
+
+**Implementation:** Project groups are created in Keycloak when a project is created. The `ProjectGroupManager` in `internal/idp/project_group_manager.go` handles group lifecycle (create, delete, user membership).
+
+#### 5. Project Viewer
+
+**Who qualifies:** JWT users with organization group matching `/<project-name>/system:viewers`
+
+**Authorization:** Enforced via OPA policy (see project Get authorization rule in `authz.rego`)
+
+**Permissions:**
+- Project Get for their specific project
+
+#### 6. Client (`is_client`)
+
+**Who qualifies:** Regular authenticated users (not admin, tenant admin, or tenant IdP manager)
+
+**Tenancy:** Scoped to their assigned tenant(s) + shared tenant
+
+**Permissions:** Read/write access to infrastructure resources:
+- Bare-metal instances, clusters, compute instances
+- Networking (virtual networks, subnets, network classes, security groups)
+- IPs (public IPs, external IPs, and their attachments/pools)
+- Templates and catalog items (read-only)
+- Console sessions, events, host types, instance types
+- Roles and role bindings (read-only)
+- Projects (List only, with results filtered by membership)
+
+#### 7. Guest
+
+**Who qualifies:** Unauthenticated users (when using `--tenancy-logic=guest`)
+
+**Tenancy:** `guest` + `shared` tenants only
+
+**Permissions:** Limited to shared resources visible to the guest tenant
+
+### Authorization Constraints
+
+The authorization system enforces several additional constraints beyond role-based access control:
+
+#### Tenancy Constraints
+
+- **System Tenant:** Reserved for system-only objects (not visible to regular users)
+- **Shared Tenant:** Always visible to all authenticated users (used for read-only catalog items, templates)
+- **Default Tenancy Logic:** Users inherit tenants from JWT `organization` claim or service account groups
+- **Assignable Tenants:** Users can only assign objects to tenants they belong to
+- **Visible Tenants:** Users see objects from their tenants + shared tenant
+- **Admin Default Tenant:** When admins have universal tenant access (`*`), the default tenant is `shared` (cannot store universal set in database)
+
+#### Attribution Constraints
+
+- **Default Attribution:** Creator = User ID (resolved from username via `UserIDResolver`)
+- **Fallback:** If user doesn't exist in database, creator = username (for service accounts)
+- **System Attribution:** Private API uses `"system"` as creator for all objects
+- **JIT Provisioning:** Users automatically provisioned on first access if they have exactly one tenant (excludes system/shared tenants)
+
+The JIT provisioning interceptor (`grpc_jit_provisioning_interceptor.go`) runs after authentication and authorization, creating user records in the database for users who have been granted access.
+
+#### Project-Level Authorization
+
+- **Group Hierarchy:** Projects create Keycloak groups `/<project-name>/system:viewers` and `/<project-name>/system:managers`
+- **Group Management:** Tenant admins can create projects, which triggers group creation in Keycloak via the `ProjectGroupManager`
+- **Group Membership:** Users added to project groups get viewer or manager permissions
+- **OPA Enforcement:** Project Get/Update/Delete methods check organization groups in JWT claims
+- **Application-Layer Filtering:** Project List filters results based on actual group memberships
+
+#### Special Cases
+
+- **Service Accounts:** Use groups as tenants, username format `system:serviceaccount:namespace:name`
+- **Emergency Accounts:** Configured externally, bypass normal auth (for disaster recovery)
+- **Multi-tenant Users:** Users can belong to multiple tenants (e.g., cloud provider admins)
+- **Zero-tenant Users:** Cannot create objects (enforced in `DetermineAssignableTenants`)
+
 ### Customizing Authorization Rules
 
 To modify authorization rules, edit the Rego policy embedded in the authorization interceptor at
-`internal/auth/`. Example: To add a new allowed method for client users, add it to the
+`internal/auth/policies/authz.rego`. Example: To add a new allowed method for client users, add it to the
 `has_client_permissions` rule:
 
 ```rego
@@ -755,13 +878,16 @@ reads roles from the `realm_access.roles` claim in JWT tokens.
    - Have full access to all operations
 
 2. **Tenant Admin Users**:
-   - Users with the `tenant-admin` or `tenant-user-manager` realm role
+   - Users with the `tenant-admin` realm role
    - Have all client permissions plus user management (`Users/Create`, `Get`, `List`, `Update`, `Delete`)
-   - Access is restricted by tenancy (can only manage users within their tenants)
+     and IdP management (`IdentityProviders/Create`, `Get`, `List`, `Update`, `Delete`)
+   - Access is restricted by tenancy (can only manage users and IdP within their tenants)
 
 3. **Tenant IdP Manager Users**:
-   - Users with the `tenant-admin` or `tenant-idp-manager` realm role
-   - Have all client permissions (IdP management APIs will be added in the future)
+   - Users with the `tenant-idp-manager` realm role
+   - Have all client permissions plus IdP management (`IdentityProviders/Create`, `Get`, `List`, `Update`, `Delete`)
+   - Cannot manage users (unlike tenant admins)
+   - Access is restricted by tenancy (can only manage IdP within their tenants)
 
 4. **Client Users**:
    - All other authenticated users
@@ -775,7 +901,7 @@ The pre-configured realm includes the roles needed by the authorization policy. 
 1. **Assign Roles to Users**:
    - Go to **Users** → Select user → **Role mapping** tab
    - Click **Assign role**
-   - Select one of: `tenant-admin`, `tenant-user-manager`, `tenant-idp-manager`
+   - Select one of: `tenant-admin`, `tenant-idp-manager`
 
 2. **Roles are included in tokens automatically**: The `roles` client scope (included in
    `osac-cli` default scopes) maps realm roles into the `realm_access.roles` claim in access
@@ -796,7 +922,7 @@ Access the Keycloak Admin Console and verify:
 - The `osac` realm exists
 - The `osac-cli` client is configured with the correct default scopes
 - Organizations are enabled
-- Realm roles (`tenant-admin`, `tenant-user-manager`, `tenant-idp-manager`) exist
+- Realm roles (`tenant-admin`, `tenant-idp-manager`) exist
 
 ### 3. Verify Fulfillment Service Configuration
 

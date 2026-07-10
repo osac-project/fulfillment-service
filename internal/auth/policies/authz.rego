@@ -36,7 +36,6 @@ admin_groups := {
 # Tenant admin roles - users with these roles can manage users in their tenant
 tenant_admin_roles := {
   "tenant-admin",
-  "tenant-user-manager",
 }
 
 # Tenant IdP manager roles - users with these roles can manage IdP config and assign roles
