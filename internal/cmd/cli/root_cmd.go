@@ -34,6 +34,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/logout"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/tenant"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/version"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/whoami"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -106,6 +107,7 @@ func Root() (result *cobra.Command, err error) {
 	result.AddCommand(logout.Cmd())
 	result.AddCommand(tenant.Cmd())
 	result.AddCommand(version.Cmd())
+	result.AddCommand(whoami.Cmd())
 
 	// Configure the root command, and therefore all its subcommands, to use Markdown for their help output:
 	help.Setup(result)
