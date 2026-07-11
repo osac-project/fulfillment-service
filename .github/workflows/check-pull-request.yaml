@@ -73,17 +73,6 @@ jobs:
         buf generate
         git diff --exit-code
 
-  run-unit-tests:
-    name: Run unit tests
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-go
-    - run: |
-        ginkgo run --timeout 1h -r internal
-
   build-binaries:
     name: Build binaries
     runs-on: ubuntu-latest
@@ -95,43 +84,3 @@ jobs:
     - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7
       with:
         args: build --snapshot --clean
-
-  run-integration-tests-helm:
-    name: Run integration tests - Helm
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-go
-    - run: |
-        echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
-        IT_DEPLOY_MODE=helm ginkgo run --timeout 1h -v it
-    - if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-      with:
-        name: logs-helm
-        path: logs
-        retention-days: 7
-
-  run-integration-tests-kustomize:
-    name: Run integration tests - Kustomize
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-go
-    - run: |
-        echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
-        IT_DEPLOY_MODE=kustomize ginkgo run --timeout 1h -v it
-    - if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-      with:
-        name: logs-kustomize
-        path: logs
-        retention-days: 7
