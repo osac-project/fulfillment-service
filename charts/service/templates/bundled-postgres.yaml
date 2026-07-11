@@ -27,4 +27,150 @@ spec:
   secretName: postgres-client-cert-service
   privateKey:
     rotationPolicy: Always
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: postgres-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fulfillment-service.labels" . | nindent 4 }}
+spec:
+  issuerRef:
+    kind: {{ .Values.certs.issuerRef.kind }}
+    name: {{ .Values.certs.issuerRef.name }}
+  dnsNames:
+  - localhost
+  - postgres
+  - postgres.{{ .Release.Namespace }}
+  - postgres.{{ .Release.Namespace }}.svc.cluster.local
+  secretName: postgres-server-cert
+  privateKey:
+    rotationPolicy: Always
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fulfillment-service.labels" . | nindent 4 }}
+data:
+  server.conf: |
+    ssl = on
+    {{- if .Values.certs.caBundle.configMap }}
+    ssl_ca_file = '/config/ca/bundle.pem'
+    {{- else }}
+    ssl_ca_file = '/secrets/cert/ca.crt'
+    {{- end }}
+    ssl_cert_file = '/secrets/cert/tls.crt'
+    ssl_key_file = '/secrets/cert/tls.key'
+    hba_file = '/config/access/access.conf'
+    fsync = off
+    full_page_writes = off
+  access.conf: |
+    local all all peer
+    hostssl all all 0.0.0.0/0 cert
+    hostssl all all ::0/0 cert
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fulfillment-service.labels" . | nindent 4 }}
+stringData:
+  init.sh: |
+    #!/bin/bash
+    psql <<'.'
+    create user {{ .Values.bundledPostgres.database.user }};
+    create database {{ .Values.bundledPostgres.database.name }} owner {{ .Values.bundledPostgres.database.user }};
+    .
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fulfillment-service.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: postgres
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: postgres
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: postgres
+    {{- include "fulfillment-service.labels" . | nindent 4 }}
+spec:
+  volumes:
+  - name: server-cert
+    secret:
+      secretName: postgres-server-cert
+      defaultMode: 0440
+  - name: config
+    configMap:
+      name: postgres-config
+  {{- if .Values.certs.caBundle.configMap }}
+  - name: ca-bundle
+    configMap:
+      name: {{ .Values.certs.caBundle.configMap }}
+  {{- end }}
+  - name: init
+    secret:
+      secretName: postgres-init
+  - name: data
+    emptyDir: {}
+  containers:
+  - name: server
+    image: {{ .Values.bundledPostgres.image | default "quay.io/sclorg/postgresql-18-c10s:latest" }}
+    imagePullPolicy: IfNotPresent
+    env:
+    - name: POSTGRESQL_USER
+      value: "default"
+    - name: POSTGRESQL_PASSWORD
+      value: ""
+    - name: POSTGRESQL_DATABASE
+      value: "default"
+    volumeMounts:
+    - name: data
+      mountPath: /var/lib/pgsql/data
+    - name: server-cert
+      mountPath: /secrets/cert
+    {{- if .Values.certs.caBundle.configMap }}
+    - name: ca-bundle
+      mountPath: /config/ca
+    {{- end }}
+    - name: config
+      mountPath: /opt/app-root/src/postgresql-cfg/server.conf
+      subPath: server.conf
+    - name: config
+      mountPath: /config/access/access.conf
+      subPath: access.conf
+    - name: init
+      mountPath: /opt/app-root/src/postgresql-init/init.sh
+      subPath: init.sh
+    ports:
+    - name: postgres
+      protocol: TCP
+      containerPort: 5432
+    livenessProbe:
+      tcpSocket:
+        port: postgres
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    readinessProbe:
+      tcpSocket:
+        port: postgres
+      initialDelaySeconds: 5
+      periodSeconds: 5
 {{- end }}
