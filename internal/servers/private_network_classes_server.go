@@ -477,6 +477,8 @@ func applyNetworkClassUpdate(base, update *privatev1.NetworkClass, mask *fieldma
 			} else {
 				base.ClearK8SManager()
 			}
+		case "defaults":
+			base.SetDefaults(update.GetDefaults())
 		default:
 			// For unknown paths, fall through - the generic handler will
 			// reject invalid paths if needed.
