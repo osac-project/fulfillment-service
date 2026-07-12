@@ -1,0 +1,159 @@
+{{- if .Values.hubAccess.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "fulfillment-service.fullname" . }}-create-hub
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fulfillment-service.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "25"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        {{- include "fulfillment-service.labels" . | nindent 8 }}
+    spec:
+      initContainers:
+      - name: wait-for-fulfillment
+        image: {{ .Values.hubAccess.cliImage | default "quay.io/openshift/origin-cli:4.20.0" }}
+        command:
+          - /bin/bash
+          - -euo
+          - pipefail
+          - -c
+          - |
+            echo "Waiting for fulfillment internal API..."
+            for i in $(seq 1 60); do
+              echo "Attempt ${i}: checking https://fulfillment-internal-api:8001/healthz"
+              if curl -skf https://fulfillment-internal-api:8001/healthz; then
+                echo ""
+                echo "Fulfillment service is ready."
+                exit 0
+              fi
+              sleep 10
+            done
+            echo "ERROR: Fulfillment service not ready after 600s"
+            exit 1
+        env:
+        - name: HOME
+          value: /tmp
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+      containers:
+      - name: create-hub
+        image: {{ .Values.hubAccess.cliImage | default "quay.io/openshift/origin-cli:4.20.0" }}
+        command:
+          - /bin/bash
+          - -euo
+          - pipefail
+          - -c
+          - |
+            NAMESPACE="{{ .Release.Namespace }}"
+            FULFILLMENT_URL="https://fulfillment-internal-api:8001"
+
+            echo "Reading hub-access token..."
+            HUB_TOKEN=$(oc get secret hub-access -n "${NAMESPACE}" \
+              -o jsonpath='{.data.token}' | base64 -d)
+            [[ -n "${HUB_TOKEN}" ]] || { echo "ERROR: hub-access secret has no token"; exit 1; }
+
+            echo "Reading cluster API server..."
+            API_SERVER="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+            echo "  API server: ${API_SERVER}"
+
+            CA_DATA=$(oc config view --minify --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+            [[ -n "${CA_DATA}" ]] || { echo "ERROR: Could not read CA data from kubeconfig"; exit 1; }
+
+            echo "Building hub kubeconfig..."
+            KUBECONFIG_CONTENT=$(cat <<KUBEEOF
+            apiVersion: v1
+            kind: Config
+            clusters:
+            - cluster:
+                certificate-authority-data: ${CA_DATA}
+                server: "${API_SERVER}"
+              name: hub
+            contexts:
+            - context:
+                cluster: hub
+                namespace: "${NAMESPACE}"
+                user: hub-access
+              name: hub
+            current-context: hub
+            users:
+            - name: hub-access
+              user:
+                token: "${HUB_TOKEN}"
+            KUBEEOF
+            )
+
+            KUBECONFIG_B64=$(echo "${KUBECONFIG_CONTENT}" | base64 -w0)
+
+            echo "Getting auth token for fulfillment API..."
+            AUTH_TOKEN=$(oc create token admin -n "${NAMESPACE}" --duration=10m)
+            [[ -n "${AUTH_TOKEN}" ]] || { echo "ERROR: Could not create admin token"; exit 1; }
+
+            echo "Checking if hub already exists..."
+            EXISTING=$(curl -skf -H "Authorization: Bearer ${AUTH_TOKEN}" \
+              "${FULFILLMENT_URL}/api/private/v1/hubs/hub" 2>&1) && HUB_EXISTS=true || HUB_EXISTS=false
+
+            if [[ "${HUB_EXISTS}" == "true" ]]; then
+              echo "Hub already exists, updating..."
+              curl -skf -X PATCH \
+                -H "Authorization: Bearer ${AUTH_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"spec\":{\"kubeconfig\":\"${KUBECONFIG_B64}\",\"namespace\":\"${NAMESPACE}\"}}" \
+                "${FULFILLMENT_URL}/api/private/v1/hubs/hub"
+              echo ""
+              echo "Hub updated."
+            else
+              echo "Creating hub..."
+              curl -skf -X POST \
+                -H "Authorization: Bearer ${AUTH_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"id\":\"hub\",\"spec\":{\"kubeconfig\":\"${KUBECONFIG_B64}\",\"namespace\":\"${NAMESPACE}\"}}" \
+                "${FULFILLMENT_URL}/api/private/v1/hubs"
+              echo ""
+              echo "Hub created."
+            fi
+        env:
+        - name: HOME
+          value: /tmp
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      serviceAccountName: hub-access
+      restartPolicy: Never
+{{- end }}
