@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "fulfillment-service.fullname" . }}-create-hub
+  name: fulfillment-create-hub
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "fulfillment-service.labels" . | nindent 4 }}
