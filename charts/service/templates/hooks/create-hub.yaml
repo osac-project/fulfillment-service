@@ -78,8 +78,8 @@ spec:
             API_SERVER="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             echo "  API server: ${API_SERVER}"
 
-            CA_DATA=$(oc config view --minify --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
-            [[ -n "${CA_DATA}" ]] || { echo "ERROR: Could not read CA data from kubeconfig"; exit 1; }
+            CA_DATA=$(base64 -w0 /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
+            [[ -n "${CA_DATA}" ]] || { echo "ERROR: Could not read CA from service account mount"; exit 1; }
 
             echo "Building hub kubeconfig..."
             KUBECONFIG_CONTENT=$(cat <<KUBEEOF
