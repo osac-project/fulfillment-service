@@ -29,8 +29,8 @@ spec:
           - |
             echo "Waiting for fulfillment internal API..."
             for i in $(seq 1 60); do
-              echo "Attempt ${i}: checking https://fulfillment-internal-api:8001/healthz"
-              if curl -skf https://fulfillment-internal-api:8001/healthz; then
+              echo "Attempt ${i}: checking http://fulfillment-ingress-proxy-metrics:8002/healthz"
+              if curl -sf http://fulfillment-ingress-proxy-metrics:8002/healthz; then
                 echo ""
                 echo "Fulfillment service is ready."
                 exit 0
