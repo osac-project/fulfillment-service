@@ -34,13 +34,13 @@ to collide. This is the same approach used by
 
 ## Legacy migrations
 
-Migrations 0–63 use the original sequential numbering. They are kept
+Migrations 0–76 use the original sequential numbering. They are kept
 as-is to avoid breaking deployed databases that track the current
-version in `schema_migrations`. Since `20260625... > 63`, golang-migrate
+version in `schema_migrations`. Since `20260625... > 76`, golang-migrate
 orders them correctly after the legacy files.
 
 ## CI enforcement
 
 The unit test in `database_migrations_test.go` enforces that any
-migration with a number > 63 uses the 14-digit timestamp format. PRs
+migration with a number > 76 uses the 14-digit timestamp format. PRs
 with incorrectly named migration files will fail CI.

@@ -87,7 +87,7 @@ var _ = Describe("Migrations", func() {
 		legacyPattern := regexp.MustCompile(`^(\d{1,4})_[a-z][a-z0-9_]*[a-z0-9]\.(up|down)\.sql$`)
 		timestampPattern := regexp.MustCompile(`^(\d{14})_[a-z][a-z0-9_]*[a-z0-9]\.(up|down)\.sql$`)
 
-		const lastSequentialMigration = 63
+		const lastSequentialMigration = 76
 
 		var violations []string
 		for _, file := range files {
