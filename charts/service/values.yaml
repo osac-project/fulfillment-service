@@ -51,33 +51,11 @@ auth:
   # This defines the URL of the OAuth issuer used for authentication. This parameter is mandatory.
   issuerUrl:
 
-  # List of sources for the OAuth client credentials used by the controller to authenticate to the fulfillment API.
-  # The controller uses the OAuth client credentials flow with the issuer URL specified in `auth.issuerUrl`.
-  #
-  # Each entry maps keys from a ConfigMap or Secret to named credential parameters. Each item has a 'key' field that
-  # indicates the name of the key in the ConfigMap (or Secret) and a 'param' field indicating the name of the
-  # credential parameter.
-  #
-  # The supported parameter names are:
-  #
-  # - `client-id`     - The OAuth client identifier.
-  # - `client-secret` - The OAuth client secret.
-  #
-  # For example, if the client identifier and secret are stored in a Secret named `controller-credentials` in keys
-  # named `id` and `secret`, the configuration would look like this:
-  #
-  #   auth:
-  #     controllerCredentials:
-  #     - secret:
-  #         name: controller-credentials
-  #         items:
-  #         - key: id
-  #           param: client-id
-  #         - key: secret
-  #           param: client-secret
-  #
-  # The keys of the ConfigMap and Secret don't need to match the parameter names. In the above example the client
-  # identifier is in an `id` key but the credential parameter name is `client-id`.
+  # Create a Secret named fulfillment-controller-credentials with OAuth client
+  # credentials for the fulfillment controller. When create is true, the chart
+  # renders the Secret with client-id and client-secret keys. The controller
+  # deployment mounts this Secret via auth.controllerCredentials (a list of
+  # ConfigMap/Secret sources passed from the umbrella chart).
   controllerCredentialsSecret:
     create: false
     clientId: ""
