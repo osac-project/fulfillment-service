@@ -67,4 +67,27 @@ var _ = Describe("CLI Error Handling", Label("cli", "errors"), func() {
 		Expect(combinedOutput).ToNot(ContainSubstring("goroutine"), "version should not produce a stack trace")
 		_ = exitCode
 	})
+
+	It("Delete nonexistent resource shows message", func(ctx context.Context) {
+		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		Expect(exitCode).To(Equal(0), "login should succeed")
+
+		stdout, stderr, exitCode := tool.RunCLI(ctx, homeDir,
+			"delete", "computeinstance", "00000000-0000-0000-0000-000000000000",
+		)
+		combinedOutput := stdout + stderr
+		Expect(combinedOutput).ToNot(ContainSubstring("runtime error"), "should not panic")
+		Expect(combinedOutput).ToNot(ContainSubstring("goroutine"), "should not dump stack trace")
+	})
+
+	It("Invalid output format is rejected", func(ctx context.Context) {
+		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		Expect(exitCode).To(Equal(0), "login should succeed")
+
+		_, stderr, exitCode := tool.RunCLI(ctx, homeDir,
+			"get", "computeinstance", "-o", "invalid",
+		)
+		Expect(exitCode).ToNot(Equal(0), "invalid output format should fail")
+		Expect(stderr).To(ContainSubstring("unknown output format"))
+	})
 })

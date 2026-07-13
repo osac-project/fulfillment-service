@@ -15,6 +15,7 @@ package it
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -103,5 +104,45 @@ var _ = Describe("CLI Authentication", Label("cli", "auth"), func() {
 		Expect(stderr).ToNot(BeEmpty(), "should produce an error message")
 		Expect(stderr).ToNot(ContainSubstring("runtime error"), "should not panic")
 		Expect(stderr).ToNot(ContainSubstring("goroutine"), "should not dump stack trace")
+	})
+
+	It("Login with token-script succeeds", func(ctx context.Context) {
+		script := fmt.Sprintf(
+			"kubectl create token -n osac %s --kubeconfig %s --duration 1h",
+			emergencyServiceAccount, tool.KubeconfigFile(),
+		)
+		_, _, exitCode := tool.LoginCLIWithTokenScript(ctx, homeDir, script)
+		Expect(exitCode).To(Equal(0), "token-script login should succeed")
+
+		_, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "computeinstance")
+		Expect(exitCode).To(Equal(0), "get should succeed after token-script login")
+	})
+
+	It("Re-login replaces stored credentials", func(ctx context.Context) {
+		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		Expect(exitCode).To(Equal(0), "first login should succeed")
+
+		_, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "computeinstance")
+		Expect(exitCode).To(Equal(0), "get should succeed after first login")
+
+		// Re-login with different credentials replaces the stored session
+		_, _, exitCode = tool.LoginCLI(ctx, homeDir, userUsername, usersPassword)
+		Expect(exitCode).To(Equal(0), "re-login should succeed")
+
+		_, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "computeinstance")
+		Expect(exitCode).To(Equal(0), "get should succeed after re-login")
+	})
+
+	It("Login with bad token-script fails gracefully", func(ctx context.Context) {
+		stdout, stderr, exitCode := tool.LoginCLIWithTokenScript(ctx, homeDir, "echo not-a-valid-jwt")
+		combinedOutput := stdout + stderr
+
+		Expect(combinedOutput).ToNot(ContainSubstring("runtime error"), "should not panic")
+		Expect(combinedOutput).ToNot(ContainSubstring("goroutine"), "should not dump stack trace")
+
+		if exitCode == 0 {
+			_, _, apiExitCode := tool.RunCLI(ctx, homeDir, "get", "computeinstance")
+			Expect(apiExitCode).ToNot(Equal(0), "API call with invalid token should fail")
+		}
 	})
 })
