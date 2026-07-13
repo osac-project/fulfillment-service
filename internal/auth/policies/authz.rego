@@ -198,6 +198,8 @@ allow if {
     "/osac.public.v1.Clusters/GetPasswordViaHttp",
     "/osac.public.v1.Clusters/List",
     "/osac.public.v1.Clusters/Update",
+    "/osac.public.v1.ComputeInstanceCatalogItems/Get",
+    "/osac.public.v1.ComputeInstanceCatalogItems/List",
     "/osac.public.v1.ComputeInstanceTemplates/Get",
     "/osac.public.v1.ComputeInstanceTemplates/List",
     "/osac.public.v1.ComputeInstances/Create",
