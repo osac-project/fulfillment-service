@@ -49,7 +49,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: 5
-  activeDeadlineSeconds: 300
+  activeDeadlineSeconds: 900
   template:
     metadata:
       labels:
