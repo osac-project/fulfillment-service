@@ -44,6 +44,14 @@ message ClusterSpec {
   string catalog_item = 8;
 
   // Network attachment connecting this cluster to a tenant subnet.
+  //
+  // When provided, all node sets of the cluster will be connected to the specified subnet. Only one network attachment
+  // is supported per cluster.
+  //
+  // When not provided, the system will populate this field with the tenant's default subnet and security groups during
+  // cluster creation.
+  //
+  // The `subnet` field is immutable after creation. The `security_groups` field can be updated.
   ClusterNetworkAttachment network_attachment = 9;
 }
 
@@ -88,9 +96,23 @@ enum ClusterConditionType {
   CLUSTER_CONDITION_TYPE_DEGRADED = 4;
 }
 
-// Network attachment for a cluster. See public API for full documentation.
+// Defines the network attachment for a cluster, connecting it to a tenant subnet with optional security groups.
+//
+// Unlike compute instances, which support multiple network attachments (one per virtual NIC), a cluster has a single
+// network attachment shared by all node sets. The fabric interface for each node set is resolved automatically by the
+// system from the node set's host type.
 message ClusterNetworkAttachment {
+  // Identifier of the subnet to connect the cluster to.
+  //
+  // Must be the value of the `id` field of an existing subnet. The subnet must be in `READY` state at creation time.
+  //
+  // This can't be modified after the cluster is created.
   string subnet = 1;
+
+  // Identifiers of the security groups to apply to the cluster's network attachment.
+  //
+  // Each value must be the `id` field of an existing security group. All security groups must belong to the same
+  // virtual network as the subnet.
   repeated string security_groups = 2;
 }
 

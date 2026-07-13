@@ -494,6 +494,14 @@ type ClusterSpec_builder struct {
 	// When set, the server fetches the catalog item and applies its field definitions.
 	CatalogItem string
 	// Network attachment connecting this cluster to a tenant subnet.
+	//
+	// When provided, all node sets of the cluster will be connected to the specified subnet. Only one network attachment
+	// is supported per cluster.
+	//
+	// When not provided, the system will populate this field with the tenant's default subnet and security groups during
+	// cluster creation.
+	//
+	// The `subnet` field is immutable after creation. The `security_groups` field can be updated.
 	NetworkAttachment *ClusterNetworkAttachment
 }
 
@@ -929,7 +937,11 @@ func (b0 ClusterCondition_builder) Build() *ClusterCondition {
 	return m0
 }
 
-// Network attachment for a cluster. See public API for full documentation.
+// Defines the network attachment for a cluster, connecting it to a tenant subnet with optional security groups.
+//
+// Unlike compute instances, which support multiple network attachments (one per virtual NIC), a cluster has a single
+// network attachment shared by all node sets. The fabric interface for each node set is resolved automatically by the
+// system from the node set's host type.
 type ClusterNetworkAttachment struct {
 	state                     protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Subnet         string                 `protobuf:"bytes,1,opt,name=subnet,proto3"`
@@ -988,7 +1000,16 @@ func (x *ClusterNetworkAttachment) SetSecurityGroups(v []string) {
 type ClusterNetworkAttachment_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Subnet         string
+	// Identifier of the subnet to connect the cluster to.
+	//
+	// Must be the value of the `id` field of an existing subnet. The subnet must be in `READY` state at creation time.
+	//
+	// This can't be modified after the cluster is created.
+	Subnet string
+	// Identifiers of the security groups to apply to the cluster's network attachment.
+	//
+	// Each value must be the `id` field of an existing security group. All security groups must belong to the same
+	// virtual network as the subnet.
 	SecurityGroups []string
 }
 
