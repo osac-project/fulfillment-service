@@ -141,7 +141,7 @@ spec:
     emptyDir: {}
   containers:
   - name: server
-    image: {{ .Values.bundledPostgres.image | default "quay.io/sclorg/postgresql-18-c10s:latest" }}
+    image: {{ .Values.bundledPostgres.image | default "quay.io/sclorg/postgresql-18-c10s@sha256:6be2c9d855f06fb665257a6b0911676a38d740be7022cc61acee1c99a832b1b2" }}
     imagePullPolicy: IfNotPresent
     securityContext:
       allowPrivilegeEscalation: false
