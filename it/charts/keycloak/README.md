@@ -269,8 +269,7 @@ users:
 ```
 
 The `secret` for the `osac-controller` client must match the value configured in the fulfillment
-service Helm chart via `auth.controllerCredentials` (or in the Kubernetes secret referenced by the
-kustomize manifests).
+service Helm chart via `auth.controllerCredentials`.
 
 ## Exporting the realm
 

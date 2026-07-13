@@ -15,6 +15,7 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 
 // Metadata common to all kinds of objects.
@@ -44,7 +45,10 @@ message Metadata {
   // - It isn't case sensitive.
   //
   // It is optional and not unique, so multiple objecs, even created by the same user or tenant, can have the same name.
-  string name = 6;
+  string name = 6 [(buf.validate.field).string = {
+    max_len: 63,
+    pattern: "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)?$"
+  }];
 
   // Labels contains key-value pairs for organizing and selecting objects.
   //

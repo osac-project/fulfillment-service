@@ -15,6 +15,7 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+import "buf/validate/validate.proto";
 import "osac/private/v1/metadata_type.proto";
 import "osac/private/v1/break_glass_credentials_type.proto";
 
@@ -31,7 +32,42 @@ message TenantSpec {
   // These are used to automatically redirect users to the correct identity provider during login. Each domain must be a
   // valid DNS hostname with only lowercase labels, for example `example.com` or `corp.example.org`. Uppercase letters
   // are rejected. Domains must be globally unique across all tenants.
-  repeated string domains = 1;
+  //
+  // Validation rules:
+  // - Each domain must be non-empty and at most 253 characters
+  // - Must be a DNS hostname (not an IP address)
+  // - Must have at least two labels (e.g., "example.com", not just "example")
+  // - Each label must be a valid DNS label:
+  //   - Max 63 characters
+  //   - Lowercase letters (a-z), digits (0-9), and hyphens (-) only
+  //   - Must start and end with alphanumeric characters
+  // - No duplicate domains in the list
+  repeated string domains = 1 [(buf.validate.field).repeated = {
+    unique: true,
+    items: {
+      string: {
+        min_len: 1,
+        max_len: 253
+      },
+      cel: [
+        {
+          id: "not_ip_address",
+          message: "must be a DNS hostname, not an IP address",
+          expression: "!this.matches('^[0-9.]+$') && !this.matches('^[0-9a-f:]+$')"
+        },
+        {
+          id: "min_two_labels",
+          message: "must have at least two labels (e.g., 'example.com')",
+          expression: "this.contains('.')"
+        },
+        {
+          id: "valid_dns_labels",
+          message: "all labels must be valid DNS labels (lowercase a-z/0-9/hyphen, max 63 chars, alphanumeric start/end)",
+          expression: "this.split('.').all(label, label.size() > 0 && label.size() <= 63 && label.matches('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'))"
+        }
+      ]
+    }
+  }];
 }
 
 // Represents the current operational state of a Tenant.
