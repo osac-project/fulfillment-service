@@ -51,16 +51,6 @@ auth:
   # This defines the URL of the OAuth issuer used for authentication. This parameter is mandatory.
   issuerUrl:
 
-  # Create a Secret named fulfillment-controller-credentials with OAuth client
-  # credentials for the fulfillment controller. When create is true, the chart
-  # renders the Secret with client-id and client-secret keys. The controller
-  # deployment mounts this Secret via auth.controllerCredentials (a list of
-  # ConfigMap/Secret sources passed from the umbrella chart).
-  controllerCredentialsSecret:
-    create: false
-    clientId: ""
-    clientSecret: ""
-
   # List of names of Kubernetes service accounts that are allowed to access the private API with administrator
   # permissions. These are intended only for emergency situations, for example when the regular authentication
   # mechanisms are not working. The service accounts are expected to be in the namespace where the service is deployed.
@@ -167,15 +157,3 @@ idp:
 
 hubAccess:
   enabled: false
-
-bundledPostgres:
-  enabled: false
-  database:
-    name: service
-    user: service
-
-dbMigrate:
-  enabled: false
-  image: ""
-  backoffLimit: 3
-  dbUrlFile: ""
