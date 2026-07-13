@@ -1188,83 +1188,10 @@ var _ = Describe("Clusters server", func() {
 			Expect(status.Code()).To(Equal(grpccodes.NotFound))
 		})
 
-		DescribeTable(
-			"Rejects creation with invalid name",
-			func(name, expectedError string) {
-				response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
-					Object: publicv1.Cluster_builder{
-						Metadata: publicv1.Metadata_builder{
-							Name: name,
-						}.Build(),
-						Spec: publicv1.ClusterSpec_builder{
-							Template: "my_template",
-						}.Build(),
-					}.Build(),
-				}.Build())
-				Expect(err).To(HaveOccurred())
-				Expect(response).To(BeNil())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring(expectedError))
-			},
-			Entry(
-				"Too long",
-				"a234567890123456789012345678901234567890123456789012345678901234",
-				"must be at most 63 characters long",
-			),
-			Entry(
-				"Contains uppercase letters",
-				"MyCluster",
-				"must only contain lowercase letters",
-			),
-			Entry(
-				"Contains special characters",
-				"my_cluster",
-				"must only contain lowercase letters",
-			),
-			Entry(
-				"Starts with hyphen",
-				"-mycluster",
-				"cannot start with a hyphen",
-			),
-			Entry(
-				"Ends with hyphen",
-				"mycluster-",
-				"cannot end with a hyphen",
-			),
-		)
-
-		It("Rejects update with invalid name", func() {
-			// Create the object with a valid name:
-			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
-				Object: publicv1.Cluster_builder{
-					Metadata: publicv1.Metadata_builder{
-						Name: "valid-name",
-					}.Build(),
-					Spec: publicv1.ClusterSpec_builder{
-						Template: "my_template",
-					}.Build(),
-				}.Build(),
-			}.Build())
-			Expect(err).ToNot(HaveOccurred())
-
-			// Try to update with an invalid name:
-			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
-				Object: publicv1.Cluster_builder{
-					Id: createResponse.GetObject().GetId(),
-					Metadata: publicv1.Metadata_builder{
-						Name: "Invalid_Name",
-					}.Build(),
-				}.Build(),
-			}.Build())
-			Expect(err).To(HaveOccurred())
-			Expect(updateResponse).To(BeNil())
-			status, ok := grpcstatus.FromError(err)
-			Expect(ok).To(BeTrue())
-			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("must only contain lowercase letters"))
-		})
+		// Note: Name validation tests are in internal/validation/protovalidate_interceptor_test.go
+		// and it/it_validation_test.go. Name validation is handled by the protovalidate interceptor
+		// at the gRPC layer, not by the server code. Unit tests that call the server directly
+		// bypass the interceptor, so they cannot test name validation.
 
 		DescribeTable(
 			"Accepts creation with valid names",

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"buf.build/go/protovalidate"
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -46,7 +47,6 @@ type GenericServerBuilder[O dao.Object] struct {
 	table             string
 	ignoredFields     []any
 	notifier          events.Notifier
-	nameValidator     func(context.Context, string) error
 	redactFunc        func(O) O
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
@@ -59,7 +59,6 @@ type GenericServer[O dao.Object] struct {
 	logger           *slog.Logger
 	service          string
 	dao              *dao.GenericDAO[O]
-	nameValidator    func(context.Context, string) error
 	attributionLogic auth.AttributionLogic
 	tenancyLogic     auth.TenancyLogic
 	template         proto.Message
@@ -82,6 +81,7 @@ type GenericServer[O dao.Object] struct {
 	pathCompiler     *masks.PathCompiler[O]
 	pathCache        map[string]*masks.Path[O]
 	pathCacheLock    *sync.Mutex
+	validator        protovalidate.Validator
 }
 
 type metadataIface interface {
@@ -144,13 +144,6 @@ func (b *GenericServerBuilder[O]) SetNotifier(value events.Notifier) *GenericSer
 	return b
 }
 
-// SetNameValidator sets the validator that will be used to validate the name of objects. This is optional. If not set,
-// the default DNS label validation will be used.
-func (b *GenericServerBuilder[O]) SetNameValidator(value func(context.Context, string) error) *GenericServerBuilder[O] {
-	b.nameValidator = value
-	return b
-}
-
 // SetRedactFunc sets a function that will be called to redact sensitive fields from objects before they are included in
 // event notification payloads. The function receives a clone of the object and should return it with the sensitive
 // fields cleared. This is optional.
@@ -208,6 +201,13 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		return
 	}
 
+	// Create the protovalidate validator:
+	validator, err := protovalidate.New()
+	if err != nil {
+		err = fmt.Errorf("failed to create protovalidate validator: %w", err)
+		return
+	}
+
 	// Create the object early so that we can use its methods as callbacks:
 	s := &GenericServer[O]{
 		logger:           b.logger,
@@ -218,13 +218,7 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		pathCompiler:     pathCompiler,
 		pathCache:        map[string]*masks.Path[O]{},
 		pathCacheLock:    &sync.Mutex{},
-	}
-
-	// Prepare the name validator:
-	if b.nameValidator != nil {
-		s.nameValidator = b.nameValidator
-	} else {
-		s.nameValidator = s.validateName
+		validator:        validator,
 	}
 
 	// Set the redact function:
@@ -643,6 +637,15 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		tmpObject = requestObject
 	}
 
+	// Validate the merged object using protovalidate.
+	// This ensures all validation constraints are checked after applying the update mask,
+	// avoiding false positives from partial request objects.
+	err = s.validator.Validate(tmpObject)
+	if err != nil {
+		s.logger.DebugContext(ctx, "Object validation failed after mask merge", "error", err.Error())
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "validation failed: %s", err.Error())
+	}
+
 	// Validate the resulting metadata:
 	tmpMetadata := s.getMetadata(tmpObject)
 	if tmpMetadata != nil {
@@ -913,13 +916,9 @@ func (s *GenericServer[O]) setPointer(pointer any, value any) {
 }
 
 func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metadataIface) error {
-	name := metadata.GetName()
-	if name != "" {
-		err := s.nameValidator(ctx, name)
-		if err != nil {
-			return err
-		}
-	}
+	// Note: Name validation is handled by protovalidate annotations and the validation interceptor.
+	// No need to re-validate here.
+
 	labels := metadata.GetLabels()
 	if len(labels) > 0 {
 		err := s.validateLabels(labels)
@@ -937,53 +936,15 @@ func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metada
 	return nil
 }
 
-// validateName validates that the 'metadata.name' field follows DNS label restrictions as defined in RFC 1035:
+// validateLabels validates label keys and values according to Kubernetes label naming conventions.
 //
-// - Must be between 1 and 63 characters long
-// - Must only contain lowercase letters (a-z), digits (0-9) and hyphens (-)
-// - Cannot start or end with a hyphen
-func (s *GenericServer[O]) validateName(ctx context.Context, name string) error {
-	// Max length:
-	if len(name) > 63 {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' must be at most 63 characters long, but it has %d characters",
-			len(name),
-		)
-	}
-
-	// Validate characters, only a-z, 0-9, and hyphen:
-	for i, c := range name {
-		isLower := c >= 'a' && c <= 'z'
-		isDigit := c >= '0' && c <= '9'
-		isHyphen := c == '-'
-		if !isLower && !isDigit && !isHyphen {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"field 'metadata.name' must only contain lowercase letters (a-z), digits (0-9) and "+
-					"hyphens (-), but contains '%c' at position %d",
-				c, i,
-			)
-		}
-	}
-
-	// Cannot start or end with hyphen:
-	if strings.HasPrefix(name, "-") {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' cannot start with a hyphen",
-		)
-	}
-	if strings.HasSuffix(name, "-") {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' cannot end with a hyphen",
-		)
-	}
-
-	return nil
-}
-
+// This validation complements protovalidate annotations on the Metadata message:
+// - Proto annotations enforce length constraints (keys: 1-316 chars, values: max 63 chars)
+// - This Go code enforces complex DNS subdomain rules that cannot be expressed in simple regex:
+//   - Prefix/name structure (optional "prefix/" followed by name)
+//   - Each dot-separated segment must be a valid DNS label
+//   - Character restrictions (alphanumeric, hyphens, underscores, dots)
+//   - Alphanumeric start/end requirements
 func (s *GenericServer[O]) validateLabels(labels map[string]string) error {
 	for key, value := range labels {
 		err := s.validateLabelKey("metadata.labels", key)

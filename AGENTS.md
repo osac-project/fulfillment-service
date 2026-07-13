@@ -258,6 +258,40 @@ the full set of conventions and rules for the API, including object structure, n
 request/response patterns, REST transcoding, enums, conditions, object references, and
 documentation requirements.
 
+## Validation Constraints
+
+When adding new proto fields, always include `buf.validate` annotations for any constraints on the field:
+
+- **Required fields**: `[(buf.validate.field).string.min_len = 1]` or `[(buf.validate.field).repeated.min_items = 1]`
+- **Format validation**: `pattern` for regex, `email`, `uuid`, etc.
+- **Range constraints**: `gte`, `lte`, `gt`, `lt` for numeric fields
+- **Map validation**: Use `.map.keys` and `.map.values` for key/value constraints
+- **CEL expressions**: Use `[(buf.validate.field).cel = {...}]` for complex field validation
+- **Message-level CEL**: Use `option (buf.validate.message).cel = {...}` for cross-field or resource-specific constraints
+
+### Validation Flow
+
+- **Create requests**: Validated by protovalidate interceptor before reaching server handlers
+- **Update requests**: Interceptor skips validation; server validates the merged object after applying `update_mask`
+  - This prevents false validation errors when clients send partial objects for update
+  - Server merges request fields (per mask) with DB object, then validates the complete result
+
+### Resource-Specific Validation
+
+To override embedded message validation (e.g., Projects allowing dots in names while Metadata doesn't):
+1. Use `[(buf.validate.field).ignore = IGNORE_ALWAYS]` on the embedded field to skip its standard validation
+2. Add message-level CEL to validate the field with resource-specific rules:
+   ```protobuf
+   option (buf.validate.message).cel = {
+     expression: "this.metadata.name == '' || this.metadata.name.split('.').all(...)"
+   };
+   ```
+
+Do not implement validation in Go code that can be expressed declaratively in proto.
+
+After modifying proto files with validation annotations, run `buf lint && buf generate` to ensure
+annotations compile cleanly and regenerate Go code.
+
 ## Common Pitfalls
 
 - Proto changes require both `buf lint` and `buf generate` before committing

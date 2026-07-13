@@ -52,6 +52,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/recovery"
 	"github.com/osac-project/fulfillment-service/internal/servers"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
+	"github.com/osac-project/fulfillment-service/internal/validation"
 )
 
 // userIDResolver implements auth.UserIDResolver by querying the users DAO.
@@ -291,6 +292,15 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return err
 	}
 
+	// Prepare the validation interceptor:
+	c.logger.InfoContext(ctx, "Creating validation interceptor")
+	validationInterceptor, err := validation.NewProtovalidateInterceptor().
+		SetLogger(c.logger).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create validation interceptor: %w", err)
+	}
+
 	// Create metadata fetcher for project authorization
 	metadataFetcher, err := dao.NewMetadataFetcher().
 		SetLogger(c.logger).
@@ -472,6 +482,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			panicInterceptor.UnaryServer,
 			metricsInterceptor.UnaryServer,
 			loggingInterceptor.UnaryServer,
+			validationInterceptor.UnaryServer,
 			txInterceptor.UnaryServer,
 			authnInterceptor.UnaryServer,
 			authzInterceptor.UnaryServer,
@@ -481,6 +492,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			panicInterceptor.StreamServer,
 			metricsInterceptor.StreamServer,
 			loggingInterceptor.StreamServer,
+			validationInterceptor.StreamServer,
 			authnInterceptor.StreamServer,
 			authzInterceptor.StreamServer,
 			jitProvisioningInterceptor.StreamServer,
