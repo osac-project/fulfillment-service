@@ -154,6 +154,3 @@ idp:
   #
   # This parameter is mandatory.
   credentials:
-
-hubAccess:
-  enabled: false
