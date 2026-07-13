@@ -1,4 +1,10 @@
 {{- if .Values.bundledPostgres.enabled }}
+{{- if not (regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" .Values.bundledPostgres.database.user) }}
+{{- fail "bundledPostgres.database.user must be a valid PostgreSQL identifier" }}
+{{- end }}
+{{- if not (regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" .Values.bundledPostgres.database.name) }}
+{{- fail "bundledPostgres.database.name must be a valid PostgreSQL identifier" }}
+{{- end }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -21,7 +27,7 @@ spec:
   issuerRef:
     kind: {{ .Values.certs.issuerRef.kind }}
     name: {{ .Values.certs.issuerRef.name }}
-  commonName: {{ .Values.bundledPostgres.database.user }}
+  commonName: {{ .Values.bundledPostgres.database.user | quote }}
   usages:
   - client auth
   secretName: postgres-client-cert-service
@@ -112,6 +118,9 @@ metadata:
     app: postgres
     {{- include "fulfillment-service.labels" . | nindent 4 }}
 spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
   volumes:
   - name: server-cert
     secret:
@@ -134,6 +143,11 @@ spec:
   - name: server
     image: {{ .Values.bundledPostgres.image | default "quay.io/sclorg/postgresql-18-c10s:latest" }}
     imagePullPolicy: IfNotPresent
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
     env:
     - name: POSTGRESQL_USER
       value: "default"

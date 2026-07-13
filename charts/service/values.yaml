@@ -200,5 +200,4 @@ dbMigrate:
   enabled: false
   image: ""
   backoffLimit: 3
-  dbUrl: ""
   dbUrlFile: ""
