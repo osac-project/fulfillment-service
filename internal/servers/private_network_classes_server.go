@@ -404,23 +404,35 @@ func validateNetworkDefaults(defaults *privatev1.NetworkDefaults) error {
 			return grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"defaults.virtual_network_cidr: %v", err)
 		}
-		vnPrefix, _ = netip.ParsePrefix(parsed)
+		vnPrefix, err = netip.ParsePrefix(parsed)
+		if err != nil {
+			return grpcstatus.Errorf(grpccodes.Internal,
+				"defaults.virtual_network_cidr: failed to re-parse validated CIDR '%s': %v", parsed, err)
+		}
 	}
 
 	if subnetCIDR != "" {
+		if vnCIDR == "" {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"defaults.subnet_cidr requires defaults.virtual_network_cidr to be set")
+		}
+
 		_, err := parseAndValidateCIDR(subnetCIDR, cidrIPv4)
 		if err != nil {
 			return grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"defaults.subnet_cidr: %v", err)
 		}
 
-		if vnCIDR != "" {
-			subnetPrefix, _ := netip.ParsePrefix(subnetCIDR)
-			if !vnPrefix.Contains(subnetPrefix.Addr()) || subnetPrefix.Bits() < vnPrefix.Bits() {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"defaults.subnet_cidr '%s' is not within defaults.virtual_network_cidr '%s'",
-					subnetCIDR, vnCIDR)
-			}
+		subnetPrefix, err := netip.ParsePrefix(subnetCIDR)
+		if err != nil {
+			return grpcstatus.Errorf(grpccodes.Internal,
+				"defaults.subnet_cidr: failed to re-parse validated CIDR '%s': %v", subnetCIDR, err)
+		}
+		subnetWithinVN := vnPrefix.Contains(subnetPrefix.Addr()) && subnetPrefix.Bits() >= vnPrefix.Bits()
+		if !subnetWithinVN {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"defaults.subnet_cidr '%s' is not within defaults.virtual_network_cidr '%s'",
+				subnetCIDR, vnCIDR)
 		}
 	}
 

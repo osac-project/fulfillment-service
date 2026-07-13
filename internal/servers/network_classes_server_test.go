@@ -1141,6 +1141,23 @@ var _ = Describe("Network classes server", func() {
 				Expect(err.Error()).To(ContainSubstring("not within"))
 			})
 
+			It("Subnet CIDR without virtual_network_cidr fails", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					SubnetCidr: "10.0.1.0/24",
+				}.Build()
+				_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC subnet without VN",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Defaults:               defaults,
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("subnet_cidr requires"))
+				Expect(err.Error()).To(ContainSubstring("virtual_network_cidr"))
+			})
+
 			It("Ingress rule with invalid protocol fails", func() {
 				defaults := privatev1.NetworkDefaults_builder{
 					IngressRules: []*privatev1.SecurityRule{
@@ -1203,6 +1220,23 @@ var _ = Describe("Network classes server", func() {
 				}.Build())
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("CIDR"))
+			})
+
+			It("Update with invalid defaults via field mask fails validation", func() {
+				nc := createNetworkClassWithDefaults(validDefaults())
+
+				invalidDefaults := privatev1.NetworkDefaults_builder{
+					VirtualNetworkCidr: "not-a-cidr",
+				}.Build()
+				_, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id:       nc.GetId(),
+						Defaults: invalidDefaults,
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"defaults"}},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("virtual_network_cidr"))
 			})
 
 			It("Public API returns defaults as OUTPUT_ONLY", func() {
