@@ -56,8 +56,6 @@ spec:
         {{- include "fulfillment-service.labels" . | nindent 8 }}
     spec:
       serviceAccountName: admin
-      securityContext:
-        runAsNonRoot: true
       initContainers:
       - name: wait-for-fulfillment
         image: {{ .Values.hubAccess.cliImage | default "quay.io/openshift/origin-cli:4.20.0" }}
