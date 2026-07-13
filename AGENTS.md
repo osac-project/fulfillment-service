@@ -4,7 +4,9 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Overview
 
-The fulfillment-service is a gRPC server with REST gateway for managing infrastructure resources (clusters, hosts, compute instances, networking). It uses PostgreSQL for storage, OPA for authorization, and supports Kubernetes deployment via Helm/Kustomize.
+The fulfillment-service is a gRPC server with REST gateway for managing infrastructure resources
+(clusters, hosts, compute instances, networking). It uses PostgreSQL for storage, OPA for
+authorization, and supports Kubernetes deployment via Helm.
 
 ## Build and Test Commands
 
@@ -50,9 +52,6 @@ IT_KEEP_KIND=true ginkgo run it
 
 # Run only setup (create cluster without tests)
 IT_KEEP_KIND=true ginkgo run --label-filter=setup it
-
-# Use kustomize instead of default Helm deployment
-IT_DEPLOY_MODE=kustomize ginkgo run it
 
 # Clean up preserved cluster
 kind delete cluster --name fulfillment-service-it

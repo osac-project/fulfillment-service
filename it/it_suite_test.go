@@ -40,10 +40,6 @@ type Config struct {
 	// By default, the application chart is uninstalled after running the tests.
 	KeepService bool `json:"keep_service" envconfig:"keep_service" default:"false"`
 
-	// DeployMode indicates how to deploy the service. Valid values are 'helm' and 'kustomize'.
-	// By default, the service is deployed using Helm.
-	DeployMode string `json:"deploy_mode" envconfig:"deploy_mode" default:"helm"`
-
 	// Debug indicates if the debug mode should be enabled. This means that the debugger binary will be added to
 	// the container image, and that the services will be started under the control of the debugger. Access to the
 	// debugger will be done via the following ports:
@@ -104,27 +100,17 @@ var _ = BeforeSuite(func() {
 		"Configuration",
 		slog.Bool("keep_kind", config.KeepKind),
 		slog.Bool("keep_service", config.KeepService),
-		slog.String("deploy_mode", config.DeployMode),
 		slog.Bool("debug", config.Debug),
 		slog.String("!secret", config.Secret),
 		slog.Bool("ca_key_set", config.CaKey != ""),
 		slog.Bool("ca_crt_set", config.CaCrt != ""),
 	)
 
-	// Debug mode isn't compatible with the Kustomize deployment mode:
-	if config.Debug && config.DeployMode == deployModeKustomize {
-		Fail(
-			"Debug mode isn't compatible with the Kustomize deployment mode, either set IT_DEPLOY_MODE to " +
-				"'helm' or set IT_DEBUG to 'false'",
-		)
-	}
-
 	// Create and setup the tool:
 	tool, err = NewTool().
 		SetLogger(logger).
 		SetKeepCluster(config.KeepKind).
 		SetKeepService(config.KeepService).
-		SetDeployMode(config.DeployMode).
 		SetDebug(config.Debug).
 		SetSecret(config.Secret).
 		SetCaFiles(config.CaKey, config.CaCrt).
