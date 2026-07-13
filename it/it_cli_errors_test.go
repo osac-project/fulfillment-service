@@ -72,7 +72,7 @@ var _ = Describe("CLI Error Handling", Label("cli", "errors"), func() {
 		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 		Expect(exitCode).To(Equal(0), "login should succeed")
 
-		stdout, stderr, exitCode := tool.RunCLI(ctx, homeDir,
+		stdout, stderr, _ := tool.RunCLI(ctx, homeDir,
 			"delete", "computeinstance", "00000000-0000-0000-0000-000000000000",
 		)
 		combinedOutput := stdout + stderr
