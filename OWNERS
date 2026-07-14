@@ -16,6 +16,8 @@ filters:
     - sk-ilya
     - vladikr
     - rccrdpccl
+    - ori-amizur
+    - danmanor
     reviewers:
     - jhernand
     - adriengentil
@@ -32,3 +34,5 @@ filters:
     - sk-ilya
     - vladikr
     - rccrdpccl
+    - ori-amizur
+    - danmanor
