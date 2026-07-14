@@ -15,8 +15,10 @@ syntax = "proto3";
 
 package osac.public.v1;
 
+import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
 import "osac/public/v1/metadata_type.proto";
+import "osac/public/v1/security_group_type.proto";
 
 // Describes a network implementation strategy available for creating virtual networks.
 //
@@ -57,6 +59,79 @@ message NetworkClass {
   optional bool is_default = 9 [
     (google.api.field_behavior) = OUTPUT_ONLY
   ];
+
+  // Desired configuration for this network class.
+  NetworkClassSpec spec = 12 [
+    (google.api.field_behavior) = OUTPUT_ONLY
+  ];
+}
+
+// Desired configuration for a NetworkClass.
+message NetworkClassSpec {
+  // Default networking configuration for tenant onboarding. When a tenant is created, the system uses these
+  // defaults to auto-create a VirtualNetwork, Subnet, and SecurityGroup for the tenant.
+  NetworkDefaults defaults = 1;
+}
+
+// Default networking configuration used during tenant onboarding.
+//
+// When a tenant is created, the system reads these defaults from the NetworkClass and auto-creates
+// a default VirtualNetwork, IPv4 Subnet, IPv6 Subnet, SecurityGroup, and optionally a NATGateway
+// for the tenant. All fields are optional — defaults can be partially populated.
+message NetworkDefaults {
+  option (buf.validate.message).cel = {
+    id: "subnet_ipv4_requires_virtual_network_ipv4"
+    message: "subnet_ipv4_cidr requires virtual_network_ipv4_cidr to be set"
+    expression: "this.subnet_ipv4_cidr == '' || this.virtual_network_ipv4_cidr != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "subnet_ipv6_requires_virtual_network_ipv6"
+    message: "subnet_ipv6_cidr requires virtual_network_ipv6_cidr to be set"
+    expression: "this.subnet_ipv6_cidr == '' || this.virtual_network_ipv6_cidr != ''"
+  };
+
+  // Default IPv4 CIDR for auto-created tenant VirtualNetwork.
+  // Example: "10.0.0.0/16"
+  string virtual_network_ipv4_cidr = 1 [(buf.validate.field).cel = {
+    id: "valid_ipv4_cidr"
+    message: "must be valid IPv4 CIDR notation (e.g., '10.0.0.0/16')"
+    expression: "this == '' || this.isIpPrefix(4, true)"
+  }];
+
+  // Default IPv6 CIDR for auto-created tenant VirtualNetwork.
+  // Example: "fd00::/48"
+  string virtual_network_ipv6_cidr = 5 [(buf.validate.field).cel = {
+    id: "valid_ipv6_cidr"
+    message: "must be valid IPv6 CIDR notation (e.g., 'fd00::/48')"
+    expression: "this == '' || this.isIpPrefix(6, true)"
+  }];
+
+  // Default IPv4 CIDR for auto-created tenant Subnet. Must fall within the virtual_network_ipv4_cidr range.
+  // Example: "10.0.1.0/24"
+  string subnet_ipv4_cidr = 2 [(buf.validate.field).cel = {
+    id: "valid_ipv4_cidr"
+    message: "must be valid IPv4 CIDR notation (e.g., '10.0.1.0/24')"
+    expression: "this == '' || this.isIpPrefix(4, true)"
+  }];
+
+  // Default IPv6 CIDR for auto-created tenant Subnet. Must fall within the virtual_network_ipv6_cidr range.
+  // Example: "fd00:0:0:1::/64"
+  string subnet_ipv6_cidr = 6 [(buf.validate.field).cel = {
+    id: "valid_ipv6_cidr"
+    message: "must be valid IPv6 CIDR notation (e.g., 'fd00:0:0:1::/64')"
+    expression: "this == '' || this.isIpPrefix(6, true)"
+  }];
+
+  // Default ingress rules for auto-created tenant SecurityGroup.
+  repeated SecurityRule ingress_rules = 3;
+
+  // Default egress rules for auto-created tenant SecurityGroup.
+  repeated SecurityRule egress_rules = 4;
+
+  // Whether to create a default NATGateway on the tenant's default VirtualNetwork.
+  // When true, tenant onboarding auto-allocates an ExternalIP and creates a NATGateway
+  // to provide SNAT for outbound connectivity.
+  bool enable_nat_gateway = 7;
 }
 
 // Describes the capabilities supported by a NetworkClass.

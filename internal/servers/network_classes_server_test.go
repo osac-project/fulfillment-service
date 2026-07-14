@@ -952,5 +952,353 @@ var _ = Describe("Network classes server", func() {
 				Expect(err.Error()).To(ContainSubstring("immutable"))
 			})
 		})
+
+		Describe("Defaults", func() {
+			validDefaults := func() *privatev1.NetworkDefaults {
+				return privatev1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "10.0.0.0/16",
+					SubnetIpv4Cidr:         "10.0.1.0/24",
+					IngressRules: []*privatev1.SecurityRule{
+						privatev1.SecurityRule_builder{
+							Protocol: privatev1.Protocol_PROTOCOL_TCP,
+							PortFrom: new(int32(22)),
+							PortTo:   new(int32(22)),
+							Ipv4Cidr: new("0.0.0.0/0"),
+						}.Build(),
+					},
+					EgressRules: []*privatev1.SecurityRule{
+						privatev1.SecurityRule_builder{
+							Protocol: privatev1.Protocol_PROTOCOL_ALL,
+							Ipv4Cidr: new("0.0.0.0/0"),
+						}.Build(),
+					},
+				}.Build()
+			}
+
+			createNetworkClassWithDefaults := func(defaults *privatev1.NetworkDefaults) *privatev1.NetworkClass {
+				response, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC with defaults",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec:                   privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				return response.GetObject()
+			}
+
+			It("Create with valid defaults persists and returns them", func() {
+				nc := createNetworkClassWithDefaults(validDefaults())
+
+				Expect(nc.GetSpec().GetDefaults()).ToNot(BeNil())
+				Expect(nc.GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(Equal("10.0.0.0/16"))
+				Expect(nc.GetSpec().GetDefaults().GetSubnetIpv4Cidr()).To(Equal("10.0.1.0/24"))
+				Expect(nc.GetSpec().GetDefaults().GetIngressRules()).To(HaveLen(1))
+				Expect(nc.GetSpec().GetDefaults().GetEgressRules()).To(HaveLen(1))
+			})
+
+			It("Get after create returns defaults", func() {
+				nc := createNetworkClassWithDefaults(validDefaults())
+
+				getResponse, err := privateServer.Get(ctx, privatev1.NetworkClassesGetRequest_builder{
+					Id: nc.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				retrieved := getResponse.GetObject()
+				Expect(retrieved.GetSpec().GetDefaults()).ToNot(BeNil())
+				Expect(retrieved.GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(Equal("10.0.0.0/16"))
+				Expect(retrieved.GetSpec().GetDefaults().GetSubnetIpv4Cidr()).To(Equal("10.0.1.0/24"))
+				Expect(retrieved.GetSpec().GetDefaults().GetIngressRules()).To(HaveLen(1))
+				Expect(retrieved.GetSpec().GetDefaults().GetIngressRules()[0].GetProtocol()).To(Equal(privatev1.Protocol_PROTOCOL_TCP))
+				Expect(retrieved.GetSpec().GetDefaults().GetIngressRules()[0].GetPortFrom()).To(BeNumerically("==", 22))
+			})
+
+			It("List after create returns defaults in items", func() {
+				createNetworkClassWithDefaults(validDefaults())
+
+				listResponse, err := privateServer.List(ctx, privatev1.NetworkClassesListRequest_builder{}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(listResponse.GetItems()).To(HaveLen(1))
+				Expect(listResponse.GetItems()[0].GetSpec().GetDefaults()).ToNot(BeNil())
+				Expect(listResponse.GetItems()[0].GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(Equal("10.0.0.0/16"))
+			})
+
+			It("Update defaults via field mask replaces entire defaults", func() {
+				nc := createNetworkClassWithDefaults(validDefaults())
+
+				newDefaults := privatev1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "172.16.0.0/12",
+					SubnetIpv4Cidr:         "172.16.1.0/24",
+				}.Build()
+
+				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id:   nc.GetId(),
+						Spec: privatev1.NetworkClassSpec_builder{Defaults: newDefaults}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.defaults"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				updated := updateResponse.GetObject()
+				Expect(updated.GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(Equal("172.16.0.0/12"))
+				Expect(updated.GetSpec().GetDefaults().GetSubnetIpv4Cidr()).To(Equal("172.16.1.0/24"))
+				Expect(updated.GetSpec().GetDefaults().GetIngressRules()).To(BeEmpty())
+				Expect(updated.GetSpec().GetDefaults().GetEgressRules()).To(BeEmpty())
+			})
+
+			It("Update defaults to nil clears them", func() {
+				nc := createNetworkClassWithDefaults(validDefaults())
+
+				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id: nc.GetId(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.defaults"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetDefaults()).To(BeNil())
+			})
+
+			It("Create without defaults succeeds", func() {
+				nc := createNetworkClass()
+				Expect(nc.GetSpec().GetDefaults()).To(BeNil())
+			})
+
+			It("Defaults with CIDRs only succeeds", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "10.0.0.0/16",
+					SubnetIpv4Cidr:         "10.0.1.0/24",
+				}.Build()
+				nc := createNetworkClassWithDefaults(defaults)
+				Expect(nc.GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(Equal("10.0.0.0/16"))
+				Expect(nc.GetSpec().GetDefaults().GetIngressRules()).To(BeEmpty())
+			})
+
+			It("Defaults with rules only succeeds", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					IngressRules: []*privatev1.SecurityRule{
+						privatev1.SecurityRule_builder{
+							Protocol: privatev1.Protocol_PROTOCOL_TCP,
+							PortFrom: new(int32(443)),
+							PortTo:   new(int32(443)),
+							Ipv4Cidr: new("0.0.0.0/0"),
+						}.Build(),
+					},
+				}.Build()
+				nc := createNetworkClassWithDefaults(defaults)
+				Expect(nc.GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(BeEmpty())
+				Expect(nc.GetSpec().GetDefaults().GetIngressRules()).To(HaveLen(1))
+			})
+
+			It("Invalid virtual_network_ipv4_cidr fails validation", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "not-a-cidr",
+				}.Build()
+				_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC invalid VN CIDR",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec:                   privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("virtual_network_ipv4_cidr"))
+			})
+
+			It("Invalid subnet_ipv4_cidr fails validation", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "10.0.0.0/16",
+					SubnetIpv4Cidr:         "invalid",
+				}.Build()
+				_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC invalid subnet CIDR",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec:                   privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("subnet_ipv4_cidr"))
+			})
+
+			It("Subnet CIDR not within virtual_network_ipv4_cidr fails", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "10.0.0.0/16",
+					SubnetIpv4Cidr:         "192.168.1.0/24",
+				}.Build()
+				_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC subnet outside VN",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec:                   privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("not within"))
+			})
+
+			It("Subnet CIDR without virtual_network_ipv4_cidr fails", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					SubnetIpv4Cidr: "10.0.1.0/24",
+				}.Build()
+				_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC subnet without VN",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec:                   privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("subnet_ipv4_cidr requires"))
+				Expect(err.Error()).To(ContainSubstring("virtual_network_ipv4_cidr"))
+			})
+
+			It("Ingress rule with invalid protocol fails", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					IngressRules: []*privatev1.SecurityRule{
+						privatev1.SecurityRule_builder{
+							Protocol: privatev1.Protocol_PROTOCOL_UNSPECIFIED,
+							Ipv4Cidr: new("0.0.0.0/0"),
+						}.Build(),
+					},
+				}.Build()
+				_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC invalid rule protocol",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec:                   privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("protocol is required"))
+			})
+
+			It("TCP rule without port range fails", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					IngressRules: []*privatev1.SecurityRule{
+						privatev1.SecurityRule_builder{
+							Protocol: privatev1.Protocol_PROTOCOL_TCP,
+							PortFrom: new(int32(22)),
+							Ipv4Cidr: new("0.0.0.0/0"),
+						}.Build(),
+					},
+				}.Build()
+				_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC TCP missing port_to",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec:                   privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("port"))
+			})
+
+			It("Rule with invalid CIDR fails", func() {
+				defaults := privatev1.NetworkDefaults_builder{
+					EgressRules: []*privatev1.SecurityRule{
+						privatev1.SecurityRule_builder{
+							Protocol: privatev1.Protocol_PROTOCOL_ALL,
+							Ipv4Cidr: new("not-a-cidr"),
+						}.Build(),
+					},
+				}.Build()
+				_, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC invalid rule CIDR",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec:                   privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("CIDR"))
+			})
+
+			It("Update with invalid defaults via field mask fails validation", func() {
+				nc := createNetworkClassWithDefaults(validDefaults())
+
+				invalidDefaults := privatev1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "not-a-cidr",
+				}.Build()
+				_, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id:   nc.GetId(),
+						Spec: privatev1.NetworkClassSpec_builder{Defaults: invalidDefaults}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.defaults"}},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("virtual_network_ipv4_cidr"))
+			})
+
+			It("Public API returns defaults as OUTPUT_ONLY", func() {
+				nc := createNetworkClassWithDefaults(validDefaults())
+
+				getResponse, err := publicServer.Get(ctx, publicv1.NetworkClassesGetRequest_builder{
+					Id: nc.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				publicNC := getResponse.GetObject()
+				Expect(publicNC.GetSpec().GetDefaults()).ToNot(BeNil())
+				Expect(publicNC.GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(Equal("10.0.0.0/16"))
+				Expect(publicNC.GetSpec().GetDefaults().GetSubnetIpv4Cidr()).To(Equal("10.0.1.0/24"))
+				Expect(publicNC.GetSpec().GetDefaults().GetIngressRules()).To(HaveLen(1))
+			})
+
+			It("Public API cannot set defaults via Update", func() {
+				// Create NC via private API (no defaults):
+				nc := createNetworkClass()
+				Expect(nc.GetSpec().GetDefaults()).To(BeNil())
+
+				// Attempt to set defaults via public Update — inMapper should ignore the field:
+				publicDefaults := publicv1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "10.0.0.0/16",
+					SubnetIpv4Cidr:         "10.0.1.0/24",
+				}.Build()
+				_, err := publicServer.Update(ctx, publicv1.NetworkClassesUpdateRequest_builder{
+					Object: publicv1.NetworkClass_builder{
+						Id:    nc.GetId(),
+						Title: nc.GetTitle(),
+						Spec:  publicv1.NetworkClassSpec_builder{Defaults: publicDefaults}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				// Get via private API to confirm defaults were not persisted:
+				getResponse, err := privateServer.Get(ctx, privatev1.NetworkClassesGetRequest_builder{
+					Id: nc.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse.GetObject().GetSpec().GetDefaults()).To(BeNil())
+			})
+
+			It("Public Update preserves defaults set via private API", func() {
+				nc := createNetworkClassWithDefaults(validDefaults())
+
+				_, err := publicServer.Update(ctx, publicv1.NetworkClassesUpdateRequest_builder{
+					Object: publicv1.NetworkClass_builder{
+						Id:    nc.GetId(),
+						Title: "Updated title",
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				getResponse, err := publicServer.Get(ctx, publicv1.NetworkClassesGetRequest_builder{
+					Id: nc.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse.GetObject().GetSpec().GetDefaults()).ToNot(BeNil())
+				Expect(getResponse.GetObject().GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(Equal("10.0.0.0/16"))
+				Expect(getResponse.GetObject().GetTitle()).To(Equal("Updated title"))
+			})
+		})
 	})
 })

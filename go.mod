@@ -23,7 +23,6 @@ require (
 	github.com/mattn/go-colorable v0.1.15
 	github.com/mattn/go-isatty v0.0.22
 	github.com/muesli/cancelreader v0.2.2
-	github.com/neilotoole/jsoncolor v0.9.1
 	github.com/open-policy-agent/opa v1.18.2
 	github.com/osac-project/bare-metal-fulfillment-operator v0.0.8
 	github.com/osac-project/osac-operator/api v0.0.7

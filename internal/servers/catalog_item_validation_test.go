@@ -301,9 +301,9 @@ var _ = Describe("applyFieldDefinitions rejects unlisted fields", func() {
 	})
 
 	It("rejects unlisted field on ComputeInstanceSpec", func() {
-		cores := int32(4)
+		runStrategy := "Always"
 		spec := &privatev1.ComputeInstanceSpec{
-			Cores: &cores,
+			RunStrategy: &runStrategy,
 		}
 		defaultVal, err := structpb.NewValue("ssh-ed25519 AAAA")
 		Expect(err).ToNot(HaveOccurred())
@@ -315,7 +315,7 @@ var _ = Describe("applyFieldDefinitions rejects unlisted fields", func() {
 		err = applyFieldDefinitions(spec, fieldDefs)
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
-		Expect(err.Error()).To(ContainSubstring("cores"))
+		Expect(err.Error()).To(ContainSubstring("run_strategy"))
 		Expect(err.Error()).To(ContainSubstring("not allowed"))
 	})
 })
