@@ -142,15 +142,19 @@ func (b *ClientBuilder) Build() (result *Client, err error) {
 	return
 }
 
+func isConflictError(err error) bool {
+	var apiErr *apiclient.APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict
+}
+
 // CreateTenant creates a new tenant (Keycloak organization in the configured realm).
 // Returns the created tenant with server-assigned ID and any server defaults.
 func (c *Client) CreateTenant(ctx context.Context, tenant *Tenant) (*Tenant, error) {
 	kcOrg := toKeycloakOrganization(tenant)
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, fmt.Sprintf("/admin/realms/%s/organizations", c.realmName), kcOrg)
 	if err != nil {
-		var apiErr *apiclient.APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
-			return nil, fmt.Errorf("organization %q already exists: %w", tenant.Name, err)
+		if isConflictError(err) {
+			return c.GetTenant(ctx, tenant.Name)
 		}
 		return nil, fmt.Errorf("failed to create organization: %w", err)
 	}
@@ -236,6 +240,9 @@ func (c *Client) AddUserToOrganization(ctx context.Context, tenantName string, u
 	path := fmt.Sprintf("/admin/realms/%s/organizations/%s/members", c.realmName, org.ID)
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, path, userID)
 	if err != nil {
+		if isConflictError(err) {
+			return nil
+		}
 		return fmt.Errorf("failed to add user to organization: %w", err)
 	}
 	defer response.Body.Close()
@@ -246,6 +253,13 @@ func (c *Client) CreateUserInRealm(ctx context.Context, user *User) (*User, erro
 	kcUser := toKeycloakUser(user)
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPost, fmt.Sprintf("/admin/realms/%s/users", c.realmName), kcUser)
 	if err != nil {
+		if isConflictError(err) {
+			existing, lookupErr := c.getUserByUsername(ctx, user.Username)
+			if lookupErr != nil || existing == nil {
+				return nil, fmt.Errorf("user %q already exists but failed to look up: %w", user.Username, errors.Join(err, lookupErr))
+			}
+			return existing, nil
+		}
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 	defer response.Body.Close()
