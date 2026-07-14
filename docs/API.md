@@ -163,7 +163,7 @@ message Project {
     id: "hierarchical_name"
     expression: "this.metadata.name.split('.').all(segment, segment.matches('^[a-z0-9]...'))"
   };
-  
+
   Metadata metadata = 2;
 }
 ```
@@ -180,7 +180,7 @@ message Project {
   option (buf.validate.message).cel = {
     expression: "this.metadata.name.split('.').all(segment, segment.matches(...))"
   };
-  
+
   Metadata metadata = 2 [(buf.validate.field).ignore = IGNORE_ALWAYS];
 }
 ```

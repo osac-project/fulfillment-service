@@ -217,10 +217,10 @@ message PublicIPPoolSpec {
         expression: "this.matches('^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$') || this.matches('^[0-9a-f:]+/[0-9]{1,3}$')"
       }]
     }];
-    
+
     IPFamily ip_family = 2 [(buf.validate.field).enum.defined_only = true];
   }
-  
+
   repeated PoolCIDR cidrs = 3;
 }
 ```
@@ -256,7 +256,7 @@ message ComputeInstanceSpec {
 
 **Entities to update:**
 - BareMetalInstances
-- ComputeInstances  
+- ComputeInstances
 - Clusters
 - Subnets
 - SecurityGroups
@@ -507,4 +507,3 @@ message TenantSpec {
 - Consistent error format across entities
 
 **Recommendation:** Proceed with high-value, low-risk migrations first (Tenant domains, required fields, enums). Document and keep complex business logic in Go where it belongs.
-
