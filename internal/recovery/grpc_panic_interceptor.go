@@ -20,9 +20,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	grpcstatus "google.golang.org/grpc/status"
 )
 
 // GrpcPanicInterceptorBuilder contains the data and logic needed to build an interceptor that recovers from panics.
@@ -94,7 +92,7 @@ func (i *GrpcPanicInterceptor) StreamServer(server any, stream grpc.ServerStream
 				slog.String("method", info.FullMethod),
 				slog.Any("fault", fault),
 			)
-			err = grpcstatus.Errorf(grpccodes.Internal, "Internal error")
+			err = status.Errorf(codes.Internal, "Internal error")
 		}
 	}()
 	err = handler(server, stream)

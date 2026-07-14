@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -32,11 +33,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "computeinstance [flags] ID_OR_NAME",
-		Aliases: []string{"computeinstances"},
-		Short:   "Describe a compute instance",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runner.run,
+		Use:                   "computeinstance [FLAG...] ID|NAME",
+		Aliases:               []string{"computeinstances"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -52,11 +55,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	c.console = terminal.ConsoleFromContext(ctx)
 
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg.Address == "" {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -68,42 +68,32 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewComputeInstancesClient(conn)
 
-	filter := buildFilter(ref)
-	listResponse, err := client.List(ctx, publicv1.ComputeInstancesListRequest_builder{
-		Filter: &filter,
-		Limit:  proto.Int32(2),
-	}.Build())
+	matched, err := lookup.Find(ref, "compute instance", func(filter string, limit int32) ([]*publicv1.ComputeInstance, error) {
+		resp, err := client.List(ctx, publicv1.ComputeInstancesListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe compute instance: %w", err)
+		}
+		return resp.GetItems(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to describe compute instance: %w", err)
-	}
-	if err := guardResult(len(listResponse.GetItems()), ref); err != nil {
 		return err
 	}
 
-	renderComputeInstance(c.console, listResponse.GetItems()[0])
+	renderComputeInstance(c.console, matched)
 
 	return nil
-}
-
-func guardResult(items int, ref string) error {
-	if items == 0 {
-		return fmt.Errorf("compute instance not found: %s", ref)
-	}
-	if items > 1 {
-		return fmt.Errorf("multiple compute instances match '%s', use the ID instead", ref)
-	}
-	return nil
-}
-
-func buildFilter(ref string) string {
-	return fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
 }
 
 func renderComputeInstance(w io.Writer, ci *publicv1.ComputeInstance) {
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	template := "-"
+	catalogItem := "-"
 	if ci.Spec != nil {
-		template = ci.Spec.Template
+		if catalogItemID := ci.Spec.GetCatalogItem(); catalogItemID != "" {
+			catalogItem = catalogItemID
+		}
 	}
 	state := "-"
 	if ci.Status != nil {
@@ -111,10 +101,16 @@ func renderComputeInstance(w io.Writer, ci *publicv1.ComputeInstance) {
 		state = strings.TrimPrefix(state, "COMPUTE_INSTANCE_STATE_")
 	}
 	fmt.Fprintf(writer, "ID:\t%s\n", ci.Id)
-	fmt.Fprintf(writer, "Template:\t%s\n", template)
+	fmt.Fprintf(writer, "Catalog Item:\t%s\n", catalogItem)
 	fmt.Fprintf(writer, "State:\t%s\n", state)
 	if ci.Status != nil && ci.Status.GetLastRestartedAt() != nil {
 		fmt.Fprintf(writer, "Last Restarted At:\t%s\n", ci.Status.GetLastRestartedAt().AsTime().Format(time.RFC3339))
 	}
 	writer.Flush()
 }
+
+const shortHelp = `Describe a compute instance.`
+
+const longHelp = `
+Describe a compute instance.
+`

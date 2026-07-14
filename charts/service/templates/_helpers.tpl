@@ -12,25 +12,29 @@ specific language governing permissions and limitations under the License.
 */}}
 
 {{/*
-Generate the hostname for the fulfillment API. If .Values.externalHostname is set, use it; otherwise, use the default
-Kubernetes service hostname based on the release namespace.
+Return the hostname for the fulfillment API. Fails if 'externalHostname' is not set.
 */}}
 {{- define "fulfillment-api.hostname" -}}
-{{- if .Values.externalHostname -}}
-{{- .Values.externalHostname -}}
+{{- required "externalHostname is required" .Values.externalHostname -}}
+{{- end -}}
+
+{{/*
+Generate the token issuer URL for JWT signing and JWKS discovery.
+
+On OpenShift a Route provides TLS passthrough on port 443, so the URL omits the port. In the kind
+variant traffic goes directly to the Kubernetes Service on port 8000.
+*/}}
+{{- define "fulfillment-api.tokenIssuerUrl" -}}
+{{- if eq .Values.variant "openshift" -}}
+https://{{ include "fulfillment-api.hostname" . }}
 {{- else -}}
-{{- printf "fulfillment-api.%s.svc.cluster.local" .Release.Namespace -}}
+https://{{ include "fulfillment-api.hostname" . }}:8000
 {{- end -}}
 {{- end -}}
 
 {{/*
-Generate the hostname for the fulfillment internal API. If .Values.internalHostname is set, use it; otherwise, use the
-default Kubernetes service hostname based on the release namespace.
+Return the hostname for the fulfillment internal API. Fails if 'internalHostname' is not set.
 */}}
 {{- define "fulfillment-internal-api.hostname" -}}
-{{- if .Values.internalHostname -}}
-{{- .Values.internalHostname -}}
-{{- else -}}
-{{- printf "fulfillment-internal-api.%s.svc.cluster.local" .Release.Namespace -}}
-{{- end -}}
+{{- required "internalHostname is required" .Values.internalHostname -}}
 {{- end -}}

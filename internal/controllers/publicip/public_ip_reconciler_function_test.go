@@ -51,14 +51,12 @@ func (f *fakePublicIPPoolsClient) Get(
 }
 
 var _ = Describe("buildSpec", func() {
-	It("Includes pool and computeInstance when both present", func() {
-		ci := "ci-xyz789"
+	It("Includes pool in spec", func() {
 		t := &task{
 			publicIP: privatev1.PublicIP_builder{
 				Id: "pip-test-1",
 				Spec: privatev1.PublicIPSpec_builder{
-					Pool:            "pool-abc123",
-					ComputeInstance: &ci,
+					Pool: "pool-abc123",
 				}.Build(),
 			}.Build(),
 		}
@@ -66,33 +64,14 @@ var _ = Describe("buildSpec", func() {
 		spec := t.buildSpec()
 
 		Expect(spec.Pool).To(Equal("pool-abc123"))
-		Expect(spec.ComputeInstance).To(Equal("ci-xyz789"))
-	})
-
-	It("Includes only pool when computeInstance is absent", func() {
-		t := &task{
-			publicIP: privatev1.PublicIP_builder{
-				Id: "pip-test-2",
-				Spec: privatev1.PublicIPSpec_builder{
-					Pool: "pool-abc456",
-				}.Build(),
-			}.Build(),
-		}
-
-		spec := t.buildSpec()
-
-		Expect(spec.Pool).To(Equal("pool-abc456"))
-		Expect(spec.ComputeInstance).To(BeEmpty())
 	})
 
 	It("Does not include status fields", func() {
-		ci := "ci-xyz789"
 		t := &task{
 			publicIP: privatev1.PublicIP_builder{
 				Id: "pip-test-3",
 				Spec: privatev1.PublicIPSpec_builder{
-					Pool:            "pool-abc789",
-					ComputeInstance: &ci,
+					Pool: "pool-abc789",
 				}.Build(),
 				Status: privatev1.PublicIPStatus_builder{
 					State:   privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED,
@@ -104,10 +83,7 @@ var _ = Describe("buildSpec", func() {
 
 		spec := t.buildSpec()
 
-		// Verify the spec struct only contains spec fields, not status fields.
-		// The PublicIPSpec struct has Pool and ComputeInstance fields only.
 		Expect(spec.Pool).To(Equal("pool-abc789"))
-		Expect(spec.ComputeInstance).To(Equal("ci-xyz789"))
 	})
 })
 
@@ -285,6 +261,24 @@ var _ = Describe("delete", func() {
 		Expect(hasFinalizer(t.publicIP)).To(BeTrue())
 	})
 
+	It("should remove finalizer when hub cache returns ErrHubNotFound", func() {
+		// This test verifies the core behavior: when a hub is decommissioned/deleted,
+		// the reconciler removes its finalizer to allow the public IP to be archived.
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(nil, controllers.ErrHubNotFound)
+
+		t := newTaskForDelete(publicIPID, hubID, hubCache)
+		Expect(hasFinalizer(t.publicIP)).To(BeTrue())
+
+		err := t.delete(ctx)
+		// Should return nil (not propagate the error)
+		Expect(err).ToNot(HaveOccurred())
+		// Finalizer should be removed to allow archiving
+		Expect(hasFinalizer(t.publicIP)).To(BeFalse())
+	})
+
 	It("should remove finalizer when no hub is assigned", func() {
 		publicIP := privatev1.PublicIP_builder{
 			Id: publicIPID,
@@ -314,10 +308,10 @@ var _ = Describe("delete", func() {
 })
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		publicIP := privatev1.PublicIP_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -329,10 +323,10 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		publicIP := privatev1.PublicIP_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{},
+				Tenant: "",
 			}.Build(),
 		}.Build()
 
@@ -342,23 +336,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
-	})
-
-	It("should fail when multiple tenants are assigned", func() {
-		publicIP := privatev1.PublicIP_builder{
-			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1", "tenant-2"},
-			}.Build(),
-		}.Build()
-
-		t := &task{
-			publicIP: publicIP,
-		}
-
-		err := t.validateTenant()
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
 	It("should fail when metadata is missing", func() {
@@ -370,7 +348,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 
@@ -460,7 +438,7 @@ var _ = Describe("addFinalizer", func() {
 		Expect(added).To(BeFalse())
 		Expect(hasFinalizer(t.publicIP)).To(BeTrue())
 		// Should not duplicate
-		Expect(len(t.publicIP.GetMetadata().GetFinalizers())).To(Equal(1))
+		Expect(t.publicIP.GetMetadata().GetFinalizers()).To(HaveLen(1))
 	})
 
 	It("should create metadata if it doesn't exist", func() {
@@ -691,5 +669,272 @@ var _ = Describe("selectHub", func() {
 		err := t.selectHub(ctx)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("pool not found"))
+	})
+})
+
+var _ = Describe("hub persistence", func() {
+	const (
+		publicIPID   = "test-publicip-hub"
+		poolID       = "pool-123"
+		tenantName   = "test-tenant"
+		hubID        = "test-hub-123"
+		hubNamespace = "hub-123-ns"
+	)
+
+	var (
+		ctx  context.Context
+		ctrl *gomock.Controller
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
+	})
+
+	It("should select hub and return without creating PublicIP CR", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{Namespace: hubNamespace, Client: fakeClient}, nil).
+			AnyTimes()
+
+		// PublicIP derives hub from parent pool
+		poolsClient := &fakePublicIPPoolsClient{
+			getResponse: privatev1.PublicIPPoolsGetResponse_builder{
+				Object: privatev1.PublicIPPool_builder{
+					Id: poolID,
+					Status: privatev1.PublicIPPoolStatus_builder{
+						Hub: hubID,
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}
+
+		publicIPsClient := NewMockPublicIPsClient(ctrl)
+		publicIPsClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.PublicIPsUpdateRequest, opts ...grpc.CallOption) (*privatev1.PublicIPsUpdateResponse, error) {
+				return &privatev1.PublicIPsUpdateResponse{Object: req.GetObject()}, nil
+			}).AnyTimes()
+
+		publicIP := privatev1.PublicIP_builder{
+			Id: publicIPID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.PublicIPSpec_builder{
+				Pool: poolID,
+			}.Build(),
+			Status: privatev1.PublicIPStatus_builder{
+				State: privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:              logger,
+			hubCache:            hubCache,
+			publicIPsClient:     publicIPsClient,
+			publicIPPoolsClient: poolsClient,
+			maskCalculator:      nil,
+		}
+
+		err := f.run(ctx, publicIP)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(publicIP.GetStatus().GetHub()).To(Equal(hubID))
+
+		list := &osacv1alpha1.PublicIPList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(BeEmpty())
+	})
+
+	It("should not create CR when no hubs available", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		// Parent pool has no hub assigned yet (not reconciled)
+		poolsClient := &fakePublicIPPoolsClient{
+			getResponse: privatev1.PublicIPPoolsGetResponse_builder{
+				Object: privatev1.PublicIPPool_builder{
+					Id:     poolID,
+					Status: privatev1.PublicIPPoolStatus_builder{
+						// Hub is empty: pool not yet reconciled
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}
+
+		publicIP := privatev1.PublicIP_builder{
+			Id: publicIPID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.PublicIPSpec_builder{
+				Pool: poolID,
+			}.Build(),
+			Status: privatev1.PublicIPStatus_builder{
+				State: privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:              logger,
+			publicIPPoolsClient: poolsClient,
+			maskCalculator:      nil,
+		}
+
+		err := f.run(ctx, publicIP)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("no hub assigned yet"))
+
+		list := &osacv1alpha1.PublicIPList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(BeEmpty())
+	})
+
+	It("should skip hub selection if already set", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{Namespace: hubNamespace, Client: fakeClient}, nil).
+			AnyTimes()
+
+		publicIPsClient := NewMockPublicIPsClient(ctrl)
+		publicIPsClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.PublicIPsUpdateRequest, opts ...grpc.CallOption) (*privatev1.PublicIPsUpdateResponse, error) {
+				Expect(req.GetUpdateMask().GetPaths()).ToNot(ContainElement("status.hub"))
+				return &privatev1.PublicIPsUpdateResponse{Object: req.GetObject()}, nil
+			}).AnyTimes()
+
+		publicIP := privatev1.PublicIP_builder{
+			Id: publicIPID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.PublicIPSpec_builder{
+				Pool: poolID,
+			}.Build(),
+			Status: privatev1.PublicIPStatus_builder{
+				State: privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING,
+				Hub:   hubID,
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:          logger,
+			hubCache:        hubCache,
+			publicIPsClient: publicIPsClient,
+			maskCalculator:  nil,
+		}
+
+		err := f.run(ctx, publicIP)
+		Expect(err).ToNot(HaveOccurred())
+
+		list := &osacv1alpha1.PublicIPList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(HaveLen(1))
+		Expect(list.Items[0].Namespace).To(Equal(hubNamespace))
+	})
+
+	It("should create CR on second reconcile after hub is persisted", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{Namespace: hubNamespace, Client: fakeClient}, nil).
+			AnyTimes()
+
+		poolsClient := &fakePublicIPPoolsClient{
+			getResponse: privatev1.PublicIPPoolsGetResponse_builder{
+				Object: privatev1.PublicIPPool_builder{
+					Id: poolID,
+					Status: privatev1.PublicIPPoolStatus_builder{
+						Hub: hubID,
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}
+
+		publicIPsClient := NewMockPublicIPsClient(ctrl)
+
+		// First reconcile: persist hub succeeds
+		publicIPsClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.PublicIPsUpdateRequest, opts ...grpc.CallOption) (*privatev1.PublicIPsUpdateResponse, error) {
+				Expect(req.GetUpdateMask().GetPaths()).To(Equal([]string{"status.hub"}))
+				return &privatev1.PublicIPsUpdateResponse{Object: req.GetObject()}, nil
+			})
+
+		publicIP := privatev1.PublicIP_builder{
+			Id: publicIPID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.PublicIPSpec_builder{
+				Pool: poolID,
+			}.Build(),
+			Status: privatev1.PublicIPStatus_builder{
+				State: privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:              logger,
+			hubCache:            hubCache,
+			publicIPsClient:     publicIPsClient,
+			publicIPPoolsClient: poolsClient,
+			maskCalculator:      nil,
+		}
+
+		// First reconcile: hub="" → selects hub, returns early, no CR
+		err := f.run(ctx, publicIP)
+		Expect(err).ToNot(HaveOccurred())
+
+		list := &osacv1alpha1.PublicIPList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(BeEmpty())
+
+		// Second reconcile: hub already set → CR created
+		publicIP.GetStatus().SetHub(hubID)
+		publicIPsClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&privatev1.PublicIPsUpdateResponse{Object: publicIP}, nil).
+			AnyTimes()
+
+		err = f.run(ctx, publicIP)
+		Expect(err).ToNot(HaveOccurred())
+
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(HaveLen(1))
+		Expect(list.Items[0].Namespace).To(Equal(hubNamespace))
 	})
 })

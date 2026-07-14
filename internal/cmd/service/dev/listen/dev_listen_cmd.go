@@ -32,10 +32,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "listen",
-		Short: "Listens for notifications",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "listen [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := command.Flags()
 	database.AddFlags(flags)
@@ -43,7 +45,7 @@ func Cmd() *cobra.Command {
 		&runner.channel,
 		"channel",
 		"",
-		"Name of the channel",
+		channelFlagHelp,
 	)
 	return command
 }
@@ -87,12 +89,11 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		SetLogger(c.logger).
 		SetUrl(dbUrl).
 		SetChannel(c.channel).
-		AddPayloadCallback(c.processPayload).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create listener: %w", err)
 	}
-	err = listener.Listen(ctx)
+	err = listener.Listen(ctx, c.processPayload)
 	if err == nil || errors.Is(err, context.Canceled) {
 		c.logger.InfoContext(ctx, "Listener finished")
 	} else {
@@ -122,3 +123,13 @@ func (c *runnerContext) processPayload(ctx context.Context, payload proto.Messag
 
 	return nil
 }
+
+const shortHelp = `Listens for notifications`
+
+const longHelp = `
+Listens for notifications.
+`
+
+const channelFlagHelp = `
+_CHANNEL_ - Name of the channel.
+`

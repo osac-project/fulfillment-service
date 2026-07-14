@@ -50,8 +50,9 @@ type archiveArgs struct {
 	id              string
 	creationTs      time.Time
 	deletionTs      time.Time
-	creators        []string
-	tenants         []string
+	creator         string
+	tenant          string
+	project         string
 	name            string
 	labelsData      []byte
 	annotationsData []byte
@@ -80,8 +81,9 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 			name,
 			creation_timestamp,
 			deletion_timestamp,
-			creators,
-			tenants,
+			creator,
+			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -96,7 +98,8 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 			$7,
 			$8,
 			$9,
-			$10
+			$10,
+			$11
 		)
 		`,
 		r.dao.table,
@@ -109,8 +112,9 @@ func (r *request[O]) archive(ctx context.Context, args archiveArgs) error {
 		args.name,
 		args.creationTs,
 		args.deletionTs,
-		args.creators,
-		args.tenants,
+		args.creator,
+		args.tenant,
+		args.project,
 		args.labelsData,
 		args.annotationsData,
 		args.version,
@@ -150,12 +154,12 @@ func (r *request[O]) addTenancyFilter(ctx context.Context) error {
 		return nil
 	}
 
-	// If the tenant set is finite, then we can add a filter that matches the tenants in the set.
+	// If the tenant set is finite, then we can add a filter that matches the tenant in the set.
 	if r.tenants.Finite() {
 		ids := r.tenants.Inclusions()
 		sort.Strings(ids)
 		r.sql.params = append(r.sql.params, ids)
-		filter := fmt.Sprintf("tenants && $%d", len(r.sql.params))
+		filter := fmt.Sprintf("tenant = any($%d)", len(r.sql.params))
 		if r.sql.filter.Len() == 0 {
 			r.sql.filter.WriteString(filter)
 		} else {
@@ -181,8 +185,9 @@ type makeMetadataArgs struct {
 	creationTs  time.Time
 	deletionTs  time.Time
 	finalizers  []string
-	creators    []string
-	tenants     []string
+	creator     string
+	tenant      string
+	project     string
 	name        string
 	labels      map[string]string
 	annotations map[string]string
@@ -199,31 +204,24 @@ func (r *request[O]) makeMetadata(args makeMetadataArgs) metadataIface {
 		result.SetDeletionTimestamp(timestamppb.New(args.deletionTs))
 	}
 	result.SetFinalizers(args.finalizers)
-	result.SetCreators(args.creators)
-	result.SetTenants(r.filterTenants(args.tenants))
+	result.SetCreator(args.creator)
+	result.SetTenant(r.filterTenant(args.tenant))
+	result.SetProject(args.project)
 	result.SetLabels(args.labels)
 	result.SetAnnotations(args.annotations)
 	result.SetVersion(args.version)
 	return result
 }
 
-// filterTenants returns the intersection of the object's tenants and the user's visible tenants.
-func (r *request[O]) filterTenants(tenants []string) []string {
-	// If the visible tenants set is universal, it means that the user has permission to see all tenants, so we
-	// don't need to filter anything:
+// filterTenant returns the object's tenant if it is visible to the user, or an empty string otherwise.
+func (r *request[O]) filterTenant(tenant string) string {
 	if r.tenants.Universal() {
-		return tenants
+		return tenant
 	}
-
-	// Calculate the intersection of object tenants and visible tenants:
-	result := make([]string, 0, len(tenants))
-	for _, tenant := range tenants {
-		if r.tenants.Contains(tenant) {
-			result = append(result, tenant)
-		}
+	if r.tenants.Contains(tenant) {
+		return tenant
 	}
-
-	return result
+	return ""
 }
 
 func (r *request[O]) getMetadata(object O) metadataIface {

@@ -23,10 +23,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "version",
-		Short: "Display version details",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "version [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -46,3 +48,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = "Display version details"
+
+const longHelp = `
+Display version details.
+`

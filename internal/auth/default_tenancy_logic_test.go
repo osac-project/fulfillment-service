@@ -107,27 +107,27 @@ var _ = Describe("Default tenancy logic", func() {
 		})
 	})
 
-	Describe("Determine default tenants", func() {
-		It("Returns the tenants from the subject", func() {
+	Describe("Determine default tenant", func() {
+		It("Returns a tenant from the subject", func() {
 			subject := &Subject{
 				User:    "my_user",
 				Tenants: collections.NewSet("tenant-a", "tenant-b"),
 			}
 			ctx = ContextWithSubject(ctx, subject)
-			result, err := logic.DetermineDefaultTenants(ctx)
+			result, err := logic.DetermineDefaultTenant(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(result.Equal(collections.NewSet("tenant-a", "tenant-b"))).To(BeTrue())
+			Expect(result).To(BeElementOf("tenant-a", "tenant-b"))
 		})
 
-		It("Returns shared tenants when tenants is universal", func() {
+		It("Returns shared when tenants is universal", func() {
 			subject := &Subject{
 				User:    "my_user",
 				Tenants: AllTenants,
 			}
 			ctx = ContextWithSubject(ctx, subject)
-			result, err := logic.DetermineDefaultTenants(ctx)
+			result, err := logic.DetermineDefaultTenant(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(result.Equal(SharedTenants)).To(BeTrue())
+			Expect(result).To(Equal(SharedTenant))
 		})
 
 		It("Fails if the subject has an empty tenants set", func() {
@@ -136,7 +136,7 @@ var _ = Describe("Default tenancy logic", func() {
 				Tenants: collections.NewSet[string](),
 			}
 			ctx = ContextWithSubject(ctx, subject)
-			_, err := logic.DetermineDefaultTenants(ctx)
+			_, err := logic.DetermineDefaultTenant(ctx)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("at least one tenant"))
 		})

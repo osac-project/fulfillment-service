@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,10 +47,13 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "cluster [flags]",
-		Aliases: []string{string(proto.MessageName((*publicv1.Cluster)(nil)))},
-		Short:   "Create a cluster",
-		RunE:    runner.run,
+		Use:                   "cluster [FLAG...]",
+		Aliases:               []string{string(proto.MessageName((*publicv1.Cluster)(nil)))},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -57,71 +61,79 @@ func Cmd() *cobra.Command {
 		"name",
 		"n",
 		"",
-		"Name of the cluster.",
+		nameFlagHelp,
 	)
 	flags.StringVarP(
 		&runner.args.template,
 		"template",
 		"t",
 		"",
-		"Template identifier or name",
+		templateFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.catalogItem,
+		"catalog-item",
+		"",
+		catalogItemFlagHelp,
 	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterValues,
 		"template-parameter",
 		"p",
 		[]string{},
-		"Template parameter in the format 'name=value'.",
+		templateParameterFlagHelp,
 	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterFiles,
 		"template-parameter-file",
 		"f",
 		[]string{},
-		"Template parameter from file in the format 'name=filename'.",
+		templateParameterFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.pullSecret,
 		"pull-secret",
 		"",
-		"Pull secret for authenticating to image repositories (inline value).",
+		pullSecretFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.pullSecretFile,
 		"pull-secret-file",
 		"",
-		"Path to a file containing the pull secret.",
+		pullSecretFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.sshPublicKey,
 		"ssh-public-key",
 		"",
-		"SSH public key to install on cluster worker nodes.",
+		sshPublicKeyFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.sshPublicKeyFile,
 		"ssh-public-key-file",
 		"",
-		"Path to a file containing the SSH public key.",
+		sshPublicKeyFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.releaseImage,
 		"release-image",
 		"",
-		"OCP release image URL (e.g., quay.io/openshift-release-dev/ocp-release:4.17.0-multi).",
+		releaseImageFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.podCIDR,
 		"pod-cidr",
 		"",
-		"CIDR for the cluster's pod network. If omitted, the server default is used.",
+		podCIDRFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.serviceCIDR,
 		"service-cidr",
 		"",
-		"CIDR for the cluster's service network. If omitted, the server default is used.",
+		serviceCIDRFlagHelp,
 	)
+	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
+	result.MarkFlagsOneRequired("catalog-item", "template")
 	return result
 }
 
@@ -129,6 +141,7 @@ type runnerContext struct {
 	args struct {
 		name                    string
 		template                string
+		catalogItem             string
 		templateParameterValues []string
 		templateParameterFiles  []string
 		pullSecret              string
@@ -141,6 +154,7 @@ type runnerContext struct {
 	}
 	logger          *slog.Logger
 	console         *terminal.Console
+	settings        *config.Settings
 	templatesClient publicv1.ClusterTemplatesClient
 	clustersClient  publicv1.ClustersClient
 }
@@ -161,22 +175,28 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load templates: %w", err)
 	}
 
-	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
+	// Reject template parameters when using catalog item (per D-04):
+	if c.args.catalogItem != "" {
+		if len(c.args.templateParameterValues) > 0 || len(c.args.templateParameterFiles) > 0 {
+			return fmt.Errorf(
+				"--template-parameter and --template-parameter-file are not supported with --catalog-item",
+			)
+		}
 	}
-	if cfg.Address == "" {
+
+	// Deprecation warning for --template (per D-03):
+	if c.args.template != "" {
+		fmt.Fprintf(os.Stderr, "Warning: --template is deprecated, use --catalog-item instead\n")
+	}
+
+	// Get the configuration:
+	c.settings = config.SettingsFromContext(ctx)
+	if !c.settings.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
-	// Check that we have a template:
-	if c.args.template == "" {
-		return fmt.Errorf("template identifier or name is required")
-	}
-
 	// Create the gRPC connection from the configuration:
-	conn, err := cfg.Connect(ctx, cmd.Flags())
+	conn, err := c.settings.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
@@ -186,7 +206,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	helper, err := reflection.NewHelper().
 		SetLogger(c.logger).
 		SetConnection(conn).
-		AddPackages(cfg.Packages()).
+		AddPackages(c.settings.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -196,6 +217,23 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Create the gRPC clients:
 	c.templatesClient = publicv1.NewClusterTemplatesClient(conn)
 	c.clustersClient = publicv1.NewClustersClient(conn)
+
+	// Resolve credentials before branching (used in both catalog-item and template paths):
+	pullSecret, sshPublicKey, err := c.resolveCredentials()
+	if err != nil {
+		return err
+	}
+
+	if c.args.catalogItem != "" {
+		// Catalog item path: skip template lookup entirely (per D-04).
+		specBuilder := publicv1.ClusterSpec_builder{
+			CatalogItem: c.args.catalogItem,
+		}
+		c.applyOptionalSpecFields(&specBuilder, pullSecret, sshPublicKey)
+		return c.createCluster(ctx, specBuilder.Build())
+	}
+
+	// Legacy template path (existing code continues below):
 
 	// Fetch the cluster template:
 	template, err := c.findTemplate(ctx)
@@ -218,31 +256,43 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return exit.Error(1)
 	}
 
-	// Resolve pull secret (--pull-secret-file takes precedence over --pull-secret):
-	pullSecret := c.args.pullSecret
-	if c.args.pullSecretFile != "" {
-		data, readErr := os.ReadFile(c.args.pullSecretFile)
-		if readErr != nil {
-			return fmt.Errorf("failed to read pull secret file '%s': %w", c.args.pullSecretFile, readErr)
-		}
-		pullSecret = strings.TrimSpace(string(data))
-	}
-
-	// Resolve SSH public key (--ssh-public-key-file takes precedence over --ssh-public-key):
-	sshPublicKey := c.args.sshPublicKey
-	if c.args.sshPublicKeyFile != "" {
-		data, readErr := os.ReadFile(c.args.sshPublicKeyFile)
-		if readErr != nil {
-			return fmt.Errorf("failed to read SSH public key file '%s': %w", c.args.sshPublicKeyFile, readErr)
-		}
-		sshPublicKey = strings.TrimSpace(string(data))
-	}
-
 	// Build the cluster spec:
 	specBuilder := publicv1.ClusterSpec_builder{
 		Template:           template.GetId(),
 		TemplateParameters: templateParameterValues,
 	}
+	c.applyOptionalSpecFields(&specBuilder, pullSecret, sshPublicKey)
+	return c.createCluster(ctx, specBuilder.Build())
+}
+
+// resolveCredentials reads pull secret and SSH public key from file flags when specified.
+func (c *runnerContext) resolveCredentials() (pullSecret, sshPublicKey string, err error) {
+	pullSecret = c.args.pullSecret
+	if c.args.pullSecretFile != "" {
+		data, readErr := os.ReadFile(c.args.pullSecretFile)
+		if readErr != nil {
+			err = fmt.Errorf("failed to read pull secret file '%s': %w", c.args.pullSecretFile, readErr)
+			return
+		}
+		pullSecret = strings.TrimSpace(string(data))
+	}
+	sshPublicKey = c.args.sshPublicKey
+	if c.args.sshPublicKeyFile != "" {
+		data, readErr := os.ReadFile(c.args.sshPublicKeyFile)
+		if readErr != nil {
+			err = fmt.Errorf("failed to read SSH public key file '%s': %w", c.args.sshPublicKeyFile, readErr)
+			return
+		}
+		sshPublicKey = strings.TrimSpace(string(data))
+	}
+	return
+}
+
+// applyOptionalSpecFields sets pull secret, SSH public key, release image, and network CIDRs
+// on the spec builder when their corresponding flags are provided.
+func (c *runnerContext) applyOptionalSpecFields(
+	specBuilder *publicv1.ClusterSpec_builder, pullSecret, sshPublicKey string,
+) {
 	if pullSecret != "" {
 		specBuilder.PullSecret = &pullSecret
 	}
@@ -262,27 +312,25 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		}
 		specBuilder.Network = networkBuilder.Build()
 	}
+}
 
-	// Prepare the cluster:
+// createCluster creates a cluster with the given spec and prints the result.
+func (c *runnerContext) createCluster(ctx context.Context, spec *publicv1.ClusterSpec) error {
 	cluster := publicv1.Cluster_builder{
 		Metadata: publicv1.Metadata_builder{
-			Name: c.args.name,
+			Name:   c.args.name,
+			Tenant: c.settings.Tenant(),
 		}.Build(),
-		Spec: specBuilder.Build(),
+		Spec: spec,
 	}.Build()
-
-	// Create the cluster:
 	response, err := c.clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
 		Object: cluster,
 	}.Build())
 	if err != nil {
 		return fmt.Errorf("failed to create cluster: %w", err)
 	}
-
-	// Display the result:
 	cluster = response.Object
 	c.console.Infof(ctx, "Created cluster '%s'.\n", cluster.Id)
-
 	return nil
 }
 
@@ -297,8 +345,8 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Clus
 		c.args.template,
 	)
 	response, err := c.templatesClient.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
-		Filter: proto.String(filter),
-		Limit:  proto.Int32(10),
+		Filter: new(filter),
+		Limit:  new(int32(10)),
 	}.Build())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
@@ -325,7 +373,7 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Clus
 
 	// If we are here then no matches were found, we will show to the user some of the available templates:
 	response, err = c.templatesClient.List(ctx, publicv1.ClusterTemplatesListRequest_builder{
-		Limit: proto.Int32(10),
+		Limit: new(int32(10)),
 	}.Build())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
@@ -464,7 +512,7 @@ func (c *runnerContext) parseTemplateParameters(ctx context.Context,
 			)
 			continue
 		}
-		data, err := os.ReadFile(file)
+		data, err := os.ReadFile(filepath.Clean(file))
 		if errors.Is(err, os.ErrNotExist) {
 			issues = append(
 				issues, fmt.Sprintf(
@@ -708,3 +756,67 @@ func (c *runnerContext) validTemplateParameters(template *publicv1.ClusterTempla
 
 	return results
 }
+
+const shortHelp = `Create a cluster`
+
+const longHelp = `
+Create a cluster.
+`
+
+const nameFlagHelp = `
+_NAME_ - Name of the cluster.
+`
+
+const templateFlagHelp = `
+_TEMPLATE_ - Template identifier or name. Mutually exclusive with
+{{ bt }}--catalog-item{{ bt }}.
+`
+
+const catalogItemFlagHelp = `
+_ID_ - Catalog item identifier. Mutually exclusive with
+{{ bt }}--template{{ bt }}.
+`
+
+const templateParameterFlagHelp = `
+_NAME=VALUE_ - Template parameter in the format
+{{ bt }}name=value{{ bt }}. Can be specified multiple times.
+`
+
+const templateParameterFileFlagHelp = `
+_NAME=FILE_ - Template parameter whose value is read from a file, in the
+format {{ bt }}name=filename{{ bt }}. Can be specified multiple
+times.
+`
+
+const pullSecretFlagHelp = `
+_SECRET_ - Pull secret for authenticating to image repositories, provided as
+an inline value. See also {{ bt }}--pull-secret-file{{ bt }}.
+`
+
+const pullSecretFileFlagHelp = `
+_FILE_ - Path to a file containing the pull secret.
+`
+
+const sshPublicKeyFlagHelp = `
+_KEY_ - SSH public key to install on cluster worker nodes, provided as an
+inline value. See also {{ bt }}--ssh-public-key-file{{ bt }}.
+`
+
+const sshPublicKeyFileFlagHelp = `
+_FILE_ - Path to a file containing the SSH public key.
+`
+
+const releaseImageFlagHelp = `
+_URL_ - OCP release image URL, for example
+{{ bt }}quay.io/openshift-release-dev/ocp-release:4.17.0-multi{{ bt }}.
+`
+
+const podCIDRFlagHelp = `
+_CIDR_ - CIDR for the cluster's pod network. If omitted the server default
+is used.
+`
+
+const serviceCIDRFlagHelp = `
+_CIDR_ - CIDR for the cluster's service network. If omitted the server
+default is used.
+`

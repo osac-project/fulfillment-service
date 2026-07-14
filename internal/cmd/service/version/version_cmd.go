@@ -25,10 +25,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "version",
-		Short: "Display version details",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "version [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	return command
 }
@@ -53,3 +55,11 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 
 	return nil
 }
+
+// shortHelp is the short help text for the `version` command.
+const shortHelp = `Display version details`
+
+// longHelp is the long help text for the `version` command.
+const longHelp = `
+Display version details.
+`

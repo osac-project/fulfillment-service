@@ -202,3 +202,9 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body any) (
 
 	return
 }
+
+// RefreshToken invalidates the cached token, forcing a fresh token to be generated on the next request.
+// This is useful when external changes require a new token (e.g., after creating a new realm).
+func (c *Client) RefreshToken(ctx context.Context) error {
+	return c.tokenSource.Invalidate(ctx)
+}

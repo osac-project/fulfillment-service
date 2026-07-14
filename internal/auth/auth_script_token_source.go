@@ -185,3 +185,9 @@ func (s *scriptTokenSource) parseToken(tokenText string) (result *Token, err err
 	}
 	return
 }
+
+// Invalidate clears the cached token, forcing a new token to be generated on the next Token() call.
+func (s *scriptTokenSource) Invalidate(ctx context.Context) error {
+	// Save an empty token to invalidate the cache
+	return s.store.Save(ctx, &Token{})
+}

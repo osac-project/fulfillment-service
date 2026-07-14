@@ -13,6 +13,8 @@ language governing permissions and limitations under the License.
 
 package subnet
 
+//go:generate mockgen -source=../../api/osac/private/v1/subnets_service_grpc.pb.go -destination=subnets_client_mock.go -package=subnet SubnetsClient
+
 import (
 	"context"
 	"errors"
@@ -156,13 +158,16 @@ func (t *task) update(ctx context.Context) error {
 		return err
 	}
 
-	// Select the hub:
+	// Select the hub and return immediately if it was just selected. This ensures the hub is
+	// persisted before any Kubernetes objects are created.
+	hubJustSelected := t.subnet.GetStatus().GetHub() == ""
 	if err := t.selectHub(ctx); err != nil {
 		return err
 	}
-
-	// Save the selected hub in the private data of the subnet:
 	t.subnet.GetStatus().SetHub(t.hubId)
+	if hubJustSelected {
+		return nil
+	}
 
 	// Get the K8S object:
 	object, err := t.getKubeObject(ctx)
@@ -183,7 +188,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.SubnetUuid: t.subnet.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.subnet.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.subnet.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -226,8 +231,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	if !t.subnet.HasMetadata() || len(t.subnet.GetMetadata().GetTenants()) != 1 {
-		return errors.New("subnet must have exactly one tenant assigned")
+	if !t.subnet.HasMetadata() || t.subnet.GetMetadata().GetTenant() == "" {
+		return errors.New("subnet must have a tenant assigned")
 	}
 	return nil
 }
@@ -242,6 +247,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	err = t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "subnet_id", t.subnet.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 

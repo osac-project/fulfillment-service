@@ -13,6 +13,9 @@
 
 columns:
 
+- header: PROJECT
+  value: "has(this.metadata.project)? this.metadata.project: '-'"
+
 - header: ID
   value: this.id
 
@@ -24,6 +27,9 @@ columns:
   type: osac.private.v1.ComputeInstanceTemplate
   lookup: true
 
+- header: OS
+  value: "has(this.spec.is_windows) && this.spec.is_windows ? 'windows' : 'linux'"
+
 - header: STATE
   value: this.status.state
   type: osac.private.v1.ComputeInstanceState
@@ -32,3 +38,9 @@ columns:
   value: this.status.hub
   type: osac.private.v1.Hub
   lookup: true
+
+- header: INTERNAL IP ADDRESS
+  value: this.status.internal_ip_address
+
+- header: PUBLIC IP ADDRESS
+  value: this.status.public_ip_address

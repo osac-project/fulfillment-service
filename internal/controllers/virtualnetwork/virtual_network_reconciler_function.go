@@ -13,6 +13,8 @@ language governing permissions and limitations under the License.
 
 package virtualnetwork
 
+//go:generate mockgen -source=../../api/osac/private/v1/virtual_networks_service_grpc.pb.go -destination=virtual_networks_client_mock.go -package=virtualnetwork VirtualNetworksClient
+
 import (
 	"context"
 	"errors"
@@ -156,9 +158,15 @@ func (t *task) update(ctx context.Context) error {
 		return err
 	}
 
-	// Select the hub:
+	// Select the hub and return immediately if it was just selected. This ensures the hub is
+	// persisted before any Kubernetes objects are created.
+	hubJustSelected := t.virtualNetwork.GetStatus().GetHub() == ""
 	if err := t.selectHub(ctx); err != nil {
 		return err
+	}
+	t.virtualNetwork.GetStatus().SetHub(t.hubId)
+	if hubJustSelected {
+		return nil
 	}
 
 	// Get the K8S object:
@@ -180,7 +188,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.VirtualNetworkUuid: t.virtualNetwork.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.virtualNetwork.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.virtualNetwork.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -223,8 +231,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	if !t.virtualNetwork.HasMetadata() || len(t.virtualNetwork.GetMetadata().GetTenants()) != 1 {
-		return errors.New("virtual network must have exactly one tenant assigned")
+	if !t.virtualNetwork.HasMetadata() || t.virtualNetwork.GetMetadata().GetTenant() == "" {
+		return errors.New("virtual network must have a tenant assigned")
 	}
 	return nil
 }
@@ -239,6 +247,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	err = t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "virtual_network_id", t.virtualNetwork.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 
@@ -307,8 +321,6 @@ func (t *task) selectHub(ctx context.Context) error {
 	}
 	t.hubNamespace = hubEntry.Namespace
 	t.hubClient = hubEntry.Client
-	// Save the selected hub in the private data of the virtual network:
-	t.virtualNetwork.GetStatus().SetHub(t.hubId)
 	return nil
 }
 

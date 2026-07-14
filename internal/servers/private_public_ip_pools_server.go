@@ -17,6 +17,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
+	"net/netip"
+	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
@@ -24,13 +27,13 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 // PrivatePublicIPPoolsServerBuilder contains the data and logic needed to create a new private public IP pools server.
 type PrivatePublicIPPoolsServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -59,12 +62,12 @@ func (b *PrivatePublicIPPoolsServerBuilder) SetLogger(value *slog.Logger) *Priva
 }
 
 // SetNotifier sets the notifier used to publish change events.
-func (b *PrivatePublicIPPoolsServerBuilder) SetNotifier(value *database.Notifier) *PrivatePublicIPPoolsServerBuilder {
+func (b *PrivatePublicIPPoolsServerBuilder) SetNotifier(value events.Notifier) *PrivatePublicIPPoolsServerBuilder {
 	b.notifier = value
 	return b
 }
 
-// SetAttributionLogic sets the attribution logic used to determine the creators of objects.
+// SetAttributionLogic sets the attribution logic used to determine the creator of objects.
 func (b *PrivatePublicIPPoolsServerBuilder) SetAttributionLogic(value auth.AttributionLogic) *PrivatePublicIPPoolsServerBuilder {
 	b.attributionLogic = value
 	return b
@@ -127,14 +130,272 @@ func (s *PrivatePublicIPPoolsServer) Get(ctx context.Context,
 
 func (s *PrivatePublicIPPoolsServer) Create(ctx context.Context,
 	request *privatev1.PublicIPPoolsCreateRequest) (response *privatev1.PublicIPPoolsCreateResponse, err error) {
+	pool := request.GetObject()
+
+	err = s.validateCreate(ctx, pool)
+	if err != nil {
+		return
+	}
+
+	// At creation time nothing is allocated, so available == total.
+	total := calculatePoolCapacity(pool.GetSpec().GetCidrs(), pool.GetSpec().GetIpFamily())
+	pool.SetStatus(privatev1.PublicIPPoolStatus_builder{
+		Total:     total,
+		Available: total,
+	}.Build())
+
 	err = s.generic.Create(ctx, request, &response)
 	return
 }
 
 func (s *PrivatePublicIPPoolsServer) Update(ctx context.Context,
 	request *privatev1.PublicIPPoolsUpdateRequest) (response *privatev1.PublicIPPoolsUpdateResponse, err error) {
+	id := request.GetObject().GetId()
+	if id == "" {
+		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
+		return
+	}
+
+	getRequest := &privatev1.PublicIPPoolsGetRequest{}
+	getRequest.SetId(id)
+	var getResponse *privatev1.PublicIPPoolsGetResponse
+	err = s.generic.Get(ctx, getRequest, &getResponse)
+	if err != nil {
+		return
+	}
+
+	existing := getResponse.GetObject()
+
+	err = validateUpdate(request.GetObject(), existing)
+	if err != nil {
+		return
+	}
+
+	// Preserve immutable implementation_strategy from existing object.
+	if request.GetObject().GetSpec() != nil && existing.GetSpec() != nil {
+		request.GetObject().GetSpec().SetImplementationStrategy(existing.GetSpec().GetImplementationStrategy())
+	}
+
 	err = s.generic.Update(ctx, request, &response)
 	return
+}
+
+// validateCreate validates a PublicIPPool creation request.
+func (s *PrivatePublicIPPoolsServer) validateCreate(ctx context.Context,
+	pool *privatev1.PublicIPPool) error {
+
+	if pool == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "public IP pool is mandatory")
+	}
+
+	spec := pool.GetSpec()
+	if spec == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "public IP pool spec is mandatory")
+	}
+
+	if spec.GetIpFamily() == privatev1.IPFamily_IP_FAMILY_UNSPECIFIED {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.ip_family' is required")
+	}
+
+	cidrs := spec.GetCidrs()
+	if len(cidrs) == 0 {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.cidrs' is required")
+	}
+
+	canonicalCIDRs := make([]string, len(cidrs))
+	for i, cidr := range cidrs {
+		canonical, err := validatePoolCIDRFormat(cidr, spec.GetIpFamily(), i)
+		if err != nil {
+			return err
+		}
+		canonicalCIDRs[i] = canonical
+	}
+	spec.SetCidrs(canonicalCIDRs)
+
+	if err := validateNoCIDRSelfOverlap(canonicalCIDRs); err != nil {
+		return err
+	}
+
+	return s.validateNoPoolCIDROverlap(ctx, pool)
+}
+
+// validateUpdate validates a PublicIPPool update request. Only immutability of spec fields is checked
+func validateUpdate(newPool *privatev1.PublicIPPool, existing *privatev1.PublicIPPool) error {
+	if newPool == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "public IP pool is mandatory")
+	}
+
+	spec := newPool.GetSpec()
+	if spec == nil {
+		return nil
+	}
+
+	if spec.GetIpFamily() != privatev1.IPFamily_IP_FAMILY_UNSPECIFIED &&
+		spec.GetIpFamily() != existing.GetSpec().GetIpFamily() {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"field 'spec.ip_family' is immutable and cannot be changed from '%s' to '%s'",
+			existing.GetSpec().GetIpFamily().String(), spec.GetIpFamily().String())
+	}
+
+	if newCIDRs := spec.GetCidrs(); len(newCIDRs) > 0 && !cidrSlicesEqual(newCIDRs, existing.GetSpec().GetCidrs()) {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"field 'spec.cidrs' is immutable and cannot be changed after creation")
+	}
+
+	if newStrategy := spec.GetImplementationStrategy(); newStrategy != "" && newStrategy != existing.GetSpec().GetImplementationStrategy() {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"field 'spec.implementation_strategy' is immutable and cannot be changed from '%s' to '%s'",
+			existing.GetSpec().GetImplementationStrategy(), newStrategy)
+	}
+
+	return nil
+}
+
+// validatePoolCIDRFormat validates CIDR string is parseable, belongs to the specified IP family,
+// and returns the canonical CIDR notation.
+func validatePoolCIDRFormat(cidrStr string, ipFamily privatev1.IPFamily, idx int) (string, error) {
+	prefix, err := netip.ParsePrefix(cidrStr)
+	if err != nil {
+		return "", grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"invalid CIDR format in field 'spec.cidrs[%d]': '%s': %v", idx, cidrStr, err)
+	}
+
+	isIPv4 := prefix.Addr().Is4()
+	switch ipFamily {
+	case privatev1.IPFamily_IP_FAMILY_IPV4:
+		if !isIPv4 {
+			return "", grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.cidrs[%d]' contains IPv6 address but pool ip_family is IPv4: %s", idx, cidrStr)
+		}
+	case privatev1.IPFamily_IP_FAMILY_IPV6:
+		if isIPv4 {
+			return "", grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.cidrs[%d]' contains IPv4 address but pool ip_family is IPv6: %s", idx, cidrStr)
+		}
+	}
+
+	return prefix.Masked().String(), nil
+}
+
+// validateNoCIDRSelfOverlap checks that no two CIDRs within the same pool overlap each other.
+// This is called after format validation, so all CIDRs are known to be parseable.
+func validateNoCIDRSelfOverlap(cidrs []string) error {
+	for i := 0; i < len(cidrs); i++ {
+		for j := i + 1; j < len(cidrs); j++ {
+			overlap, err := cidrsOverlap(cidrs[i], cidrs[j])
+			if err != nil {
+				return grpcstatus.Errorf(grpccodes.Internal, "failed to check intra-pool CIDR overlap")
+			}
+			if overlap {
+				return grpcstatus.Errorf(grpccodes.InvalidArgument,
+					"field 'spec.cidrs[%d]' (%s) overlaps with 'spec.cidrs[%d]' (%s) within the same pool",
+					i, cidrs[i], j, cidrs[j])
+			}
+		}
+	}
+	return nil
+}
+
+// validateNoPoolCIDROverlap checks for CIDR overlap with CIDRs from any existing pool.
+func (s *PrivatePublicIPPoolsServer) validateNoPoolCIDROverlap(ctx context.Context,
+	pool *privatev1.PublicIPPool) error {
+
+	newCIDRs := pool.GetSpec().GetCidrs()
+
+	var offset int32
+	for {
+		listRequest := &privatev1.PublicIPPoolsListRequest{}
+		listRequest.SetOffset(offset)
+		var listResponse *privatev1.PublicIPPoolsListResponse
+		if err := s.generic.List(ctx, listRequest, &listResponse); err != nil {
+			s.logger.ErrorContext(ctx, "Failed to list pools for overlap check", slog.Any("error", err))
+			return grpcstatus.Errorf(grpccodes.Internal, "failed to validate CIDR overlap")
+		}
+
+		for _, existing := range listResponse.GetItems() {
+			for _, existingCIDR := range existing.GetSpec().GetCidrs() {
+				for _, newCIDR := range newCIDRs {
+					overlap, err := cidrsOverlap(newCIDR, existingCIDR)
+					if err != nil {
+						s.logger.ErrorContext(ctx, "Failed to check CIDR overlap", slog.Any("error", err))
+						return grpcstatus.Errorf(grpccodes.Internal, "failed to validate CIDR overlap")
+					}
+					if overlap {
+						return grpcstatus.Errorf(grpccodes.AlreadyExists,
+							"CIDR '%s' overlaps with CIDR '%s' from existing pool '%s'",
+							newCIDR, existingCIDR, existing.GetMetadata().GetName())
+					}
+				}
+			}
+		}
+
+		if offset+listResponse.GetSize() >= listResponse.GetTotal() {
+			break
+		}
+		offset += listResponse.GetSize()
+	}
+
+	return nil
+}
+
+// calculatePoolCapacity returns the total number of usable IP addresses across all CIDRs in the pool
+func calculatePoolCapacity(cidrs []string, ipFamily privatev1.IPFamily) int64 {
+	var total int64
+	for _, cidr := range cidrs {
+		cap := calculateCIDRCapacity(cidr, ipFamily)
+		if total > math.MaxInt64-cap {
+			return math.MaxInt64
+		}
+		total += cap
+	}
+	return total
+}
+
+// calculateCIDRCapacity returns the number of usable IP addresses for a single CIDR
+func calculateCIDRCapacity(cidrStr string, ipFamily privatev1.IPFamily) int64 {
+	prefix, err := netip.ParsePrefix(cidrStr)
+	if err != nil {
+		return 0
+	}
+	bits := prefix.Addr().BitLen()
+	ones := prefix.Bits()
+	if ones < 0 {
+		return 0
+	}
+	hostBits := bits - ones
+
+	if ipFamily == privatev1.IPFamily_IP_FAMILY_IPV4 {
+		total := int64(1) << hostBits
+		if hostBits >= 2 {
+			return total - 2 // subtract network and broadcast
+		}
+		return total // /31 = 2 (point-to-point), /32 = 1 (host route)
+	}
+
+	// IPv6: all addresses usable; cap at math.MaxInt64 for large prefix lengths.
+	if hostBits >= 63 {
+		return math.MaxInt64
+	}
+	return int64(1) << hostBits
+}
+
+// cidrSlicesEqual reports whether two CIDR slices contain the same set of CIDRs (order-independent).
+func cidrSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	sortedA := make([]string, len(a))
+	sortedB := make([]string, len(b))
+	copy(sortedA, a)
+	copy(sortedB, b)
+	sort.Strings(sortedA)
+	sort.Strings(sortedB)
+	for i := range sortedA {
+		if sortedA[i] != sortedB[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *PrivatePublicIPPoolsServer) Delete(ctx context.Context,

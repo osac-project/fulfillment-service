@@ -16,6 +16,8 @@ syntax = "proto3";
 package osac.public.v1;
 
 import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/timestamp.proto";
 
 // Type of resource to connect a console to.
 enum ConsoleResourceType {
@@ -40,39 +42,9 @@ enum ConsoleConnectionState {
   CONSOLE_CONNECTION_STATE_ERROR = 4;
 }
 
-// Client-to-server message for the bidirectional console stream.
-message ConsoleConnectRequest {
-  oneof payload {
-    ConsoleConnectInit init = 1;
-    ConsoleInput input = 2;
-    ConsoleResize resize = 3;
-  }
-}
-
-// Initialization message. Must be the first message sent by the client.
-message ConsoleConnectInit {
-  ConsoleResourceType resource_type = 1;
-  string resource_id = 2;
-  ConsoleType type = 3;
-}
-
 // Terminal input data from the client.
 message ConsoleInput {
   bytes data = 1;
-}
-
-// Terminal resize event. No-op for serial consoles; forward-compatible for VNC.
-message ConsoleResize {
-  uint32 width = 1;
-  uint32 height = 2;
-}
-
-// Server-to-client message for the bidirectional console stream.
-message ConsoleConnectResponse {
-  oneof payload {
-    ConsoleOutput output = 1;
-    ConsoleStatus status = 2;
-  }
 }
 
 // Terminal output data from the compute instance.
@@ -86,32 +58,40 @@ message ConsoleStatus {
   string message = 2;
 }
 
-// Request to check console availability without connecting.
-message ConsoleGetAccessRequest {
+// ConsoleSession represents a single-use console access ticket. The ticket
+// authorizes one connection to a resource's console via the console-proxy.
+message ConsoleSession {
   ConsoleResourceType resource_type = 1;
   string resource_id = 2;
+  ConsoleType type = 3;
+  // Stable identifier for the CLI process. When a new connection arrives with
+  // a client_id matching an existing session from the same user, the server
+  // evicts the stale session and admits the new one. Empty means no eviction.
+  string client_id = 4;
+  // Opaque encrypted ticket (nested JWE+JWS). Do not parse or log --
+  // it grants console access without further authentication.
+  string ticket = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Authoritative expiry time for the ticket.
+  google.protobuf.Timestamp expires_at = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
-// Response with console availability information.
-message ConsoleGetAccessResponse {
-  bool available = 1;
-  string reason = 2;
-  repeated ConsoleType supported_types = 3;
+message ConsoleSessionsCreateRequest {
+  ConsoleSession object = 1;
 }
 
-// Service for interactive console access to resources.
-service Console {
-  // Bidirectional stream for console access. The first message sent by the
-  // client must be a ConsoleConnectInit. Subsequent messages carry terminal
-  // input (ConsoleInput) or resize events (ConsoleResize).
-  //
-  // No google.api.http annotation: gRPC-Gateway does not support bidi streaming.
-  rpc Connect(stream ConsoleConnectRequest) returns (stream ConsoleConnectResponse);
+message ConsoleSessionsCreateResponse {
+  ConsoleSession object = 1;
+}
 
-  // Check console availability for a resource without establishing a connection.
-  rpc GetAccess(ConsoleGetAccessRequest) returns (ConsoleGetAccessResponse) {
+// Service for console session ticket management.
+service ConsoleSessions {
+  // Create a console session ticket. The ticket is an opaque encrypted token
+  // that authorizes a single console connection via the console-proxy service.
+  rpc Create(ConsoleSessionsCreateRequest) returns (ConsoleSessionsCreateResponse) {
     option (google.api.http) = {
-      get: "/api/osac/public/v1/console/{resource_type}/{resource_id}/access"
+      post: "/api/fulfillment/v1/console_sessions"
+      body: "object"
+      response_body: "object"
     };
   }
 }

@@ -45,6 +45,9 @@ message ComputeInstanceTemplatesCreateRequest {
 
 message ComputeInstanceTemplatesCreateResponse {
   ComputeInstanceTemplate object = 1;
+
+  // Deprecation or validation warnings (e.g. deprecated instance type in spec_defaults).
+  repeated string warnings = 2;
 }
 
 message ComputeInstanceTemplatesDeleteRequest {
@@ -65,6 +68,9 @@ message ComputeInstanceTemplatesUpdateRequest {
 
 message ComputeInstanceTemplatesUpdateResponse {
   ComputeInstanceTemplate object = 1;
+
+  // Deprecation or validation warnings (e.g. deprecated instance type in spec_defaults).
+  repeated string warnings = 2;
 }
 
 message ComputeInstanceTemplatesSignalRequest {

@@ -310,22 +310,34 @@ func (i *Interceptor) UnaryClient(ctx context.Context, method string, request, r
 	// Write the details of the response:
 	timeElapsed := time.Since(timeBefore)
 	timeField := slog.Duration("duration", timeElapsed)
-	codeField := slog.String("code", grpcstatus.Code(err).String())
 	responseFields := []any{
 		methodField,
 		targetField,
 		timeField,
-		codeField,
+	}
+	status, ok := grpcstatus.FromError(err)
+	if ok {
+		codeField := slog.String("code", status.Code().String())
+		responseFields = append(responseFields, codeField)
+		message := status.Message()
+		if message != "" {
+			messageField := slog.String("message", message)
+			responseFields = append(responseFields, messageField)
+		}
+		details := status.Details()
+		if len(details) > 0 {
+			detailsField := slog.Any("details", details)
+			responseFields = append(responseFields, detailsField)
+		}
+	} else {
+		errField := slog.Any("error", err)
+		responseFields = append(responseFields, errField)
 	}
 	if i.bodies && response != nil {
 		bodyField, ok := i.dumpMessage(ctx, "response", response)
 		if ok {
 			responseFields = append(responseFields, bodyField)
 		}
-	}
-	if err != nil {
-		errField := slog.Any("error", err)
-		responseFields = append(responseFields, errField)
 	}
 	i.logger.DebugContext(ctx, "Received unary response", responseFields...)
 
@@ -394,6 +406,24 @@ func (i *Interceptor) redactMDAuthorization(value string) string {
 	return fmt.Sprintf("%s %s", scheme, redactMark)
 }
 
+// messageLogFields returns log fields for a stream message: the serialized size (if debug is enabled) and the
+// body dump (if bodies are enabled).
+func (i *Interceptor) messageLogFields(ctx context.Context, logger *slog.Logger, message any) []any {
+	var fields []any
+	if message != nil && logger.Enabled(ctx, slog.LevelDebug) {
+		if pm, ok := message.(proto.Message); ok {
+			fields = append(fields, slog.Int("bytes", proto.Size(pm)))
+		}
+	}
+	if i.bodies && message != nil {
+		bodyField, ok := i.dumpMessage(ctx, "message", message)
+		if ok {
+			fields = append(fields, bodyField)
+		}
+	}
+	return fields
+}
+
 // dumpMessage tries to covert the given message to something that can be added to the log and returns the corresponding
 // log fields.
 func (i *Interceptor) dumpMessage(ctx context.Context, key string, value any) (field any, ok bool) {
@@ -446,16 +476,9 @@ func (s *interceptorServerStream) SendMsg(message any) error {
 
 	// Write the details of the sent message:
 	ctx := s.stream.Context()
-	var messageFields []any
-	if s.parent.bodies && message != nil {
-		bodyField, ok := s.parent.dumpMessage(ctx, "message", message)
-		if ok {
-			messageFields = append(messageFields, bodyField)
-		}
-	}
+	messageFields := s.parent.messageLogFields(ctx, s.logger, message)
 	if err != nil {
-		errField := slog.Any("error", err)
-		messageFields = append(messageFields, errField)
+		messageFields = append(messageFields, slog.Any("error", err))
 	}
 	s.logger.DebugContext(ctx, "Sent stream message", messageFields...)
 
@@ -471,16 +494,9 @@ func (s *interceptorServerStream) RecvMsg(message any) error {
 
 	// Write the details of the received message:
 	ctx := s.stream.Context()
-	var messageFields []any
-	if s.parent.bodies && message != nil {
-		bodyField, ok := s.parent.dumpMessage(ctx, "message", message)
-		if ok {
-			messageFields = append(messageFields, bodyField)
-		}
-	}
+	messageFields := s.parent.messageLogFields(ctx, s.logger, message)
 	if err != nil {
-		errField := slog.Any("error", err)
-		messageFields = append(messageFields, errField)
+		messageFields = append(messageFields, slog.Any("error", err))
 	}
 	s.logger.DebugContext(ctx, "Received stream message", messageFields...)
 
@@ -566,16 +582,9 @@ func (s *interceptorClientStream) SendMsg(message any) error {
 
 	// Write the details of the sent message:
 	ctx := s.stream.Context()
-	var messageFields []any
-	if s.parent.bodies && message != nil {
-		bodyField, ok := s.parent.dumpMessage(ctx, "message", message)
-		if ok {
-			messageFields = append(messageFields, bodyField)
-		}
-	}
+	messageFields := s.parent.messageLogFields(ctx, s.logger, message)
 	if err != nil {
-		errField := slog.Any("error", err)
-		messageFields = append(messageFields, errField)
+		messageFields = append(messageFields, slog.Any("error", err))
 	}
 	s.logger.DebugContext(ctx, "Sent stream message", messageFields...)
 
@@ -593,16 +602,9 @@ func (s *interceptorClientStream) RecvMsg(message any) error {
 
 	// Write the details of the received message:
 	ctx := s.stream.Context()
-	var messageFields []any
-	if s.parent.bodies && message != nil {
-		bodyField, ok := s.parent.dumpMessage(ctx, "message", message)
-		if ok {
-			messageFields = append(messageFields, bodyField)
-		}
-	}
+	messageFields := s.parent.messageLogFields(ctx, s.logger, message)
 	if err != nil {
-		errField := slog.Any("error", err)
-		messageFields = append(messageFields, errField)
+		messageFields = append(messageFields, slog.Any("error", err))
 	}
 	s.logger.DebugContext(ctx, "Received stream message", messageFields...)
 

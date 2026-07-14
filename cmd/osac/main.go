@@ -14,7 +14,7 @@ language governing permissions and limitations under the License.
 package main
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -23,19 +23,21 @@ import (
 )
 
 func main() {
-	// Create a context:
-	ctx := context.Background()
-
-	// Execute the main command:
-	root := cli.Root()
-	err := root.ExecuteContext(ctx)
-	if err != nil {
-		exitErr, ok := err.(exit.Error)
-		if ok {
-			os.Exit(exitErr.Code())
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(1)
-		}
+	err := run()
+	exitErr, ok := errors.AsType[exit.Error](err)
+	if ok {
+		os.Exit(exitErr.Code())
 	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	root, err := cli.Root()
+	if err != nil {
+		return err
+	}
+	return root.Execute()
 }

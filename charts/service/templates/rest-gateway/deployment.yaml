@@ -84,6 +84,7 @@ spec:
           hostPort: 30002
           protocol: TCP
         {{ end }}
+        {{ if not .Values.debug }}
         livenessProbe:
           httpGet:
             path: /healthz
@@ -91,6 +92,8 @@ spec:
             scheme: HTTPS
           initialDelaySeconds: 5
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
         readinessProbe:
           httpGet:
             path: /healthz
@@ -98,3 +101,6 @@ spec:
             scheme: HTTPS
           initialDelaySeconds: 5
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
+        {{ end }}

@@ -26,7 +26,7 @@ import (
 // access it.
 //
 // The files are specified as pairs of full path names and content. For example, to create a file named
-// `mydir/myfile.yaml` containig some YAML text and a file `yourdir/yourfile.json` containing some JSON text:
+// `mydir/myfile.yaml` containing some YAML text and a file `yourdir/yourfile.json` containing some JSON text:
 //
 //	dir, fsys = TmpFS(
 //		"mydir/myfile.yaml",

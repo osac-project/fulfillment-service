@@ -14,7 +14,6 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -23,17 +22,10 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var _ = Describe("Generic mapper", func() {
-	var ctx context.Context
-
-	BeforeEach(func() {
-		ctx = context.Background()
-	})
-
 	parseDate := func(text string) *timestamppb.Timestamp {
 		value, err := time.Parse(time.RFC3339, text)
 		Expect(err).ToNot(HaveOccurred())
@@ -184,8 +176,8 @@ var _ = Describe("Generic mapper", func() {
 							Type:               privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_READY,
 							Status:             privatev1.ConditionStatus_CONDITION_STATUS_TRUE,
 							LastTransitionTime: parseDate("2025-06-02T14:53:00Z"),
-							Reason:             proto.String("MyReason"),
-							Message:            proto.String("My message."),
+							Reason:             new("MyReason"),
+							Message:            new("My message."),
 						}.Build(),
 					},
 				}.Build(),
@@ -198,8 +190,8 @@ var _ = Describe("Generic mapper", func() {
 							Type:               publicv1.ClusterConditionType_CLUSTER_CONDITION_TYPE_READY,
 							Status:             publicv1.ConditionStatus_CONDITION_STATUS_TRUE,
 							LastTransitionTime: parseDate("2025-06-02T14:53:00Z"),
-							Reason:             proto.String("MyReason"),
-							Message:            proto.String("My message."),
+							Reason:             new("MyReason"),
+							Message:            new("My message."),
 						}.Build(),
 					},
 				}.Build(),
@@ -214,15 +206,15 @@ var _ = Describe("Generic mapper", func() {
 							Type:               privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_READY,
 							Status:             privatev1.ConditionStatus_CONDITION_STATUS_TRUE,
 							LastTransitionTime: parseDate("2025-06-02T14:53:00Z"),
-							Reason:             proto.String("MyReason"),
-							Message:            proto.String("My message."),
+							Reason:             new("MyReason"),
+							Message:            new("My message."),
 						}.Build(),
 						privatev1.ClusterCondition_builder{
 							Type:               privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_FAILED,
 							Status:             privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
 							LastTransitionTime: parseDate("2025-06-03T14:53:00Z"),
-							Reason:             proto.String("YourReason"),
-							Message:            proto.String("Your message."),
+							Reason:             new("YourReason"),
+							Message:            new("Your message."),
 						}.Build(),
 					},
 				}.Build(),
@@ -235,15 +227,15 @@ var _ = Describe("Generic mapper", func() {
 							Type:               publicv1.ClusterConditionType_CLUSTER_CONDITION_TYPE_READY,
 							Status:             publicv1.ConditionStatus_CONDITION_STATUS_TRUE,
 							LastTransitionTime: parseDate("2025-06-02T14:53:00Z"),
-							Reason:             proto.String("MyReason"),
-							Message:            proto.String("My message."),
+							Reason:             new("MyReason"),
+							Message:            new("My message."),
 						}.Build(),
 						publicv1.ClusterCondition_builder{
 							Type:               publicv1.ClusterConditionType_CLUSTER_CONDITION_TYPE_FAILED,
 							Status:             publicv1.ConditionStatus_CONDITION_STATUS_FALSE,
 							LastTransitionTime: parseDate("2025-06-03T14:53:00Z"),
-							Reason:             proto.String("YourReason"),
-							Message:            proto.String("Your message."),
+							Reason:             new("YourReason"),
+							Message:            new("Your message."),
 						}.Build(),
 					},
 				}.Build(),

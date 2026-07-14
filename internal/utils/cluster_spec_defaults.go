@@ -14,10 +14,6 @@ language governing permissions and limitations under the License.
 package utils
 
 import (
-	"net"
-
-	grpccodes "google.golang.org/grpc/codes"
-	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -83,22 +79,18 @@ func validateClusterNetwork(network *privatev1.ClusterNetwork) error {
 		return nil
 	}
 	if network.HasPodCidr() {
-		if _, _, err := net.ParseCIDR(network.GetPodCidr()); err != nil {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"invalid pod_cidr %q: %v",
-				network.GetPodCidr(), err,
-			)
+		canonical, err := CanonicalizeCIDRField(network.GetPodCidr(), "pod_cidr")
+		if err != nil {
+			return err
 		}
+		network.SetPodCidr(canonical)
 	}
 	if network.HasServiceCidr() {
-		if _, _, err := net.ParseCIDR(network.GetServiceCidr()); err != nil {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"invalid service_cidr %q: %v",
-				network.GetServiceCidr(), err,
-			)
+		canonical, err := CanonicalizeCIDRField(network.GetServiceCidr(), "service_cidr")
+		if err != nil {
+			return err
 		}
+		network.SetServiceCidr(canonical)
 	}
 	return nil
 }

@@ -88,7 +88,7 @@ const (
 // NewSequence creates a builder that can then be used to configure and create a shutdown sequence.
 //
 // A sequence contains a list of actions, a timeout and an exit function. The list of actions is built from objects
-// like HTTP servers and gRPC servers as well as custom functions. Servers are stopped gracefull, funtions are just
+// like HTTP servers and gRPC servers as well as custom functions. Servers are stopped gracefully, functions are just
 // called, assuming that they will know how to the things that they manage. When possible it is better to add objects
 // instead of custom functions, as the shutdown sequence already knows how to stop them gracefully and in the right
 // order.

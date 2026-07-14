@@ -1,4 +1,4 @@
-# Set update schedule for GitHub Actions and Go modules
+# Set update schedule for GitHub Actions, Go modules, and container images
 
 version: 2
 updates:
@@ -7,6 +7,12 @@ updates:
   schedule:
     # Check for updates to GitHub Actions every week
     interval: "weekly"
+  groups:
+    github-actions:
+      patterns:
+        - "*"
+  commit-message:
+    prefix: "NO-ISSUE"
 - package-ecosystem: "gomod"
   directory: "/"
   schedule:
@@ -14,6 +20,17 @@ updates:
     interval: "weekly"
   groups:
     go-dependencies:
+      patterns:
+        - "*"
+  commit-message:
+    prefix: "NO-ISSUE"
+- package-ecosystem: "docker"
+  directory: "/"
+  schedule:
+    # Check for updates to container base images every week
+    interval: "weekly"
+  groups:
+    container-images:
       patterns:
         - "*"
   commit-message:

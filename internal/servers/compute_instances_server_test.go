@@ -14,13 +14,10 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -28,52 +25,11 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Compute instances server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*privatev1.ComputeInstanceTemplate](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.ComputeInstance](ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	Describe("Builder", func() {
 		It("Creates server with logger and tenancy logic", func() {
 			// Create the public server:
@@ -130,6 +86,69 @@ var _ = Describe("Compute instances server", func() {
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
+
+			// Create a test virtual network and subnet for all tests to use:
+			vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			vn := privatev1.VirtualNetwork_builder{
+				Id: "test-vnet",
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+			}.Build()
+
+			_, err = vnDao.Create().SetObject(vn).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			subnetsDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			subnet := privatev1.Subnet_builder{
+				Id: "test-subnet",
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				Spec: privatev1.SubnetSpec_builder{
+					VirtualNetwork: "test-vnet",
+					Ipv4Cidr:       new("10.0.0.0/24"),
+				}.Build(),
+				Status: privatev1.SubnetStatus_builder{
+					State: privatev1.SubnetState_SUBNET_STATE_READY,
+				}.Build(),
+			}.Build()
+
+			_, err = subnetsDao.Create().SetObject(subnet).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create a default InstanceType for tests that need it:
+			instanceTypesDao, err := dao.NewGenericDAO[*privatev1.InstanceType]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = instanceTypesDao.Create().SetObject(
+				privatev1.InstanceType_builder{
+					Id: "standard-4-16",
+					Metadata: privatev1.Metadata_builder{
+						Name:   "standard-4-16",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.InstanceTypeSpec_builder{
+						Cores:     4,
+						MemoryGib: 16,
+						State:     privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE,
+					}.Build(),
+				}.Build(),
+			).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		// Helper function to create a template
@@ -152,7 +171,7 @@ var _ = Describe("Compute instances server", func() {
 				Title:       "Test Template",
 				Description: "Test template for validation",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{
@@ -173,8 +192,7 @@ var _ = Describe("Compute instances server", func() {
 					},
 				},
 				SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-					Cores:     proto.Int32(2),
-					MemoryGib: proto.Int32(2),
+					InstanceType: new("standard-4-16"),
 					Image: privatev1.ComputeInstanceImage_builder{
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
@@ -182,7 +200,7 @@ var _ = Describe("Compute instances server", func() {
 					BootDisk: privatev1.ComputeInstanceDisk_builder{
 						SizeGib: 10,
 					}.Build(),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 				}.Build(),
 			}.Build()
 
@@ -209,6 +227,11 @@ var _ = Describe("Compute instances server", func() {
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template:           "general.small",
 						TemplateParameters: templateParams,
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -235,6 +258,11 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*publicv1.NetworkAttachment{
+								publicv1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -263,6 +291,11 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*publicv1.NetworkAttachment{
+								publicv1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -274,7 +307,7 @@ var _ = Describe("Compute instances server", func() {
 
 			// List the objects with limit:
 			response, err := server.List(ctx, publicv1.ComputeInstancesListRequest_builder{
-				Limit: proto.Int32(5),
+				Limit: new(int32(5)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -293,6 +326,11 @@ var _ = Describe("Compute instances server", func() {
 					Object: publicv1.ComputeInstance_builder{
 						Spec: publicv1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*publicv1.NetworkAttachment{
+								publicv1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: publicv1.ComputeInstanceStatus_builder{
 							State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -304,7 +342,7 @@ var _ = Describe("Compute instances server", func() {
 
 			// List the objects with offset:
 			response, err := server.List(ctx, publicv1.ComputeInstancesListRequest_builder{
-				Offset: proto.Int32(5),
+				Offset: new(int32(5)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -321,6 +359,11 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -355,10 +398,9 @@ var _ = Describe("Compute instances server", func() {
 			createResponse, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
-						Template:    "general.small",
-						Cores:       proto.Int32(4),
-						MemoryGib:   proto.Int32(8),
-						RunStrategy: proto.String("Always"),
+						Template:     "general.small",
+						InstanceType: new("standard-4-16"),
+						RunStrategy:  new("Always"),
 						Image: publicv1.ComputeInstanceImage_builder{
 							SourceType: "registry",
 							SourceRef:  "quay.io/test:latest",
@@ -366,6 +408,11 @@ var _ = Describe("Compute instances server", func() {
 						BootDisk: publicv1.ComputeInstanceDisk_builder{
 							SizeGib: 20,
 						}.Build(),
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -399,8 +446,7 @@ var _ = Describe("Compute instances server", func() {
 
 			// Verify explicit fields were preserved:
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.small"))
-			Expect(object.GetSpec().GetCores()).To(BeNumerically("==", 4))
-			Expect(object.GetSpec().GetMemoryGib()).To(BeNumerically("==", 8))
+			Expect(object.GetSpec().GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(object.GetSpec().GetRunStrategy()).To(Equal("Always"))
 			Expect(object.GetSpec().GetImage().GetSourceRef()).To(Equal("quay.io/test:latest"))
 			Expect(object.GetSpec().GetBootDisk().GetSizeGib()).To(BeNumerically("==", 20))
@@ -411,8 +457,7 @@ var _ = Describe("Compute instances server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			fetched := getResponse.GetObject()
-			Expect(fetched.GetSpec().GetCores()).To(BeNumerically("==", 4))
-			Expect(fetched.GetSpec().GetMemoryGib()).To(BeNumerically("==", 8))
+			Expect(fetched.GetSpec().GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(fetched.GetSpec().GetRunStrategy()).To(Equal("Always"))
 			Expect(fetched.GetSpec().GetImage().GetSourceRef()).To(Equal("quay.io/test:latest"))
 			Expect(fetched.GetSpec().GetBootDisk().GetSizeGib()).To(BeNumerically("==", 20))
@@ -428,6 +473,11 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: publicv1.ComputeInstanceStatus_builder{
 						State: publicv1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -501,9 +551,12 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template:    "mapping-template",
-						Cores:       proto.Int32(8),
-						MemoryGib:   proto.Int32(16),
-						RunStrategy: proto.String("Halted"),
+						RunStrategy: new("Halted"),
+						NetworkAttachments: []*publicv1.NetworkAttachment{
+							publicv1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -512,10 +565,9 @@ var _ = Describe("Compute instances server", func() {
 
 			spec := response.GetObject().GetSpec()
 			// User-provided values preserved through mapping:
-			Expect(spec.GetCores()).To(Equal(int32(8)))
-			Expect(spec.GetMemoryGib()).To(Equal(int32(16)))
 			Expect(spec.GetRunStrategy()).To(Equal("Halted"))
 			// Template defaults should be stored:
+			Expect(spec.GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(spec.GetImage().GetSourceType()).To(Equal("registry"))
 			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/containerdisks/fedora:latest"))
 			Expect(spec.GetBootDisk().GetSizeGib()).To(Equal(int32(10)))

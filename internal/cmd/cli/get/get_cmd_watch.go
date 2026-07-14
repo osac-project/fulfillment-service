@@ -15,15 +15,37 @@ package get
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
+
+type eventStream struct {
+	stream  grpc.ClientStream
+	newResp func() proto.Message
+}
+
+func (s *eventStream) Recv() (proto.Message, error) {
+	resp := s.newResp()
+	if err := s.stream.RecvMsg(resp); err != nil {
+		return nil, err
+	}
+	msg := resp.ProtoReflect()
+	eventField := msg.Descriptor().Fields().ByName("event")
+	if eventField == nil || !msg.Has(eventField) {
+		return nil, nil
+	}
+	return msg.Get(eventField).Message().Interface(), nil
+}
 
 // watch watches for events and displays updated objects.
 func (c *runnerContext) watch(ctx context.Context, keys []string) error {
@@ -33,46 +55,31 @@ func (c *runnerContext) watch(ctx context.Context, keys []string) error {
 		return fmt.Errorf("failed to build event filter: %w", err)
 	}
 
-	// Create events client
-	eventsClient := publicv1.NewEventsClient(c.conn)
-
 	// Start watching
 	c.console.Infof(ctx, "Watching for changes (Ctrl+C to stop)...\n\n")
 
-	stream, err := eventsClient.Watch(ctx, &publicv1.EventsWatchRequest{
-		Filter: &filter,
-	})
+	// Create the appropriate event stream based on the object's API package
+	stream, err := c.createEventStream(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("failed to start watching events: %w", err)
 	}
 
 	// Process events
 	for {
-		response, err := stream.Recv()
-		if err == io.EOF {
+		event, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
 			return fmt.Errorf("failed to receive event: %w", err)
 		}
 
-		event := response.GetEvent()
 		if event == nil {
 			continue
 		}
 
 		// Extract the object from the event payload
-		object, err := c.extractObjectFromEvent(event)
-		if err != nil {
-			c.logger.WarnContext(
-				ctx,
-				"Failed to extract object from event",
-				"event_id", event.GetId(),
-				"error", err,
-			)
-			continue
-		}
-
+		object := c.extractObjectFromEvent(event)
 		if object == nil {
 			continue
 		}
@@ -80,6 +87,23 @@ func (c *runnerContext) watch(ctx context.Context, keys []string) error {
 		// Display the event
 		c.displayEvent(ctx, event, object)
 	}
+}
+
+func (c *runnerContext) createEventStream(ctx context.Context, filter string) (*eventStream, error) {
+	if c.isPrivateObject() {
+		client := privatev1.NewEventsClient(c.conn)
+		stream, err := client.Watch(ctx, &privatev1.EventsWatchRequest{Filter: &filter})
+		if err != nil {
+			return nil, err
+		}
+		return &eventStream{stream: stream, newResp: func() proto.Message { return &privatev1.EventsWatchResponse{} }}, nil
+	}
+	client := publicv1.NewEventsClient(c.conn)
+	stream, err := client.Watch(ctx, &publicv1.EventsWatchRequest{Filter: &filter})
+	if err != nil {
+		return nil, err
+	}
+	return &eventStream{stream: stream, newResp: func() proto.Message { return &publicv1.EventsWatchResponse{} }}, nil
 }
 
 // buildEventFilter builds a CEL filter expression for watching events.
@@ -112,40 +136,68 @@ func (c *runnerContext) buildEventFilter(keys []string) (string, error) {
 	return strings.Join(parts, " && "), nil
 }
 
-// Map of proto message full names to event payload field names
-var eventPayloadFieldNames = map[string]string{
-	string(proto.MessageName((*publicv1.Cluster)(nil))):         "cluster",
-	string(proto.MessageName((*publicv1.ClusterTemplate)(nil))): "cluster_template",
-}
-
-// getEventPayloadFieldName returns the field name in the Event message for the current object type.
+// getEventPayloadFieldName returns the field name in the Event message for the current object type
+// by introspecting the Event proto descriptor's payload oneof.
 func (c *runnerContext) getEventPayloadFieldName() string {
-	fullName := string(c.objectHelper.Descriptor().FullName())
-	return eventPayloadFieldNames[fullName]
+	eventDesc := c.getEventDescriptor()
+	payloadOneof := eventDesc.Oneofs().ByName("payload")
+	if payloadOneof == nil {
+		return ""
+	}
+
+	objectFullName := c.objectHelper.Descriptor().FullName()
+	for i := 0; i < payloadOneof.Fields().Len(); i++ {
+		field := payloadOneof.Fields().Get(i)
+		if field.Message() != nil && field.Message().FullName() == objectFullName {
+			return string(field.Name())
+		}
+	}
+	return ""
 }
 
-// extractObjectFromEvent extracts the proto message from an event payload.
-func (c *runnerContext) extractObjectFromEvent(event *publicv1.Event) (proto.Message, error) {
-	payload := event.GetPayload()
-	if payload == nil {
-		return nil, fmt.Errorf("event has no payload")
+// getEventDescriptor returns the Event message descriptor matching the object's API package.
+func (c *runnerContext) getEventDescriptor() protoreflect.MessageDescriptor {
+	if c.isPrivateObject() {
+		return (&privatev1.Event{}).ProtoReflect().Descriptor()
 	}
+	return (&publicv1.Event{}).ProtoReflect().Descriptor()
+}
 
-	// Use type switch on the oneof payload
-	switch p := payload.(type) {
-	case *publicv1.Event_Cluster:
-		return p.Cluster, nil
-	case *publicv1.Event_ClusterTemplate:
-		return p.ClusterTemplate, nil
-	default:
-		return nil, fmt.Errorf("unsupported event payload type")
+// isPrivateObject returns true if the current object type belongs to the private API package.
+func (c *runnerContext) isPrivateObject() bool {
+	return strings.HasPrefix(string(c.objectHelper.FullName()), "osac.private.")
+}
+
+// extractObjectFromEvent extracts the proto message from an event's payload oneof using reflection.
+func (c *runnerContext) extractObjectFromEvent(event proto.Message) proto.Message {
+	msg := event.ProtoReflect()
+	payloadOneof := msg.Descriptor().Oneofs().ByName("payload")
+	if payloadOneof == nil {
+		return nil
 	}
+	whichField := msg.WhichOneof(payloadOneof)
+	if whichField == nil {
+		return nil
+	}
+	return msg.Get(whichField).Message().Interface()
+}
+
+// getEventTypeName extracts the event type name from an Event proto message using reflection.
+func getEventTypeName(event proto.Message) string {
+	eventMsg := event.ProtoReflect()
+	typeField := eventMsg.Descriptor().Fields().ByName("type")
+	typeValue := eventMsg.Get(typeField)
+	if enumDesc := typeField.Enum().Values().ByNumber(typeValue.Enum()); enumDesc != nil {
+		return strings.TrimPrefix(string(enumDesc.Name()), "EVENT_TYPE_")
+	}
+	return fmt.Sprintf("UNKNOWN(%d)", typeValue.Enum())
 }
 
 // displayEvent displays an event and the updated object.
-func (c *runnerContext) displayEvent(ctx context.Context, event *publicv1.Event, object proto.Message) {
+func (c *runnerContext) displayEvent(ctx context.Context, event proto.Message, object proto.Message) {
 	timestamp := time.Now().Format(time.TimeOnly)
-	eventType := strings.TrimPrefix(event.GetType().String(), "EVENT_TYPE_")
+
+	eventType := getEventTypeName(event)
 
 	objectId := c.getObjectId(object)
 

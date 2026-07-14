@@ -7,7 +7,6 @@ This Helm chart deploys the complete fulfillment service.
 - Kubernetes cluster (_Kind_ or _OpenShift_).
 - _cert-manager_ operator installed.
 - _trust-manager_ operator installed (optional, but highly recommended).
-- _Authorino_ operator installed.
 
 ## Installation
 
@@ -21,30 +20,33 @@ $ helm install fulfillment-service ./charts/service -n osac --create-namespace
 
 The following table lists the configurable parameters of the chart and their default values:
 
-| Parameter                  | Description                                                        | Default                                                        |
-|----------------------------|--------------------------------------------------------------------|----------------------------------------------------------------|
-| `variant`                  | Deployment variant (`kind` or `openshift`)                         | `kind`                                                         |
-| `certs.issuerRef.kind`     | Kind of _cert-manager_ issuer                                      | `ClusterIssuer`                                                |
-| `certs.issuerRef.name`     | Name of _cert-manager_ issuer                                      | None                                                           |
-| `certs.caBundle.configMap` | Name of configmap containing trusted CA certificates in PEM format | Required                                                       |
-| `externalHostname`         | Hostname used to access the public API from outside the cluster (see note below) | None                                                |
-| `internalHostname`         | Hostname used to access both the public and private APIs (see note below)        | None                                                |
-| `auth.issuerUrl`           | OAuth issuer URL for authentication                                | `https://keycloak.keycloak.svc.cluster.local:8000/realms/osac` |
-| `log.level`                | Log level for all components (debug, info, warn, error)            | `info`                                                         |
-| `log.headers`              | Enable logging of HTTP/gRPC headers                                | `false`                                                        |
-| `log.bodies`               | Enable logging of HTTP/gRPC request and response bodies            | `false`                                                        |
-| `images.service`           | Fulfillment service container image                                | `ghcr.io/osac/fulfillment-service:main`                        |
-| `images.envoy`             | Envoy proxy container image                                        | `docker.io/envoyproxy/envoy:v1.37.1`                           |
-| `database.connection`      | List of sources for database connection parameters (see below)     | `[]`                                                           |
+| Parameter                  | Description                                                                       | Default                                                        |
+|----------------------------|-----------------------------------------------------------------------------------|----------------------------------------------------------------|
+| `variant`                  | Deployment variant (`kind` or `openshift`)                                        | `kind`                                                         |
+| `certs.issuerRef.kind`     | Kind of _cert-manager_ issuer                                                     | `ClusterIssuer`                                                |
+| `certs.issuerRef.name`     | Name of _cert-manager_ issuer                                                     | None                                                           |
+| `certs.caBundle.configMap` | Name of configmap containing trusted CA certificates in PEM format                | Required                                                       |
+| `externalHostname`         | Hostname used to access the public API via the external network                   | Required                                                       |
+| `internalHostname`         | Hostname used to access both the public and private APIs via the internal network | Required                                                       |
+| `auth.issuerUrl`           | OAuth issuer URL for authentication                                               | `https://keycloak.keycloak.svc.cluster.local:8000/realms/osac` |
+| `log.level`                | Log level for all components (debug, info, warn, error)                           | `info`                                                         |
+| `log.headers`              | Enable logging of HTTP/gRPC headers                                               | `false`                                                        |
+| `log.bodies`               | Enable logging of HTTP/gRPC request and response bodies                           | `false`                                                        |
+| `images.service`           | Fulfillment service container image                                               | `ghcr.io/osac/fulfillment-service:main`                        |
+| `images.envoy`             | Envoy proxy container image                                                       | `docker.io/envoyproxy/envoy:v1.37.1`                           |
+| `database.connection`      | List of sources for database connection parameters (see below)                    | `[]`                                                           |
 
-**Note on `internalHostname`:** The internal API exposes both the public and private APIs. The
-administrator is responsible for ensuring that this hostname is accessible only from the internal
-network and not accessible to regular users. This isn't strictly required because access is subject
-to authentication and authorization (regular users won't be authorized to use the private API), but
-it is good practice to restrict network-level access as an additional layer of defense. When
-`internalHostname` is not set, no Route (OpenShift) or TLSRoute (Kind) will be created for the
-internal API, allowing the administrator to manually configure ingress with custom settings such as
-a dedicated load balancer or a specific IP address.
+**Note on hostnames:** Both `externalHostname` and `internalHostname` are required because TLS
+certificates must be generated with the correct host names.
+
+The recommended deployment uses two networks. The external network is intended for regular users and
+only gives access to the public API via `externalHostname`. The internal network gives access to
+both the public and private APIs via `internalHostname`. The internal network should be restricted so
+that only the administrators of the system can access it. In a typical environment this would be a
+network confined to the physical infrastructure of the cloud provider, while the external network
+would be publicly reachable. Restricting access to the internal network is not strictly required
+because the private API is protected by authentication and authorization, but it is good practice to
+add network-level isolation as an additional layer of defense.
 
 ### Example custom values
 

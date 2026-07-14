@@ -1,0 +1,58 @@
+#
+# Copyright (c) 2026 Red Hat Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+#
+
+# This workflow generates the OpenAPI specification and uploads it to the GitHub pages of the project.
+
+name: Publish OpenAPI
+
+on:
+  push:
+    branches:
+    - main
+
+concurrency:
+  group: publish-openapi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # The 'write' permission is required to deploy to the GitHub pages environment, and the 'id-token' permission is
+  # required for the OIDC authentication with that environment.
+  publish-openapi:
+    name: Publish OpenAPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-go
+    - uses: bufbuild/buf-action@fd21066df7214747548607aaa45548ba2b9bc1ff  # v1
+      with:
+        setup_only: true
+    - uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a  # v5
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+    - run: |
+        go build ./cmd/osac-dev
+        ./osac-dev generate openapi --project-dir . --output-dir pages/openapi
+    - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+      with:
+        path: pages
+    - uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0

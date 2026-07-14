@@ -212,7 +212,7 @@ func (b *TokenSourceBuilder) SetHttpClient(value *http.Client) *TokenSourceBuild
 }
 
 // SetOpenFunc sets the function to use to open a URL used by the code flow in the browser. This is optional and
-// defaults to a function that is generally apropriate for all platforms, so there is no need to set it.
+// defaults to a function that is generally appropriate for all platforms, so there is no need to set it.
 // This is intended mostly for unit tests, where it is convenient to use a mock function to avoid opening a real
 // browser.
 func (b *TokenSourceBuilder) SetOpenFunc(value func(ctx context.Context, url string) error) *TokenSourceBuilder {
@@ -291,40 +291,7 @@ func (b *TokenSourceBuilder) Build() (result *TokenSource, err error) {
 		err = errors.New("client identifier is mandatory")
 		return
 	}
-	switch b.flow {
-	case CredentialsFlow:
-		if b.clientId == "" {
-			err = errors.New("client identifier is mandatory for the client credentials flow")
-			return
-		}
-		if b.clientSecret == "" {
-			err = errors.New("client secret is mandatory for the client credentials flow")
-			return
-		}
-	case CodeFlow:
-		if b.listener == nil && b.interactive {
-			err = errors.New("listener is mandatory for the authorization code flow")
-			return
-		}
-	case DeviceFlow:
-		if b.listener == nil && b.interactive {
-			err = errors.New("listener is mandatory for the device flow")
-			return
-		}
-	case PasswordFlow:
-		if b.username == "" {
-			err = errors.New("username is mandatory for the resource owner password credentials flow")
-			return
-		}
-		if b.password == "" {
-			err = errors.New("password is mandatory for the resource owner password credentials flow")
-			return
-		}
-	default:
-		err = fmt.Errorf(
-			"unsupported flow '%s', should be '%s', '%s', '%s' or '%s'",
-			b.flow, CredentialsFlow, CodeFlow, DeviceFlow, PasswordFlow,
-		)
+	if err = b.validateFlowParameters(); err != nil {
 		return
 	}
 	if b.store == nil {
@@ -336,76 +303,9 @@ func (b *TokenSourceBuilder) Build() (result *TokenSource, err error) {
 		return
 	}
 
-	// Sort the scopes so that when they are used, for example in the authorization URL, they are in a predicatable
-	// and repeatable order:
-	scopes := slices.Clone(b.scopes)
-	slices.Sort(scopes)
-
-	// Create the templating engine:
-	templatingEngine, err := templating.NewEngine().
-		SetLogger(b.logger).
-		AddFS(templatesFS).
-		SetDir("templates").
-		Build()
+	// Resolve defaults into a local config without mutating the builder:
+	resolved, err := b.resolveDefaults()
 	if err != nil {
-		return
-	}
-
-	// Set the default timeout:
-	timeout := b.timeout
-	if timeout == 0 {
-		timeout = 5 * time.Minute
-	}
-
-	// Set the default CA pool if needed:
-	caPool := b.caPool
-	if caPool == nil {
-		caPool, err = network.NewCertPool().
-			SetLogger(b.logger).
-			AddSystemFiles(true).
-			AddKubernetesFiles(true).
-			Build()
-		if err != nil {
-			err = fmt.Errorf("failed to build CA pool: %w", err)
-			return
-		}
-	}
-
-	// Create HTTP client with optional insecure TLS configuration:
-	httpClient := b.httpClient
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	tlsConfig := &tls.Config{
-		RootCAs: caPool,
-	}
-	if b.insecure {
-		tlsConfig.InsecureSkipVerify = true
-	}
-	httpClient.Transport = &http.Transport{
-		TLSClientConfig: tlsConfig,
-	}
-
-	// Set the default open function:
-	openFunc := b.openFunc
-	if openFunc == nil {
-		openFunc = func(ctx context.Context, url string) error {
-			return open.Run(url)
-		}
-	}
-
-	// Validate and set the default redirect URI:
-	redirectUri := b.redirectUri
-	if redirectUri == "" {
-		redirectUri = defaultRedirectUri
-	}
-	parsedRedirectUri, err := url.Parse(redirectUri)
-	if err != nil {
-		err = fmt.Errorf("failed to parse redirect URI '%s': %w", redirectUri, err)
-		return
-	}
-	if parsedRedirectUri.Host == "" {
-		err = fmt.Errorf("redirect URI '%s' must include a host", redirectUri)
 		return
 	}
 
@@ -419,47 +319,176 @@ func (b *TokenSourceBuilder) Build() (result *TokenSource, err error) {
 		clientSecret:     b.clientSecret,
 		username:         b.username,
 		password:         b.password,
-		scopes:           scopes,
+		scopes:           resolved.scopes,
 		insecure:         b.insecure,
-		caPool:           caPool,
+		caPool:           resolved.caPool,
 		interactive:      b.interactive,
-		timeout:          timeout,
-		templatingEngine: templatingEngine,
-		httpClient:       httpClient,
-		openFunc:         openFunc,
+		timeout:          resolved.timeout,
+		templatingEngine: resolved.templatingEngine,
+		httpClient:       resolved.httpClient,
+		openFunc:         resolved.openFunc,
 		pollInterval:     b.pollInterval,
-		redirectUri:      redirectUri,
+		redirectUri:      resolved.redirectUri,
 	}
+	source.flowRunner = b.createFlowRunner(source)
 
-	// Create the underlying token source based on the flow:
+	// Return the source:
+	result = source
+	return
+}
+
+// resolvedConfig holds the defaults computed during Build() without mutating the builder.
+type resolvedConfig struct {
+	scopes           []string
+	timeout          time.Duration
+	caPool           *x509.CertPool
+	httpClient       *http.Client
+	openFunc         func(context.Context, string) error
+	redirectUri      string
+	templatingEngine *templating.Engine
+}
+
+// validateFlowParameters validates per-flow parameter requirements.
+func (b *TokenSourceBuilder) validateFlowParameters() error {
 	switch b.flow {
 	case CredentialsFlow:
-		source.flowRunner = &credentialsFlow{
+		if b.clientId == "" {
+			return errors.New("client identifier is mandatory for the client credentials flow")
+		}
+		if b.clientSecret == "" {
+			return errors.New("client secret is mandatory for the client credentials flow")
+		}
+	case CodeFlow:
+		if b.listener == nil && b.interactive {
+			return errors.New("listener is mandatory for the authorization code flow")
+		}
+	case DeviceFlow:
+		if b.listener == nil && b.interactive {
+			return errors.New("listener is mandatory for the device flow")
+		}
+	case PasswordFlow:
+		if b.username == "" {
+			return errors.New("username is mandatory for the resource owner password credentials flow")
+		}
+		if b.password == "" {
+			return errors.New("password is mandatory for the resource owner password credentials flow")
+		}
+	default:
+		return fmt.Errorf(
+			"unsupported flow '%s', should be '%s', '%s', '%s' or '%s'",
+			b.flow, CredentialsFlow, CodeFlow, DeviceFlow, PasswordFlow,
+		)
+	}
+	return nil
+}
+
+// resolveDefaults computes default values for optional builder fields and returns them in a
+// resolvedConfig struct. The builder itself is not modified.
+func (b *TokenSourceBuilder) resolveDefaults() (cfg resolvedConfig, err error) {
+	// Sort the scopes so that when they are used, for example in the authorization URL, they are in a predicatable
+	// and repeatable order:
+	cfg.scopes = slices.Clone(b.scopes)
+	slices.Sort(cfg.scopes)
+
+	// Create the templating engine:
+	cfg.templatingEngine, err = templating.NewEngine().
+		SetLogger(b.logger).
+		AddFS(templatesFS).
+		SetDir("templates").
+		Build()
+	if err != nil {
+		return
+	}
+
+	// Set the default timeout:
+	cfg.timeout = b.timeout
+	if cfg.timeout == 0 {
+		cfg.timeout = 5 * time.Minute
+	}
+
+	// Set the default CA pool if needed:
+	cfg.caPool = b.caPool
+	if cfg.caPool == nil {
+		cfg.caPool, err = network.NewCertPool().
+			SetLogger(b.logger).
+			AddSystemFiles(true).
+			AddKubernetesFiles(true).
+			Build()
+		if err != nil {
+			err = fmt.Errorf("failed to build CA pool: %w", err)
+			return
+		}
+	}
+
+	// Create HTTP client with optional insecure TLS configuration:
+	cfg.httpClient = b.httpClient
+	if cfg.httpClient == nil {
+		cfg.httpClient = http.DefaultClient
+	}
+	tlsConfig := &tls.Config{
+		RootCAs: cfg.caPool,
+	}
+	if b.insecure {
+		tlsConfig.InsecureSkipVerify = true
+	}
+	cfg.httpClient.Transport = &http.Transport{
+		TLSClientConfig: tlsConfig,
+	}
+
+	// Set the default open function:
+	cfg.openFunc = b.openFunc
+	if cfg.openFunc == nil {
+		cfg.openFunc = func(ctx context.Context, url string) error {
+			return open.Run(url)
+		}
+	}
+
+	// Validate and set the default redirect URI:
+	cfg.redirectUri = b.redirectUri
+	if cfg.redirectUri == "" {
+		cfg.redirectUri = defaultRedirectUri
+	}
+	parsedRedirectUri, parseErr := url.Parse(cfg.redirectUri)
+	if parseErr != nil {
+		err = fmt.Errorf("failed to parse redirect URI '%s': %w", cfg.redirectUri, parseErr)
+		return
+	}
+	if parsedRedirectUri.Host == "" {
+		err = fmt.Errorf("redirect URI '%s' must include a host", cfg.redirectUri)
+		return
+	}
+
+	return
+}
+
+// createFlowRunner creates the appropriate flow runner for the configured OAuth flow.
+func (b *TokenSourceBuilder) createFlowRunner(source *TokenSource) flowRunner {
+	switch b.flow {
+	case CredentialsFlow:
+		return &credentialsFlow{
 			source: source,
 			logger: b.logger.With("flow", "credentials"),
 		}
 	case CodeFlow:
-		source.flowRunner = &codeFlow{
+		return &codeFlow{
 			source:   source,
 			logger:   b.logger.With("flow", "code"),
 			listener: b.listener,
 		}
 	case DeviceFlow:
-		source.flowRunner = &deviceFlow{
+		return &deviceFlow{
 			source:   source,
 			logger:   b.logger.With("flow", "device"),
 			listener: b.listener,
 		}
 	case PasswordFlow:
-		source.flowRunner = &passwordFlow{
+		return &passwordFlow{
 			source: source,
 			logger: b.logger.With("flow", "password"),
 		}
+	default:
+		return nil
 	}
-
-	// Return the source:
-	result = source
-	return
 }
 
 // Token returns the a token, renewing it or requesting a new one as needed.
@@ -486,12 +515,6 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 
 	// If the loaded token doesn't expire soon, then we can use it directly, there is no need to request a new one:
 	if loaded != nil && s.isFresh(loaded) {
-		s.logger.DebugContext(
-			ctx,
-			"Using token loaded from storage",
-			slog.String("!access", loaded.Access),
-			slog.Time("expiry", loaded.Expiry),
-		)
 		result = loaded
 		return
 	}
@@ -499,11 +522,6 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 	// If we have a refresh token, then we can try to use it to renew the access token. If this fails we will
 	// report it in the log, and continue with the next step to get a new token.
 	if loaded != nil && loaded.Refresh != "" {
-		s.logger.DebugContext(
-			ctx,
-			"Using refresh token from storage",
-			slog.String("!refresh", loaded.Refresh),
-		)
 		result, err = s.runRefresh(ctx, loaded.Refresh)
 		if err == nil {
 			return
@@ -615,6 +633,10 @@ func (s *TokenSource) discover(ctx context.Context) error {
 // fresh, even if it is still valid. This is to avoid using a token that is about to expire, and may expire in the
 // middle of the operation that it is used for.
 func (s *TokenSource) isFresh(token *auth.Token) bool {
+	// Token must have an access token to be considered fresh
+	if token.Access == "" {
+		return false
+	}
 	return token.Expiry.IsZero() || time.Until(token.Expiry) > 30*time.Second
 }
 
@@ -718,10 +740,6 @@ func (s *TokenSource) runFlow(ctx context.Context) (result *auth.Token, err erro
 // is not 200 then an error is returned. The error will be of type `endpointError` if the server returned a valid JSON
 // error response with at least the `error` field. Otherwise will be a generic error.
 func (s *TokenSource) sendForm(ctx context.Context, endpoint string, form any, result any) error {
-	logger := s.logger.With(
-		slog.String("endpoint", endpoint),
-		slog.Any("form", form),
-	)
 	values, err := query.Values(form)
 	if err != nil {
 		return err
@@ -733,9 +751,10 @@ func (s *TokenSource) sendForm(ctx context.Context, endpoint string, form any, r
 	defer func() {
 		err := response.Body.Close()
 		if err != nil {
-			logger.ErrorContext(
+			s.logger.ErrorContext(
 				ctx,
 				"Failed to close response body",
+				slog.String("endpoint", endpoint),
 				slog.Any("error", err),
 			)
 		}
@@ -784,9 +803,10 @@ func (s *TokenSource) sendForm(ctx context.Context, endpoint string, form any, r
 		}
 		return &endpointErr
 	default:
-		logger.ErrorContext(
+		s.logger.ErrorContext(
 			ctx,
 			"Unexpected response code",
+			slog.String("endpoint", endpoint),
 			slog.Int("code", response.StatusCode),
 		)
 		return fmt.Errorf(
@@ -799,6 +819,16 @@ func (s *TokenSource) sendForm(ctx context.Context, endpoint string, form any, r
 func (s *TokenSource) sendTokenForm(ctx context.Context,
 	request tokenEndpointRequest) (response tokenEndpointResponse, err error) {
 	err = s.sendForm(ctx, s.tokenEndpoint, &request, &response)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to send token form",
+			slog.String("endpoint", s.tokenEndpoint),
+			slog.Any("!request", request),
+			slog.Any("error", err),
+		)
+		return
+	}
 	return
 }
 
@@ -833,6 +863,12 @@ func (s *TokenSource) random(length int) []byte {
 
 func (s *TokenSource) encode(data []byte) string {
 	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(data)
+}
+
+// Invalidate clears the cached token, forcing a fresh token to be generated on the next Token() call.
+func (s *TokenSource) Invalidate(ctx context.Context) error {
+	// Save an empty token to invalidate the cache
+	return s.store.Save(ctx, &auth.Token{})
 }
 
 // defaultRedirectUri is the default redirect URI to use for the authorization code flow. It binds to localhost with

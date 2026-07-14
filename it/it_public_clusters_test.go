@@ -728,7 +728,18 @@ var _ = Describe("Public clusters", func() {
 		).Should(Succeed())
 	})
 
-	It("Sets creator to the name of the user when creating a cluster", func() {
+	It("Sets creator to the ID of the user when creating a cluster", func() {
+		// Look up the user to get their ID:
+		usersClient := privatev1.NewUsersClient(tool.InternalView().AdminConn())
+		listResponse, err := usersClient.List(ctx, privatev1.UsersListRequest_builder{
+			Filter: new(fmt.Sprintf("this.spec.username == %q", userUsername)),
+			Limit:  new(int32(1)),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(listResponse.GetSize()).To(Equal(int32(1)))
+		user := listResponse.GetItems()[0]
+		userID := user.GetId()
+
 		// Create the cluster using the client connection:
 		response, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
@@ -747,10 +758,10 @@ var _ = Describe("Public clusters", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		// Verify that the creator is set to the name of the authenticated user:
+		// Verify that the creator is set to the ID of the authenticated user:
 		Expect(object).ToNot(BeNil())
 		metadata := object.GetMetadata()
 		Expect(metadata).ToNot(BeNil())
-		Expect(metadata.GetCreators()).To(ConsistOf(userUsername))
+		Expect(metadata.GetCreator()).To(Equal(userID))
 	})
 })

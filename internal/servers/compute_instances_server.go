@@ -25,12 +25,12 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 type ComputeInstancesServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -58,7 +58,7 @@ func (b *ComputeInstancesServerBuilder) SetLogger(value *slog.Logger) *ComputeIn
 }
 
 // SetNotifier sets the notifier to use. This is optional.
-func (b *ComputeInstancesServerBuilder) SetNotifier(value *database.Notifier) *ComputeInstancesServerBuilder {
+func (b *ComputeInstancesServerBuilder) SetNotifier(value events.Notifier) *ComputeInstancesServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -246,6 +246,9 @@ func (s *ComputeInstancesServer) Create(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ComputeInstancesCreateResponse{}
 	response.SetObject(createdPublicComputeInstance)
+	// Propagate warnings from the private server response (deprecation notices
+	// for DEPRECATED instance types).
+	response.SetWarnings(privateResponse.GetWarnings())
 	return
 }
 

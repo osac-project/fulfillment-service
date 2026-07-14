@@ -73,3 +73,8 @@ func (s *staticTokenSource) Token(ctx context.Context) (result *Token, err error
 	result = s.token
 	return
 }
+
+// Invalidate is a no-op for static tokens since they never change.
+func (s *staticTokenSource) Invalidate(ctx context.Context) error {
+	return nil
+}

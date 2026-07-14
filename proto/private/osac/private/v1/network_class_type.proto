@@ -15,7 +15,9 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+import "buf/validate/validate.proto";
 import "osac/private/v1/metadata_type.proto";
+import "osac/private/v1/security_group_type.proto";
 
 // Describes a network implementation strategy available for creating virtual networks.
 //
@@ -65,6 +67,87 @@ message NetworkClass {
   // Whether this NetworkClass is the default. Only one NetworkClass can be the default at a time.
   // When a VirtualNetwork is created without specifying network_class, the default NetworkClass is used.
   optional bool is_default = 9;
+
+  // Identifier of the fabric manager that handles physical network operations for this class. The fabric manager
+  // controls all fabric-level operations: virtual network segments, security groups, external IPs, and NAT gateways.
+  // For example: "netris", "neutron".
+  string fabric_manager = 10;
+
+  // Identifier of the K8s manager that bridges the Kubernetes overlay to the physical fabric. Only needed for regions
+  // that host VMs — the K8s manager creates the overlay network on hosting clusters and bridges it to the fabric
+  // segment. For example: "cudn_localnet". If not set, the region does not support VM workloads.
+  optional string k8s_manager = 11;
+
+  // Desired configuration for this network class.
+  NetworkClassSpec spec = 12;
+}
+
+// Desired configuration for a NetworkClass.
+message NetworkClassSpec {
+  // Default networking configuration for tenant onboarding. When a tenant is created, the system uses these
+  // defaults to auto-create a VirtualNetwork, Subnet, and SecurityGroup for the tenant.
+  NetworkDefaults defaults = 1;
+}
+
+// Default networking configuration used during tenant onboarding.
+//
+// When a tenant is created, the system reads these defaults from the NetworkClass and auto-creates
+// a default VirtualNetwork, IPv4 Subnet, IPv6 Subnet, SecurityGroup, and optionally a NATGateway
+// for the tenant. All fields are optional — defaults can be partially populated.
+message NetworkDefaults {
+  option (buf.validate.message).cel = {
+    id: "subnet_ipv4_requires_virtual_network_ipv4"
+    message: "subnet_ipv4_cidr requires virtual_network_ipv4_cidr to be set"
+    expression: "this.subnet_ipv4_cidr == '' || this.virtual_network_ipv4_cidr != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "subnet_ipv6_requires_virtual_network_ipv6"
+    message: "subnet_ipv6_cidr requires virtual_network_ipv6_cidr to be set"
+    expression: "this.subnet_ipv6_cidr == '' || this.virtual_network_ipv6_cidr != ''"
+  };
+
+  // Default IPv4 CIDR for auto-created tenant VirtualNetwork.
+  // Example: "10.0.0.0/16"
+  string virtual_network_ipv4_cidr = 1 [(buf.validate.field).cel = {
+    id: "valid_ipv4_cidr"
+    message: "must be valid IPv4 CIDR notation (e.g., '10.0.0.0/16')"
+    expression: "this == '' || this.isIpPrefix(4, true)"
+  }];
+
+  // Default IPv6 CIDR for auto-created tenant VirtualNetwork.
+  // Example: "fd00::/48"
+  string virtual_network_ipv6_cidr = 5 [(buf.validate.field).cel = {
+    id: "valid_ipv6_cidr"
+    message: "must be valid IPv6 CIDR notation (e.g., 'fd00::/48')"
+    expression: "this == '' || this.isIpPrefix(6, true)"
+  }];
+
+  // Default IPv4 CIDR for auto-created tenant Subnet. Must fall within the virtual_network_ipv4_cidr range.
+  // Example: "10.0.1.0/24"
+  string subnet_ipv4_cidr = 2 [(buf.validate.field).cel = {
+    id: "valid_ipv4_cidr"
+    message: "must be valid IPv4 CIDR notation (e.g., '10.0.1.0/24')"
+    expression: "this == '' || this.isIpPrefix(4, true)"
+  }];
+
+  // Default IPv6 CIDR for auto-created tenant Subnet. Must fall within the virtual_network_ipv6_cidr range.
+  // Example: "fd00:0:0:1::/64"
+  string subnet_ipv6_cidr = 6 [(buf.validate.field).cel = {
+    id: "valid_ipv6_cidr"
+    message: "must be valid IPv6 CIDR notation (e.g., 'fd00:0:0:1::/64')"
+    expression: "this == '' || this.isIpPrefix(6, true)"
+  }];
+
+  // Default ingress rules for auto-created tenant SecurityGroup.
+  repeated SecurityRule ingress_rules = 3;
+
+  // Default egress rules for auto-created tenant SecurityGroup.
+  repeated SecurityRule egress_rules = 4;
+
+  // Whether to create a default NATGateway on the tenant's default VirtualNetwork.
+  // When true, tenant onboarding auto-allocates an ExternalIP and creates a NATGateway
+  // to provide SNAT for outbound connectivity.
+  bool enable_nat_gateway = 7;
 }
 
 // Defines configuration constraints for a specific NetworkClass implementation.
@@ -88,6 +171,9 @@ message NetworkClassCapabilities {
 
   // Whether this network class supports dual-stack (IPv4 + IPv6) configuration.
   bool supports_dual_stack = 3;
+
+  // Whether this network class supports DPU (Data Processing Unit) offloading.
+  bool dpu_support = 4;
 }
 
 // Represents the current operational state of a NetworkClass.

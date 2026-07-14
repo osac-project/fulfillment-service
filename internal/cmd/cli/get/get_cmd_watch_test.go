@@ -18,22 +18,23 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
 
 var _ = Describe("Watch command", func() {
 	DescribeTable("extractObjectFromEvent",
-		func(event *publicv1.Event, expectedType proto.Message, shouldSucceed bool) {
+		func(event proto.Message, expectedType proto.Message, shouldSucceed bool) {
 			runner := &runnerContext{}
-			object, err := runner.extractObjectFromEvent(event)
+			object := runner.extractObjectFromEvent(event)
 
 			if shouldSucceed {
-				Expect(err).ToNot(HaveOccurred())
 				Expect(object).ToNot(BeNil())
 				Expect(proto.MessageName(object)).To(Equal(proto.MessageName(expectedType)))
 			} else {
-				Expect(err).To(HaveOccurred())
+				Expect(object).To(BeNil())
 			}
 		},
 		Entry("cluster event",
@@ -54,10 +55,57 @@ var _ = Describe("Watch command", func() {
 			(*publicv1.ClusterTemplate)(nil),
 			true,
 		),
-		Entry("event with no payload",
+		Entry("compute instance event",
+			&publicv1.Event{
+				Payload: &publicv1.Event_ComputeInstance{
+					ComputeInstance: &publicv1.ComputeInstance{Id: "test-instance"},
+				},
+			},
+			(*publicv1.ComputeInstance)(nil),
+			true,
+		),
+		Entry("private hub event",
+			&privatev1.Event{
+				Payload: &privatev1.Event_Hub{
+					Hub: &privatev1.Hub{Id: "test-hub"},
+				},
+			},
+			(*privatev1.Hub)(nil),
+			true,
+		),
+		Entry("public event with no payload",
 			&publicv1.Event{},
 			nil,
 			false,
+		),
+		Entry("private event with no payload",
+			&privatev1.Event{},
+			nil,
+			false,
+		),
+	)
+
+	DescribeTable("getEventTypeName",
+		func(event proto.Message, expected string) {
+			Expect(getEventTypeName(event)).To(Equal(expected))
+		},
+		Entry("known public event type",
+			&publicv1.Event{Type: publicv1.EventType_EVENT_TYPE_OBJECT_CREATED},
+			"OBJECT_CREATED",
+		),
+		Entry("unspecified event type",
+			&publicv1.Event{},
+			"UNSPECIFIED",
+		),
+		Entry("unknown event type number",
+			func() proto.Message {
+				event := &publicv1.Event{}
+				msg := event.ProtoReflect()
+				typeField := msg.Descriptor().Fields().ByName("type")
+				msg.Set(typeField, protoreflect.ValueOfEnum(9999))
+				return event
+			}(),
+			"UNKNOWN(9999)",
 		),
 	)
 

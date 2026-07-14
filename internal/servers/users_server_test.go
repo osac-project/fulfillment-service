@@ -14,59 +14,19 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Public Users Server", func() {
-	var (
-		ctx          context.Context
-		tx           database.Tx
-		publicServer *UsersServer
-	)
+	var publicServer *UsersServer
 
 	BeforeEach(func() {
 		var err error
-
-		// Create context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create DAO tables:
-		err = dao.CreateTables[*privatev1.User](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create public server:
 		publicServer, err = NewUsersServer().
@@ -85,13 +45,9 @@ var _ = Describe("Public Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &publicv1.UserSpec{
-					Username:      "testuser",
-					Email:         "test@example.com",
-					EmailVerified: true,
-					Enabled:       true,
-					FirstName:     "Test",
-					LastName:      "User",
-					Organization:  "org-123",
+					Username: "testuser",
+					Email:    "test@example.com",
+					Enabled:  true,
 				},
 			},
 		}
@@ -206,9 +162,8 @@ var _ = Describe("Public Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &publicv1.UserSpec{
-					Username:  "testuser",
-					Email:     "test@example.com",
-					FirstName: "Original",
+					Username: "testuser",
+					Email:    "test@example.com",
 				},
 			},
 		}
@@ -220,13 +175,13 @@ var _ = Describe("Public Users Server", func() {
 			Object: &publicv1.User{
 				Id: createResp.Object.Id,
 				Spec: &publicv1.UserSpec{
-					FirstName: "Updated",
+					Email: "updated@example.com",
 				},
 			},
 		}
 		updateResp, err := publicServer.Update(ctx, updateReq)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(updateResp.Object.Spec.FirstName).To(Equal("Updated"))
+		Expect(updateResp.Object.Spec.Email).To(Equal("updated@example.com"))
 	})
 
 	It("Prunes credentials from listed users", func() {
@@ -303,7 +258,7 @@ var _ = Describe("Public Users Server", func() {
 			Object: &publicv1.User{
 				Id: createResp.Object.Id,
 				Spec: &publicv1.UserSpec{
-					FirstName: "Updated",
+					Email: "updated@example.com",
 					Credentials: &publicv1.UserCredentials{
 						Password: &password,
 					},
@@ -314,18 +269,17 @@ var _ = Describe("Public Users Server", func() {
 		Expect(updateResp.Object.Spec.HasCredentials()).To(BeFalse())
 	})
 
-	It("Lists users filtered by organization", func() {
-		// Create users in two different organizations:
+	It("Lists users filtered by username", func() {
+		// Create users with different username prefixes:
 		for i := range 2 {
 			_, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
 				Object: &publicv1.User{
 					Metadata: &publicv1.Metadata{
-						Name: fmt.Sprintf("org-a-user-%d", i),
+						Name: fmt.Sprintf("group-a-user-%d", i),
 					},
 					Spec: &publicv1.UserSpec{
-						Username:     fmt.Sprintf("org-a-user-%d", i),
-						Email:        fmt.Sprintf("user-%d@org-a.com", i),
-						Organization: "org-a",
+						Username: fmt.Sprintf("groupa-user-%d", i),
+						Email:    fmt.Sprintf("user-%d@group-a.com", i),
 					},
 				},
 			})
@@ -335,38 +289,37 @@ var _ = Describe("Public Users Server", func() {
 			_, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
 				Object: &publicv1.User{
 					Metadata: &publicv1.Metadata{
-						Name: fmt.Sprintf("org-b-user-%d", i),
+						Name: fmt.Sprintf("group-b-user-%d", i),
 					},
 					Spec: &publicv1.UserSpec{
-						Username:     fmt.Sprintf("org-b-user-%d", i),
-						Email:        fmt.Sprintf("user-%d@org-b.com", i),
-						Organization: "org-b",
+						Username: fmt.Sprintf("groupb-user-%d", i),
+						Email:    fmt.Sprintf("user-%d@group-b.com", i),
 					},
 				},
 			})
 			Expect(err).ToNot(HaveOccurred())
 		}
 
-		// List users filtering by organization "org-a":
+		// List users filtering by username prefix "groupa-":
 		listResp, err := publicServer.List(ctx, publicv1.UsersListRequest_builder{
-			Filter: proto.String("this.spec.organization == 'org-a'"),
+			Filter: new("this.spec.username.startsWith('groupa-')"),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.GetSize()).To(Equal(int32(2)))
 		Expect(listResp.GetItems()).To(HaveLen(2))
 		for _, item := range listResp.GetItems() {
-			Expect(item.GetSpec().GetOrganization()).To(Equal("org-a"))
+			Expect(item.GetSpec().GetUsername()).To(HavePrefix("groupa-"))
 		}
 
-		// List users filtering by organization "org-b":
+		// List users filtering by username prefix "groupb-":
 		listResp, err = publicServer.List(ctx, publicv1.UsersListRequest_builder{
-			Filter: proto.String("this.spec.organization == 'org-b'"),
+			Filter: new("this.spec.username.startsWith('groupb-')"),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.GetSize()).To(Equal(int32(3)))
 		Expect(listResp.GetItems()).To(HaveLen(3))
 		for _, item := range listResp.GetItems() {
-			Expect(item.GetSpec().GetOrganization()).To(Equal("org-b"))
+			Expect(item.GetSpec().GetUsername()).To(HavePrefix("groupb-"))
 		}
 	})
 })

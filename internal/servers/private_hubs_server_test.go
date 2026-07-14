@@ -17,65 +17,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
-	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
-	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 var _ = Describe("Private hubs server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
-		ctx = auth.ContextWithSubject(
-			ctx,
-			&auth.Subject{
-				User:    "system",
-				Tenants: collections.NewUniversalSet[string](),
-			},
-		)
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*privatev1.Hub](ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	Describe("Creation", func() {
 		It("Can be built if all the required parameters are set", func() {
 			server, err := NewPrivateHubsServer().
@@ -134,8 +85,10 @@ var _ = Describe("Private hubs server", func() {
 		It("Creates object", func() {
 			response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
-					Kubeconfig: []byte("my_config"),
-					Namespace:  "my_ns",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -151,8 +104,10 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
-						Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
-						Namespace:  fmt.Sprintf("my_ns_%d", i),
+						Spec: privatev1.HubSpec_builder{
+							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
+							Namespace:  fmt.Sprintf("my_ns_%d", i),
+						}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -172,8 +127,10 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
-						Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
-						Namespace:  fmt.Sprintf("my_ns_%d", i),
+						Spec: privatev1.HubSpec_builder{
+							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
+							Namespace:  fmt.Sprintf("my_ns_%d", i),
+						}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -181,7 +138,7 @@ var _ = Describe("Private hubs server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, privatev1.HubsListRequest_builder{
-				Limit: proto.Int32(1),
+				Limit: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -193,8 +150,10 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
-						Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
-						Namespace:  fmt.Sprintf("my_ns_%d", i),
+						Spec: privatev1.HubSpec_builder{
+							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
+							Namespace:  fmt.Sprintf("my_ns_%d", i),
+						}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -202,7 +161,7 @@ var _ = Describe("Private hubs server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, privatev1.HubsListRequest_builder{
-				Offset: proto.Int32(1),
+				Offset: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", count-1))
@@ -215,8 +174,10 @@ var _ = Describe("Private hubs server", func() {
 			for i := range count {
 				response, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 					Object: privatev1.Hub_builder{
-						Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
-						Namespace:  fmt.Sprintf("my_ns_%d", i),
+						Spec: privatev1.HubSpec_builder{
+							Kubeconfig: []byte(fmt.Sprintf("my_config_%d", i)),
+							Namespace:  fmt.Sprintf("my_ns_%d", i),
+						}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -226,7 +187,7 @@ var _ = Describe("Private hubs server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, privatev1.HubsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -238,8 +199,10 @@ var _ = Describe("Private hubs server", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
-					Kubeconfig: []byte("my_config"),
-					Namespace:  "my_ns",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -256,8 +219,10 @@ var _ = Describe("Private hubs server", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, privatev1.HubsCreateRequest_builder{
 				Object: privatev1.Hub_builder{
-					Kubeconfig: []byte("my_config"),
-					Namespace:  "my_ns",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+						Namespace:  "my_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -266,22 +231,24 @@ var _ = Describe("Private hubs server", func() {
 			// Update the object:
 			updateResponse, err := server.Update(ctx, privatev1.HubsUpdateRequest_builder{
 				Object: privatev1.Hub_builder{
-					Id:         object.GetId(),
-					Kubeconfig: []byte("your_config"),
-					Namespace:  "your_ns",
+					Id: object.GetId(),
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("your_config"),
+						Namespace:  "your_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(updateResponse.GetObject().GetKubeconfig()).To(Equal([]byte("your_config")))
-			Expect(updateResponse.GetObject().GetNamespace()).To(Equal("your_ns"))
+			Expect(updateResponse.GetObject().GetSpec().GetKubeconfig()).To(Equal([]byte("your_config")))
+			Expect(updateResponse.GetObject().GetSpec().GetNamespace()).To(Equal("your_ns"))
 
 			// Get and verify:
 			getResponse, err := server.Get(ctx, privatev1.HubsGetRequest_builder{
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(getResponse.GetObject().GetKubeconfig()).To(Equal([]byte("your_config")))
-			Expect(getResponse.GetObject().GetNamespace()).To(Equal("your_ns"))
+			Expect(getResponse.GetObject().GetSpec().GetKubeconfig()).To(Equal([]byte("your_config")))
+			Expect(getResponse.GetObject().GetSpec().GetNamespace()).To(Equal("your_ns"))
 		})
 
 		It("Delete object", func() {
@@ -291,8 +258,10 @@ var _ = Describe("Private hubs server", func() {
 					Metadata: privatev1.Metadata_builder{
 						Finalizers: []string{"a"},
 					}.Build(),
-					Kubeconfig: []byte("your_config"),
-					Namespace:  "your_ns",
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("your_config"),
+						Namespace:  "your_ns",
+					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -311,5 +280,48 @@ var _ = Describe("Private hubs server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(getResponse.GetObject().GetMetadata().GetDeletionTimestamp()).ToNot(BeNil())
 		})
+	})
+
+	It("Redacts event payload", func() {
+		// Create a mock notifier that captures the event:
+		var event *privatev1.Event
+		notifier := events.NewMockNotifier(ctrl)
+		notifier.EXPECT().
+			Notify(gomock.Any(), gomock.Any()).
+			DoAndReturn(
+				func(ctx context.Context, payload proto.Message) error {
+					event = payload.(*privatev1.Event)
+					return nil
+				},
+			)
+
+		// Create the server configured with the mock notifier:
+		server, err := NewPrivateHubsServer().
+			SetLogger(logger).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetNotifier(notifier).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Create the object:
+		response, err := server.Create(
+			ctx, privatev1.HubsCreateRequest_builder{
+				Object: privatev1.Hub_builder{
+					Spec: privatev1.HubSpec_builder{
+						Kubeconfig: []byte("my_config"),
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+
+		// Verify the event:
+		Expect(event).ToNot(BeNil())
+		Expect(event.GetType()).To(Equal(privatev1.EventType_EVENT_TYPE_OBJECT_CREATED))
+		object := event.GetHub()
+		Expect(object).ToNot(BeNil())
+		Expect(object.GetSpec().GetKubeconfig()).To(BeEmpty())
 	})
 })

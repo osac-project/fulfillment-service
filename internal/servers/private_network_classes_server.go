@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/netip"
 	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,8 +28,8 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 // findDefaultNetworkClass returns the current default NetworkClass using the provided DAO, or nil if none is set.
@@ -67,7 +68,7 @@ func findDefaultNetworkClass(ctx context.Context, logger *slog.Logger, ncDao *da
 
 type PrivateNetworkClassesServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -91,7 +92,7 @@ func (b *PrivateNetworkClassesServerBuilder) SetLogger(value *slog.Logger) *Priv
 	return b
 }
 
-func (b *PrivateNetworkClassesServerBuilder) SetNotifier(value *database.Notifier) *PrivateNetworkClassesServerBuilder {
+func (b *PrivateNetworkClassesServerBuilder) SetNotifier(value events.Notifier) *PrivateNetworkClassesServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -355,6 +356,32 @@ func (s *PrivateNetworkClassesServer) validateNetworkClass(ctx context.Context,
 				"field 'implementation_strategy' is immutable and cannot be changed from '%s' to '%s'",
 				existingNC.GetImplementationStrategy(), newNC.GetImplementationStrategy())
 		}
+
+		// NC-VAL-06: fabric_manager is immutable
+		if newNC.GetFabricManager() != existingNC.GetFabricManager() {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'fabric_manager' is immutable and cannot be changed from '%s' to '%s'",
+				existingNC.GetFabricManager(), newNC.GetFabricManager())
+		}
+
+		// NC-VAL-07: k8s_manager is immutable once set (but can be set for the first time)
+		if existingNC.HasK8SManager() && newNC.GetK8SManager() != existingNC.GetK8SManager() {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'k8s_manager' is immutable and cannot be changed from '%s' to '%s'",
+				existingNC.GetK8SManager(), newNC.GetK8SManager())
+		}
+	}
+
+	// NC-VAL-05: fabric_manager is required
+	if newNC.GetFabricManager() == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'fabric_manager' is required")
+	}
+
+	// NC-VAL-08: Validate defaults if present
+	if defaults := newNC.GetSpec().GetDefaults(); defaults != nil {
+		if err := validateNetworkDefaults(defaults); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -363,6 +390,80 @@ func (s *PrivateNetworkClassesServer) validateNetworkClass(ctx context.Context,
 // cloneNetworkClass creates a deep copy of a NetworkClass.
 func cloneNetworkClass(nc *privatev1.NetworkClass) *privatev1.NetworkClass {
 	return proto.Clone(nc).(*privatev1.NetworkClass)
+}
+
+// validateNetworkDefaults validates the NetworkDefaults configuration.
+func validateNetworkDefaults(defaults *privatev1.NetworkDefaults) error {
+	if err := validateDefaultCIDRPair(
+		defaults.GetVirtualNetworkIpv4Cidr(), defaults.GetSubnetIpv4Cidr(),
+		cidrIPv4, "virtual_network_ipv4_cidr", "subnet_ipv4_cidr",
+	); err != nil {
+		return err
+	}
+
+	if err := validateDefaultCIDRPair(
+		defaults.GetVirtualNetworkIpv6Cidr(), defaults.GetSubnetIpv6Cidr(),
+		cidrIPv6, "virtual_network_ipv6_cidr", "subnet_ipv6_cidr",
+	); err != nil {
+		return err
+	}
+
+	for i, rule := range defaults.GetIngressRules() {
+		if err := validateSecurityRule(rule, "defaults.ingress", i); err != nil {
+			return err
+		}
+	}
+	for i, rule := range defaults.GetEgressRules() {
+		if err := validateSecurityRule(rule, "defaults.egress", i); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateDefaultCIDRPair validates a VN/Subnet CIDR pair within NetworkDefaults.
+func validateDefaultCIDRPair(vnCIDR, subnetCIDR, ipVersion, vnField, subnetField string) error {
+	var vnPrefix netip.Prefix
+	if vnCIDR != "" {
+		parsed, err := parseAndValidateCIDR(vnCIDR, ipVersion)
+		if err != nil {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"defaults.%s: %v", vnField, err)
+		}
+		vnPrefix, err = netip.ParsePrefix(parsed)
+		if err != nil {
+			return grpcstatus.Errorf(grpccodes.Internal,
+				"defaults.%s: failed to re-parse validated CIDR '%s': %v", vnField, parsed, err)
+		}
+	}
+
+	if subnetCIDR != "" {
+		if vnCIDR == "" {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"defaults.%s requires defaults.%s to be set", subnetField, vnField)
+		}
+
+		_, err := parseAndValidateCIDR(subnetCIDR, ipVersion)
+		if err != nil {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"defaults.%s: %v", subnetField, err)
+		}
+
+		subnetPrefix, err := netip.ParsePrefix(subnetCIDR)
+		if err != nil {
+			return grpcstatus.Errorf(grpccodes.Internal,
+				"defaults.%s: failed to re-parse validated CIDR '%s': %v", subnetField, subnetCIDR, err)
+		}
+		subnetWithinVN := vnPrefix.Contains(subnetPrefix.Addr()) && subnetPrefix.Bits() >= vnPrefix.Bits()
+		if !subnetWithinVN {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"defaults.%s '%s' is not within defaults.%s '%s'",
+				subnetField, subnetCIDR, vnField, vnCIDR)
+		}
+	}
+
+	return nil
 }
 
 // applyNetworkClassUpdate applies the update fields onto the base object,
@@ -395,6 +496,19 @@ func applyNetworkClassUpdate(base, update *privatev1.NetworkClass, mask *fieldma
 			base.SetCapabilities(update.GetCapabilities())
 		case "is_default":
 			base.SetIsDefault(update.GetIsDefault())
+		case "fabric_manager":
+			base.SetFabricManager(update.GetFabricManager())
+		case "k8s_manager":
+			if update.HasK8SManager() {
+				base.SetK8SManager(update.GetK8SManager())
+			} else {
+				base.ClearK8SManager()
+			}
+		case "spec", "spec.defaults":
+			if base.GetSpec() == nil {
+				base.SetSpec(&privatev1.NetworkClassSpec{})
+			}
+			base.GetSpec().SetDefaults(update.GetSpec().GetDefaults())
 		default:
 			// For unknown paths, fall through - the generic handler will
 			// reject invalid paths if needed.

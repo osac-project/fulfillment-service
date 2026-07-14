@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd=$(cat - | jq -r '.tool_input.command // empty') && case \"$cmd\" in *'git commit'*) cd \"$CLAUDE_PROJECT_DIR\" && buf lint ;; *'gh pr create'*) cd \"$CLAUDE_PROJECT_DIR\" && buf lint && ginkgo run -r internal ;; esac"
+            "command": "cmd=$(cat - | jq -r '.tool_input.command // empty') && case \"$cmd\" in *'git commit'*) cd \"$CLAUDE_PROJECT_DIR\" && buf lint ;; *'gh pr create'*) cd \"$CLAUDE_PROJECT_DIR\" && gofmt -s -w . && test -z \\\"$(git diff --name-only)\\\" && buf lint && ginkgo run -r internal ;; esac"
           }
         ]
       }

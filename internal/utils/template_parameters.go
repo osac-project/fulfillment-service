@@ -184,6 +184,28 @@ func (a ComputeInstanceTemplateAdapter) GetParameters() []TemplateParameterDefin
 	return result
 }
 
+// BareMetalInstanceTemplateAdapter adapts BareMetalInstanceTemplate to the Template interface
+type BareMetalInstanceTemplateAdapter struct {
+	*privatev1.BareMetalInstanceTemplate
+}
+
+func (a BareMetalInstanceTemplateAdapter) GetParameters() []TemplateParameterDefinition {
+	params := a.BareMetalInstanceTemplate.GetParameters()
+	result := make([]TemplateParameterDefinition, len(params))
+	for i, param := range params {
+		result[i] = param
+	}
+	return result
+}
+
+// ValidateBareMetalInstanceTemplateParameters validates bare metal instance template parameters
+func ValidateBareMetalInstanceTemplateParameters(
+	template *privatev1.BareMetalInstanceTemplate,
+	providedParameters map[string]*anypb.Any,
+) error {
+	return ValidateTemplateParameters(BareMetalInstanceTemplateAdapter{template}, providedParameters)
+}
+
 // ValidateClusterTemplateParameters validates cluster template parameters
 func ValidateClusterTemplateParameters(
 	template *privatev1.ClusterTemplate,

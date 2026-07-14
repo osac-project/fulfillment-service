@@ -40,9 +40,11 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "delete OBJECT [OPTION]... [ID|NAME]...",
-		Short: "Delete objects",
-		RunE:  runner.run,
+		Use:                   "delete [FLAG...] OBJECT ID|NAME...",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -51,7 +53,7 @@ type runnerContext struct {
 	logger  *slog.Logger
 	console *terminal.Console
 	conn    *grpc.ClientConn
-	helper  *reflection.ObjectHelper
+	helper  reflection.ObjectHelper
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -71,11 +73,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -91,6 +90,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		SetLogger(c.logger).
 		SetConnection(c.conn).
 		AddPackages(cfg.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -153,11 +153,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Delete each resolved object:
+	// Delete each resolved object. Attempt all deletions and report errors at the end
+	var hadErrors bool
 	for _, object := range objects {
 		id := c.helper.GetId(object)
 		err = c.helper.Delete(ctx, id)
 		if err != nil {
+			hadErrors = true
 			status, ok := grpcstatus.FromError(err)
 			if ok && status.Code() == grpccodes.NotFound {
 				c.console.Errorf(
@@ -165,14 +167,19 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 					"Can't delete %s '%s' because it doesn't exist.\n",
 					args[0], id,
 				)
-				return exit.Error(1)
+			} else {
+				c.console.Errorf(
+					ctx,
+					"Failed to delete %s '%s': %v\n",
+					args[0], id, err,
+				)
 			}
-			return fmt.Errorf(
-				"failed to delete %s '%s': %w",
-				args[0], id, err,
-			)
+			continue
 		}
 		c.console.Infof(ctx, "Deleted %s '%s'.\n", args[0], id)
+	}
+	if hadErrors {
+		return exit.Error(1)
 	}
 
 	return nil
@@ -214,3 +221,27 @@ func (c *runnerContext) findMatches(ctx context.Context, refs []string) (result 
 
 	return
 }
+
+const shortHelp = `Delete objects`
+
+const longHelp = `
+Delete one or more objects from the server.
+
+Objects can be referenced by their identifier or by their name.
+
+To delete a single cluster:
+
+{{ bt 3 }}shell
+{{ binary }} delete clusters my-cluster
+{{ bt 3 }}
+
+Multiple objects can be deleted at once:
+
+{{ bt 3 }}shell
+{{ binary }} delete clusters my-cluster my-other-cluster
+{{ bt 3 }}
+
+All specified objects are resolved before any deletion takes place. If any
+reference is ambiguous or not found the command stops without deleting
+anything.
+`

@@ -21,8 +21,10 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -32,17 +34,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "securitygroup [flags] ID_OR_NAME",
-		Aliases: []string{"securitygroups"},
-		Short:   "Describe a security group",
-		Long:    "Display detailed information about a security group, identified by ID or name, including its ingress and egress rules.",
-		Example: `  # Describe a security group by ID
-  osac describe securitygroup sg-abc123
-
-  # Describe a security group by name
-  osac describe securitygroup web-sg`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "securitygroup [FLAG...] ID|NAME",
+		Aliases:               []string{"securitygroups"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -60,11 +58,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.logger = logging.LoggerFromContext(ctx)
 	c.console = terminal.ConsoleFromContext(ctx)
 
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg.Address == "" {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -76,29 +71,21 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewSecurityGroupsClient(conn)
 
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
-	listResponse, err := client.List(ctx, publicv1.SecurityGroupsListRequest_builder{
-		Filter: &filter,
-	}.Build())
+	matched, err := lookup.Find(ref, "security group", func(filter string, limit int32) ([]*publicv1.SecurityGroup, error) {
+		resp, err := client.List(ctx, publicv1.SecurityGroupsListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe security group: %w", err)
+		}
+		return resp.GetItems(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to describe security group: %w", err)
-	}
-	if len(listResponse.GetItems()) == 0 {
-		return fmt.Errorf("security group not found: %s", ref)
-	}
-	if len(listResponse.GetItems()) > 1 {
-		return fmt.Errorf("multiple security groups match '%s', use the ID instead", ref)
+		return err
 	}
 
-	response, err := client.Get(ctx, publicv1.SecurityGroupsGetRequest_builder{
-		Id: listResponse.GetItems()[0].GetId(),
-	}.Build())
-	if err != nil {
-		return fmt.Errorf("failed to describe security group: %w", err)
-	}
-
-	sg := response.Object
-	RenderSecurityGroup(c.console, sg)
+	RenderSecurityGroup(c.console, matched)
 
 	return nil
 }
@@ -169,3 +156,22 @@ func renderRules(w io.Writer, label string, rules []*publicv1.SecurityRule) {
 	}
 	ruleWriter.Flush()
 }
+
+const shortHelp = "Describe a security group"
+
+const longHelp = `
+Display detailed information about a security group, referenced by identifier or name,
+including its ingress and egress rules.
+
+Examples:
+
+{{ bt 3 }}shell
+# Describe a security group by identifier:
+{{ binary }} describe securitygroup 019e5fef-6d56-78d1-b282-7b5456b86888
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Describe a security group by name:
+{{ binary }} describe securitygroup web-sg
+{{ bt 3 }}
+`

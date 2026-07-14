@@ -16,6 +16,7 @@ syntax = "proto3";
 package osac.private.v1;
 
 import "google/api/field_behavior.proto";
+import "osac/private/v1/ip_family_type.proto";
 import "osac/private/v1/metadata_type.proto";
 
 // Represents a pool of public IP addresses available for allocation to compute instances.
@@ -113,18 +114,6 @@ message PublicIPPoolStatus {
   //
   // Equal to total minus allocated.
   int64 available = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
-}
-
-// IP address family for a PublicIPPool.
-enum IPFamily {
-  // IP family is unknown or has not been specified.
-  IP_FAMILY_UNSPECIFIED = 0;
-
-  // IPv4 address family. CIDRs must be valid IPv4 CIDR notation.
-  IP_FAMILY_IPV4 = 1;
-
-  // IPv6 address family. CIDRs must be valid IPv6 CIDR notation.
-  IP_FAMILY_IPV6 = 2;
 }
 
 // Lifecycle states for PublicIPPool resources.

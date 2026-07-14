@@ -13,6 +13,8 @@ language governing permissions and limitations under the License.
 
 package publicip
 
+//go:generate mockgen -source=../../api/osac/private/v1/public_ips_service_grpc.pb.go -destination=public_ips_client_mock.go -package=publicip PublicIPsClient
+
 import (
 	"context"
 	"errors"
@@ -155,13 +157,16 @@ func (t *task) update(ctx context.Context) error {
 		return err
 	}
 
-	// Select the hub from the parent pool:
+	// Select the hub and return immediately if it was just selected. This ensures the hub is
+	// persisted before any Kubernetes objects are created.
+	hubJustSelected := t.publicIP.GetStatus().GetHub() == ""
 	if err := t.selectHub(ctx); err != nil {
 		return err
 	}
-
-	// Save the selected hub in the status of the public IP:
 	t.publicIP.GetStatus().SetHub(t.hubId)
+	if hubJustSelected {
+		return nil
+	}
 
 	// Get the K8S object:
 	object, err := t.getKubeObject(ctx)
@@ -182,7 +187,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.PublicIPUuid: t.publicIP.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.publicIP.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.publicIP.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -225,8 +230,8 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) validateTenant() error {
-	if !t.publicIP.HasMetadata() || len(t.publicIP.GetMetadata().GetTenants()) != 1 {
-		return errors.New("public IP must have exactly one tenant assigned")
+	if !t.publicIP.HasMetadata() || t.publicIP.GetMetadata().GetTenant() == "" {
+		return errors.New("public IP must have a tenant assigned")
 	}
 	return nil
 }
@@ -241,6 +246,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	err = t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "public_ip_id", t.publicIP.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 
@@ -394,9 +405,6 @@ func (t *task) removeFinalizer() {
 func (t *task) buildSpec() osacv1alpha1.PublicIPSpec {
 	spec := osacv1alpha1.PublicIPSpec{
 		Pool: t.publicIP.GetSpec().GetPool(),
-	}
-	if t.publicIP.GetSpec().HasComputeInstance() {
-		spec.ComputeInstance = t.publicIP.GetSpec().GetComputeInstance()
 	}
 	return spec
 }

@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	osacv1alpha1 "github.com/osac-project/osac-operator/api/v1alpha1"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
@@ -275,6 +276,24 @@ var _ = Describe("delete", func() {
 		Expect(hasFinalizer(t.subnet)).To(BeTrue())
 	})
 
+	It("should remove finalizer when hub cache returns ErrHubNotFound", func() {
+		// This test verifies the core behavior: when a hub is decommissioned/deleted,
+		// the reconciler removes its finalizer to allow the subnet to be archived.
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(nil, controllers.ErrHubNotFound)
+
+		t := newTaskForDelete(subnetID, hubID, hubCache)
+		Expect(hasFinalizer(t.subnet)).To(BeTrue())
+
+		err := t.delete(ctx)
+		// Should return nil (not propagate the error)
+		Expect(err).ToNot(HaveOccurred())
+		// Finalizer should be removed to allow archiving
+		Expect(hasFinalizer(t.subnet)).To(BeFalse())
+	})
+
 	It("should remove finalizer when no hub is assigned", func() {
 		subnet := privatev1.Subnet_builder{
 			Id: subnetID,
@@ -304,10 +323,10 @@ var _ = Describe("delete", func() {
 })
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		subnet := privatev1.Subnet_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1"},
+				Tenant: "tenant-1",
 			}.Build(),
 		}.Build()
 
@@ -319,10 +338,10 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		subnet := privatev1.Subnet_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{},
+				Tenant: "",
 			}.Build(),
 		}.Build()
 
@@ -332,23 +351,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
-	})
-
-	It("should fail when multiple tenants are assigned", func() {
-		subnet := privatev1.Subnet_builder{
-			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"tenant-1", "tenant-2"},
-			}.Build(),
-		}.Build()
-
-		t := &task{
-			subnet: subnet,
-		}
-
-		err := t.validateTenant()
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
 	It("should fail when metadata is missing", func() {
@@ -360,7 +363,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 
@@ -450,7 +453,7 @@ var _ = Describe("addFinalizer", func() {
 		Expect(added).To(BeFalse())
 		Expect(hasFinalizer(t.subnet)).To(BeTrue())
 		// Should not duplicate
-		Expect(len(t.subnet.GetMetadata().GetFinalizers())).To(Equal(1))
+		Expect(t.subnet.GetMetadata().GetFinalizers()).To(HaveLen(1))
 	})
 
 	It("should create metadata if it doesn't exist", func() {
@@ -527,5 +530,259 @@ var _ = Describe("removeFinalizer", func() {
 		t.removeFinalizer()
 
 		Expect(t.subnet.HasMetadata()).To(BeFalse())
+	})
+})
+
+var _ = Describe("hub persistence", func() {
+	const (
+		subnetID     = "test-subnet-hub"
+		tenantName   = "test-tenant"
+		hubID        = "test-hub-123"
+		hubNamespace = "hub-123-ns"
+	)
+
+	var (
+		ctx  context.Context
+		ctrl *gomock.Controller
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
+	})
+
+	It("should select hub and return without creating Subnet CR", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{Namespace: hubNamespace, Client: fakeClient}, nil).
+			AnyTimes()
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+		hubsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.HubsListResponse{
+				Items: []*privatev1.Hub{privatev1.Hub_builder{Id: hubID}.Build()},
+			}, nil)
+
+		subnetsClient := NewMockSubnetsClient(ctrl)
+		subnetsClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.SubnetsUpdateRequest, opts ...grpc.CallOption) (*privatev1.SubnetsUpdateResponse, error) {
+				return &privatev1.SubnetsUpdateResponse{Object: req.GetObject()}, nil
+			}).AnyTimes()
+
+		subnet := privatev1.Subnet_builder{
+			Id: subnetID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.SubnetSpec_builder{
+				VirtualNetwork: "vn-123",
+			}.Build(),
+			Status: privatev1.SubnetStatus_builder{
+				State: privatev1.SubnetState_SUBNET_STATE_PENDING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			subnetsClient:  subnetsClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		err := f.run(ctx, subnet)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(subnet.GetStatus().GetHub()).To(Equal(hubID))
+
+		list := &osacv1alpha1.SubnetList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(BeEmpty())
+	})
+
+	It("should not create CR when no hubs available", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+		hubsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.HubsListResponse{
+				Items: []*privatev1.Hub{},
+			}, nil)
+
+		subnetsClient := NewMockSubnetsClient(ctrl)
+
+		subnet := privatev1.Subnet_builder{
+			Id: subnetID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.SubnetSpec_builder{
+				VirtualNetwork: "vn-123",
+			}.Build(),
+			Status: privatev1.SubnetStatus_builder{
+				State: privatev1.SubnetState_SUBNET_STATE_PENDING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			subnetsClient:  subnetsClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		err := f.run(ctx, subnet)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("there are no hubs"))
+
+		list := &osacv1alpha1.SubnetList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(BeEmpty())
+	})
+
+	It("should skip hub selection if already set", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{Namespace: hubNamespace, Client: fakeClient}, nil).
+			AnyTimes()
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+
+		subnetsClient := NewMockSubnetsClient(ctrl)
+		subnetsClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.SubnetsUpdateRequest, opts ...grpc.CallOption) (*privatev1.SubnetsUpdateResponse, error) {
+				Expect(req.GetUpdateMask().GetPaths()).ToNot(ContainElement("status.hub"))
+				return &privatev1.SubnetsUpdateResponse{Object: req.GetObject()}, nil
+			}).AnyTimes()
+
+		subnet := privatev1.Subnet_builder{
+			Id: subnetID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.SubnetSpec_builder{
+				VirtualNetwork: "vn-123",
+			}.Build(),
+			Status: privatev1.SubnetStatus_builder{
+				State: privatev1.SubnetState_SUBNET_STATE_PENDING,
+				Hub:   hubID,
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			subnetsClient:  subnetsClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		err := f.run(ctx, subnet)
+		Expect(err).ToNot(HaveOccurred())
+
+		list := &osacv1alpha1.SubnetList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(HaveLen(1))
+		Expect(list.Items[0].Namespace).To(Equal(hubNamespace))
+	})
+
+	It("should create CR on second reconcile after hub is persisted", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{Namespace: hubNamespace, Client: fakeClient}, nil).
+			AnyTimes()
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+		hubsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.HubsListResponse{
+				Items: []*privatev1.Hub{privatev1.Hub_builder{Id: hubID}.Build()},
+			}, nil)
+
+		subnetsClient := NewMockSubnetsClient(ctrl)
+		subnetsClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.SubnetsUpdateRequest, opts ...grpc.CallOption) (*privatev1.SubnetsUpdateResponse, error) {
+				return &privatev1.SubnetsUpdateResponse{Object: req.GetObject()}, nil
+			}).AnyTimes()
+
+		subnet := privatev1.Subnet_builder{
+			Id: subnetID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.SubnetSpec_builder{
+				VirtualNetwork: "vn-123",
+			}.Build(),
+			Status: privatev1.SubnetStatus_builder{
+				State: privatev1.SubnetState_SUBNET_STATE_PENDING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			subnetsClient:  subnetsClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		// First reconcile: hub is empty, gets selected and persisted, but no CR created
+		err := f.run(ctx, subnet)
+		Expect(err).ToNot(HaveOccurred())
+
+		list := &osacv1alpha1.SubnetList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(BeEmpty())
+
+		// Second reconcile: hub already set, CR should be created
+		subnet.GetStatus().SetHub(hubID)
+
+		err = f.run(ctx, subnet)
+		Expect(err).ToNot(HaveOccurred())
+
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(HaveLen(1))
+		Expect(list.Items[0].Namespace).To(Equal(hubNamespace))
 	})
 })

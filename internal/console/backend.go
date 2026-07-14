@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 )
 
 // ErrSessionExists is returned when a console session already exists for a resource.
@@ -33,6 +34,17 @@ func (e *ErrSessionExists) Error() string {
 	)
 }
 
+// Console type constants.
+const (
+	ConsoleTypeSerial = "serial"
+	ConsoleTypeVNC    = "vnc"
+)
+
+// Resource type constants used by the Manager backend dispatch and Target.ResourceType.
+const (
+	ResourceTypeComputeInstance = "compute_instance"
+)
+
 // Backend provides console connections to a specific type of resource.
 type Backend interface {
 	// Connect establishes a console connection to the target resource and
@@ -40,11 +52,21 @@ type Backend interface {
 	Connect(ctx context.Context, target Target) (io.ReadWriteCloser, error)
 }
 
+// Compile-time assertion that Target implements slog.LogValuer.
+var _ slog.LogValuer = Target{}
+
 // Target identifies a resource to connect a console to.
 type Target struct {
 	ResourceType string
-	ResourceID   string
-	HubID        string
-	Namespace    string
-	VMName       string
+	BackendURI   string // pre-computed wss:// URL from encrypted ticket
+	BackendToken string // bearer token from encrypted ticket
+}
+
+// LogValue implements slog.LogValuer. It omits BackendToken so that
+// slog.Any("target", target) never leaks the bearer token.
+func (t Target) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("resource_type", t.ResourceType),
+		slog.String("backend_uri", t.BackendURI),
+	)
 }

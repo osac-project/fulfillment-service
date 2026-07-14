@@ -118,7 +118,7 @@ var _ = Describe("Static token source", func() {
 			// Create a token with expiry:
 			expiryTime := time.Now().Add(5 * time.Minute)
 			expectedToken := &Token{
-				Access: MakeTokenString("Bearer", 5*time.Minute),
+				Access: MakeTokenString("https://example.com/auth/realms/my", "Bearer", 5*time.Minute),
 				Expiry: expiryTime,
 			}
 

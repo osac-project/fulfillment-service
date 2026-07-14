@@ -39,24 +39,12 @@ var _ = Describe("Notifier", func() {
 		ctx = context.Background()
 
 		// Prepare the database pool:
-		db := dbServer.MakeDatabase()
+		db, err := server.NewInstance().Build()
+		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err = pgxpool.New(ctx, db.MakeURL())
+		pool, err = db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
-
-		// Create the notifications table:
-		_, err = pool.Exec(
-			ctx,
-			`
-				create table notifications (
-					id text not null primary key,
-					creation_timestamp timestamp with time zone default now(),
-					payload bytea
-				);
-				`,
-		)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Prepare the transaction manager:
 		tm, err = NewTxManager().
@@ -65,16 +53,6 @@ var _ = Describe("Notifier", func() {
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 	})
-
-	// runWithTx starts a transaction, runs the given function using it, and ends the transaction when it finishes.
-	runWithTx := func(task func(ctx context.Context)) {
-		tx, err := tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		taskCtx := TxIntoContext(ctx, tx)
-		task(taskCtx)
-		err = tm.End(ctx, tx)
-		Expect(err).ToNot(HaveOccurred())
-	}
 
 	Describe("Creation", func() {
 		It("Can be created when all the required parameters are set", func() {
@@ -149,9 +127,7 @@ var _ = Describe("Notifier", func() {
 
 			// Send the notification:
 			payload := wrapperspb.Int32(42)
-			runWithTx(func(ctx context.Context) {
-				err = notifier.Notify(ctx, payload)
-			})
+			err = tm.Run(ctx, notifier.Notify, payload)
 			Expect(err).ToNot(HaveOccurred())
 		})
 

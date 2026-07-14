@@ -17,6 +17,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"embed"
@@ -32,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	bmfov1alpha1 "github.com/osac-project/bare-metal-fulfillment-operator/api/v1alpha1"
 	osacv1alpha1 "github.com/osac-project/osac-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,6 +57,8 @@ type KindBuilder struct {
 	name         string
 	home         string
 	quiet        bool
+	caKeyFile    string
+	caCrtFile    string
 	crdFiles     []string
 	portMappings []kindPortMapping
 }
@@ -66,6 +70,8 @@ type Kind struct {
 	name            string
 	home            string
 	quiet           bool
+	caKeyFile       string
+	caCrtFile       string
 	crdFiles        []string
 	portMappings    []kindPortMapping
 	kubeconfigBytes []byte
@@ -133,6 +139,14 @@ func (b *KindBuilder) AddPortMapping(listenAddress string, hostPort int, contain
 	return b
 }
 
+// SetCaFiles sets the paths to PEM files containing a pre-generated CA private key and certificate. When set, the
+// cluster will use these files instead of generating a new CA. This is optional.
+func (b *KindBuilder) SetCaFiles(keyFile, crtFile string) *KindBuilder {
+	b.caKeyFile = keyFile
+	b.caCrtFile = crtFile
+	return b
+}
+
 // Build uses the configuration stored in the builder to create a new Kind cluster
 func (b *KindBuilder) Build() (result *Kind, err error) {
 	// Check parameters:
@@ -143,6 +157,30 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 	if b.name == "" {
 		err = fmt.Errorf("name is mandatory")
 		return
+	}
+	if (b.caKeyFile == "") != (b.caCrtFile == "") {
+		err = fmt.Errorf("key file and certificate file must both be provided or both be omitted")
+		return
+	}
+
+	// If a custom CA key pair is provided, verify that it is valid:
+	if b.caKeyFile != "" && b.caCrtFile != "" {
+		var caKeyData, caCrtData []byte
+		caKeyData, err = os.ReadFile(b.caKeyFile)
+		if err != nil {
+			err = fmt.Errorf("failed to load key file '%s': %w", b.caKeyFile, err)
+			return
+		}
+		caCrtData, err = os.ReadFile(b.caCrtFile)
+		if err != nil {
+			err = fmt.Errorf("failed to load certificate file '%s': %w", b.caCrtFile, err)
+			return
+		}
+		_, err = tls.X509KeyPair(caCrtData, caKeyData)
+		if err != nil {
+			err = fmt.Errorf("key and certificate files don't contain a valid key pair: %w", err)
+			return
+		}
 	}
 
 	// Add the name to the logger:
@@ -174,6 +212,8 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 		name:         b.name,
 		home:         b.home,
 		quiet:        b.quiet,
+		caKeyFile:    b.caKeyFile,
+		caCrtFile:    b.caCrtFile,
 		crdFiles:     slices.Clone(b.crdFiles),
 		portMappings: slices.Clone(b.portMappings),
 	}
@@ -275,12 +315,6 @@ func (k *Kind) Start(ctx context.Context) error {
 	err = k.installDefaultGateway(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to install default gateway: %w", err)
-	}
-
-	// Install authorino:
-	err = k.installAuthorino(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to install authorino: %w", err)
 	}
 
 	return nil
@@ -641,6 +675,9 @@ func (k *Kind) createKubeClient(ctx context.Context) error {
 	if err = osacv1alpha1.AddToScheme(scheme); err != nil {
 		return fmt.Errorf("failed to add osac/v1alpha1 to scheme: %w", err)
 	}
+	if err = bmfov1alpha1.AddToScheme(scheme); err != nil {
+		return fmt.Errorf("failed to add bmfo/v1alpha1 to scheme: %w", err)
+	}
 	k.kubeClient, err = crclient.NewWithWatch(restConfig, crclient.Options{
 		Scheme: scheme,
 	})
@@ -740,42 +777,29 @@ func (k *Kind) installTrustManager(ctx context.Context) (err error) {
 }
 
 func (k *Kind) installCa(ctx context.Context) (err error) {
-	// Generate private key and certificate:
-	k.logger.DebugContext(ctx, "Generating CA private key and certificate")
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return err
+	var keyPem, crtPem []byte
+	if k.caKeyFile != "" && k.caCrtFile != "" {
+		k.logger.DebugContext(
+			ctx,
+			"Loading CA private key and certificate from files",
+			slog.Bool("ca_key_set", k.caKeyFile != ""),
+			slog.Bool("ca_crt_set", k.caCrtFile != ""),
+		)
+		keyPem, err = os.ReadFile(k.caKeyFile)
+		if err != nil {
+			return fmt.Errorf("failed to read CA key file '%s': %w", k.caKeyFile, err)
+		}
+		crtPem, err = os.ReadFile(k.caCrtFile)
+		if err != nil {
+			return fmt.Errorf("failed to read CA certificate file '%s': %w", k.caCrtFile, err)
+		}
+	} else {
+		k.logger.DebugContext(ctx, "Generating CA private key and certificate")
+		keyPem, crtPem, err = k.generateCa()
+		if err != nil {
+			return fmt.Errorf("failed to generate CA: %w", err)
+		}
 	}
-	now := time.Now()
-	crt := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			CommonName: defaultCaCommonName,
-		},
-		NotBefore:             now,
-		NotAfter:              now.AddDate(1, 0, 0),
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-
-	// Create the PEM encoding of the private key and the certificate:
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return err
-	}
-	keyPem := pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: keyBytes,
-	})
-	crtBytes, err := x509.CreateCertificate(rand.Reader, &crt, &crt, &key.PublicKey, key)
-	if err != nil {
-		return err
-	}
-	crtPem := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: crtBytes,
-	})
 
 	// Create or update the secret:
 	k.logger.DebugContext(ctx, "Creating or updating CA secret")
@@ -867,40 +891,41 @@ func (k *Kind) installCa(ctx context.Context) (err error) {
 	return nil
 }
 
-func (k *Kind) installAuthorino(ctx context.Context) (err error) {
-	// Apply the authorino manifests:
-	k.logger.DebugContext(ctx, "Applying authorino manifests")
-	applyCmd, err := NewCommand().
-		SetLogger(k.logger).
-		SetName(kubectlCmd).
-		SetHome(k.home).
-		SetQuiet(k.quiet).
-		SetArgs(
-			"apply",
-			"--kubeconfig", k.kubeconfigFile,
-			"--filename", authorinoManifests,
-		).
-		Build()
+// generateCa generates a new CA private key and self-signed certificate, returning them as PEM-encoded bytes.
+func (k *Kind) generateCa() (keyPem, crtPem []byte, err error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return fmt.Errorf("failed to create command to apply authorino manifests: %w", err)
+		return nil, nil, err
 	}
-	err = applyCmd.Execute(ctx)
+	now := time.Now()
+	crt := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: defaultCaCommonName,
+		},
+		NotBefore:             now,
+		NotAfter:              now.AddDate(1, 0, 0),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
-		return fmt.Errorf("failed to apply authorino manifests: %w", err)
+		return nil, nil, err
 	}
-	k.logger.DebugContext(ctx, "Applied authorino manifests")
-
-	// Wait for custom resource definition to be available:
-	err = k.waitForCrd(ctx, "authorino.yaml", time.Minute)
+	keyPem = pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyBytes,
+	})
+	crtBytes, err := x509.CreateCertificate(rand.Reader, &crt, &crt, &key.PublicKey, key)
 	if err != nil {
-		return fmt.Errorf("failed to wait for authorino CRD: %w", err)
+		return nil, nil, err
 	}
-	err = k.waitForCrd(ctx, "authconfig.yaml", time.Minute)
-	if err != nil {
-		return fmt.Errorf("failed to wait for authconfig CRD: %w", err)
-	}
-
-	return nil
+	crtPem = pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: crtBytes,
+	})
+	return keyPem, crtPem, nil
 }
 
 func (k *Kind) installEnvoyGateway(ctx context.Context) (err error) {
@@ -1154,7 +1179,6 @@ const internalIngressPort = 30000
 const (
 	certManagerVersion  = "v1.20.0"
 	trustManagerVersion = "v0.22.0"
-	authorinoVersion    = "v0.23.1"
 	envoyGatewayVersion = "v1.6.5"
 )
 
@@ -1169,10 +1193,4 @@ const (
 	envoyGatewayName      = "default"
 	envoyGatewayNamespace = "envoy-gateway"
 	envoyProxyName        = "default"
-)
-
-// Details of the authorino installation:
-const (
-	authorinoManifests = "https://raw.githubusercontent.com/Kuadrant/authorino-operator/refs/heads/release-" +
-		authorinoVersion + "/config/deploy/manifests.yaml"
 )

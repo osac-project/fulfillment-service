@@ -23,7 +23,6 @@ import (
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
@@ -123,7 +122,7 @@ var _ = Describe("Version", func() {
 		object := createCluster()
 		id := object.GetId()
 		listResponse, err := clustersClient.List(ctx, publicv1.ClustersListRequest_builder{
-			Filter: proto.String(fmt.Sprintf("this.id == %q", id)),
+			Filter: new(fmt.Sprintf("this.id == %q", id)),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		items := listResponse.GetItems()
@@ -159,9 +158,8 @@ var _ = Describe("Version", func() {
 	})
 
 	It("Matches after get", func() {
-		// Create the object and get the version:
+		// Create the object:
 		object := createCluster()
-		version := object.GetMetadata().GetVersion()
 
 		// Perform an update and record the version from the response:
 		updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
@@ -179,7 +177,7 @@ var _ = Describe("Version", func() {
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		object = updateResponse.GetObject()
-		version = object.GetMetadata().GetVersion()
+		version := object.GetMetadata().GetVersion()
 
 		// Get and verify that the version from the get response is greater than or equal to the version from
 		// the update response:
@@ -199,24 +197,34 @@ var _ = Describe("Version", func() {
 			version := object.GetMetadata().GetVersion()
 
 			// Try repeatedly till the update succeeds. It may initially fail because the controller may
-			// update the object before us.
-			Eventually(func(g Gomega) {
-				updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
-					Object: publicv1.Cluster_builder{
+			// update the object before us. Re-read the current version before each attempt to avoid
+			// sending a stale version that will never match.
+			Eventually(
+				func(g Gomega) {
+					getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
 						Id: id,
-						Metadata: publicv1.Metadata_builder{
-							Version: version,
-							Annotations: map[string]string{
-								"date": time.Now().Format(time.RFC3339Nano),
-							},
+					}.Build())
+					g.Expect(err).ToNot(HaveOccurred())
+					version = getResponse.GetObject().GetMetadata().GetVersion()
+
+					updateResponse, err := clustersClient.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+						Object: publicv1.Cluster_builder{
+							Id: id,
+							Metadata: publicv1.Metadata_builder{
+								Version: version,
+								Annotations: map[string]string{
+									"date": time.Now().Format(time.RFC3339Nano),
+								},
+							}.Build(),
 						}.Build(),
-					}.Build(),
-					Lock: true,
-				}.Build())
-				g.Expect(err).ToNot(HaveOccurred())
-				object = updateResponse.GetObject()
-				version = object.GetMetadata().GetVersion()
-			}).Should(Succeed())
+						Lock: true,
+					}.Build())
+					g.Expect(err).ToNot(HaveOccurred())
+					object = updateResponse.GetObject()
+				},
+				10*time.Second,
+				100*time.Millisecond,
+			).Should(Succeed())
 		})
 
 		It("Fails when version does not match", func() {

@@ -16,9 +16,18 @@ package describe
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/baremetalinstance"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/cluster"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/computeinstance"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/externalip"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/externalipattachment"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/instancetype"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/networkclass"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/publicip"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/publicipattachment"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/securitygroup"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/storagebackend"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/storagetier"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/subnet"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/describe/virtualnetwork"
 )
@@ -26,12 +35,28 @@ import (
 func Cmd() *cobra.Command {
 	result := &cobra.Command{
 		Use:   "describe",
-		Short: "Describe a resource",
+		Short: shortHelp,
+		Long:  longHelp,
 	}
+	result.AddCommand(baremetalinstance.Cmd())
 	result.AddCommand(cluster.Cmd())
 	result.AddCommand(computeinstance.Cmd())
+	result.AddCommand(externalip.Cmd())
+	result.AddCommand(externalipattachment.Cmd())
+	result.AddCommand(instancetype.Cmd())
+	result.AddCommand(networkclass.Cmd())
+	result.AddCommand(publicip.Cmd())
+	result.AddCommand(publicipattachment.Cmd())
 	result.AddCommand(virtualnetwork.Cmd())
 	result.AddCommand(subnet.Cmd())
 	result.AddCommand(securitygroup.Cmd())
+	result.AddCommand(storagebackend.Cmd())
+	result.AddCommand(storagetier.Cmd())
 	return result
 }
+
+const shortHelp = `Describe a resource`
+
+const longHelp = `
+Describe a resource.
+`

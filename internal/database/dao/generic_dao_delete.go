@@ -17,10 +17,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -87,8 +90,9 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			creation_timestamp,
 			deletion_timestamp,
 			finalizers,
-			creators,
-			tenants,
+			creator,
+			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -105,8 +109,9 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		creationTs      time.Time
 		deletionTs      time.Time
 		finalizers      []string
-		creators        []string
-		tenants         []string
+		creator         string
+		tenant          string
+		project         string
 		labelsData      []byte
 		annotationsData []byte
 		version         int32
@@ -123,8 +128,9 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			&creationTs,
 			&deletionTs,
 			&finalizers,
-			&creators,
-			&tenants,
+			&creator,
+			&tenant,
+			&project,
 			&labelsData,
 			&annotationsData,
 			&version,
@@ -138,6 +144,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		return
 	}
 	if err != nil {
+		err = r.translateError(ctx, tenant, err)
 		return
 	}
 	object := r.newObject()
@@ -157,8 +164,9 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		creationTs:  creationTs,
 		deletionTs:  deletionTs,
 		finalizers:  finalizers,
-		creators:    creators,
-		tenants:     tenants,
+		creator:     creator,
+		tenant:      tenant,
+		project:     project,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
@@ -181,8 +189,9 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		id:              r.args.id,
 		creationTs:      creationTs,
 		deletionTs:      deletionTs,
-		creators:        creators,
-		tenants:         tenants,
+		creator:         creator,
+		tenant:          tenant,
+		project:         project,
 		name:            name,
 		labelsData:      labelsData,
 		annotationsData: annotationsData,
@@ -190,6 +199,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		data:            data,
 	})
 	if err != nil {
+		err = r.translateError(ctx, tenant, err)
 		return
 	}
 	err = r.fireEvent(ctx, Event{
@@ -203,6 +213,41 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 	// Create and return the response:
 	response = &DeleteResponse{}
 	return
+}
+
+// translateError translates raw PostgreSQL errors into domain-specific error types.
+func (r *DeleteRequest[O]) translateError(ctx context.Context, tenant string, err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	switch pgErr.Code {
+	case errInUseCode:
+		return &ErrInUse{
+			Reason: pgErr.Message,
+		}
+	case pgerrcode.ForeignKeyViolation:
+		switch pgErr.ConstraintName {
+		case "projects_tenant_fk":
+			return &ErrInUse{
+				Reason: fmt.Sprintf(
+					"tenant '%s' cannot be deleted because it still has projects",
+					tenant,
+				),
+			}
+		default:
+			return err
+		}
+	default:
+		r.dao.logger.WarnContext(
+			ctx,
+			"Unknown foreign key violation",
+			slog.String("table", pgErr.TableName),
+			slog.String("constraint", pgErr.ConstraintName),
+			slog.Any("error", err),
+		)
+		return err
+	}
 }
 
 // DeleteResponse represents the result of a delete operation.

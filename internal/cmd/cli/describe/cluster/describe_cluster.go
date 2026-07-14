@@ -23,6 +23,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -31,11 +32,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "cluster [flags] ID_OR_NAME",
-		Aliases: []string{"clusters"},
-		Short:   "Describe a cluster",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runner.run,
+		Use:                   "cluster [FLAG...] ID|NAME",
+		Aliases:               []string{"clusters"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -51,11 +54,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	c.console = terminal.ConsoleFromContext(ctx)
 
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg.Address == "" {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -67,42 +67,32 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewClustersClient(conn)
 
-	filter := buildFilter(ref)
-	listResponse, err := client.List(ctx, publicv1.ClustersListRequest_builder{
-		Filter: &filter,
-		Limit:  proto.Int32(2),
-	}.Build())
+	matched, err := lookup.Find(ref, "cluster", func(filter string, limit int32) ([]*publicv1.Cluster, error) {
+		resp, err := client.List(ctx, publicv1.ClustersListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe cluster: %w", err)
+		}
+		return resp.GetItems(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to describe cluster: %w", err)
-	}
-	if err := guardResult(len(listResponse.GetItems()), ref); err != nil {
 		return err
 	}
 
-	renderCluster(c.console, listResponse.GetItems()[0])
+	renderCluster(c.console, matched)
 
 	return nil
-}
-
-func guardResult(items int, ref string) error {
-	if items == 0 {
-		return fmt.Errorf("cluster not found: %s", ref)
-	}
-	if items > 1 {
-		return fmt.Errorf("multiple clusters match '%s', use the ID instead", ref)
-	}
-	return nil
-}
-
-func buildFilter(ref string) string {
-	return fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
 }
 
 func renderCluster(w io.Writer, cluster *publicv1.Cluster) {
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	template := "-"
+	catalogItem := "-"
 	if cluster.Spec != nil {
-		template = cluster.Spec.Template
+		if catalogItemID := cluster.Spec.GetCatalogItem(); catalogItemID != "" {
+			catalogItem = catalogItemID
+		}
 	}
 	state := "-"
 	if cluster.Status != nil {
@@ -110,7 +100,13 @@ func renderCluster(w io.Writer, cluster *publicv1.Cluster) {
 		state = strings.TrimPrefix(state, "CLUSTER_STATE_")
 	}
 	fmt.Fprintf(writer, "ID:\t%s\n", cluster.Id)
-	fmt.Fprintf(writer, "Template:\t%s\n", template)
+	fmt.Fprintf(writer, "Catalog Item:\t%s\n", catalogItem)
 	fmt.Fprintf(writer, "State:\t%s\n", state)
 	writer.Flush()
 }
+
+const shortHelp = `Describe a cluster.`
+
+const longHelp = `
+Describe a cluster.
+`

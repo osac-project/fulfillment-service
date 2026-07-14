@@ -32,6 +32,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 )
 
 // FilterTranslatorBuilder contains the data and logic needed to create a filter translator. Don't create instances of
@@ -42,10 +44,11 @@ type FilterTranslatorBuilder[O proto.Message] struct {
 
 // FilterTranslator knows how to translate filter expressions into SQL where clauses.
 type FilterTranslator[O proto.Message] struct {
-	logger   *slog.Logger
-	tsDesc   protoreflect.MessageDescriptor
-	thisDesc protoreflect.MessageDescriptor
-	celEnv   *cel.Env
+	logger      *slog.Logger
+	tsDesc      protoreflect.MessageDescriptor
+	thisDesc    protoreflect.MessageDescriptor
+	projectDesc protoreflect.MessageDescriptor
+	celEnv      *cel.Env
 }
 
 // filterTranslatorResultKind is the type of the result inferred during the translation process.
@@ -61,6 +64,7 @@ const (
 	filterTranslatorMdKind
 	filterTranslatorJsonKind
 	filterTranslatorMapKind
+	filterTranslatorLtreeKind
 )
 
 // String returns a string representation of the translator result type.
@@ -84,6 +88,8 @@ func (t filterTranslatorResultKind) String() string {
 		return "json"
 	case filterTranslatorMapKind:
 		return "map"
+	case filterTranslatorLtreeKind:
+		return "ltree"
 	default:
 		return fmt.Sprintf("unknown:%d", t)
 	}
@@ -95,7 +101,7 @@ type filterTranslatorResult struct {
 	sql string
 
 	// precedence is the precedence of the operator used at the top of the translation. This is used to decide if
-	// it is necessary to put parenthesis arround the text to use it in larger translations.
+	// it is necessary to put parenthesis around the text to use it in larger translations.
 	//
 	// Note that this is the precedence of SQL operators, not of CEL operators.
 	precedence int
@@ -106,6 +112,9 @@ type filterTranslatorResult struct {
 	// desc is the descriptor of the type of the result. Will only be set when the kind of the result is a protobuf
 	// message.
 	desc protoreflect.MessageDescriptor
+
+	// enumDesc is the descriptor of the enum type. Set when the result is an enum field extracted from JSON.
+	enumDesc protoreflect.EnumDescriptor
 
 	// mapIndexOperand is the SQL for the map operand, if this is a map index result.
 	mapIndexOperand string
@@ -118,6 +127,12 @@ type filterTranslatorResult struct {
 
 	// hasStringValue indicates if stringValue is present.
 	hasStringValue bool
+
+	// intValue is the original literal value for integers, if available.
+	intValue int64
+
+	// hasIntValue indicates if intValue is present.
+	hasIntValue bool
 }
 
 // Precendes of operators in the SQL language.
@@ -133,6 +148,29 @@ const (
 	filterTranslatorAndPrecedence            = 1
 	filterTranslatorOrPrecedence             = 0
 )
+
+// binaryOpInfo describes a simple binary operator that maps directly to a SQL operator.
+type binaryOpInfo struct {
+	sql         string
+	precedence  int
+	inheritKind bool // true = result kind inherited from left operand; false = BooleanKind
+}
+
+// binaryOps maps CEL operator names to their SQL equivalents for all operators that don't
+// require special-case logic (everything except Equals and NotEquals).
+var binaryOps = map[string]binaryOpInfo{
+	operators.Add:           {"+", filterTranslatorAdditivePrecedence, true},
+	operators.Subtract:      {"-", filterTranslatorAdditivePrecedence, true},
+	operators.Multiply:      {"*", filterTranslatorMultiplicativePrecedence, true},
+	operators.Divide:        {"/", filterTranslatorMultiplicativePrecedence, true},
+	operators.Modulo:        {"%", filterTranslatorMultiplicativePrecedence, true},
+	operators.Greater:       {">", filterTranslatorComparisonPrecedence, false},
+	operators.GreaterEquals: {">=", filterTranslatorComparisonPrecedence, false},
+	operators.Less:          {"<", filterTranslatorComparisonPrecedence, false},
+	operators.LessEquals:    {"<=", filterTranslatorComparisonPrecedence, false},
+	operators.LogicalAnd:    {"and", filterTranslatorAndPrecedence, false},
+	operators.LogicalOr:     {"or", filterTranslatorOrPrecedence, false},
+}
 
 // NewFilterTranslator creates a object that knows how to translate filter expressions into SQL where statements.
 func NewFilterTranslator[O proto.Message]() *FilterTranslatorBuilder[O] {
@@ -161,7 +199,10 @@ func (b *FilterTranslatorBuilder[O]) Build() (result *FilterTranslator[O], err e
 	var thisTempl O
 	thisDesc := thisTempl.ProtoReflect().Descriptor()
 
-	// Create the CEN environment:
+	var projectTempl *privatev1.Project
+	projectDesc := projectTempl.ProtoReflect().Descriptor()
+
+	// Create the CEL environment:
 	celEnv, err := b.createCelEnv()
 	if err != nil {
 		err = fmt.Errorf("failed to create CEL environment")
@@ -170,10 +211,11 @@ func (b *FilterTranslatorBuilder[O]) Build() (result *FilterTranslator[O], err e
 
 	// Create and populate the object:
 	result = &FilterTranslator[O]{
-		logger:   b.logger,
-		tsDesc:   tsDesc,
-		thisDesc: thisDesc,
-		celEnv:   celEnv,
+		logger:      b.logger,
+		tsDesc:      tsDesc,
+		thisDesc:    thisDesc,
+		projectDesc: projectDesc,
+		celEnv:      celEnv,
 	}
 	return
 }
@@ -298,11 +340,6 @@ func (t *FilterTranslator[O]) translateCall(expr ast.CallExpr) (result filterTra
 }
 
 func (t *FilterTranslator[O]) translateBinary(name string, left, right ast.Expr) (result filterTranslatorResult, err error) {
-	var (
-		operatorSql      string
-		resultPrecedence int
-		resultKind       filterTranslatorResultKind
-	)
 	leftTr, err := t.translate(left)
 	if err != nil {
 		return
@@ -312,120 +349,99 @@ func (t *FilterTranslator[O]) translateBinary(name string, left, right ast.Expr)
 		return
 	}
 	switch name {
-	case operators.Add:
-		operatorSql = "+"
-		resultPrecedence = filterTranslatorAdditivePrecedence
-		resultKind = leftTr.kind
-	case operators.Subtract:
-		operatorSql = "-"
-		resultPrecedence = filterTranslatorAdditivePrecedence
-		resultKind = leftTr.kind
-	case operators.Multiply:
-		operatorSql = "*"
-		resultPrecedence = filterTranslatorMultiplicativePrecedence
-		resultKind = leftTr.kind
-	case operators.Divide:
-		operatorSql = "/"
-		resultPrecedence = filterTranslatorMultiplicativePrecedence
-		resultKind = leftTr.kind
-	case operators.Modulo:
-		operatorSql = "%"
-		resultPrecedence = filterTranslatorMultiplicativePrecedence
-		resultKind = leftTr.kind
 	case operators.Equals:
-		// If one of the sides is a null expression then we swap sides so that the null is always on the right,
-		// as that way we can convert it to 'is null'.
-		if leftTr.kind == filterTranslatorNullType {
-			leftTr, rightTr = rightTr, leftTr
-		}
-		if rightTr.kind == filterTranslatorNullType {
-			operatorSql = "is"
-			resultPrecedence = filterTranslatorIsPrecedence
-		} else {
-			if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
-				result.sql, err = t.translateMapEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
-				if err != nil {
-					return
-				}
-				result.precedence = filterTranslatorComparisonPrecedence
-				result.kind = filterTranslatorBooleanKind
-				return
-			}
-			if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
-				result.sql, err = t.translateMapEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
-				if err != nil {
-					return
-				}
-				result.precedence = filterTranslatorComparisonPrecedence
-				result.kind = filterTranslatorBooleanKind
-				return
-			}
-			operatorSql = "="
-			resultPrecedence = filterTranslatorComparisonPrecedence
-		}
-		resultKind = filterTranslatorBooleanKind
+		return t.translateEquals(leftTr, rightTr)
 	case operators.NotEquals:
-		// If one of the sides is a null expression then we swap sides so that the null is always on the right,
-		// as that way we can convert it to 'is not null'.
-		if leftTr.kind == filterTranslatorNullType {
-			leftTr, rightTr = rightTr, leftTr
-		}
-		if rightTr.kind == filterTranslatorNullType {
-			operatorSql = "is not"
-			resultPrecedence = filterTranslatorIsPrecedence
-		} else {
-			if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
-				result.sql, err = t.translateMapNotEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
-				if err != nil {
-					return
-				}
-				result.precedence = filterTranslatorComparisonPrecedence
-				result.kind = filterTranslatorBooleanKind
-				return
-			}
-			if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
-				result.sql, err = t.translateMapNotEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
-				if err != nil {
-					return
-				}
-				result.precedence = filterTranslatorComparisonPrecedence
-				result.kind = filterTranslatorBooleanKind
-				return
-			}
-			operatorSql = "!="
-			resultPrecedence = filterTranslatorComparisonPrecedence
-		}
-		resultKind = filterTranslatorBooleanKind
-	case operators.Greater:
-		operatorSql = ">"
-		resultPrecedence = filterTranslatorComparisonPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.GreaterEquals:
-		operatorSql = ">="
-		resultPrecedence = filterTranslatorComparisonPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.Less:
-		operatorSql = "<"
-		resultPrecedence = filterTranslatorComparisonPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.LessEquals:
-		operatorSql = "<="
-		resultPrecedence = filterTranslatorComparisonPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.LogicalAnd:
-		operatorSql = "and"
-		resultPrecedence = filterTranslatorAndPrecedence
-		resultKind = filterTranslatorBooleanKind
-	case operators.LogicalOr:
-		operatorSql = "or"
-		resultPrecedence = filterTranslatorOrPrecedence
-		resultKind = filterTranslatorBooleanKind
+		return t.translateNotEquals(leftTr, rightTr)
 	default:
-		err = fmt.Errorf("unsupported operator '%s'", name)
+		op, ok := binaryOps[name]
+		if !ok {
+			err = fmt.Errorf("unsupported operator '%s'", name)
+			return
+		}
+		resultKind := filterTranslatorBooleanKind
+		if op.inheritKind {
+			resultKind = leftTr.kind
+		}
+		return assembleBinarySQL(leftTr, rightTr, op.sql, op.precedence, resultKind), nil
+	}
+}
+
+// translateEquals handles the CEL == operator, including null-swap and map-index equality.
+func (t *FilterTranslator[O]) translateEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
+	// If one of the sides is a null expression then we swap sides so that the null is always on the right,
+	// as that way we can convert it to 'is null'.
+	if leftTr.kind == filterTranslatorNullType {
+		leftTr, rightTr = rightTr, leftTr
+	}
+	if rightTr.kind == filterTranslatorNullType {
+		return assembleBinarySQL(leftTr, rightTr, "is", filterTranslatorIsPrecedence, filterTranslatorBooleanKind), nil
+	}
+	if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
+		result.sql, err = t.translateMapEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
+		if err != nil {
+			return
+		}
+		result.precedence = filterTranslatorComparisonPrecedence
+		result.kind = filterTranslatorBooleanKind
 		return
 	}
+	if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
+		result.sql, err = t.translateMapEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
+		if err != nil {
+			return
+		}
+		result.precedence = filterTranslatorComparisonPrecedence
+		result.kind = filterTranslatorBooleanKind
+		return
+	}
+	result, err = t.translateEnumEquals(leftTr, rightTr)
+	if err != nil || result.sql != "" {
+		return
+	}
+	return assembleBinarySQL(leftTr, rightTr, "=", filterTranslatorComparisonPrecedence, filterTranslatorBooleanKind), nil
+}
+
+// translateNotEquals handles the CEL != operator, including null-swap and map-index inequality.
+func (t *FilterTranslator[O]) translateNotEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
+	// If one of the sides is a null expression then we swap sides so that the null is always on the right,
+	// as that way we can convert it to 'is not null'.
+	if leftTr.kind == filterTranslatorNullType {
+		leftTr, rightTr = rightTr, leftTr
+	}
+	if rightTr.kind == filterTranslatorNullType {
+		return assembleBinarySQL(leftTr, rightTr, "is not", filterTranslatorIsPrecedence, filterTranslatorBooleanKind), nil
+	}
+	if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
+		result.sql, err = t.translateMapNotEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
+		if err != nil {
+			return
+		}
+		result.precedence = filterTranslatorComparisonPrecedence
+		result.kind = filterTranslatorBooleanKind
+		return
+	}
+	if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
+		result.sql, err = t.translateMapNotEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
+		if err != nil {
+			return
+		}
+		result.precedence = filterTranslatorComparisonPrecedence
+		result.kind = filterTranslatorBooleanKind
+		return
+	}
+	result, err = t.translateEnumNotEquals(leftTr, rightTr)
+	if err != nil || result.sql != "" {
+		return
+	}
+	return assembleBinarySQL(leftTr, rightTr, "!=", filterTranslatorComparisonPrecedence, filterTranslatorBooleanKind), nil
+}
+
+// assembleBinarySQL wraps left and right operands with parentheses as needed and joins them
+// with the given SQL operator.
+func assembleBinarySQL(leftTr, rightTr filterTranslatorResult, operatorSQL string, precedence int, kind filterTranslatorResultKind) filterTranslatorResult {
 	var buffer bytes.Buffer
-	if leftTr.precedence < resultPrecedence {
+	if leftTr.precedence < precedence {
 		buffer.WriteString("(")
 		buffer.WriteString(leftTr.sql)
 		buffer.WriteString(")")
@@ -433,19 +449,20 @@ func (t *FilterTranslator[O]) translateBinary(name string, left, right ast.Expr)
 		buffer.WriteString(leftTr.sql)
 	}
 	buffer.WriteString(" ")
-	buffer.WriteString(operatorSql)
+	buffer.WriteString(operatorSQL)
 	buffer.WriteString(" ")
-	if rightTr.precedence < resultPrecedence {
+	if rightTr.precedence < precedence {
 		buffer.WriteString("(")
 		buffer.WriteString(rightTr.sql)
 		buffer.WriteString(")")
 	} else {
 		buffer.WriteString(rightTr.sql)
 	}
-	result.sql = buffer.String()
-	result.precedence = resultPrecedence
-	result.kind = resultKind
-	return
+	return filterTranslatorResult{
+		sql:        buffer.String(),
+		precedence: precedence,
+		kind:       kind,
+	}
 }
 
 func (t *FilterTranslator[O]) translateNot(value ast.Expr) (result filterTranslatorResult, err error) {
@@ -495,6 +512,8 @@ func (t *FilterTranslator[O]) translateLiteral(value ref.Val) (result filterTran
 	case int64:
 		result.sql = fmt.Sprintf("%d", value)
 		result.kind = filterTranslatorNumericKind
+		result.intValue = value
+		result.hasIntValue = true
 	case string:
 		text, escaped := t.translateString(value, "")
 		if escaped {
@@ -622,6 +641,89 @@ func (t *FilterTranslator[O]) translateMapNotEquals(operand, key, value string) 
 	return fmt.Sprintf("not (%s)", existsSql), nil
 }
 
+func (t *FilterTranslator[O]) resolveEnumName(enumDesc protoreflect.EnumDescriptor, value int64) (string, bool) {
+	if value < math.MinInt32 || value > math.MaxInt32 {
+		return "", false
+	}
+	enumValue := enumDesc.Values().ByNumber(protoreflect.EnumNumber(value))
+	if enumValue == nil {
+		return "", false
+	}
+	return string(enumValue.Name()), true
+}
+
+func (t *FilterTranslator[O]) translateEnumEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
+	enumDesc, intVal, fieldSql, ok := t.extractEnumComparison(leftTr, rightTr)
+	if !ok {
+		err = t.checkUnsupportedEnumComparison(leftTr, rightTr)
+		return
+	}
+	name, found := t.resolveEnumName(enumDesc, intVal)
+	if !found {
+		err = fmt.Errorf("unknown enum value %d for %s", intVal, enumDesc.FullName())
+		return
+	}
+	text, escaped := t.translateString(name, "")
+	if escaped {
+		result.sql = fmt.Sprintf("%s = e'%s'", fieldSql, text)
+	} else {
+		result.sql = fmt.Sprintf("%s = '%s'", fieldSql, text)
+	}
+	result.precedence = filterTranslatorComparisonPrecedence
+	result.kind = filterTranslatorBooleanKind
+	return
+}
+
+func (t *FilterTranslator[O]) translateEnumNotEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
+	enumDesc, intVal, fieldSql, ok := t.extractEnumComparison(leftTr, rightTr)
+	if !ok {
+		err = t.checkUnsupportedEnumComparison(leftTr, rightTr)
+		return
+	}
+	name, found := t.resolveEnumName(enumDesc, intVal)
+	if !found {
+		err = fmt.Errorf("unknown enum value %d for %s", intVal, enumDesc.FullName())
+		return
+	}
+	text, escaped := t.translateString(name, "")
+	if escaped {
+		result.sql = fmt.Sprintf("%s != e'%s'", fieldSql, text)
+	} else {
+		result.sql = fmt.Sprintf("%s != '%s'", fieldSql, text)
+	}
+	result.precedence = filterTranslatorComparisonPrecedence
+	result.kind = filterTranslatorBooleanKind
+	return
+}
+
+func (t *FilterTranslator[O]) checkUnsupportedEnumComparison(leftTr, rightTr filterTranslatorResult) error {
+	if leftTr.enumDesc != nil && rightTr.kind == filterTranslatorNumericKind {
+		return fmt.Errorf(
+			"comparison of enum '%s' requires a literal integer value",
+			leftTr.enumDesc.FullName(),
+		)
+	}
+	if rightTr.enumDesc != nil && leftTr.kind == filterTranslatorNumericKind {
+		return fmt.Errorf(
+			"comparison of enum '%s' requires a literal integer value",
+			rightTr.enumDesc.FullName(),
+		)
+	}
+	return nil
+}
+
+func (t *FilterTranslator[O]) extractEnumComparison(leftTr, rightTr filterTranslatorResult) (
+	enumDesc protoreflect.EnumDescriptor, intVal int64, fieldSql string, ok bool,
+) {
+	if leftTr.enumDesc != nil && rightTr.hasIntValue {
+		return leftTr.enumDesc, rightTr.intValue, leftTr.sql, true
+	}
+	if rightTr.enumDesc != nil && leftTr.hasIntValue {
+		return rightTr.enumDesc, leftTr.intValue, rightTr.sql, true
+	}
+	return nil, 0, "", false
+}
+
 func (t *FilterTranslator[O]) translateInList(key ast.Expr, list ast.ListExpr) (result filterTranslatorResult, err error) {
 	values := list.Elements()
 	if len(values) == 0 {
@@ -696,6 +798,10 @@ func (t *FilterTranslator[O]) translateToLike(funcName string, target ast.Expr, 
 	err error) {
 	var buffer bytes.Buffer
 	targetTr, err := t.translate(target)
+	if err != nil {
+		return
+	}
+	targetTr, err = t.castToString(targetTr)
 	if err != nil {
 		return
 	}
@@ -793,7 +899,21 @@ func (t *FilterTranslator[O]) translateSelectThisMdField(fieldName string,
 			result.precedence = filterTranslatorMaxPrecedence
 		} else {
 			result.sql = fieldName
-			result.kind = filterTranslatorStringKind
+			if t.thisDesc == t.projectDesc {
+				result.kind = filterTranslatorLtreeKind
+			} else {
+				result.kind = filterTranslatorStringKind
+			}
+			result.precedence = filterTranslatorMaxPrecedence
+		}
+	case "project":
+		if testOnly {
+			result.sql = "true"
+			result.kind = filterTranslatorBooleanKind
+			result.precedence = filterTranslatorMaxPrecedence
+		} else {
+			result.sql = fieldName
+			result.kind = filterTranslatorLtreeKind
 			result.precedence = filterTranslatorMaxPrecedence
 		}
 	case "creation_timestamp":
@@ -833,10 +953,16 @@ func (t *FilterTranslator[O]) translateSelectThisMdField(fieldName string,
 			result.kind = filterTranslatorTimeKind
 			result.precedence = filterTranslatorMaxPrecedence
 		}
-	case "creators", "tenants":
-		result.sql = fieldName
-		result.kind = filterTranslatorStringKind
-		result.precedence = filterTranslatorMaxPrecedence
+	case "creator", "tenant":
+		if testOnly {
+			result.sql = fmt.Sprintf("%s != ''", fieldName)
+			result.kind = filterTranslatorBooleanKind
+			result.precedence = filterTranslatorMaxPrecedence
+		} else {
+			result.sql = fieldName
+			result.kind = filterTranslatorStringKind
+			result.precedence = filterTranslatorMaxPrecedence
+		}
 	case "labels":
 		if testOnly {
 			result.sql = "true"
@@ -865,7 +991,7 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 	fieldKind := fieldDesc.Kind()
 	switch fieldKind {
 	case protoreflect.BoolKind:
-		result.sql = fmt.Sprintf("cast(%s->>'%s' as bool)", operandSql, fieldName)
+		result.sql = fmt.Sprintf("coalesce(cast(%s->>'%s' as bool), false)", operandSql, fieldName)
 		result.kind = filterTranslatorBooleanKind
 	case protoreflect.Int32Kind:
 		result.sql = fmt.Sprintf("cast(%s->>'%s' as integer)", operandSql, fieldName)
@@ -882,6 +1008,10 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 	case protoreflect.StringKind:
 		result.sql = fmt.Sprintf("%s->>'%s'", operandSql, fieldName)
 		result.kind = filterTranslatorStringKind
+	case protoreflect.EnumKind:
+		result.sql = fmt.Sprintf("%s->>'%s'", operandSql, fieldName)
+		result.kind = filterTranslatorStringKind
+		result.enumDesc = fieldDesc.Enum()
 	case protoreflect.MessageKind:
 		msgDesc := fieldDesc.Message()
 		switch msgDesc {
@@ -901,5 +1031,17 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 		return
 	}
 	result.precedence = filterTranslatorMaxPrecedence
+	return
+}
+
+func (t *FilterTranslator[O]) castToString(input filterTranslatorResult) (result filterTranslatorResult, err error) {
+	switch input.kind {
+	case filterTranslatorStringKind:
+		result = input
+	default:
+		result.sql = fmt.Sprintf("cast(%s as text)", input.sql)
+		result.kind = filterTranslatorStringKind
+		result.precedence = filterTranslatorMaxPrecedence
+	}
 	return
 }

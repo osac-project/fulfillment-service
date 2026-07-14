@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -40,17 +41,29 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/controllers"
+	"github.com/osac-project/fulfillment-service/internal/controllers/baremetalinstance"
 	"github.com/osac-project/fulfillment-service/internal/controllers/cluster"
 	"github.com/osac-project/fulfillment-service/internal/controllers/computeinstance"
-	"github.com/osac-project/fulfillment-service/internal/controllers/organization"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalip"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalipattachment"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalippool"
+	"github.com/osac-project/fulfillment-service/internal/controllers/identityprovider"
+	"github.com/osac-project/fulfillment-service/internal/controllers/natgateway"
+	"github.com/osac-project/fulfillment-service/internal/controllers/onboarding"
+	"github.com/osac-project/fulfillment-service/internal/controllers/project"
+	"github.com/osac-project/fulfillment-service/internal/controllers/projectmembership"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicip"
+	"github.com/osac-project/fulfillment-service/internal/controllers/publicipattachment"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicippool"
+	"github.com/osac-project/fulfillment-service/internal/controllers/role"
+	"github.com/osac-project/fulfillment-service/internal/controllers/rolebinding"
 	"github.com/osac-project/fulfillment-service/internal/controllers/securitygroup"
 	"github.com/osac-project/fulfillment-service/internal/controllers/subnet"
+	"github.com/osac-project/fulfillment-service/internal/controllers/tenant"
+	"github.com/osac-project/fulfillment-service/internal/controllers/user"
 	"github.com/osac-project/fulfillment-service/internal/controllers/virtualnetwork"
 	internalhealth "github.com/osac-project/fulfillment-service/internal/health"
 	"github.com/osac-project/fulfillment-service/internal/idp"
-	"github.com/osac-project/fulfillment-service/internal/idp/keycloak"
 	hubscheme "github.com/osac-project/fulfillment-service/internal/kubernetes/scheme"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/network"
@@ -63,99 +76,92 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "controller",
-		Short: "Starts the controller",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "controller [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := command.Flags()
 	flags.StringArrayVar(
 		&runner.args.caFiles,
 		"ca-file",
 		[]string{},
-		"File or directory containing trusted CA certificates.",
+		caFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authIssuerUrl,
 		"auth-issuer-url",
 		"",
-		"Issuer URL for OAuth token acquisition. Required when using '--auth-client-id' and "+
-			"'--auth-client-secret'. Mutually exclusive with '--auth-issuer-url-file'.",
+		authIssuerUrlFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authIssuerUrlFile,
 		"auth-issuer-url-file",
 		"",
-		"File containing the issuer URL for OAuth token acquisition. Mutually exclusive with "+
-			"'--auth-issuer-url'.",
+		authIssuerUrlFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authClientId,
 		"auth-client-id",
 		"",
-		"OAuth client identifier for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-id-file'.",
+		authClientIdFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authClientIdFile,
 		"auth-client-id-file",
 		"",
-		"File containing the OAuth client identifier for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-id'.",
+		authClientIdFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authClientSecret,
 		"auth-client-secret",
 		"",
-		"OAuth client secret for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-secret-file'.",
+		authClientSecretFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.authClientSecretFile,
 		"auth-client-secret-file",
 		"",
-		"File containing the OAuth client secret for authentication with the API. Mutually exclusive with "+
-			"'--auth-client-secret'.",
+		authClientSecretFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpProvider,
 		"idp-provider",
-		idp.ProviderKeycloak,
-		fmt.Sprintf("Identity provider type (default: %s).", strings.Join(idp.ValidProviders, ", ")),
+		"",
+		idpProviderFlagHelp,
 	)
+	_ = flags.MarkDeprecated("idp-provider", "This flag is deprecated and ignored. Only Keycloak is supported as the identity provider.")
 	flags.StringVar(
 		&runner.args.idpURL,
 		"idp-url",
 		"",
-		"Base URL of the identity provider.",
+		idpUrlFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpClientIdFile,
 		"idp-client-id-file",
 		"",
-		"File containing the OAuth client identifier for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-id'.",
+		idpClientIdFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpClientId,
 		"idp-client-id",
 		"",
-		"OAuth client identifier for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-id-file'.",
+		idpClientIdFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpClientSecretFile,
 		"idp-client-secret-file",
 		"",
-		"File containing the OAuth client secret for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-secret'.",
+		idpClientSecretFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.idpClientSecret,
 		"idp-client-secret",
 		"",
-		"OAuth client secret for IDP authentication. Mutually exclusive with "+
-			"'--idp-client-secret-file'.",
+		idpClientSecretFlagHelp,
 	)
 	network.AddGrpcClientFlags(flags, network.GrpcClientName, network.DefaultGrpcAddress)
 	network.AddListenerFlags(flags, network.GrpcListenerName, network.DefaultGrpcAddress)
@@ -186,7 +192,7 @@ type runnerContext struct {
 }
 
 // run runs the `start controllers` command.
-func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
+func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:gocyclo
 	var err error
 
 	// Get the context:
@@ -352,10 +358,30 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		return fmt.Errorf("failed to create hub cache: %w", err)
 	}
 
-	// Create the IDP manager if configured:
-	idpManager, err := r.createIDPManager(ctx, caPool)
+	// Create the IDP client:
+	idpClient, err := r.createIDPClient(ctx, caPool)
 	if err != nil {
 		return err
+	}
+
+	// Create the IDP tenant manager:
+	r.logger.InfoContext(ctx, "Creating IDP tenant manager")
+	idpManager, err := idp.NewTenantManager().
+		SetLogger(r.logger).
+		SetClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create IDP tenant manager: %w", err)
+	}
+
+	// Create the IDP project group manager:
+	r.logger.InfoContext(ctx, "Creating IDP project group manager")
+	projectGroupManager, err := idp.NewProjectGroupManager().
+		SetLogger(r.logger).
+		SetClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create IDP project group manager: %w", err)
 	}
 
 	// Create the cluster reconciler:
@@ -427,6 +453,43 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 			r.logger.InfoContext(
 				ctx,
 				"Compute instance reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the bare metal instance reconciler:
+	r.logger.InfoContext(ctx, "Creating bare metal instance reconciler")
+	bareMetalInstanceReconcilerFunction, err := baremetalinstance.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create bare metal instance reconciler function: %w", err)
+	}
+	bareMetalInstanceReconciler, err := controllers.NewReconciler[*privatev1.BareMetalInstance]().
+		SetLogger(r.logger).
+		SetName("bare_metal_instance").
+		SetClient(r.client).
+		SetFunction(bareMetalInstanceReconcilerFunction).
+		SetEventFilter("has(event.bare_metal_instance) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create bare metal instance reconciler: %w", err)
+	}
+
+	// Start the bare metal instance reconciler:
+	r.logger.InfoContext(ctx, "Starting bare metal instance reconciler")
+	go func() {
+		err := bareMetalInstanceReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Bare metal instance reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Bare metal instance reconciler failed",
 				slog.Any("error", err),
 			)
 		}
@@ -617,44 +680,485 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		}
 	}()
 
-	// Create the organization reconciler if IDP is configured:
-	if idpManager != nil {
-		r.logger.InfoContext(ctx, "Creating organization reconciler")
-		organizationReconcilerFunction, err := organization.NewFunction().
-			SetLogger(r.logger).
-			SetConnection(r.client).
-			SetIdpManager(idpManager).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create organization reconciler function: %w", err)
-		}
-		organizationReconciler, err := controllers.NewReconciler[*privatev1.Organization]().
-			SetLogger(r.logger).
-			SetName("organization").
-			SetClient(r.client).
-			SetFunction(organizationReconcilerFunction.Run).
-			SetEventFilter("has(event.organization)").
-			SetHealthReporter(healthAggregator).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to create organization reconciler: %w", err)
-		}
-
-		// Start the organization reconciler:
-		r.logger.InfoContext(ctx, "Starting organization reconciler")
-		go func() {
-			err := organizationReconciler.Start(ctx)
-			if err == nil || errors.Is(err, context.Canceled) {
-				r.logger.InfoContext(ctx, "Organization reconciler finished")
-			} else {
-				r.logger.InfoContext(
-					ctx,
-					"Organization reconciler failed",
-					slog.Any("error", err),
-				)
-			}
-		}()
+	// Create the public IP attachment reconciler:
+	r.logger.InfoContext(ctx, "Creating public IP attachment reconciler")
+	publicIPAttachmentReconcilerFunction, err := publicipattachment.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create public IP attachment reconciler function: %w", err)
 	}
+	publicIPAttachmentReconciler, err := controllers.NewReconciler[*privatev1.PublicIPAttachment]().
+		SetLogger(r.logger).
+		SetName("public_ip_attachment").
+		SetClient(r.client).
+		SetFunction(publicIPAttachmentReconcilerFunction).
+		SetEventFilter("has(event.public_ip_attachment) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create public IP attachment reconciler: %w", err)
+	}
+
+	// Start the public IP attachment reconciler:
+	r.logger.InfoContext(ctx, "Starting public IP attachment reconciler")
+	go func() {
+		err := publicIPAttachmentReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Public IP attachment reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Public IP attachment reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the external IP pool reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP pool reconciler")
+	externalIPPoolReconcilerFunction, err := externalippool.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP pool reconciler function: %w", err)
+	}
+	externalIPPoolReconciler, err := controllers.NewReconciler[*privatev1.ExternalIPPool]().
+		SetLogger(r.logger).
+		SetName("external_ip_pool").
+		SetClient(r.client).
+		SetFunction(externalIPPoolReconcilerFunction).
+		SetEventFilter("has(event.external_ip_pool) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP pool reconciler: %w", err)
+	}
+
+	// Start the external IP pool reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP pool reconciler")
+	go func() {
+		err := externalIPPoolReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP pool reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP pool reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the external IP reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP reconciler")
+	externalIPReconcilerFunction, err := externalip.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP reconciler function: %w", err)
+	}
+	externalIPReconciler, err := controllers.NewReconciler[*privatev1.ExternalIP]().
+		SetLogger(r.logger).
+		SetName("external_ip").
+		SetClient(r.client).
+		SetFunction(externalIPReconcilerFunction).
+		SetEventFilter("has(event.external_ip) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP reconciler: %w", err)
+	}
+
+	// Start the external IP reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP reconciler")
+	go func() {
+		err := externalIPReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the external IP attachment reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP attachment reconciler")
+	externalIPAttachmentReconcilerFunction, err := externalipattachment.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP attachment reconciler function: %w", err)
+	}
+	externalIPAttachmentReconciler, err := controllers.NewReconciler[*privatev1.ExternalIPAttachment]().
+		SetLogger(r.logger).
+		SetName("external_ip_attachment").
+		SetClient(r.client).
+		SetFunction(externalIPAttachmentReconcilerFunction).
+		SetEventFilter("has(event.external_ip_attachment) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP attachment reconciler: %w", err)
+	}
+
+	// Start the external IP attachment reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP attachment reconciler")
+	go func() {
+		err := externalIPAttachmentReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP attachment reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP attachment reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the NAT gateway reconciler:
+	r.logger.InfoContext(ctx, "Creating NAT gateway reconciler")
+	natGatewayReconcilerFunction, err := natgateway.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create NAT gateway reconciler function: %w", err)
+	}
+	natGatewayReconciler, err := controllers.NewReconciler[*privatev1.NATGateway]().
+		SetLogger(r.logger).
+		SetName("nat_gateway").
+		SetClient(r.client).
+		SetFunction(natGatewayReconcilerFunction).
+		SetEventFilter("has(event.nat_gateway) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create NAT gateway reconciler: %w", err)
+	}
+
+	// Start the NAT gateway reconciler:
+	r.logger.InfoContext(ctx, "Starting NAT gateway reconciler")
+	go func() {
+		err := natGatewayReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "NAT gateway reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"NAT gateway reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the role reconciler:
+	r.logger.InfoContext(ctx, "Creating role reconciler")
+	roleReconcilerFunction, err := role.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create role reconciler function: %w", err)
+	}
+	roleReconciler, err := controllers.NewReconciler[*privatev1.Role]().
+		SetLogger(r.logger).
+		SetName("role").
+		SetClient(r.client).
+		SetFunction(roleReconcilerFunction.Run).
+		SetEventFilter("has(event.role)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create role reconciler: %w", err)
+	}
+
+	// Start the role reconciler:
+	r.logger.InfoContext(ctx, "Starting role reconciler")
+	go func() {
+		err := roleReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Role reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Role reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the role binding reconciler:
+	r.logger.InfoContext(ctx, "Creating role binding reconciler")
+	roleBindingReconcilerFunction, err := rolebinding.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create role binding reconciler function: %w", err)
+	}
+	roleBindingReconciler, err := controllers.NewReconciler[*privatev1.RoleBinding]().
+		SetLogger(r.logger).
+		SetName("role_binding").
+		SetClient(r.client).
+		SetFunction(roleBindingReconcilerFunction.Run).
+		SetEventFilter("has(event.role_binding)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create role binding reconciler: %w", err)
+	}
+
+	// Start the role binding reconciler:
+	r.logger.InfoContext(ctx, "Starting role binding reconciler")
+	go func() {
+		err := roleBindingReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Role binding reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Role binding reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the tenant reconciler:
+	r.logger.InfoContext(ctx, "Creating tenant reconciler")
+	tenantReconcilerFunction, err := tenant.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpManager(idpManager).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create tenant reconciler function: %w", err)
+	}
+	tenantReconciler, err := controllers.NewReconciler[*privatev1.Tenant]().
+		SetLogger(r.logger).
+		SetName("tenant").
+		SetClient(r.client).
+		SetFunction(tenantReconcilerFunction.Run).
+		SetEventFilter("has(event.tenant)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create tenant reconciler: %w", err)
+	}
+
+	// Start the tenant reconciler:
+	r.logger.InfoContext(ctx, "Starting tenant reconciler")
+	go func() {
+		err := tenantReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Tenant reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Tenant reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the user reconciler:
+	r.logger.InfoContext(ctx, "Creating user reconciler")
+	userReconcilerFunction, err := user.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create user reconciler function: %w", err)
+	}
+	userReconciler, err := controllers.NewReconciler[*privatev1.User]().
+		SetLogger(r.logger).
+		SetName("user").
+		SetClient(r.client).
+		SetFunction(userReconcilerFunction.Run).
+		SetEventFilter("has(event.user)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create user reconciler: %w", err)
+	}
+
+	// Start the user reconciler:
+	r.logger.InfoContext(ctx, "Starting user reconciler")
+	go func() {
+		err := userReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "User reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"User reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the onboarding reconciler:
+	r.logger.InfoContext(ctx, "Creating onboarding reconciler")
+	onboardingReconcilerFunction, err := onboarding.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create onboarding reconciler function: %w", err)
+	}
+	onboardingReconciler, err := controllers.NewReconciler[*privatev1.Tenant]().
+		SetLogger(r.logger).
+		SetName("onboarding").
+		SetClient(r.client).
+		SetFunction(onboardingReconcilerFunction).
+		SetEventFilter("has(event.tenant) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create onboarding reconciler: %w", err)
+	}
+
+	// Start the onboarding reconciler:
+	r.logger.InfoContext(ctx, "Starting onboarding reconciler")
+	go func() {
+		err := onboardingReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Onboarding reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Onboarding reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the project reconciler:
+	r.logger.InfoContext(ctx, "Creating project reconciler")
+	projectReconcilerFunction, err := project.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetProjectGroupManager(projectGroupManager).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create project reconciler function: %w", err)
+	}
+	projectReconciler, err := controllers.NewReconciler[*privatev1.Project]().
+		SetLogger(r.logger).
+		SetName("project").
+		SetClient(r.client).
+		SetFunction(projectReconcilerFunction.Run).
+		SetEventFilter("has(event.project)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create project reconciler: %w", err)
+	}
+
+	// Start the project reconciler:
+	r.logger.InfoContext(ctx, "Starting project reconciler")
+	go func() {
+		err := projectReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Project reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Project reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the project membership reconciler:
+	r.logger.InfoContext(ctx, "Creating project membership reconciler")
+	projectMembershipReconcilerFunction, err := projectmembership.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build project membership reconciler function: %w", err)
+	}
+	projectMembershipReconciler, err := controllers.NewReconciler[*privatev1.ProjectMembership]().
+		SetLogger(r.logger).
+		SetName("project_membership").
+		SetClient(r.client).
+		SetFunction(projectMembershipReconcilerFunction.Run).
+		SetEventFilter("has(event.project_membership)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build project membership reconciler: %w", err)
+	}
+
+	// Start the project membership reconciler:
+	r.logger.InfoContext(ctx, "Starting project membership reconciler")
+	go func() {
+		err := projectMembershipReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Project membership reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Project membership reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the identity provider reconciler:
+	r.logger.InfoContext(ctx, "Creating identity provider reconciler")
+	identityProviderReconcilerFunction, err := identityprovider.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create identity provider reconciler function: %w", err)
+	}
+	identityProviderReconciler, err := controllers.NewReconciler[*privatev1.IdentityProvider]().
+		SetLogger(r.logger).
+		SetName("identity_provider").
+		SetClient(r.client).
+		SetFunction(identityProviderReconcilerFunction.Run).
+		SetEventFilter("has(event.identity_provider)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create identity provider reconciler: %w", err)
+	}
+
+	// Start the identity provider reconciler:
+	r.logger.InfoContext(ctx, "Starting identity provider reconciler")
+	go func() {
+		err := identityProviderReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Identity provider reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Identity provider reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
 
 	// Create the metrics listener:
 	r.logger.InfoContext(ctx, "Creating metrics listener")
@@ -673,7 +1177,11 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error {
 		slog.String("address", metricsListener.Addr().String()),
 	)
 	metricsServer := &http.Server{
-		Handler: promhttp.Handler(),
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
 		err := metricsServer.Serve(metricsListener)
@@ -711,7 +1219,7 @@ func (r *runnerContext) waitForServer(ctx context.Context) error {
 			ctx,
 			"Server not yet ready",
 			slog.Duration("elapsed", time.Since(start)),
-			slog.Any("error", err),
+			slog.String("error", err.Error()),
 		)
 		select {
 		case <-ctx.Done():
@@ -793,15 +1301,16 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 	return
 }
 
-// createIDPManager creates the IDP client and organization manager if IDP is configured.
-// Returns nil if IDP is not configured (not an error).
-func (r *runnerContext) createIDPManager(ctx context.Context, caPool *x509.CertPool) (*idp.OrganizationManager, error) {
-	// Check if IDP is configured (need URL and credentials)
-	hasClientId := r.args.idpClientId != "" || r.args.idpClientIdFile != ""
-	hasClientSecret := r.args.idpClientSecret != "" || r.args.idpClientSecretFile != ""
-	if r.args.idpURL == "" || !hasClientId || !hasClientSecret {
-		r.logger.InfoContext(ctx, "IDP not configured, organization controller will not be started")
-		return nil, nil
+// createIDPClient creates the IDP client. The IDP URL and credentials are mandatory.
+func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPool) (*idp.Client, error) {
+	if r.args.idpURL == "" {
+		return nil, fmt.Errorf("flag '--idp-url' is required")
+	}
+	if r.args.idpClientId == "" && r.args.idpClientIdFile == "" {
+		return nil, fmt.Errorf("flag '--idp-client-id' or '--idp-client-id-file' is required")
+	}
+	if r.args.idpClientSecret == "" && r.args.idpClientSecretFile == "" {
+		return nil, fmt.Errorf("flag '--idp-client-secret' or '--idp-client-secret-file' is required")
 	}
 
 	// Get the client ID
@@ -874,44 +1383,26 @@ func (r *runnerContext) createIDPManager(ctx context.Context, caPool *x509.CertP
 		return nil, fmt.Errorf("failed to create IDP token source: %w", err)
 	}
 
-	// Create IDP client based on provider type
-	r.logger.InfoContext(ctx, "Creating IDP client",
-		slog.String("provider", r.args.idpProvider),
-	)
+	// Create Keycloak IDP client:
+	r.logger.InfoContext(ctx, "Creating Keycloak IDP client")
 
-	var idpClient idp.Client
-	switch r.args.idpProvider {
-	case idp.ProviderKeycloak:
-		idpClient, err = keycloak.NewClient().
-			SetLogger(r.logger).
-			SetBaseURL(r.args.idpURL).
-			SetTokenSource(idpTokenSource).
-			SetCaPool(caPool).
-			Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported IDP provider: %s (supported: %s)", r.args.idpProvider, strings.Join(idp.ValidProviders, ", "))
-	}
-
-	// Create organization manager
-	r.logger.InfoContext(ctx, "Creating IDP Organization manager")
-	idpManager, err := idp.NewOrganizationManager().
+	idpClient, err := idp.NewClient().
 		SetLogger(r.logger).
-		SetClient(idpClient).
+		SetBaseURL(r.args.idpURL).
+		SetTokenSource(idpTokenSource).
+		SetCaPool(caPool).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create IDP Organization manager: %w", err)
+		return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
 	}
 
-	r.logger.InfoContext(ctx, "IDP Organization manager created successfully")
-	return idpManager, nil
+	r.logger.InfoContext(ctx, "Keycloak IDP client created successfully")
+	return idpClient, nil
 }
 
 // readTrimmedFile reads the content of the given file and returns it with all leading and trailing whitespace removed.
 func (r *runnerContext) readTrimmedFile(file string) (result string, err error) {
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(filepath.Clean(file))
 	if err != nil {
 		return
 	}
@@ -921,3 +1412,75 @@ func (r *runnerContext) readTrimmedFile(file string) (result string, err error) 
 
 // controllerUserAgent is the user agent string for the controller.
 const controllerUserAgent = "fulfillment-controller"
+
+const shortHelp = `Starts the controller`
+
+const longHelp = `
+Starts the controller.
+`
+
+const caFileFlagHelp = `
+_FILE|DIRECTORY_ - File or directory containing trusted CA certificates.
+`
+
+const authIssuerUrlFlagHelp = `
+_URL_ - Issuer URL for OAuth token acquisition. Required when using
+{{ bt }}--auth-client-id{{ bt }} and {{ bt }}--auth-client-secret{{ bt }}.
+Mutually exclusive with {{ bt }}--auth-issuer-url-file{{ bt }}.
+`
+
+const authIssuerUrlFileFlagHelp = `
+_FILE_ - File containing the issuer URL for OAuth token
+acquisition. Mutually exclusive with {{ bt }}--auth-issuer-url{{ bt }}.
+`
+
+const authClientIdFlagHelp = `
+_ID_ - OAuth client identifier for authentication with the API.
+Mutually exclusive with {{ bt }}--auth-client-id-file{{ bt }}.
+`
+
+const authClientIdFileFlagHelp = `
+_FILE_ - File containing the OAuth client identifier for
+authentication with the API. Mutually exclusive with
+{{ bt }}--auth-client-id{{ bt }}.
+`
+
+const authClientSecretFlagHelp = `
+_SECRET_ - OAuth client secret for authentication with the API.
+Mutually exclusive with {{ bt }}--auth-client-secret-file{{ bt }}.
+`
+
+const authClientSecretFileFlagHelp = `
+_FILE_ - File containing the OAuth client secret for
+authentication with the API. Mutually exclusive with
+{{ bt }}--auth-client-secret{{ bt }}.
+`
+
+const idpProviderFlagHelp = `
+_DEPRECATED_ - This flag is deprecated and no longer has any effect.
+Only Keycloak is supported as the identity provider.
+`
+
+const idpUrlFlagHelp = `
+_URL_ - Base URL of the identity provider.
+`
+
+const idpClientIdFileFlagHelp = `
+_FILE_ - File containing the OAuth client identifier for IDP
+authentication. Mutually exclusive with {{ bt }}--idp-client-id{{ bt }}.
+`
+
+const idpClientIdFlagHelp = `
+_ID_ - OAuth client identifier for IDP authentication. Mutually
+exclusive with {{ bt }}--idp-client-id-file{{ bt }}.
+`
+
+const idpClientSecretFileFlagHelp = `
+_FILE_ - File containing the OAuth client secret for IDP
+authentication. Mutually exclusive with {{ bt }}--idp-client-secret{{ bt }}.
+`
+
+const idpClientSecretFlagHelp = `
+_SECRET_ - OAuth client secret for IDP authentication. Mutually
+exclusive with {{ bt }}--idp-client-secret-file{{ bt }}.
+`

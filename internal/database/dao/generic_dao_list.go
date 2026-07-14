@@ -118,8 +118,9 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 			creation_timestamp,
 			deletion_timestamp,
 			finalizers,
-			creators,
-			tenants,
+			creator,
+			tenant,
+			project,
 			labels,
 			annotations,
 			version,
@@ -175,8 +176,9 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				creationTs      time.Time
 				deletionTs      time.Time
 				finalizers      []string
-				creators        []string
-				tenants         []string
+				creator         string
+				tenant          string
+				project         string
 				labelsData      []byte
 				annotationsData []byte
 				version         int32
@@ -188,8 +190,9 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				&creationTs,
 				&deletionTs,
 				&finalizers,
-				&creators,
-				&tenants,
+				&creator,
+				&tenant,
+				&project,
 				&labelsData,
 				&annotationsData,
 				&version,
@@ -217,8 +220,9 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 				creationTs:  creationTs,
 				deletionTs:  deletionTs,
 				finalizers:  finalizers,
-				creators:    creators,
-				tenants:     tenants,
+				creator:     creator,
+				tenant:      tenant,
+				project:     project,
 				name:        name,
 				labels:      labels,
 				annotations: annotations,
@@ -236,8 +240,8 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 
 	// Create and return the response:
 	response = &ListResponse[O]{
-		size:  int32(len(items)),
-		total: int32(total),
+		size:  int32(len(items)), // #nosec G115 -- bounded by MaxLimit
+		total: int32(total),      // #nosec G115 -- bounded by MaxLimit
 		items: items,
 	}
 	return

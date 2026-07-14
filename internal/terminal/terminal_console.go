@@ -43,7 +43,7 @@ type ConsoleBuilder struct {
 	logger *slog.Logger
 	stdout io.Writer
 	stderr io.Writer
-	helper *reflection.Helper
+	helper reflection.Helper
 }
 
 // Console is helps writing messages to the console. Don't create objects of this type directly, use the NewConsole
@@ -53,7 +53,7 @@ type Console struct {
 	stdout io.Writer
 	stderr io.Writer
 	engine *templating.Engine
-	helper *reflection.Helper
+	helper reflection.Helper
 }
 
 // NewConsole creates a builder that can the be used to create a template engine.
@@ -83,7 +83,7 @@ func (b *ConsoleBuilder) SetStderr(value io.Writer) *ConsoleBuilder {
 
 // SetHelper sets the reflection helper that will be used to introspect objects. This is optional. If not set then
 // functions like 'table' that need reflection will not be available.
-func (b *ConsoleBuilder) SetHelper(value *reflection.Helper) *ConsoleBuilder {
+func (b *ConsoleBuilder) SetHelper(value reflection.Helper) *ConsoleBuilder {
 	b.helper = value
 	return b
 }
@@ -142,7 +142,7 @@ func (c *Console) AddTemplates(fs iofs.FS, dir string) error {
 
 // SetHelper sets the reflection helper that will be used to introspect objects. This is optional. If not set then
 // functions like 'table' that need reflection will not be available.
-func (c *Console) SetHelper(value *reflection.Helper) {
+func (c *Console) SetHelper(value reflection.Helper) {
 	c.helper = value
 }
 
@@ -186,6 +186,12 @@ func (c *Console) Errorf(ctx context.Context, format string, args ...any) {
 			slog.Any("error", err),
 		)
 	}
+}
+
+// Stderr returns the writer used for error output. This is the writer
+// configured via SetStderr on the builder, defaulting to os.Stderr.
+func (c *Console) Stderr() io.Writer {
+	return c.stderr
 }
 
 // Render renders the given template with the given data to stdout. The template should be a template file name that
@@ -247,7 +253,9 @@ func (c *Console) RenderJson(ctx context.Context, data any) {
 		return
 	}
 	text := string(bytes) + "\n"
-	c.renderColored(ctx, text, "json")
+	if err := c.renderColored(ctx, text, "json"); err != nil {
+		c.logger.ErrorContext(ctx, "Failed to render JSON", slog.Any("error", err))
+	}
 }
 
 // RenderYaml renders the given data as YAML to stdout. If the terminal supports color, the output will be colorized
@@ -266,7 +274,9 @@ func (c *Console) RenderYaml(ctx context.Context, data any) {
 		return
 	}
 	encoder.Close()
-	c.renderColored(ctx, buffer.String(), "yaml")
+	if err := c.renderColored(ctx, buffer.String(), "yaml"); err != nil {
+		c.logger.ErrorContext(ctx, "Failed to render YAML", slog.Any("error", err))
+	}
 }
 
 // renderColored renders the given text to stdout with syntax highlighting using the specified lexer. If the terminal

@@ -16,15 +16,24 @@ package console
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/osac-project/fulfillment-service/internal/cmd/cli/console/computeinstance"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/console/serial"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/console/vnc"
 )
 
 // Cmd returns the `console` command.
 func Cmd() *cobra.Command {
 	result := &cobra.Command{
 		Use:   "console",
-		Short: "Access resource consoles",
+		Short: shortHelp,
+		Long:  longHelp,
 	}
-	result.AddCommand(computeinstance.Cmd())
+	result.AddCommand(serial.Cmd())
+	result.AddCommand(vnc.Cmd())
 	return result
 }
+
+const shortHelp = "Access resource consoles"
+
+const longHelp = `
+Access resource consoles.
+`

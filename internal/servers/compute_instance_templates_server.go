@@ -25,12 +25,12 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 type ComputeInstanceTemplatesServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -58,7 +58,7 @@ func (b *ComputeInstanceTemplatesServerBuilder) SetLogger(value *slog.Logger) *C
 }
 
 // SetNotifier sets the notifier to use. This is optional.
-func (b *ComputeInstanceTemplatesServerBuilder) SetNotifier(value *database.Notifier) *ComputeInstanceTemplatesServerBuilder {
+func (b *ComputeInstanceTemplatesServerBuilder) SetNotifier(value events.Notifier) *ComputeInstanceTemplatesServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -246,6 +246,7 @@ func (s *ComputeInstanceTemplatesServer) Create(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ComputeInstanceTemplatesCreateResponse{}
 	response.SetObject(createdPublicComputeInstanceTemplate)
+	response.SetWarnings(privateResponse.GetWarnings())
 	return
 }
 
@@ -310,6 +311,7 @@ func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ComputeInstanceTemplatesUpdateResponse{}
 	response.SetObject(updatedPublicComputeInstanceTemplate)
+	response.SetWarnings(privateResponse.GetWarnings())
 	return
 }
 

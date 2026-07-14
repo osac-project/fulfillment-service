@@ -14,60 +14,16 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Compute instance templates server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*publicv1.ComputeInstanceTemplate](ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	Describe("Builder", func() {
 		It("Creates server with logger and tenancy logic", func() {
 			// Create the public server:
@@ -215,7 +171,7 @@ var _ = Describe("Compute instance templates server", func() {
 
 			// List the objects with limit:
 			response, err := server.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{
-				Limit: proto.Int32(5),
+				Limit: new(int32(5)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -238,7 +194,7 @@ var _ = Describe("Compute instance templates server", func() {
 
 			// List the objects with offset:
 			response, err := server.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{
-				Offset: proto.Int32(5),
+				Offset: new(int32(5)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())

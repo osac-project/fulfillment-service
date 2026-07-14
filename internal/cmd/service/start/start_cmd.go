@@ -16,6 +16,7 @@ package start
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/consoleproxy"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/controller"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/grpcserver"
 	"github.com/osac-project/fulfillment-service/internal/cmd/service/start/restgateway"
@@ -24,12 +25,21 @@ import (
 // Cmd creates and returns the `start` command.
 func Cmd() *cobra.Command {
 	result := &cobra.Command{
-		Use:   "start",
-		Short: "Starts components",
-		Args:  cobra.NoArgs,
+		Use:                   "start COMMAND [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
 	}
+	result.AddCommand(consoleproxy.Cmd())
 	result.AddCommand(controller.Cmd())
 	result.AddCommand(grpcserver.Cmd())
 	result.AddCommand(restgateway.Cmd())
 	return result
 }
+
+const shortHelp = `Starts components`
+
+const longHelp = `
+Starts components.
+`

@@ -15,6 +15,7 @@ package testing
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"strings"
 
@@ -43,7 +44,24 @@ func NewServer() *Server {
 	}
 }
 
-// Adress returns the address where the server is listening.
+// NewTLSServer creates a new gRPC server with TLS using a self-signed localhost certificate. It listens on a randomly
+// selected port on the local host.
+func NewTLSServer() *Server {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	Expect(err).ToNot(HaveOccurred())
+	tlsListener := tls.NewListener(listener, &tls.Config{
+		Certificates: []tls.Certificate{
+			LocalhostCertificate(),
+		},
+	})
+	server := grpc.NewServer()
+	return &Server{
+		listener: tlsListener,
+		server:   server,
+	}
+}
+
+// Address returns the address where the server is listening.
 func (s *Server) Address() string {
 	return s.listener.Addr().String()
 }

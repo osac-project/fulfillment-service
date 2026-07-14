@@ -22,12 +22,13 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 type PrivateComputeInstanceTemplatesServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -37,8 +38,9 @@ var _ privatev1.ComputeInstanceTemplatesServer = (*PrivateComputeInstanceTemplat
 
 type PrivateComputeInstanceTemplatesServer struct {
 	privatev1.UnimplementedComputeInstanceTemplatesServer
-	logger  *slog.Logger
-	generic *GenericServer[*privatev1.ComputeInstanceTemplate]
+	logger           *slog.Logger
+	generic          *GenericServer[*privatev1.ComputeInstanceTemplate]
+	instanceTypesDao *dao.GenericDAO[*privatev1.InstanceType]
 }
 
 func NewPrivateComputeInstanceTemplatesServer() *PrivateComputeInstanceTemplatesServerBuilder {
@@ -50,7 +52,7 @@ func (b *PrivateComputeInstanceTemplatesServerBuilder) SetLogger(value *slog.Log
 	return b
 }
 
-func (b *PrivateComputeInstanceTemplatesServerBuilder) SetNotifier(value *database.Notifier) *PrivateComputeInstanceTemplatesServerBuilder {
+func (b *PrivateComputeInstanceTemplatesServerBuilder) SetNotifier(value events.Notifier) *PrivateComputeInstanceTemplatesServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -83,6 +85,16 @@ func (b *PrivateComputeInstanceTemplatesServerBuilder) Build() (result *PrivateC
 		return
 	}
 
+	// Create the InstanceTypes DAO for spec_defaults instance type validation:
+	instanceTypesDao, err := dao.NewGenericDAO[*privatev1.InstanceType]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	// Create the generic server:
 	generic, err := NewGenericServer[*privatev1.ComputeInstanceTemplate]().
 		SetLogger(b.logger).
@@ -98,8 +110,9 @@ func (b *PrivateComputeInstanceTemplatesServerBuilder) Build() (result *PrivateC
 
 	// Create and populate the object:
 	result = &PrivateComputeInstanceTemplatesServer{
-		logger:  b.logger,
-		generic: generic,
+		logger:           b.logger,
+		generic:          generic,
+		instanceTypesDao: instanceTypesDao,
 	}
 	return
 }
@@ -118,13 +131,41 @@ func (s *PrivateComputeInstanceTemplatesServer) Get(ctx context.Context,
 
 func (s *PrivateComputeInstanceTemplatesServer) Create(ctx context.Context,
 	request *privatev1.ComputeInstanceTemplatesCreateRequest) (response *privatev1.ComputeInstanceTemplatesCreateResponse, err error) {
+	// Validate instance type in spec_defaults before creating (D-14, D-17).
+	var warnings []string
+	if request.GetObject() != nil {
+		warnings, err = s.validateSpecDefaultsInstanceType(ctx, request.GetObject().GetSpecDefaults())
+		if err != nil {
+			return
+		}
+	}
 	err = s.generic.Create(ctx, request, &response)
+	if err != nil {
+		return
+	}
+	if len(warnings) > 0 && response != nil {
+		response.SetWarnings(warnings)
+	}
 	return
 }
 
 func (s *PrivateComputeInstanceTemplatesServer) Update(ctx context.Context,
 	request *privatev1.ComputeInstanceTemplatesUpdateRequest) (response *privatev1.ComputeInstanceTemplatesUpdateResponse, err error) {
+	// Validate instance type in spec_defaults before updating (D-14, D-17).
+	var warnings []string
+	if request.GetObject() != nil {
+		warnings, err = s.validateSpecDefaultsInstanceType(ctx, request.GetObject().GetSpecDefaults())
+		if err != nil {
+			return
+		}
+	}
 	err = s.generic.Update(ctx, request, &response)
+	if err != nil {
+		return
+	}
+	if len(warnings) > 0 && response != nil {
+		response.SetWarnings(warnings)
+	}
 	return
 }
 
@@ -138,4 +179,20 @@ func (s *PrivateComputeInstanceTemplatesServer) Signal(ctx context.Context,
 	request *privatev1.ComputeInstanceTemplatesSignalRequest) (response *privatev1.ComputeInstanceTemplatesSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)
 	return
+}
+
+// validateSpecDefaultsInstanceType validates the instance_type field in template spec_defaults.
+// Rejects OBSOLETE instance types (D-17) and warns on DEPRECATED (D-14).
+func (s *PrivateComputeInstanceTemplatesServer) validateSpecDefaultsInstanceType(
+	ctx context.Context,
+	specDefaults *privatev1.ComputeInstanceTemplateSpecDefaults,
+) ([]string, error) {
+	if specDefaults == nil || !specDefaults.HasInstanceType() || specDefaults.GetInstanceType() == "" {
+		return nil, nil
+	}
+
+	instanceTypeName := specDefaults.GetInstanceType()
+
+	// Look up the instance type and validate its state.
+	return validateInstanceTypeState(ctx, s.instanceTypesDao, instanceTypeName, " in spec_defaults")
 }

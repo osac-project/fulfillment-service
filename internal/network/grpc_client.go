@@ -14,6 +14,7 @@ language governing permissions and limitations under the License.
 package network
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -28,10 +29,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	experiementalcredentials "google.golang.org/grpc/experimental/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 )
 
 // GrpcClientBuilder contains the data and logic needed to create a gRPC client. Don't create instances of this object
@@ -47,6 +50,7 @@ type GrpcClientBuilder struct {
 	caPool             *x509.CertPool
 	tokenSource        auth.TokenSource
 	keepAlive          time.Duration
+	keepAliveTimeout   time.Duration
 	userAgent          string
 	unaryInterceptors  []grpc.UnaryClientInterceptor
 	streamInterceptors []grpc.StreamClientInterceptor
@@ -189,6 +193,12 @@ func (b *GrpcClientBuilder) SetTokenSource(value auth.TokenSource) *GrpcClientBu
 // SetKeepAlive sets the keep alive interval. This is optional, by default no keep alive is used.
 func (b *GrpcClientBuilder) SetKeepAlive(value time.Duration) *GrpcClientBuilder {
 	b.keepAlive = value
+	return b
+}
+
+// SetKeepAliveTimeout sets the keep alive timeout. This is optional, by default 20 seconds is used.
+func (b *GrpcClientBuilder) SetKeepAliveTimeout(value time.Duration) *GrpcClientBuilder {
+	b.keepAliveTimeout = value
 	return b
 }
 
@@ -339,8 +349,13 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 
 	// Set the keep alive options:
 	if b.keepAlive > 0 {
+		timeout := b.keepAliveTimeout
+		if timeout == 0 {
+			timeout = 20 * time.Second
+		}
 		options = append(options, grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time: b.keepAlive,
+			Time:    b.keepAlive,
+			Timeout: timeout,
 		}))
 	}
 
@@ -352,6 +367,25 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 	// Start with the interceptors configured by the user:
 	unaryInterceptors := b.unaryInterceptors
 	streamInterceptors := b.streamInterceptors
+
+	// When a token source is configured, add interceptors that retry the request once when the server returns then
+	// unauthenticated status code. This handles the case where the cached token has expired or been revoked: the
+	// interceptor invalidates it and lets the next attempt fetch a fresh one.
+	//
+	// Note that currently we only do this for unary request, because streaming requests receive the error code from
+	// the server when they finish, so in order to retry the request it is necessary to create a new stream.
+	if b.tokenSource != nil {
+		retry := &unauthRetryInterceptor{
+			logger:      b.logger,
+			tokenSource: b.tokenSource,
+		}
+		unaryInterceptors = append(
+			[]grpc.UnaryClientInterceptor{
+				retry.UnaryClient,
+			},
+			unaryInterceptors...,
+		)
+	}
 
 	// Add the logging interceptor:
 	loggingInterceptor, err := logging.NewInterceptor().
@@ -391,6 +425,31 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 	// Create the client:
 	result, err = grpc.NewClient(endpoint, options...)
 	return
+}
+
+// unauthRetryInterceptor retries a gRPC call once when the server returns the unauthenticated status code. It
+// invalidates the cached token before retrying.
+type unauthRetryInterceptor struct {
+	logger      *slog.Logger
+	tokenSource auth.TokenSource
+}
+
+func (i *unauthRetryInterceptor) UnaryClient(ctx context.Context, method string, request, reply any,
+	conn *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	callErr := invoker(ctx, method, request, reply, conn, opts...)
+	if status.Code(callErr) != codes.Unauthenticated {
+		return callErr
+	}
+	invalidateErr := i.tokenSource.Invalidate(ctx)
+	if invalidateErr != nil {
+		i.logger.ErrorContext(
+			ctx,
+			"Failed to invalidate token after unauthenticated response",
+			slog.Any("error", invalidateErr),
+		)
+		return callErr
+	}
+	return invoker(ctx, method, request, reply, conn, opts...)
 }
 
 // Common client names:

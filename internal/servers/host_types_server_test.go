@@ -14,59 +14,17 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Host types server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*publicv1.HostType](ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	Describe("Creation", func() {
 		It("Can be built if all the required parameters are set", func() {
 			server, err := NewHostTypesServer().
@@ -133,6 +91,93 @@ var _ = Describe("Host types server", func() {
 			Expect(object.GetId()).ToNot(BeEmpty())
 		})
 
+		It("Creates object with interfaces", func() {
+			interfaces := []*publicv1.NetworkInterface{
+				publicv1.NetworkInterface_builder{
+					Name:        "data-0",
+					Role:        "fabric",
+					Description: "100GbE data interface",
+				}.Build(),
+				publicv1.NetworkInterface_builder{
+					Name:        "data-1",
+					Role:        "fabric",
+					Description: "100GbE data interface",
+				}.Build(),
+				publicv1.NetworkInterface_builder{
+					Name:        "mgmt-0",
+					Role:        "management",
+					Description: "1GbE management interface",
+				}.Build(),
+			}
+			createResponse, err := server.Create(ctx, publicv1.HostTypesCreateRequest_builder{
+				Object: publicv1.HostType_builder{
+					Title:      "BM host type",
+					Interfaces: interfaces,
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			Expect(object.GetInterfaces()).To(HaveLen(3))
+			Expect(object.GetInterfaces()[0].GetName()).To(Equal("data-0"))
+			Expect(object.GetInterfaces()[0].GetRole()).To(Equal("fabric"))
+			Expect(object.GetInterfaces()[0].GetDescription()).To(Equal("100GbE data interface"))
+			Expect(object.GetInterfaces()[1].GetName()).To(Equal("data-1"))
+			Expect(object.GetInterfaces()[2].GetName()).To(Equal("mgmt-0"))
+			Expect(object.GetInterfaces()[2].GetRole()).To(Equal("management"))
+
+			getResponse, err := server.Get(ctx, publicv1.HostTypesGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(proto.Equal(createResponse.GetObject(), getResponse.GetObject())).To(BeTrue())
+		})
+
+		It("Creates object without interfaces", func() {
+			createResponse, err := server.Create(ctx, publicv1.HostTypesCreateRequest_builder{
+				Object: publicv1.HostType_builder{
+					Title: "VM host type",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			Expect(object.GetInterfaces()).To(BeEmpty())
+		})
+
+		It("Updates object interfaces", func() {
+			createResponse, err := server.Create(ctx, publicv1.HostTypesCreateRequest_builder{
+				Object: publicv1.HostType_builder{
+					Title: "BM host type",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			Expect(object.GetInterfaces()).To(BeEmpty())
+
+			updateResponse, err := server.Update(ctx, publicv1.HostTypesUpdateRequest_builder{
+				Object: publicv1.HostType_builder{
+					Id:    object.GetId(),
+					Title: "BM host type",
+					Interfaces: []*publicv1.NetworkInterface{
+						publicv1.NetworkInterface_builder{
+							Name:        "data-0",
+							Role:        "fabric",
+							Description: "100GbE data interface",
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updateResponse.GetObject().GetInterfaces()).To(HaveLen(1))
+			Expect(updateResponse.GetObject().GetInterfaces()[0].GetName()).To(Equal("data-0"))
+
+			getResponse, err := server.Get(ctx, publicv1.HostTypesGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getResponse.GetObject().GetInterfaces()).To(HaveLen(1))
+			Expect(getResponse.GetObject().GetInterfaces()[0].GetName()).To(Equal("data-0"))
+		})
+
 		It("List objects", func() {
 			// Create a few objects:
 			const count = 10
@@ -163,7 +208,7 @@ var _ = Describe("Host types server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.HostTypesListRequest_builder{
-				Limit: proto.Int32(1),
+				Limit: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -181,7 +226,7 @@ var _ = Describe("Host types server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.HostTypesListRequest_builder{
-				Offset: proto.Int32(1),
+				Offset: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", count-1))
@@ -202,7 +247,7 @@ var _ = Describe("Host types server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, publicv1.HostTypesListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -265,9 +310,11 @@ var _ = Describe("Host types server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 
-			// Add a finalizer, as otherwise the object will be immediatelly deleted and archived and it
+			// Add a finalizer, as otherwise the object will be immediately deleted and archived and it
 			// won't be possible to verify the deletion timestamp. This can't be done using the server
 			// because this is a public object, and public objects don't have the finalizers field.
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, err = tx.Exec(
 				ctx,
 				`update host_types set finalizers = '{"a"}' where id = $1`,

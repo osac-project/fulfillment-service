@@ -19,8 +19,6 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
-	"google.golang.org/protobuf/proto"
-
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
 
@@ -41,8 +39,8 @@ var _ = Describe("Describe Virtual Network", func() {
 				}.Build(),
 				Spec: publicv1.VirtualNetworkSpec_builder{
 					NetworkClass: "udn-net",
-					Ipv4Cidr:     proto.String("10.0.0.0/16"),
-					Ipv6Cidr:     proto.String("2001:db8::/48"),
+					Ipv4Cidr:     new("10.0.0.0/16"),
+					Ipv6Cidr:     new("2001:db8::/48"),
 				}.Build(),
 				Status: publicv1.VirtualNetworkStatus_builder{
 					State:   publicv1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY,
@@ -79,7 +77,7 @@ var _ = Describe("Describe Virtual Network", func() {
 				Id: "vnet-003",
 				Spec: publicv1.VirtualNetworkSpec_builder{
 					NetworkClass: "udn-net",
-					Ipv6Cidr:     proto.String("2001:db8::/48"),
+					Ipv6Cidr:     new("2001:db8::/48"),
 				}.Build(),
 			}.Build()
 
@@ -93,7 +91,7 @@ var _ = Describe("Describe Virtual Network", func() {
 				Id: "vnet-004",
 				Spec: publicv1.VirtualNetworkSpec_builder{
 					NetworkClass: "udn-net",
-					Ipv4Cidr:     proto.String("10.0.0.0/16"),
+					Ipv4Cidr:     new("10.0.0.0/16"),
 				}.Build(),
 			}.Build()
 

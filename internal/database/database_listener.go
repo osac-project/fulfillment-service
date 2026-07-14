@@ -19,7 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,36 +27,30 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+
+	"github.com/osac-project/fulfillment-service/internal/events"
+	"github.com/osac-project/fulfillment-service/internal/util"
 )
-
-// ListenerPayloadCallback is a function that will be called by the listener when a notification arrives.
-type ListenerPayloadCallback func(ctx context.Context, payload proto.Message) error
-
-// ListenerReadyCallback is a function that will be called by the listener when it is actually listening for
-// notifications.
-type ListenerReadyCallback func(ctx context.Context) error
 
 // ListenerBuilder contains the data and logic needed to build a listener.
 type ListenerBuilder struct {
-	logger           *slog.Logger
-	url              string
-	channel          string
-	readyCallbacks   []ListenerReadyCallback
-	payloadCallbacks []ListenerPayloadCallback
-	waitTimeout      time.Duration
-	retryInterval    time.Duration
+	logger        *slog.Logger
+	url           string
+	channel       string
+	waitTimeout   time.Duration
+	retryInterval time.Duration
 }
 
-// Listener knows how to liste for notifications using PostgreSQL's `listen` mechanism.
+// Listener knows how to listen for notifications using PostgreSQL's `listen` mechanism.
 type Listener struct {
-	logger           *slog.Logger
-	url              string
-	channel          string
-	readyCallbacks   []ListenerReadyCallback
-	payloadCallbacks []ListenerPayloadCallback
-	waitTimeout      time.Duration
-	retryInterval    time.Duration
-	conn             *pgx.Conn
+	logger        *slog.Logger
+	url           string
+	channel       string
+	waitTimeout   time.Duration
+	retryInterval time.Duration
+	conn          *pgx.Conn
+	callback      events.Callback
+	ready         atomic.Bool
 }
 
 // NewListener uses the information stored in the builder to create a new listener.
@@ -85,21 +79,6 @@ func (b *ListenerBuilder) SetUrl(value string) *ListenerBuilder {
 	return b
 }
 
-// AddReadyCallback adds a function that will be called by the listener when it is actually listening for notifications.
-// Errors returned by these functions will be logged, but the listener will continue working. This is optional.
-func (b *ListenerBuilder) AddReadyCallback(value ListenerReadyCallback) *ListenerBuilder {
-	b.readyCallbacks = append(b.readyCallbacks, value)
-	return b
-}
-
-// AddPayloadCallback adds a function that will be called by the listener when a notification arrives. Errors returned
-// by these functions will be logged, but the listener will continue working. At least one of these functions is
-// mandatory.
-func (b *ListenerBuilder) AddPayloadCallback(value ListenerPayloadCallback) *ListenerBuilder {
-	b.payloadCallbacks = append(b.payloadCallbacks, value)
-	return b
-}
-
 // SetWaitTimeout sets the maximum time that the listener will wait for a notification. After that it will close the
 // connection and open it again. This is intended to automatically recover from situations where the server or the
 // connection malfunction and stop sending the notifications. This is optional and the default is five minutes.
@@ -108,8 +87,8 @@ func (b *ListenerBuilder) SetWaitTimeout(value time.Duration) *ListenerBuilder {
 	return b
 }
 
-// SetRetryInterval sets the time that the listener will wait before trying to open a new connectio and start listening
-// after a failure. This is optional and the default is five seconds.
+// SetRetryInterval sets the time that the listener will wait before trying to open a new connection and start
+// listening after a failure. This is optional and the default is five seconds.
 func (b *ListenerBuilder) SetRetryInterval(value time.Duration) *ListenerBuilder {
 	b.retryInterval = value
 	return b
@@ -130,10 +109,6 @@ func (b *ListenerBuilder) Build() (result *Listener, err error) {
 		err = errors.New("channel is mandatory")
 		return
 	}
-	if len(b.payloadCallbacks) == 0 {
-		err = errors.New("at least one payload callback is mandatory")
-		return
-	}
 	if b.waitTimeout <= 0 {
 		err = fmt.Errorf("wait timeout should be positive, but it is %s", b.waitTimeout)
 		return
@@ -148,20 +123,34 @@ func (b *ListenerBuilder) Build() (result *Listener, err error) {
 		slog.String("channel", b.channel),
 	)
 	result = &Listener{
-		logger:           logger,
-		url:              b.url,
-		channel:          b.channel,
-		readyCallbacks:   slices.Clone(b.readyCallbacks),
-		payloadCallbacks: slices.Clone(b.payloadCallbacks),
-		waitTimeout:      b.waitTimeout,
-		retryInterval:    b.retryInterval,
+		logger:        logger,
+		url:           b.url,
+		channel:       b.channel,
+		waitTimeout:   b.waitTimeout,
+		retryInterval: b.retryInterval,
 	}
 	return
 }
 
-// Listen waits for notifications in the configured channel, decodes the payload and runs the callbacks to process it.
-func (l *Listener) Listen(ctx context.Context) error {
-	// Always remember to close the database connection:
+// Ready returns true when the listener has successfully connected to the database and issued the PostgreSQL LISTEN
+// command. This is intended for use in unit tests, where it is necessary to wait until the listener is ready before
+// sending notifications, because the PostgreSQL notification mechanism is fire-and-forget: messages sent while no
+// listener is active are silently lost.
+func (l *Listener) Ready() bool {
+	return l.ready.Load()
+}
+
+// Listen waits for notifications in the configured channel, decodes the payload and calls the given callback to
+// process it. This is a blocking operation that returns only when the context is canceled.
+func (l *Listener) Listen(ctx context.Context, callback events.Callback) error {
+	// Check that the callback is not nil:
+	callback = util.NormalizeNil(callback)
+	if callback == nil {
+		return errors.New("callback is mandatory")
+	}
+	l.callback = callback
+
+	// Remember to close the database connection:
 	defer func() {
 		if l.conn != nil {
 			err := l.conn.Close(ctx)
@@ -180,7 +169,7 @@ func (l *Listener) Listen(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	l.runReadyCallbacks(ctx)
+	l.ready.Store(true)
 
 	// Run the loop that waits for notifications and creates new connections in case of failure or timeout:
 	for {
@@ -206,6 +195,7 @@ func (l *Listener) Listen(ctx context.Context) error {
 			"Wait failed",
 			slog.Any("error", err),
 		)
+		l.ready.Store(false)
 		err = l.sleepBeforeRetry(ctx)
 		if err != nil {
 			return err
@@ -214,10 +204,11 @@ func (l *Listener) Listen(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		l.ready.Store(true)
 	}
 }
 
-// listenLopp runs the `listen ...` SQL statement till it succeeds, dropping and creating the connection again when it
+// listenLoop runs the `listen ...` SQL statement till it succeeds, dropping and creating the connection again when it
 // fails.
 func (l *Listener) listenLoop(ctx context.Context) error {
 	for {
@@ -274,9 +265,9 @@ func (l *Listener) waitLoop(ctx context.Context) error {
 
 // wait waits for one notification and processes it.
 func (l *Listener) wait(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, l.waitTimeout)
+	waitCtx, cancel := context.WithTimeout(ctx, l.waitTimeout)
 	defer cancel()
-	notification, err := l.conn.WaitForNotification(ctx)
+	notification, err := l.conn.WaitForNotification(waitCtx)
 	if err != nil {
 		return err
 	}
@@ -340,7 +331,13 @@ func (l *Listener) processNotification(ctx context.Context, notification *pgconn
 			)
 		}
 		var object any
-		json.Unmarshal(data, &object)
+		if err := json.Unmarshal(data, &object); err != nil {
+			l.logger.DebugContext(
+				ctx,
+				"Failed to unmarshal payload for debug logging",
+				slog.Any("error", err),
+			)
+		}
 
 	}
 	if l.logger.Enabled(ctx, slog.LevelDebug) {
@@ -351,52 +348,15 @@ func (l *Listener) processNotification(ctx context.Context, notification *pgconn
 		)
 	}
 
-	// Run the callbacks:
-	l.runPayloadCallbacks(ctx, payload)
-}
-
-func (l *Listener) runReadyCallbacks(ctx context.Context) {
-	errors := 0
-	for i, readyCallback := range l.readyCallbacks {
-		err := readyCallback(ctx)
-		if err != nil {
-			l.logger.InfoContext(
-				ctx,
-				"Ready callback failed",
-				slog.Int("index", i),
-				slog.Any("error", err),
-			)
-			errors++
-		}
+	// Run the callback:
+	err = l.callback(ctx, payload)
+	if err != nil {
+		l.logger.ErrorContext(
+			ctx,
+			"Payload callback failed",
+			slog.Any("error", err),
+		)
 	}
-	l.logger.DebugContext(
-		ctx,
-		"Ready callbacks completed",
-		slog.Int("total", len(l.readyCallbacks)),
-		slog.Int("errors", errors),
-	)
-}
-
-func (l *Listener) runPayloadCallbacks(ctx context.Context, payload proto.Message) {
-	errors := 0
-	for i, payloadCallback := range l.payloadCallbacks {
-		err := payloadCallback(ctx, payload)
-		if err != nil {
-			l.logger.ErrorContext(
-				ctx,
-				"Payload callback failed",
-				slog.Any("index", i),
-				slog.Any("error", err),
-			)
-			errors++
-		}
-	}
-	l.logger.DebugContext(
-		ctx,
-		"Payload callbacks completed",
-		slog.Int("total", len(l.payloadCallbacks)),
-		slog.Int("errors", errors),
-	)
 }
 
 // sleepBeforeRetry waits till the retry interval passes, or till the context is cancelled.

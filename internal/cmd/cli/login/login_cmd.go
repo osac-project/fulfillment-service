@@ -43,128 +43,173 @@ import (
 var templatesFS embed.FS
 
 func Cmd() *cobra.Command {
+	// Create the runner and the command:
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:                   "login [FLAGS] ADDRESS",
+		Use:                   "login [FLAG...] ADDRESS",
 		DisableFlagsInUseLine: true,
-		Short:                 "Save connection and authentication details.",
+		Short:                 shortHelp,
+		Long:                  longHelp,
 		RunE:                  runner.run,
 	}
+
+	// Define the flags:
 	flags := result.Flags()
 	flags.BoolVar(
 		&runner.args.plaintext,
 		"plaintext",
 		false,
-		"Disables use of TLS for communications with the API server.",
+		plaintextFlagHelp,
 	)
 	flags.BoolVar(
 		&runner.args.insecure,
 		"insecure",
 		false,
-		"Disables verification of TLS certificates and host names of the OAuth and API servers.",
+		insecureFlagHelp,
 	)
 	flags.StringArrayVar(
 		&runner.args.caFiles,
 		"ca-file",
 		[]string{},
-		"File or directory containing trusted CA certificates.",
+		caFilesFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.address,
 		"address",
 		os.Getenv("OSAC_ADDRESS"),
-		"Server address.",
+		addressFlagHelp,
 	)
 	flags.BoolVar(
 		&runner.args.private,
 		"private",
 		false,
-		"Enables use of the private API.",
+		privateFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.token,
 		"token",
 		os.Getenv("OSAC_TOKEN"),
-		"Authentication token",
+		tokenFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.tokenScript,
 		"token-script",
 		os.Getenv("OSAC_TOKEN_SCRIPT"),
-		"Shell command that will be executed to obtain the token. For example, to automatically get the "+
-			"token of the Kubernetes 'client' service account of the 'example' namespace the value "+
-			"could be 'kubectl create token -n example client --duration 1h'. Note that is important "+
-			"to quote this shell command correctly, as it will be passed to your shell for "+
-			"execution.",
+		tokenScriptFlagHelp,
 	)
 	flags.StringVar(
-		&runner.args.oauthIssuer,
-		"oauth-issuer",
+		&runner.args.issuer,
+		"issuer",
 		"",
-		"OAuth issuer URL. This is optional. By default the first issuer advertised by the server is used.",
+		issuerFlagHelp,
 	)
 	flags.StringVar(
-		&runner.args.oauthFlow,
-		"oauth-flow",
-		string(oauth.DeviceFlow),
-		fmt.Sprintf(
-			"OAuth flow to use. Must be '%s', '%s', '%s' or '%s'.",
-			oauth.CodeFlow, oauth.DeviceFlow, oauth.CredentialsFlow, oauth.PasswordFlow,
-		),
+		&runner.args.flow,
+		"flow",
+		defaultFlow,
+		flowFlagHelp,
 	)
 	flags.StringVar(
-		&runner.args.oauthClientId,
-		"oauth-client-id",
-		"osac-cli",
-		"OAuth client identifier.",
+		&runner.args.clientId,
+		"client-id",
+		defaultClientId,
+		clientIdFlagHelp,
 	)
 	flags.StringVar(
-		&runner.args.oauthClientSecret,
-		"oauth-client-secret",
+		&runner.args.clientSecret,
+		"client-secret",
 		"",
-		fmt.Sprintf(
-			"OAuth client secret. This is required for the '%s' flow.",
-			oauth.CredentialsFlow,
-		),
+		clientSecretFlagHelp,
 	)
 	flags.StringSliceVar(
-		&runner.args.oauthScopes,
+		&runner.args.scopes,
+		"scopes",
+		[]string{},
+		scopesFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.redirectUri,
+		"redirect-uri",
+		defaultRedirectUri,
+		redirectUriFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.user,
+		"user",
+		"",
+		userFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.password,
+		"password",
+		"",
+		passwordFlagHelp,
+	)
+
+	// Define the depreacated alternatives for the OAuth flags:
+	flags.StringVar(
+		&runner.args.issuer,
+		"oauth-issuer",
+		"",
+		"Alternative for the '--issuer' flag.",
+	)
+	flags.MarkDeprecated("oauth-issuer", "use '--issuer' instead")
+	flags.StringVar(
+		&runner.args.flow,
+		"oauth-flow",
+		defaultFlow,
+		"Deprecated alternative for the '--flow' flag.",
+	)
+	flags.MarkDeprecated("oauth-flow", "use '--flow' instead")
+	flags.StringVar(
+		&runner.args.clientId,
+		"oauth-client-id",
+		defaultClientId,
+		"Deprecated alternative for the '--client-id' flag.",
+	)
+	flags.MarkDeprecated("oauth-client-id", "use '--client-id' instead")
+	flags.StringVar(
+		&runner.args.clientSecret,
+		"oauth-client-secret",
+		"",
+		"Deprecated alternative for the '--client-secret' flag.",
+	)
+	flags.MarkDeprecated("oauth-client-secret", "use '--client-secret' instead")
+	flags.StringSliceVar(
+		&runner.args.scopes,
 		"oauth-scopes",
 		[]string{},
-		"Comma separated list of OAuth scopes to request.",
+		"Deprecated alternative for the '--scopes' flag.",
 	)
+	flags.MarkDeprecated("oauth-scopes", "use '--scopes' instead")
 	flags.StringVar(
-		&runner.args.oauthRedirectUri,
+		&runner.args.redirectUri,
 		"oauth-redirect-uri",
 		defaultRedirectUri,
-		fmt.Sprintf(
-			"Redirect URI to use for the OAuth code flow. The default value '%s' means "+
-				"binding to localhost on a randomly selected port.",
-			defaultRedirectUri,
-		),
+		"Deprecated alternative for the '--redirect-uri' flag.",
 	)
+	flags.MarkDeprecated("oauth-redirect-uri", "use '--redirect-uri' instead")
 	flags.StringVar(
-		&runner.args.oauthUser,
+		&runner.args.user,
 		"oauth-user",
 		"",
-		fmt.Sprintf(
-			"OAuth user name. This is required for the '%s' flow.",
-			oauth.PasswordFlow,
-		),
+		"Deprecated alternative for the '--user' flag.",
 	)
+	flags.MarkDeprecated("oauth-user", "use '--user' instead")
 	flags.StringVar(
-		&runner.args.oauthPassword,
+		&runner.args.password,
 		"oauth-password",
 		"",
-		fmt.Sprintf(
-			"OAuth password. This is required for the '%s' flow.",
-			oauth.PasswordFlow,
-		),
+		"Deprecated alternative for the '--password' flag.",
 	)
+	flags.MarkDeprecated("oauth-password", "use '--password' instead")
+
+	// Mark hidden flags:
 	flags.MarkHidden("address")
 	flags.MarkHidden("private")
 	flags.MarkHidden("token")
 	flags.MarkHidden("token-script")
+
 	return result
 }
 
@@ -177,21 +222,21 @@ type runnerContext struct {
 	caPool     *x509.CertPool
 	tokenStore auth.TokenStore
 	args       struct {
-		plaintext         bool
-		insecure          bool
-		caFiles           []string
-		address           string
-		private           bool
-		token             string
-		tokenScript       string
-		oauthIssuer       string
-		oauthFlow         string
-		oauthClientId     string
-		oauthClientSecret string
-		oauthScopes       []string
-		oauthRedirectUri  string
-		oauthUser         string
-		oauthPassword     string
+		plaintext    bool
+		insecure     bool
+		caFiles      []string
+		address      string
+		private      bool
+		token        string
+		tokenScript  string
+		issuer       string
+		flow         string
+		clientId     string
+		clientSecret string
+		scopes       []string
+		redirectUri  string
+		user         string
+		password     string
 	}
 }
 
@@ -210,6 +255,12 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	err = c.console.AddTemplates(templatesFS, "templates")
 	if err != nil {
 		return fmt.Errorf("failed to load templates: %w", err)
+	}
+
+	// Infer the OAuth flow from other flags when it hasn't been explicitly set:
+	err = c.inferFlow(ctx)
+	if err != nil {
+		return err
 	}
 
 	// The address used to be specified with a command line flag, but now we also take it from the arguments:
@@ -252,7 +303,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Create an anonymous gRPC client that we will use to fetch the metadata:
 	grpcConn, err := network.NewGrpcClient().
 		SetLogger(c.logger).
-		SetFlags(c.flags, network.GrpcClientName).
 		SetPlaintext(c.plaintext).
 		SetInsecure(c.args.insecure).
 		SetCaPool(c.caPool).
@@ -292,8 +342,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to select token issuer: %w", err)
 	}
 
-	// Create an empty configuration and a token store that will load/save tokens from/to that configuration:
-	cfg := &config.Config{}
+	// Get the settings from the context, reset them to discard any previous configuration, and create a token store:
+	cfg := config.SettingsFromContext(ctx)
+	cfg.Reset()
 	c.tokenStore = cfg.TokenStore()
 
 	// Create the token source only if a token issuer has been selected.
@@ -312,26 +363,36 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save the basic details of the configuration:
-	cfg.Plaintext = c.plaintext
-	cfg.Insecure = c.args.insecure
-	cfg.Address = c.address
-	cfg.Private = c.args.private
+	cfg.SetPlaintext(c.plaintext)
+	cfg.SetInsecure(c.args.insecure)
+	cfg.SetAddress(c.address)
+	cfg.SetPrivate(c.args.private)
 
-	// For CA files that are absolute we need to store only the path, but for those that are relative we need to
-	// save the content because otherwise we will not be able to use them when the command is executed from a
-	// different directory.
+	// Store the CA entries. For regular files we save both the absolute path and the content so that the
+	// certificate can be reloaded from disk after rotation, with the stored content as a fallback. For directories
+	// we only store the absolute path so that their contents are scanned on every invocation, allowing files to be
+	// added or removed inside the directory.
 	for _, caFile := range c.args.caFiles {
-		if filepath.IsAbs(caFile) {
-			cfg.CaFiles = append(cfg.CaFiles, config.CaFile{
-				Name: caFile,
+		caPath := filepath.Clean(caFile)
+		caPath, err = filepath.Abs(caPath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve absolute path for '%s': %w", caFile, err)
+		}
+		caInfo, err := os.Stat(caPath)
+		if err != nil {
+			return fmt.Errorf("CA path '%s' is not accessible: %w", caPath, err)
+		}
+		if caInfo.IsDir() {
+			cfg.AddCaFile(config.CaFile{
+				Name: caPath,
 			})
 		} else {
-			caContent, err := os.ReadFile(caFile)
+			caContent, err := os.ReadFile(caPath)
 			if err != nil {
-				return fmt.Errorf("failed to read CA file '%s': %w", caFile, err)
+				return fmt.Errorf("failed to read CA file '%s': %w", caPath, err)
 			}
-			cfg.CaFiles = append(cfg.CaFiles, config.CaFile{
-				Name:    caFile,
+			cfg.AddCaFile(config.CaFile{
+				Name:    caPath,
 				Content: string(caContent),
 			})
 		}
@@ -340,18 +401,18 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Save the authenticatoin configuration. Note that the OAuth settings are only saved when they are actually
 	// used, and they won't be actually used if the user selected to use a static token or a token script.
 	if c.args.token != "" {
-		cfg.AccessToken = c.args.token
+		cfg.SetAccessToken(c.args.token)
 	} else if c.args.tokenScript != "" {
-		cfg.TokenScript = c.args.tokenScript
+		cfg.SetTokenScript(c.args.tokenScript)
 	} else if tokenIssuer != "" {
-		cfg.OauthIssuer = tokenIssuer
-		cfg.OAuthFlow = oauth.Flow(c.args.oauthFlow)
-		cfg.OAuthClientId = c.args.oauthClientId
-		cfg.OAuthClientSecret = c.args.oauthClientSecret
-		cfg.OAuthScopes = c.args.oauthScopes
-		cfg.OAuthRedirectUri = c.args.oauthRedirectUri
-		cfg.OAuthUser = c.args.oauthUser
-		cfg.OAuthPassword = c.args.oauthPassword
+		cfg.SetIssuer(tokenIssuer)
+		cfg.SetFlow(oauth.Flow(c.args.flow))
+		cfg.SetClientId(c.args.clientId)
+		cfg.SetClientSecret(c.args.clientSecret)
+		cfg.SetScopes(c.args.scopes)
+		cfg.SetRedirectUri(c.args.redirectUri)
+		cfg.SetUser(c.args.user)
+		cfg.SetPassword(c.args.password)
 	}
 
 	// Replace the gRPC anonymous connection with the authenticated one:
@@ -361,7 +422,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 	grpcConn, err = network.NewGrpcClient().
 		SetLogger(c.logger).
-		SetFlags(c.flags, network.GrpcClientName).
 		SetPlaintext(c.plaintext).
 		SetInsecure(c.args.insecure).
 		SetCaPool(c.caPool).
@@ -383,7 +443,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Everything is working, so we can save the configuration:
-	err = config.Save(cfg)
+	err = cfg.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
@@ -476,13 +536,13 @@ func (c *runnerContext) createTokenSource(ctx context.Context, tokenIssuer strin
 			SetCaPool(c.caPool).
 			SetInteractive(true).
 			SetIssuer(tokenIssuer).
-			SetFlow(oauth.Flow(c.args.oauthFlow)).
-			SetClientId(c.args.oauthClientId).
-			SetClientSecret(c.args.oauthClientSecret).
-			SetScopes(c.args.oauthScopes...).
-			SetRedirectUri(c.args.oauthRedirectUri).
-			SetUsername(c.args.oauthUser).
-			SetPassword(c.args.oauthPassword).
+			SetFlow(oauth.Flow(c.args.flow)).
+			SetClientId(c.args.clientId).
+			SetClientSecret(c.args.clientSecret).
+			SetScopes(c.args.scopes...).
+			SetRedirectUri(c.args.redirectUri).
+			SetUsername(c.args.user).
+			SetPassword(c.args.password).
 			Build()
 		if err != nil {
 			err = fmt.Errorf("failed to create OAuth token source: %w", err)
@@ -493,6 +553,29 @@ func (c *runnerContext) createTokenSource(ctx context.Context, tokenIssuer strin
 	// Finally, if there is no token, toke script or token issuer, return nil:
 	result = nil
 	return
+}
+
+// inferFlow infers the OAuth flow from other command line flags when the user hasn't explicitly set the '--flow' flag.
+// If '--client-secret' is provided, the flow is inferred to be 'credentials'. If '--user' or '--password' is provided,
+// the flow is inferred to be 'password'. If both sets of flags are present without an explicit '--flow', an error is
+// returned asking the user to disambiguate.
+func (c *runnerContext) inferFlow(ctx context.Context) error {
+	if c.flags.Changed("flow") || c.flags.Changed("oauth-flow") {
+		return nil
+	}
+	credentialsHint := c.flags.Changed("client-secret") || c.flags.Changed("oauth-client-secret")
+	passwordHint := c.flags.Changed("user") || c.flags.Changed("oauth-user") || c.flags.Changed("password") ||
+		c.flags.Changed("oauth-password")
+	if credentialsHint && passwordHint {
+		c.console.Render(ctx, "ambiguous_flow.txt", nil)
+		return exit.Error(1)
+	}
+	if credentialsHint {
+		c.args.flow = string(oauth.CredentialsFlow)
+	} else if passwordHint {
+		c.args.flow = string(oauth.PasswordFlow)
+	}
+	return nil
 }
 
 type oauthFlowListener struct {
@@ -551,6 +634,120 @@ func (l *oauthFlowListener) End(ctx context.Context, event oauth.FlowEndEvent) e
 	return nil
 }
 
+// defaultFlow is the default OAuth flow to use.
+const defaultFlow = string(oauth.DeviceFlow)
+
+// defaultClientId is the default OAuth client identifier to use.
+const defaultClientId = "osac-cli"
+
 // defaultRedirectUri is the default redirect URI used for the OAuth code flow. The value 'http://localhost:0' means
 // binding to localhost on a randomly selected port.
 const defaultRedirectUri = "http://localhost:0"
+
+const shortHelp = `Save connection and authentication details`
+
+const longHelp = `
+Save connection and authentication details.
+
+The recommended way to specify the server address is with a URL that includes the scheme, host name, and optionally the
+port number. For example, {{ bt }}https://osac.example.com{{ bt }} connects to {{ bt }}osac.example.com{{ bt }} using
+TLS on port 443. The {{ bt }}https{{ bt }} scheme indicates that TLS should be used, while {{ bt }}http{{ bt }} indicates
+plaintext.
+
+Alternatively, the server address can be given as a host name and port number. For example,
+{{ bt }}osac.example.com:8000{{ bt }} connects to {{ bt }}osac.example.com{{ bt }} using TLS on port 8000.
+
+Note that the connection always uses _gRPC_ on top of _HTTP/2_, regardless of the format used to specify the server
+address.
+`
+
+const plaintextFlagHelp = `
+_[BOOLEAN]_ - Controls whether TLS is used for communication with the API server. Disabling TLS is insecure and should
+only be used for testing. TLS is also automatically disabled when the server address uses the {{ bt }}http{{ bt }} scheme
+instead of the default {{ bt }}https{{ bt }}.
+`
+
+const insecureFlagHelp = `
+_[BOOLEAN]_ - Controls verification of TLS certificates and host names for the OAuth and API servers. Disabling
+verification is insecure and should only be used for testing. To trust a custom CA certificate, consider using the
+{{ bt }}--ca-file{{ bt }} flag instead.
+`
+
+const caFilesFlagHelp = `
+_FILE|DIRECTORY_ - File or directory containing trusted CA certificates. When a directory is specified, all files with
+the {{ bt }}.cer{{ bt }}, {{ bt }}.crt{{ bt }}, or {{ bt }}.pem{{ bt }} extension are read recursively.
+
+CA certificates trusted by the operating system are loaded automatically.
+
+When running inside a _Kubernetes_ pod, the cluster and service CA certificates are also loaded automatically, so there
+is no need to specify them explicitly.
+
+This flag can be specified multiple times to add several CA files or directories.
+`
+
+const addressFlagHelp = `
+_URL|HOST:PORT_ - Server address.
+`
+
+const privateFlagHelp = `
+_[BOOLEAN]_ - Enables use of the private API.
+`
+
+const tokenFlagHelp = `
+_TOKEN_ - Authentication token.
+`
+
+const tokenScriptFlagHelp = `
+_SCRIPT_ - Shell command executed to obtain the token. For example, to automatically retrieve the token for the
+Kubernetes {{ bt }}client{{ bt }} service account in the {{ bt }}example{{ bt }} namespace:
+
+{{ bt 3 }}shell
+kubectl create token -n example client --duration 1h
+{{ bt 3 }}
+
+Note that it is important to quote this command correctly, as it is passed to your shell for execution.
+`
+
+const issuerFlagHelp = `
+_URL_ - OAuth issuer URL. This is optional; by default, the issuer advertised by the server is used.
+`
+
+const flowFlagHelp = `
+_FLOW_ - OAuth flow to use. Must be one of {{ bt }}code{{ bt }}, {{ bt }}device{{ bt }}, {{ bt }}credentials{{ bt }} or
+{{ bt }}password{{ bt }}.
+
+When this flag is omitted, the flow is inferred from other flags. If {{ bt }}--client-secret{{ bt }} is provided, the
+flow is set to {{ bt }}credentials{{ bt }}. If {{ bt }}--user{{ bt }} or {{ bt }}--password{{ bt }} is provided, the
+flow is set to {{ bt }}password{{ bt }}. If both {{ bt }}--client-secret{{ bt }} and {{ bt }}--user{{ bt }} or {{ bt
+}}--password{{ bt }} are provided, the flow cannot be inferred and this flag must be set explicitly.
+`
+
+const clientIdFlagHelp = `
+_ID_ - OAuth client identifier. All authentication flows require a client identifier, but for most flows the default
+value {{ bt }}osac-cli{{ bt }} is appropriate. When using the {{ bt }}credentials{{ bt }} flow, typically for service
+accounts, you must provide the service account's client identifier along with the {{ bt }}--client-secret{{ bt }} flag.
+`
+
+const clientSecretFlagHelp = `
+_SECRET_ - OAuth client secret. When using the {{ bt }}credentials{{ bt }} flow, typically for service accounts, you
+must provide the service account's client secret along with the {{ bt }}--client-id{{ bt }} flag.
+`
+
+const scopesFlagHelp = `
+_[SCOPE...]_ - Comma-separated list of OAuth scopes to request.
+`
+
+const redirectUriFlagHelp = `
+_URI_ - Redirect URI for the OAuth {{ bt }}code{{ bt }} flow. The default value {{ bt }}http://localhost:0{{ bt }} binds
+to localhost on a randomly selected port.
+`
+
+const userFlagHelp = `
+_USER_ - OAuth user name. Required when using the {{ bt }}password{{ bt }} flow, along with the
+{{ bt }}--password{{ bt }} flag.
+`
+
+const passwordFlagHelp = `
+_PASSWORD_ - OAuth password. Required when using the {{ bt }}password{{ bt }} flow, along with the
+{{ bt }}--user{{ bt }} flag.
+`

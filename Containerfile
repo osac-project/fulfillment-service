@@ -1,23 +1,13 @@
-# This is the base image, both for the builder and runtime containers.
-ARG BASE=registry.access.redhat.com/ubi10/ubi:10.1-1773895909
-
 # First stage is to build the image that contains the image with all the development tools needed to build the binary.
-FROM ${BASE} AS builder
+FROM registry.access.redhat.com/ubi10/go-toolset:1.26 AS builder
 
 # Set this to 'true' to build the binary with debugging symbols and disabling optimizations.
 ARG DEBUG=false
 
-# Install packages:
-RUN \
-  set -e; \
-  pkgs=(git golang); \
-  dnf install -y "${pkgs[@]}"; \
-  dnf clean all -y
-
 # Copy only the 'go.mod' and 'go.sum' files and try to download the required modules, so that hopefully this will be
 # in a layer that can be cached reused for builds that don't change the dependencies.
-WORKDIR /source
-COPY go.mod go.sum /source/
+WORKDIR /opt/app-root/src
+COPY go.mod go.sum /opt/app-root/src/
 RUN \
   set -e; \
   go mod download
@@ -28,7 +18,7 @@ RUN \
 ARG VERSION=""
 
 # Copy the rest of the source and build the binary:
-COPY . /source/
+COPY --chown=1001:1001 . /opt/app-root/src/
 RUN \
   set -e; \
   version="${VERSION}"; \
@@ -42,22 +32,18 @@ RUN \
   fi; \
   go build -gcflags="${gcflags}" -ldflags="${ldflags}" ./cmd/fulfillment-service
 
-# Second stage is to build the image that contains the binary, without the development tools, except the debugger
-# if enabled.
-FROM ${BASE} AS runtime
+# dlv stage — only pulled into the build graph when targeting runtime-debug.
+FROM builder AS dlv-builder
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
-# Set this to 'true' to include the 'dlv' debugger in the image.
-ARG DEBUG=false
+# Common runtime base with the service binary.
+FROM registry.access.redhat.com/ubi10-minimal:10.2 AS runtime-base
+COPY --from=builder /opt/app-root/src/fulfillment-service /usr/local/bin
+USER 1001
 
-# Install packages:
-RUN \
-  set -e; \
-  pkgs=(openssl); \
-  if [[ "${DEBUG}" == "true" ]]; then \
-    pkgs+=(delve); \
-  fi; \
-  dnf install -y "${pkgs[@]}"; \
-  dnf clean all -y
+# Debug variant — adds dlv on top of the base; build with: podman build --target runtime-debug .
+FROM runtime-base AS runtime-debug
+COPY --from=dlv-builder /opt/app-root/src/go/bin/dlv /usr/local/bin
 
-# Install the binary:
-COPY --from=builder /source/fulfillment-service /usr/local/bin
+# Default (non-debug) runtime — must stay last so plain `podman build .` targets it.
+FROM runtime-base AS runtime

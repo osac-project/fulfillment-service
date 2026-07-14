@@ -14,26 +14,23 @@ language governing permissions and limitations under the License.
 package token
 
 import (
-	"context"
-	"log/slog"
-	"time"
-
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/neilotoole/jsoncolor"
 	"github.com/spf13/cobra"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/tokenutil"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/exit"
-	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
 
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "token [OPTION]...",
-		Short: "Shows the authentication token, requesting a new one if necessary",
-		RunE:  runner.run,
+		Use:                   "token [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.BoolVarP(
@@ -41,43 +38,41 @@ func Cmd() *cobra.Command {
 		"refresh",
 		"r",
 		false,
-		"Show the refresh token instead of the access token.",
+		refreshFlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.header,
 		"header",
 		"H",
 		false,
-		"Print the token header. This will work only if the token is a JSON web token.",
+		headerFlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.payload,
 		"payload",
 		"p",
 		false,
-		"Shows the token payload in JSON format. This will work only if the token is a JSON web token.",
+		payloadFlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.rfc3339,
 		"rfc-3339",
 		"R",
 		false,
-		"Displays the time claims as RFC 3339 timestamps. By default the time claims are displayed as "+
-			"seconds since the Unix epoch, as that is the format used by JSON web tokens",
+		rfc3339FlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.utc,
 		"utc",
 		"U",
 		false,
-		"Displays the time claims using the UTC time zone.",
+		utcFlagHelp,
 	)
 
 	return result
 }
 
 type runnerContext struct {
-	logger  *slog.Logger
 	console *terminal.Console
 	refresh bool
 	header  bool
@@ -92,16 +87,12 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Get the context:
 	ctx := cmd.Context()
 
-	// Get the logger, console and flags:
-	c.logger = logging.LoggerFromContext(ctx)
+	// Get the console:
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		c.console.Errorf(ctx, "There is no configuration, run the 'login' command.\n")
 		return exit.Error(1)
 	}
@@ -149,45 +140,39 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		c.console.RenderJson(ctx, parsed.Header)
 	case c.payload:
 		claims := *parsed.Claims.(*jwt.MapClaims)
-		claims = c.replaceTimeClaims(ctx, claims)
-		c.console.RenderJson(ctx, claims)
+		tokenutil.DisplayTokenClaims(ctx, c.console, claims, c.rfc3339, c.utc)
 	default:
 		c.console.Infof(ctx, "%s\n", selected)
 	}
 	return nil
 }
 
-func (c *runnerContext) replaceTimeClaims(ctx context.Context, claims jwt.MapClaims) jwt.MapClaims {
-	result := jwt.MapClaims{}
-	for name, value := range claims {
-		switch name {
-		case "iat", "exp", "nbf", "auth_time":
-			result[name] = c.replaceTimeClaim(ctx, name, value.(jsoncolor.Number))
-		default:
-			result[name] = value
-		}
-	}
-	return result
-}
+const shortHelp = `Shows the authentication token, requesting a new one if necessary`
 
-func (c *runnerContext) replaceTimeClaim(ctx context.Context, name string, value jsoncolor.Number) any {
-	if !c.rfc3339 {
-		return value
-	}
-	s, err := value.Int64()
-	if err != nil {
-		c.logger.ErrorContext(
-			ctx,
-			"Failed to parse claim as seconds",
-			slog.String("name", name),
-			slog.Any("value", value),
-			slog.Any("error", err),
-		)
-		return value
-	}
-	t := time.Unix(s, 0)
-	if c.utc {
-		t = t.UTC()
-	}
-	return t.Format(time.RFC3339)
-}
+const longHelp = `
+Shows the authentication token, requesting a new one if necessary.
+`
+
+const refreshFlagHelp = `
+_[BOOLEAN]_ - Show the refresh token instead of the access token.
+`
+
+const headerFlagHelp = `
+_[BOOLEAN]_ - Print the token header. This only works if the token is a JSON
+web token.
+`
+
+const payloadFlagHelp = `
+_[BOOLEAN]_ - Show the token payload in JSON format. This only works if the
+token is a JSON web token.
+`
+
+const rfc3339FlagHelp = `
+_[BOOLEAN]_ - Display the time claims as RFC 3339 timestamps. By default the
+time claims are displayed as seconds since the Unix epoch, as that is the
+format used by JSON web tokens.
+`
+
+const utcFlagHelp = `
+_[BOOLEAN]_ - Display the time claims using the UTC time zone.
+`

@@ -14,60 +14,18 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Private compute instance templates server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*privatev1.ComputeInstanceTemplate](ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	Describe("Builder", func() {
 		It("Creates server with logger", func() {
 			server, err := NewPrivateComputeInstanceTemplatesServer().
@@ -213,7 +171,7 @@ var _ = Describe("Private compute instance templates server", func() {
 
 			// List the objects with limit:
 			response, err := server.List(ctx, privatev1.ComputeInstanceTemplatesListRequest_builder{
-				Limit: proto.Int32(5),
+				Limit: new(int32(5)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -236,7 +194,7 @@ var _ = Describe("Private compute instance templates server", func() {
 
 			// List the objects with offset:
 			response, err := server.List(ctx, privatev1.ComputeInstanceTemplatesListRequest_builder{
-				Offset: proto.Int32(5),
+				Offset: new(int32(5)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -428,6 +386,194 @@ var _ = Describe("Private compute instance templates server", func() {
 			response, err := server.Delete(ctx, privatev1.ComputeInstanceTemplatesDeleteRequest_builder{}.Build())
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
+		})
+
+		Describe("Instance type validation in spec_defaults", func() {
+			var itServer *PrivateInstanceTypesServer
+
+			// Helper to create an instance type and transition it to the given state.
+			createInstanceTypeWithState := func(name string, state privatev1.InstanceTypeState) {
+				_, err := itServer.Create(ctx, privatev1.InstanceTypesCreateRequest_builder{
+					Object: privatev1.InstanceType_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: name,
+						}.Build(),
+						Spec: privatev1.InstanceTypeSpec_builder{
+							Cores:       4,
+							MemoryGib:   16,
+							Description: "Test instance type.",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				if state == privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE {
+					return
+				}
+
+				// Transition to the desired state:
+				_, err = itServer.Update(ctx, privatev1.InstanceTypesUpdateRequest_builder{
+					Object: privatev1.InstanceType_builder{
+						Id: name,
+						Spec: privatev1.InstanceTypeSpec_builder{
+							State: state,
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.state"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			BeforeEach(func() {
+				var err error
+				itServer, err = NewPrivateInstanceTypesServer().
+					SetLogger(logger).
+					SetAttributionLogic(attribution).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("Returns warning when spec_defaults references a DEPRECATED instance type on Create", func() {
+				createInstanceTypeWithState("deprecated-type",
+					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_DEPRECATED)
+
+				response, err := server.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+					Object: privatev1.ComputeInstanceTemplate_builder{
+						Title:       "Template with deprecated default",
+						Description: "Template referencing a deprecated instance type.",
+						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
+							InstanceType: new("deprecated-type"),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				Expect(response.GetWarnings()).To(HaveLen(1))
+				Expect(response.GetWarnings()[0]).To(ContainSubstring("deprecated"))
+			})
+
+			It("Returns warning when spec_defaults references a DEPRECATED instance type on Update", func() {
+				// Create a template first (no spec_defaults):
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+					Object: privatev1.ComputeInstanceTemplate_builder{
+						Title:       "Template to update",
+						Description: "Template without spec_defaults.",
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				id := createResponse.GetObject().GetId()
+
+				// Create a DEPRECATED instance type:
+				createInstanceTypeWithState("deprecated-for-update",
+					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_DEPRECATED)
+
+				// Update the template with spec_defaults referencing the deprecated type:
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstanceTemplatesUpdateRequest_builder{
+					Object: privatev1.ComputeInstanceTemplate_builder{
+						Id: id,
+						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
+							InstanceType: new("deprecated-for-update"),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec_defaults"},
+					},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse).ToNot(BeNil())
+				Expect(updateResponse.GetWarnings()).To(HaveLen(1))
+			})
+
+			It("Rejects Create when spec_defaults references an OBSOLETE instance type", func() {
+				createInstanceTypeWithState("obsolete-type",
+					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_OBSOLETE)
+
+				response, err := server.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+					Object: privatev1.ComputeInstanceTemplate_builder{
+						Title:       "Template with obsolete default",
+						Description: "Template referencing an obsolete instance type.",
+						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
+							InstanceType: new("obsolete-type"),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+				Expect(status.Message()).To(ContainSubstring("obsolete"))
+			})
+
+			It("Rejects Update when spec_defaults references an OBSOLETE instance type", func() {
+				// Create a template first:
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+					Object: privatev1.ComputeInstanceTemplate_builder{
+						Title:       "Template for obsolete update",
+						Description: "Template to test obsolete rejection on update.",
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				id := createResponse.GetObject().GetId()
+
+				// Create an OBSOLETE instance type:
+				createInstanceTypeWithState("obsolete-for-update",
+					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_OBSOLETE)
+
+				// Try to update with spec_defaults referencing the obsolete type:
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstanceTemplatesUpdateRequest_builder{
+					Object: privatev1.ComputeInstanceTemplate_builder{
+						Id: id,
+						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
+							InstanceType: new("obsolete-for-update"),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec_defaults"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(updateResponse).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			})
+
+			It("Returns no warnings when spec_defaults references an ACTIVE instance type", func() {
+				createInstanceTypeWithState("active-default",
+					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE)
+
+				response, err := server.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+					Object: privatev1.ComputeInstanceTemplate_builder{
+						Title:       "Template with active default",
+						Description: "Template referencing an active instance type.",
+						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
+							InstanceType: new("active-default"),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				Expect(response.GetWarnings()).To(BeEmpty())
+			})
+
+			It("Rejects Create when spec_defaults references a non-existent instance type", func() {
+				response, err := server.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+					Object: privatev1.ComputeInstanceTemplate_builder{
+						Title:       "Template with missing default",
+						Description: "Template referencing a non-existent instance type.",
+						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
+							InstanceType: new("non-existent-type"),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+			})
 		})
 	})
 })

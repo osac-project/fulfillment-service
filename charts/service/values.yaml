@@ -32,19 +32,17 @@ certs:
   caBundle:
     configMap:
 
-# This defines the hostname used to access the public API from outside the cluster. The default is to use the hostname
-# of the Kubernetes service. For example, if the application is deployed in a namespace named 'osac' then the default
-# hostname will be 'fulfillment-api.osac.svc.cluster.local'.
+# Hostname for the external network, which gives regular users access to the public API. This value is required because
+# the TLS certificates need to be generated with the correct host names. In a typical environment the external network
+# is publicly reachable.
 externalHostname:
 
-# This defines the hostname used to access both the public and private APIs from outside the cluster. It is typically
-# accessible only from the administrator's internal network. The default is to use the hostname of the Kubernetes
-# service. For example, if the application is deployed in a namespace named 'osac' then the default hostname will be
-# 'fulfillment-internal-api.osac.svc.cluster.local'.
-#
-# The administrator is responsible for ensuring that this hostname is accessible only from the internal network and not
-# accessible to regular users. This isn't strictly required because access is subject to authentication and
-# authorization, but it is good practice to restrict network-level access as an additional layer of defense.
+# Hostname for the internal network, which gives administrators access to both the public and private APIs. This value
+# is required because the TLS certificates need to be generated with the correct host names. The internal network should
+# be restricted so that only administrators can reach it. In a typical environment this would be a network confined to
+# the physical infrastructure of the cloud provider. Restricting access is not strictly required because the private API
+# is protected by authentication and authorization, but it is good practice to add network-level isolation as an
+# additional layer of defense.
 internalHostname:
 
 # Authentication and authorization configuration:
@@ -81,6 +79,12 @@ auth:
   # The keys of the ConfigMap and Secret don't need to match the parameter names. In the above example the client
   # identifier is in an `id` key but the credential parameter name is `client-id`.
   controllerCredentials:
+
+  # List of names of Kubernetes service accounts that are allowed to access the private API with administrator
+  # permissions. These are intended only for emergency situations, for example when the regular authentication
+  # mechanisms are not working. The service accounts are expected to be in the namespace where the service is deployed.
+  emergencyServiceAccounts:
+  - admin
 
 # Logging configuration:
 log:
@@ -146,19 +150,16 @@ database:
   # `uri` key but the connection parameter name is `url`.
   connection: []
 
-# Identity provider configuration (optional). When enabled, the controller will start the organization reconciler
-# to manage organizations in the identity provider.
+# Identity provider configuration. The controller uses this to manage tenants in the identity provider via the
+# tenant reconciler. This parameter is mandatory.
 idp:
-
-  # Enable IDP integration for organization management. When disabled, the organization controller will not start.
-  # The default is false.
-  enabled: false
 
   # IDP provider type. Currently only 'keycloak' is supported.
   provider: keycloak
 
-  # Base URL of the identity provider (e.g., https://keycloak.keycloak.svc.cluster.local:8000)
-  url: ""
+  # Base URL of the identity provider (e.g., https://keycloak.keycloak.svc.cluster.local:8000). This parameter is
+  # mandatory.
+  url:
 
   # List of sources for the IDP OAuth client credentials. The controller uses the OAuth client credentials flow to
   # authenticate with the identity provider's admin API. The credentials must have sufficient privileges to manage
@@ -180,5 +181,5 @@ idp:
   # You can reuse the same credentials as auth.controllerCredentials if the osac-controller service account has both
   # API access and IDP management permissions, or use a separate secret for separation of concerns.
   #
-  # The default value is an empty list, meaning no credentials are configured.
-  credentials: []
+  # This parameter is mandatory.
+  credentials:

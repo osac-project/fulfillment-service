@@ -13,6 +13,9 @@
 
 columns:
 
+- header: PROJECT
+  value: "has(this.metadata.project)? this.metadata.project: '-'"
+
 - header: ID
   value: this.id
 
@@ -20,8 +23,8 @@ columns:
   value: "has(this.metadata.name)? this.metadata.name: '-'"
 
 - header: NAMESPACE
-  value: this.namespace
+  value: this.spec.namespace
 
 - header: KUBECONFIG
   value: |
-    "%d bytes".format([size(this.kubeconfig)])
+    "%d bytes".format([size(this.spec.kubeconfig)])

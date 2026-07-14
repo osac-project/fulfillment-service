@@ -216,7 +216,7 @@ func (x SecurityGroupState) Number() protoreflect.EnumNumber {
 // SecurityGroups are scoped to a VirtualNetwork and can be attached to multiple compute instances within that
 // network. They cannot be used across different VirtualNetworks.
 //
-// The parent VirtualNetwork relationship is established via metadata.annotations using the 'osac.io/owner-reference'
+// The parent VirtualNetwork relationship is established via metadata.annotations using the 'osac.openshift.io/owner-reference'
 // key with the VirtualNetwork ID as the value. This enables proper resource hierarchy for garbage collection - when
 // a VirtualNetwork is deleted, all associated SecurityGroups are automatically cleaned up.
 type SecurityGroup struct {
@@ -336,10 +336,10 @@ type SecurityGroup_builder struct {
 
 	// Unique identifier of the security group.
 	Id string
-	// Metadata of the security group, including name, labels, tenants, and timestamps.
+	// Metadata of the security group, including name, labels, tenant, and timestamps.
 	//
 	// The parent VirtualNetwork relationship should be specified via metadata.annotations using the
-	// 'osac.io/owner-reference' key with the VirtualNetwork ID as the value. This establishes resource
+	// 'osac.openshift.io/owner-reference' key with the VirtualNetwork ID as the value. This establishes resource
 	// hierarchy for garbage collection.
 	Metadata *Metadata
 	// Desired configuration of the security group (user-modifiable).

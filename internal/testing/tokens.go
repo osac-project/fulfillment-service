@@ -17,7 +17,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
-	"fmt"
+	"maps"
 	"math/big"
 	"time"
 
@@ -27,24 +27,43 @@ import (
 
 // MakeTokenObject generates a token with the claims resulting from merging the default claims and the claims explicitly
 // given.
-func MakeTokenObject(claims jwt.MapClaims) *jwt.Token {
-	merged := jwt.MapClaims{}
-	for name, value := range MakeClaims() {
-		merged[name] = value
-	}
-	for name, value := range claims {
+func MakeTokenObject(header map[string]any, claims jwt.MapClaims) *jwt.Token {
+	// Merge the headers with the defaults:
+	mergedHeader := MakeHeader()
+	for name, value := range header {
 		if value == nil {
-			delete(merged, name)
+			delete(mergedHeader, name)
 		} else {
-			merged[name] = value
+			mergedHeader[name] = value
 		}
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, merged)
-	token.Header["kid"] = "123"
+
+	// Merge the claims with the defaults:
+	mergedClaims := MakeClaims()
+	for name, value := range claims {
+		if value == nil {
+			delete(mergedClaims, name)
+		} else {
+			mergedClaims[name] = value
+		}
+	}
+
+	// Create and sign the token:
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, mergedClaims)
+	maps.Copy(token.Header, mergedHeader)
 	var err error
 	token.Raw, err = token.SignedString(jwtPrivateKey)
 	Expect(err).ToNot(HaveOccurred())
 	return token
+}
+
+// MakeHeader generates a default set of header values to be used to issue a token.
+func MakeHeader() map[string]any {
+	return map[string]any{
+		"typ": "Bearer",
+		"alg": "RS256",
+		"kid": "123",
+	}
 }
 
 // MakeClaims generates a default set of claims to be used to issue a token.
@@ -63,33 +82,38 @@ func MakeClaims() jwt.MapClaims {
 // MakeTokenString generates a token issued by the default OpenID server and with the given type and with the given
 // life. If the life is zero the token will never expire. If the life is positive the token will be valid, and expire
 // after that time. If the life is negative the token will be already expired that time ago.
-func MakeTokenString(typ string, life time.Duration) string {
+func MakeTokenString(iss, typ string, life time.Duration) string {
 	claims := jwt.MapClaims{}
+	claims["iss"] = iss
 	claims["typ"] = typ
 	if life != 0 {
 		claims["exp"] = time.Now().Add(life).Unix()
 	}
-	token := MakeTokenObject(claims)
+	token := MakeTokenObject(nil, claims)
 	return token.Raw
 }
 
 // DefaultJWKS generates the JSON web key set used for tests.
-func DefaultJWKS() []byte {
+func MakeJwksObject() any {
 	bigE := big.NewInt(int64(jwtPublicKey.E))
 	bigN := jwtPublicKey.N
-	return []byte(fmt.Sprintf(
-		`{
-			"keys": [{
+	return map[string]any{
+		"keys": []any{
+			map[string]any{
 				"kid": "123",
 				"kty": "RSA",
 				"alg": "RS256",
-				"e": "%s",
-				"n": "%s"
-			}]
-		}`,
-		base64.RawURLEncoding.EncodeToString(bigE.Bytes()),
-		base64.RawURLEncoding.EncodeToString(bigN.Bytes()),
-	))
+				"e":   base64.RawURLEncoding.EncodeToString(bigE.Bytes()),
+				"n":   base64.RawURLEncoding.EncodeToString(bigN.Bytes()),
+			},
+		},
+	}
+}
+
+// JwtPublicKey returns the RSA public key used to verify test tokens. This is the counterpart of the private key used
+// by MakeTokenObject and MakeTokenString to sign tokens.
+func JwtPublicKey() *rsa.PublicKey {
+	return jwtPublicKey
 }
 
 // Public and private key that will be used to sign and verify tokens in the tests:

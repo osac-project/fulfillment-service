@@ -39,11 +39,12 @@ type TemplateData struct {
 
 // InstanceData contains compute instance data
 type InstanceData struct {
-	ID        string
-	Name      string
-	Template  string
-	State     publicv1.ComputeInstanceState
-	IPAddress string
+	ID                string
+	Name              string
+	Template          string
+	State             publicv1.ComputeInstanceState
+	InternalIPAddress string
+	PublicIPAddress   string
 }
 
 // YAML parsing structures
@@ -62,11 +63,12 @@ type templateFile struct {
 }
 
 type instanceFile struct {
-	ID        string `yaml:"id"`
-	Name      string `yaml:"name"`
-	Template  string `yaml:"template"`
-	State     string `yaml:"state"`
-	IPAddress string `yaml:"ipAddress"`
+	ID                string `yaml:"id"`
+	Name              string `yaml:"name"`
+	Template          string `yaml:"template"`
+	State             string `yaml:"state"`
+	InternalIPAddress string `yaml:"internalIpAddress"`
+	PublicIPAddress   string `yaml:"publicIpAddress"`
 }
 
 // LoadComputeInstanceScenarioFromFile loads a compute instance scenario from a YAML file
@@ -108,11 +110,12 @@ func (f *computeInstanceScenarioFile) toScenario() (*ComputeInstanceScenario, er
 			return nil, fmt.Errorf("invalid compute instance state %q for instance %q", inst.State, inst.ID)
 		}
 		scenario.Instances[i] = &InstanceData{
-			ID:        inst.ID,
-			Name:      inst.Name,
-			Template:  inst.Template,
-			State:     publicv1.ComputeInstanceState(rawState),
-			IPAddress: inst.IPAddress,
+			ID:                inst.ID,
+			Name:              inst.Name,
+			Template:          inst.Template,
+			State:             publicv1.ComputeInstanceState(rawState),
+			InternalIPAddress: inst.InternalIPAddress,
+			PublicIPAddress:   inst.PublicIPAddress,
 		}
 	}
 
@@ -142,8 +145,9 @@ func (i *InstanceData) ToProtoInstance() *publicv1.ComputeInstance {
 			Template: i.Template,
 		},
 		Status: &publicv1.ComputeInstanceStatus{
-			State:     i.State,
-			IpAddress: i.IPAddress,
+			State:             i.State,
+			InternalIpAddress: i.InternalIPAddress,
+			PublicIpAddress:   i.PublicIPAddress,
 		},
 	}
 }

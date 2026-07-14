@@ -616,6 +616,146 @@ var _ = Describe("Engine", func() {
 		})
 	})
 
+	Context("Template function 'backtick'", func() {
+		It("Returns a single backtick by default", func() {
+			tmp, fsys := TmpFS(
+				"myfile.txt", `{{ backtick }}`,
+			)
+			defer os.RemoveAll(tmp)
+
+			engine, err := NewEngine().
+				SetLogger(logger).
+				AddFS(fsys).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			buffer := &bytes.Buffer{}
+			err = engine.Execute(buffer, "myfile.txt", nil)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buffer.String()).To(Equal("`"))
+		})
+
+		It("Returns the requested number of backticks", func() {
+			tmp, fsys := TmpFS(
+				"myfile.txt", `{{ backtick 3 }}`,
+			)
+			defer os.RemoveAll(tmp)
+
+			engine, err := NewEngine().
+				SetLogger(logger).
+				AddFS(fsys).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			buffer := &bytes.Buffer{}
+			err = engine.Execute(buffer, "myfile.txt", nil)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buffer.String()).To(Equal("```"))
+		})
+
+		It("Returns a single backtick for zero or negative count", func() {
+			tmp, fsys := TmpFS(
+				"myfile.txt", `{{ backtick 0 }}`,
+			)
+			defer os.RemoveAll(tmp)
+
+			engine, err := NewEngine().
+				SetLogger(logger).
+				AddFS(fsys).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			buffer := &bytes.Buffer{}
+			err = engine.Execute(buffer, "myfile.txt", nil)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buffer.String()).To(Equal("`"))
+		})
+	})
+
+	Context("Template function 'evaluate'", func() {
+		It("Evaluates a plain string without template syntax", func() {
+			tmp, fsys := TmpFS(
+				"myfile.txt", `{{ evaluate "hello world" . }}`,
+			)
+			defer os.RemoveAll(tmp)
+
+			engine, err := NewEngine().
+				SetLogger(logger).
+				AddFS(fsys).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			buffer := &bytes.Buffer{}
+			err = engine.Execute(buffer, "myfile.txt", nil)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buffer.String()).To(Equal("hello world"))
+		})
+
+		It("Evaluates template syntax in the string", func() {
+			tmp, fsys := TmpFS(
+				"myfile.txt", `{{ evaluate .Text .Data }}`,
+			)
+			defer os.RemoveAll(tmp)
+
+			engine, err := NewEngine().
+				SetLogger(logger).
+				AddFS(fsys).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			buffer := &bytes.Buffer{}
+			err = engine.Execute(buffer, "myfile.txt", map[string]any{
+				"Text": "name={{ .Name }}",
+				"Data": map[string]any{"Name": "Joe"},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buffer.String()).To(Equal("name=Joe"))
+		})
+
+		It("Has access to built-in functions", func() {
+			tmp, fsys := TmpFS(
+				"myfile.txt", `{{ evaluate .Text . }}`,
+			)
+			defer os.RemoveAll(tmp)
+
+			engine, err := NewEngine().
+				SetLogger(logger).
+				AddFS(fsys).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			buffer := &bytes.Buffer{}
+			err = engine.Execute(buffer, "myfile.txt", map[string]any{
+				"Text": "{{ backtick 3 }}shell{{ backtick 3 }}",
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buffer.String()).To(Equal("```shell```"))
+		})
+
+		It("Has access to custom functions", func() {
+			tmp, fsys := TmpFS(
+				"myfile.txt", `{{ evaluate .Text . }}`,
+			)
+			defer os.RemoveAll(tmp)
+
+			engine, err := NewEngine().
+				SetLogger(logger).
+				AddFS(fsys).
+				AddFunction("greet", func(name string) string {
+					return "hello " + name
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			buffer := &bytes.Buffer{}
+			err = engine.Execute(buffer, "myfile.txt", map[string]any{
+				"Text": `{{ greet "world" }}`,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buffer.String()).To(Equal("hello world"))
+		})
+	})
+
 	Context("Custom functions", func() {
 		It("Supports adding a single custom function", func() {
 			// Create the file system:

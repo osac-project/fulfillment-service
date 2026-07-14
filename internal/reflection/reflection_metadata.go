@@ -16,6 +16,8 @@ package reflection
 // Metadata is an interface that provides access to common metadata fields in protobuf messages.
 type Metadata interface {
 	GetName() string
+	GetTenant() string
+	SetTenant(string)
 	GetLabels() map[string]string
 	SetLabels(map[string]string)
 	GetAnnotations() map[string]string

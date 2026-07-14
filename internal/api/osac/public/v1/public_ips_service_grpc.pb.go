@@ -35,6 +35,7 @@ const (
 	PublicIPs_List_FullMethodName   = "/osac.public.v1.PublicIPs/List"
 	PublicIPs_Get_FullMethodName    = "/osac.public.v1.PublicIPs/Get"
 	PublicIPs_Create_FullMethodName = "/osac.public.v1.PublicIPs/Create"
+	PublicIPs_Update_FullMethodName = "/osac.public.v1.PublicIPs/Update"
 	PublicIPs_Delete_FullMethodName = "/osac.public.v1.PublicIPs/Delete"
 )
 
@@ -48,6 +49,8 @@ type PublicIPsClient interface {
 	Get(ctx context.Context, in *PublicIPsGetRequest, opts ...grpc.CallOption) (*PublicIPsGetResponse, error)
 	// Creates a new public IP. The spec.pool field determines which PublicIPPool the address is allocated from.
 	Create(ctx context.Context, in *PublicIPsCreateRequest, opts ...grpc.CallOption) (*PublicIPsCreateResponse, error)
+	// Updates an existing public IP. Allows modifying spec.compute_instance and metadata (labels, annotations).
+	Update(ctx context.Context, in *PublicIPsUpdateRequest, opts ...grpc.CallOption) (*PublicIPsUpdateResponse, error)
 	// Deletes a public IP. The allocated address is returned to the parent pool's available capacity.
 	Delete(ctx context.Context, in *PublicIPsDeleteRequest, opts ...grpc.CallOption) (*PublicIPsDeleteResponse, error)
 }
@@ -90,6 +93,16 @@ func (c *publicIPsClient) Create(ctx context.Context, in *PublicIPsCreateRequest
 	return out, nil
 }
 
+func (c *publicIPsClient) Update(ctx context.Context, in *PublicIPsUpdateRequest, opts ...grpc.CallOption) (*PublicIPsUpdateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublicIPsUpdateResponse)
+	err := c.cc.Invoke(ctx, PublicIPs_Update_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *publicIPsClient) Delete(ctx context.Context, in *PublicIPsDeleteRequest, opts ...grpc.CallOption) (*PublicIPsDeleteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PublicIPsDeleteResponse)
@@ -110,6 +123,8 @@ type PublicIPsServer interface {
 	Get(context.Context, *PublicIPsGetRequest) (*PublicIPsGetResponse, error)
 	// Creates a new public IP. The spec.pool field determines which PublicIPPool the address is allocated from.
 	Create(context.Context, *PublicIPsCreateRequest) (*PublicIPsCreateResponse, error)
+	// Updates an existing public IP. Allows modifying spec.compute_instance and metadata (labels, annotations).
+	Update(context.Context, *PublicIPsUpdateRequest) (*PublicIPsUpdateResponse, error)
 	// Deletes a public IP. The allocated address is returned to the parent pool's available capacity.
 	Delete(context.Context, *PublicIPsDeleteRequest) (*PublicIPsDeleteResponse, error)
 	mustEmbedUnimplementedPublicIPsServer()
@@ -130,6 +145,9 @@ func (UnimplementedPublicIPsServer) Get(context.Context, *PublicIPsGetRequest) (
 }
 func (UnimplementedPublicIPsServer) Create(context.Context, *PublicIPsCreateRequest) (*PublicIPsCreateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Create not implemented")
+}
+func (UnimplementedPublicIPsServer) Update(context.Context, *PublicIPsUpdateRequest) (*PublicIPsUpdateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Update not implemented")
 }
 func (UnimplementedPublicIPsServer) Delete(context.Context, *PublicIPsDeleteRequest) (*PublicIPsDeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
@@ -209,6 +227,24 @@ func _PublicIPs_Create_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PublicIPs_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublicIPsUpdateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PublicIPsServer).Update(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PublicIPs_Update_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PublicIPsServer).Update(ctx, req.(*PublicIPsUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _PublicIPs_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PublicIPsDeleteRequest)
 	if err := dec(in); err != nil {
@@ -245,6 +281,10 @@ var PublicIPs_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Create",
 			Handler:    _PublicIPs_Create_Handler,
+		},
+		{
+			MethodName: "Update",
+			Handler:    _PublicIPs_Update_Handler,
 		},
 		{
 			MethodName: "Delete",

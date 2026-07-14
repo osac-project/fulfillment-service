@@ -15,14 +15,14 @@ package console
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"fmt"
+	"net"
+	"net/http"
 	"time"
 
+	"github.com/coder/websocket"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"golang.org/x/net/websocket"
-	"k8s.io/client-go/rest"
 )
 
 var _ = Describe("KubeVirt Backend Integration", func() {
@@ -37,58 +37,9 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		DeferCleanup(wsServer.Close)
 	})
 
-	It("should connect to mock KubeVirt console and exchange data", func() {
-		backend, err := NewKubeVirtBackend().
-			SetLogger(logger).
-			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
-				return &rest.Config{
-					Host: "ws://" + wsServer.Addr(),
-					TLSClientConfig: rest.TLSClientConfig{
-						Insecure: true,
-					},
-				}, nil
-			}).
-			Build()
-		Expect(err).NotTo(HaveOccurred())
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		conn, err := backend.Connect(ctx, Target{
-			HubID:     "hub-1",
-			Namespace: "test-ns",
-			VMName:    "test-vm",
-		})
-		Expect(err).NotTo(HaveOccurred())
-		defer conn.Close()
-
-		// Read the banner.
-		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(buf[:n])).To(Equal("Welcome to mock console\r\n"))
-
-		// Send data.
-		_, err = conn.Write([]byte("hello"))
-		Expect(err).NotTo(HaveOccurred())
-
-		// Read the echo.
-		n, err = conn.Read(buf)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(buf[:n])).To(Equal("echo: hello"))
-	})
-
 	It("should connect through the Manager and exchange data", func() {
 		backend, err := NewKubeVirtBackend().
 			SetLogger(logger).
-			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
-				return &rest.Config{
-					Host: "ws://" + wsServer.Addr(),
-					TLSClientConfig: rest.TLSClientConfig{
-						Insecure: true,
-					},
-				}, nil
-			}).
 			Build()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -101,66 +52,53 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		conn, err := mgr.Connect(ctx, Target{
+		target := Target{
 			ResourceType: "compute_instance",
-			ResourceID:   "ci-123",
-			HubID:        "hub-1",
-			Namespace:    "test-ns",
-			VMName:       "test-vm",
-		}, "testuser")
+			BackendURI:   "ws://" + wsServer.Addr() + "/apis/console.osac.openshift.io/v1alpha1/namespaces/test-ns/computeinstances/test-vm/console",
+		}
+		result, err := mgr.Connect(ctx, target, "testuser", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mgr.ActiveSessions()).To(Equal(1))
-		defer conn.Close()
+		defer result.Conn.Close()
 
 		// Read banner.
 		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
+		n, err := result.Conn.Read(buf)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(buf[:n])).To(ContainSubstring("Welcome"))
 
 		// Send and receive.
-		_, err = conn.Write([]byte("ls\n"))
+		_, err = result.Conn.Write([]byte("ls\n"))
 		Expect(err).NotTo(HaveOccurred())
 
-		n, err = conn.Read(buf)
+		n, err = result.Conn.Read(buf)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(buf[:n])).To(Equal("echo: ls\n"))
 
 		// Close and verify session removed.
-		err = conn.Close()
+		err = result.Conn.Close()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mgr.ActiveSessions()).To(Equal(0))
 	})
 
 	It("should handle server-side connection close gracefully", func() {
 		// Create a mock WS server that sends banner then closes the WebSocket.
-		closeServer, err := newMockWSServerWithHandler(func(ws *websocket.Conn) {
-			ws.PayloadType = websocket.BinaryFrame
-			ws.Write([]byte("goodbye\r\n"))
+		closeServer, err := newMockWSServerWithHandler(func(ctx context.Context, conn *websocket.Conn) {
+			conn.Write(ctx, websocket.MessageBinary, []byte("goodbye\r\n"))
 			// Close the WebSocket connection immediately after banner.
-			ws.Close()
+			conn.Close(websocket.StatusNormalClosure, "")
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(closeServer.Close)
 
 		backend, err := NewKubeVirtBackend().
 			SetLogger(logger).
-			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
-				return &rest.Config{
-					Host: "ws://" + closeServer.Addr(),
-					TLSClientConfig: rest.TLSClientConfig{
-						Insecure: true,
-					},
-				}, nil
-			}).
 			Build()
 		Expect(err).NotTo(HaveOccurred())
 
 		ctx := context.Background()
 		conn, err := backend.Connect(ctx, Target{
-			HubID:     "hub-1",
-			Namespace: "test-ns",
-			VMName:    "test-vm",
+			BackendURI: "ws://" + closeServer.Addr() + "/apis/console.osac.openshift.io/v1alpha1/namespaces/test-ns/computeinstances/test-vm/console",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -180,14 +118,6 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 	It("should reject concurrent sessions to the same resource", func() {
 		backend, err := NewKubeVirtBackend().
 			SetLogger(logger).
-			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
-				return &rest.Config{
-					Host: "ws://" + wsServer.Addr(),
-					TLSClientConfig: rest.TLSClientConfig{
-						Insecure: true,
-					},
-				}, nil
-			}).
 			Build()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -200,47 +130,33 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		ctx := context.Background()
 		target := Target{
 			ResourceType: "compute_instance",
-			ResourceID:   "ci-same",
-			HubID:        "hub-1",
-			Namespace:    "test-ns",
-			VMName:       "test-vm",
+			BackendURI:   "ws://" + wsServer.Addr() + "/apis/console.osac.openshift.io/v1alpha1/namespaces/test-ns/computeinstances/test-vm/console",
 		}
 
-		conn1, err := mgr.Connect(ctx, target, "user1")
+		result1, err := mgr.Connect(ctx, target, "user1", "")
 		Expect(err).NotTo(HaveOccurred())
-		defer conn1.Close()
+		defer result1.Conn.Close()
 
 		// Second connection to same resource should fail.
-		_, err = mgr.Connect(ctx, target, "user2")
+		_, err = mgr.Connect(ctx, target, "user2", "")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("already has an active console session"))
 
 		// After closing first, second should succeed.
-		conn1.Close()
-		conn2, err := mgr.Connect(ctx, target, "user2")
+		result1.Conn.Close()
+		result2, err := mgr.Connect(ctx, target, "user2", "")
 		Expect(err).NotTo(HaveOccurred())
-		conn2.Close()
+		result2.Conn.Close()
 	})
 
-	It("should send BearerToken in Authorization header to the server", func() {
+	It("should send bearer token in Authorization header to the server", func() {
 		receivedAuth := make(chan string, 1)
-		authServer, err := newMockWSServerWithHandler(func(ws *websocket.Conn) {
-			receivedAuth <- ws.Request().Header.Get("Authorization")
-			ws.PayloadType = websocket.BinaryFrame
-			ws.Write([]byte("authenticated\r\n"))
-			ws.Close()
-		})
+		authListener, err := newMockWSServerWithAuthCapture(receivedAuth)
 		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(authServer.Close)
+		DeferCleanup(authListener.Close)
 
 		backend, err := NewKubeVirtBackend().
 			SetLogger(logger).
-			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
-				return &rest.Config{
-					Host:        "ws://" + authServer.Addr(),
-					BearerToken: "test-token-123",
-				}, nil
-			}).
 			Build()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -248,7 +164,8 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		defer cancel()
 
 		conn, err := backend.Connect(ctx, Target{
-			HubID: "hub-1", Namespace: "test-ns", VMName: "test-vm",
+			BackendURI:   "ws://" + authListener.Addr() + "/apis/console.osac.openshift.io/v1alpha1/namespaces/test-ns/computeinstances/test-vm/console",
+			BackendToken: "test-token-123",
 		})
 		Expect(err).NotTo(HaveOccurred())
 		defer conn.Close()
@@ -259,47 +176,35 @@ var _ = Describe("KubeVirt Backend Integration", func() {
 		Expect(string(buf[:n])).To(Equal("authenticated\r\n"))
 		Expect(receivedAuth).To(Receive(Equal("Bearer test-token-123")))
 	})
-
-	It("should send BearerTokenFile in Authorization header to the server", func() {
-		tokenDir := GinkgoT().TempDir()
-		tokenFile := filepath.Join(tokenDir, "token")
-		err := os.WriteFile(tokenFile, []byte("file-token-456"), 0600)
-		Expect(err).NotTo(HaveOccurred())
-
-		receivedAuth := make(chan string, 1)
-		authServer, err := newMockWSServerWithHandler(func(ws *websocket.Conn) {
-			receivedAuth <- ws.Request().Header.Get("Authorization")
-			ws.PayloadType = websocket.BinaryFrame
-			ws.Write([]byte("ok\r\n"))
-			ws.Close()
-		})
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(authServer.Close)
-
-		backend, err := NewKubeVirtBackend().
-			SetLogger(logger).
-			SetHubConfigProvider(func(ctx context.Context, hubID string) (*rest.Config, error) {
-				return &rest.Config{
-					Host:            "ws://" + authServer.Addr(),
-					BearerTokenFile: tokenFile,
-				}, nil
-			}).
-			Build()
-		Expect(err).NotTo(HaveOccurred())
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		conn, err := backend.Connect(ctx, Target{
-			HubID: "hub-1", Namespace: "test-ns", VMName: "test-vm",
-		})
-		Expect(err).NotTo(HaveOccurred())
-		defer conn.Close()
-
-		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(buf[:n])).To(Equal("ok\r\n"))
-		Expect(receivedAuth).To(Receive(Equal("Bearer file-token-456")))
-	})
 })
+
+// newMockWSServerWithAuthCapture creates a mock WS server that captures the
+// Authorization header from the HTTP upgrade request into a channel.
+func newMockWSServerWithAuthCapture(authCh chan<- string) (*mockWSServer, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen: %w", err)
+	}
+
+	m := &mockWSServer{listener: listener}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/apis/console.osac.openshift.io/v1alpha1/namespaces/", func(w http.ResponseWriter, r *http.Request) {
+		authCh <- r.Header.Get("Authorization")
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		conn.SetReadLimit(-1)
+		conn.Write(r.Context(), websocket.MessageBinary, []byte("authenticated\r\n"))
+		conn.Close(websocket.StatusNormalClosure, "")
+	})
+
+	m.server = &http.Server{Handler: mux}
+	go m.server.Serve(listener)
+
+	return m, nil
+}

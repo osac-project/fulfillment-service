@@ -14,14 +14,15 @@ language governing permissions and limitations under the License.
 package database
 
 import (
+	"context"
 	"log/slog"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
 	"github.com/osac-project/fulfillment-service/internal/logging"
-	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
 
 func TestDatabase(t *testing.T) {
@@ -30,19 +31,35 @@ func TestDatabase(t *testing.T) {
 }
 
 var (
-	logger   *slog.Logger
-	dbServer *DatabaseServer
+	logger *slog.Logger
+	server *Container
 )
 
 var _ = BeforeSuite(func() {
 	var err error
 
+	ctx := context.Background()
+
+	// Create the logger:
 	logger, err = logging.NewLogger().
-		SetLevel("debug").
+		SetLevel(slog.LevelDebug.String()).
 		SetOut(GinkgoWriter).
 		Build()
 	Expect(err).ToNot(HaveOccurred())
 
-	dbServer = MakeDatabaseServer()
-	DeferCleanup(dbServer.Close)
+	// Create and start the database server:
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	DeferCleanup(cancel)
+	server, err = NewContainer().
+		SetLogger(logger).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+	err = server.Start(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		err = server.Stop(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	})
 })

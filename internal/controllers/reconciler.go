@@ -336,8 +336,16 @@ func (b *ReconcilerBuilder[O]) findListMethod() (name string, request, response 
 // Start starts the controller. To stop it cancel the context.
 func (c *Reconciler[O]) Start(ctx context.Context) error {
 	// Start the watch and sync loops:
-	go c.watchLoop.Run(ctx)
-	go c.syncLoop.Run(ctx)
+	go func() {
+		if err := c.watchLoop.Run(ctx); err != nil {
+			c.logger.ErrorContext(ctx, "Watch loop failed", slog.Any("error", err))
+		}
+	}()
+	go func() {
+		if err := c.syncLoop.Run(ctx); err != nil {
+			c.logger.ErrorContext(ctx, "Sync loop failed", slog.Any("error", err))
+		}
+	}()
 
 	// Run the reconcile loop:
 	for {

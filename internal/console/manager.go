@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"sync"
 	"time"
 )
@@ -43,7 +42,9 @@ type Manager struct {
 type session struct {
 	resourceKey string
 	user        string
+	clientID    string
 	startedAt   time.Time
+	ctx         context.Context
 	cancel      context.CancelFunc
 }
 
@@ -51,7 +52,7 @@ type session struct {
 func NewManager() *ManagerBuilder {
 	return &ManagerBuilder{
 		backends:       make(map[string]Backend),
-		sessionTimeout: defaultSessionTimeout(),
+		sessionTimeout: DefaultSessionTimeout,
 	}
 }
 
@@ -85,24 +86,58 @@ func (b *ManagerBuilder) Build() (*Manager, error) {
 	}, nil
 }
 
+// ConnectResult holds the result of a successful Manager.Connect call.
+type ConnectResult struct {
+	// Conn is the bidirectional connection to the backend console.
+	Conn io.ReadWriteCloser
+
+	// SessionCtx is cancelled when the session ends — by eviction, timeout,
+	// or parent context cancellation. Callers should pass this to the relay
+	// so that session lifecycle events terminate the proxy.
+	SessionCtx context.Context
+}
+
 // Connect establishes a console connection to the target resource.
-// It returns an io.ReadWriteCloser for bidirectional communication.
-// The returned connection is closed when ctx is cancelled or the session times out.
-func (m *Manager) Connect(ctx context.Context, target Target, user string) (io.ReadWriteCloser, error) {
+// The returned ConnectResult contains both the connection and the session context.
+//
+// target.BackendURI is the session identity for deduplication — two connections
+// with the same BackendURI are considered the same console endpoint.
+//
+// If clientID is non-empty and matches an existing session from the same user,
+// the stale session is evicted and the new connection is admitted. This handles
+// reconnection after unclean TCP disconnects.
+func (m *Manager) Connect(ctx context.Context, target Target, user, clientID string) (*ConnectResult, error) {
+	if target.BackendURI == "" {
+		return nil, fmt.Errorf("backend URI is required")
+	}
+
 	backend, ok := m.backends[target.ResourceType]
 	if !ok {
 		return nil, fmt.Errorf("unsupported resource type %q", target.ResourceType)
 	}
 
-	// Check for existing session on this resource.
-	sessionKey := fmt.Sprintf("%s/%s", target.ResourceType, target.ResourceID)
+	sessionKey := target.BackendURI
+
+	var oldCancel context.CancelFunc
+
 	m.sessionsLock.Lock()
 	if existing, ok := m.sessions[sessionKey]; ok {
-		m.sessionsLock.Unlock()
-		return nil, &ErrSessionExists{
-			Resource: sessionKey,
-			User:     existing.user,
-			Since:    existing.startedAt.Format(time.RFC3339),
+		if clientID != "" && existing.clientID == clientID && existing.user == user {
+			m.logger.InfoContext(ctx, "Evicting stale console session",
+				slog.String("resource", sessionKey),
+				slog.String("user", user),
+				slog.String("client_id", clientID),
+				slog.Duration("age", time.Since(existing.startedAt)),
+			)
+			oldCancel = existing.cancel
+			delete(m.sessions, sessionKey)
+		} else {
+			m.sessionsLock.Unlock()
+			return nil, &ErrSessionExists{
+				Resource: sessionKey,
+				User:     existing.user,
+				Since:    existing.startedAt.Format(time.RFC3339),
+			}
 		}
 	}
 
@@ -111,11 +146,17 @@ func (m *Manager) Connect(ctx context.Context, target Target, user string) (io.R
 	s := &session{
 		resourceKey: sessionKey,
 		user:        user,
+		clientID:    clientID,
 		startedAt:   time.Now(),
+		ctx:         sessionCtx,
 		cancel:      sessionCancel,
 	}
 	m.sessions[sessionKey] = s
 	m.sessionsLock.Unlock()
+
+	if oldCancel != nil {
+		oldCancel()
+	}
 
 	m.logger.InfoContext(ctx, "Opening console session",
 		slog.String("resource", sessionKey),
@@ -125,16 +166,18 @@ func (m *Manager) Connect(ctx context.Context, target Target, user string) (io.R
 
 	conn, err := backend.Connect(sessionCtx, target)
 	if err != nil {
-		m.removeSession(sessionKey)
+		m.removeSession(sessionKey, s)
 		sessionCancel()
 		return nil, err
 	}
 
-	return &managedConnection{
-		ReadWriteCloser: conn,
-		manager:         m,
-		sessionKey:      sessionKey,
-		cancel:          sessionCancel,
+	return &ConnectResult{
+		Conn: &managedConnection{
+			ReadWriteCloser: conn,
+			manager:         m,
+			session:         s,
+		},
+		SessionCtx: sessionCtx,
 	}, nil
 }
 
@@ -161,40 +204,37 @@ func (m *Manager) CancelSessions() {
 	m.sessionsLock.Unlock()
 }
 
-func (m *Manager) removeSession(key string) {
+func (m *Manager) removeSession(key string, owner *session) {
 	m.sessionsLock.Lock()
 	defer m.sessionsLock.Unlock()
-	delete(m.sessions, key)
+	if m.sessions[key] == owner {
+		delete(m.sessions, key)
+	}
 }
 
 // managedConnection wraps an io.ReadWriteCloser and removes the session on close.
 type managedConnection struct {
 	io.ReadWriteCloser
-	manager    *Manager
-	sessionKey string
-	cancel     context.CancelFunc
-	closeOnce  sync.Once
+	manager   *Manager
+	session   *session
+	closeOnce sync.Once
 }
 
 func (c *managedConnection) Close() error {
 	var err error
 	c.closeOnce.Do(func() {
-		c.manager.logger.Info("Closing console session",
-			slog.String("resource", c.sessionKey),
-		)
+		attrs := []any{
+			slog.String("resource", c.session.resourceKey),
+			slog.String("user", c.session.user),
+			slog.Duration("duration", time.Since(c.session.startedAt)),
+		}
+		if ctxErr := c.session.ctx.Err(); ctxErr != nil {
+			attrs = append(attrs, slog.String("reason", ctxErr.Error()))
+		}
+		c.manager.logger.Info("Closing console session", attrs...)
 		err = c.ReadWriteCloser.Close()
-		c.manager.removeSession(c.sessionKey)
-		c.cancel()
+		c.manager.removeSession(c.session.resourceKey, c.session)
+		c.session.cancel()
 	})
 	return err
-}
-
-func defaultSessionTimeout() time.Duration {
-	if v := os.Getenv("OSAC_CONSOLE_SESSION_TIMEOUT"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err == nil {
-			return d
-		}
-	}
-	return 30 * time.Minute
 }

@@ -19,32 +19,53 @@ on:
     branches:
     - main
 
+permissions:
+  contents: read
+
 jobs:
 
   check-pre-commit:
     name: Check pre-commit
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
-    - uses: actions/setup-python@v6
-    - uses: pre-commit/action@v3.0.1
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+    - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
+      with:
+        extra_args: -c .pre-commit-config-ci.yaml
 
-  check-code-format:
-    name: Check code format
+  check-python-code:
+    name: Check Python code
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-python
+    - run: uv run ruff check
+
+  check-go-code:
+    name: Check Go code
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      with:
+        persist-credentials: false
     - uses: ./.github/actions/setup-go
+    - uses: ./.github/actions/setup-python
     - run: |
-        gofmt -s -l -w .
-        git diff --exit-code
+        uv run dev.py lint
 
   check-generated-code:
     name: Check generated code
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
-    - uses: bufbuild/buf-action@v1
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      with:
+        persist-credentials: false
+    - uses: bufbuild/buf-action@fd21066df7214747548607aaa45548ba2b9bc1ff  # v1
       with:
         version: '1.50.0'
         setup_only: true
@@ -52,57 +73,14 @@ jobs:
         buf generate
         git diff --exit-code
 
-  run-unit-tests:
-    name: Run unit tests
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v6
-    - uses: ./.github/actions/setup-go
-    - run: |
-        ginkgo run -r internal
-
   build-binaries:
     name: Build binaries
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      with:
+        persist-credentials: false
     - uses: ./.github/actions/setup-go
-    - uses: goreleaser/goreleaser-action@v7
+    - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7
       with:
         args: build --snapshot --clean
-
-  run-integration-tests-helm:
-    name: Run integration tests - Helm
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v6
-    - uses: ./.github/actions/setup-go
-    - run: |
-        echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
-        IT_DEPLOY_MODE=helm ginkgo run -v it
-    - if: always()
-      uses: actions/upload-artifact@v7
-      with:
-        name: logs-helm
-        path: logs
-        retention-days: 7
-
-  run-integration-tests-kustomize:
-    name: Run integration tests - Kustomize
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v6
-    - uses: ./.github/actions/setup-go
-    - run: |
-        echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
-        echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
-        IT_DEPLOY_MODE=kustomize ginkgo run -v it
-    - if: always()
-      uses: actions/upload-artifact@v7
-      with:
-        name: logs-kustomize
-        path: logs
-        retention-days: 7

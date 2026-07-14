@@ -25,7 +25,7 @@ import (
 
 func TestAPIClient(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "APIClient package")
+	RunSpecs(t, "API client package")
 }
 
 var (

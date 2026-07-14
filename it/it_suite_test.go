@@ -40,10 +40,6 @@ type Config struct {
 	// By default, the application chart is uninstalled after running the tests.
 	KeepService bool `json:"keep_service" envconfig:"keep_service" default:"false"`
 
-	// DeployMode indicates how to deploy the service. Valid values are 'helm' and 'kustomize'.
-	// By default, the service is deployed using Helm.
-	DeployMode string `json:"deploy_mode" envconfig:"deploy_mode" default:"helm"`
-
 	// Debug indicates if the debug mode should be enabled. This means that the debugger binary will be added to
 	// the container image, and that the services will be started under the control of the debugger. Access to the
 	// debugger will be done via the following ports:
@@ -53,9 +49,18 @@ type Config struct {
 	// - Controller: 30003
 	Debug bool `json:"debug" envconfig:"debug" default:"false"`
 
-	// ClientSecret indicates the client secret that will be used for the service accounts that will be created. If
-	// not specified then a random secret will be generated.
-	ClientSecret string `json:"client_secret" envconfig:"client_secret" default:""`
+	// Secret is the secret used in all places where passwords or secrets are needed, such as service account
+	// client secrets and user passwords. If the environment variable is set then that value will be used, otherwise
+	// a random one will be generated.
+	Secret string `json:"secret" envconfig:"secret" default:""`
+
+	// CaKey is the path to a PEM file containing a pre-generated CA private key. When both CaKey and CaCrt are
+	// set, the integration tests will use these files instead of generating a new CA each run.
+	CaKey string `json:"ca_key" envconfig:"ca_key" default:""`
+
+	// CaCrt is the path to a PEM file containing a pre-generated CA certificate. When both CaKey and CaCrt are
+	// set, the integration tests will use these files instead of generating a new CA each run.
+	CaCrt string `json:"ca_crt" envconfig:"ca_crt" default:""`
 }
 
 var (
@@ -95,39 +100,30 @@ var _ = BeforeSuite(func() {
 		"Configuration",
 		slog.Bool("keep_kind", config.KeepKind),
 		slog.Bool("keep_service", config.KeepService),
-		slog.String("deploy_mode", config.DeployMode),
 		slog.Bool("debug", config.Debug),
-		slog.String("!client_secret", config.ClientSecret),
+		slog.String("!secret", config.Secret),
+		slog.Bool("ca_key_set", config.CaKey != ""),
+		slog.Bool("ca_crt_set", config.CaCrt != ""),
 	)
-
-	// Debug mode isn't compatible with the Kustomize deployment mode:
-	if config.Debug && config.DeployMode == deployModeKustomize {
-		Fail(
-			"Debug mode isn't compatible with the Kustomize deployment mode, either set IT_DEPLOY_MODE to " +
-				"'helm' or set IT_DEBUG to 'false'",
-		)
-	}
 
 	// Create and setup the tool:
 	tool, err = NewTool().
 		SetLogger(logger).
 		SetKeepCluster(config.KeepKind).
 		SetKeepService(config.KeepService).
-		SetDeployMode(config.DeployMode).
 		SetDebug(config.Debug).
-		SetClientSecret(config.ClientSecret).
+		SetSecret(config.Secret).
+		SetCaFiles(config.CaKey, config.CaCrt).
 		AddCrdFile(filepath.Join("crds", "clusterorders.osac.openshift.io.yaml")).
 		AddCrdFile(filepath.Join("crds", "hostedclusters.hypershift.openshift.io.yaml")).
+		AddCrdFile(filepath.Join("crds", "tenants.osac.openshift.io.yaml")).
+		AddCrdFile(filepath.Join("crds", "osac.openshift.io_baremetalinstances.yaml")).
 		Build()
 	Expect(err).ToNot(HaveOccurred())
 	err = tool.Setup(ctx)
 	Expect(err).ToNot(HaveOccurred())
 	DeferCleanup(func() {
 		err := tool.Cleanup(ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
-	DeferCleanup(func() {
-		err := tool.Dump(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 })

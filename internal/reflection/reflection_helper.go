@@ -35,24 +35,49 @@ import (
 	_ "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
 
-// Frequently used names:
-const (
-	// Methods:
-	createMethodName = protoreflect.Name("Create")
-	deleteMethodName = protoreflect.Name("Delete")
-	getMethodName    = protoreflect.Name("Get")
-	listMethodName   = protoreflect.Name("List")
-	updateMethodName = protoreflect.Name("Update")
+// Helper simplifies use of the protocol buffers reflection facility. It knows how to extract from the descriptors the
+// list of message types that satisfy the conditions to be considered objects, as well as the services that support them
+// and the methods to get, list, update and delete instances.
+//
+//go:generate mockgen -destination=reflection_helper_mock.go -package=reflection . Helper
+type Helper interface {
+	// Names returns the full names of the object types. The results are sorted by the order of the packages, and
+	// alphabetically within each package.
+	Names() []string
 
-	// Fields:
-	filterFieldName   = protoreflect.Name("filter")
-	idFieldName       = protoreflect.Name("id")
-	itemsFieldName    = protoreflect.Name("items")
-	limitFieldName    = protoreflect.Name("limit")
-	metadataFieldName = protoreflect.Name("metadata")
-	objectFieldName   = protoreflect.Name("object")
-	totalFieldName    = protoreflect.Name("total")
-)
+	// Singulars returns the object types in singular. The results are in lower case and sorted alphabetically.
+	Singulars() []string
+
+	// Plurals returns the object types in plural. The results are in lower case and sorted alphabetically.
+	Plurals() []string
+
+	// Lookup returns the helper for the given object type. Returns nil if there is no such object.
+	Lookup(objectType string) ObjectHelper
+}
+
+// ObjectHelper contains information about a message type that satisfies the conditions to be considered an object.
+//
+//go:generate mockgen -destination=reflection_object_helper_mock.go -package=reflection . ObjectHelper
+type ObjectHelper interface {
+	Descriptor() protoreflect.MessageDescriptor
+	Instance() proto.Message
+	FullName() protoreflect.FullName
+	String() string
+	Singular() string
+	Plural() string
+	List(ctx context.Context, options ListOptions) (ListResult, error)
+	Get(ctx context.Context, id string) (proto.Message, error)
+	GetId(object proto.Message) string
+	GetName(object proto.Message) string
+	GetMetadata(object proto.Message) Metadata
+	Create(ctx context.Context, object proto.Message) (proto.Message, error)
+	Update(ctx context.Context, object proto.Message) (proto.Message, error)
+	Delete(ctx context.Context, id string) error
+	FindObject(ctx context.Context, ref string, console Renderer) (proto.Message, error)
+	SetTenant(object proto.Message, tenant string)
+	GetTenant(object proto.Message) string
+	IsTenantScoped() bool
+}
 
 // HelperBuilder contains the data and logic needed to create a reflection helper.
 //
@@ -61,19 +86,17 @@ type HelperBuilder struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
 	packages   map[string]int
+	tenantFunc any
 }
 
-// Helper simplifies use of the protocol buffers reflection facility. It knows how to extract from the descriptors the
-// list of message types that satisfy the conditions to be considered objects, as well as the services that support them
-// and the methods to get, list, update and delete instances.
-//
-// Don't create instances of this type directly, use the NewHelper function instead.
-type Helper struct {
+// helper is the default implementation of the Helper interface.
+type helper struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
 	packages   map[protoreflect.FullName]int
 	scanOnce   *sync.Once
-	helpers    []ObjectHelper
+	helpers    []objectHelper
+	tenantFunc func(context.Context) (string, error)
 }
 
 // NewHelper creates a builder that can then be used to configure a reflection helper.
@@ -115,8 +138,23 @@ func (b *HelperBuilder) AddPackages(values map[string]int) *HelperBuilder {
 	return b
 }
 
+// SetTenantFunc sets the function that returns the tenant. When this is set the helper will call the function to obtain
+// the tenant, and if it isn't empty, it will use it to automatically filter the results by tenant, as well as to set
+// automatically the tenant on new objects. The function can be of the following types:
+//
+//   - func() string
+//   - func(context.Context) string
+//   - func() (string, error)
+//   - func(context.Context) (string, error)
+//
+// The Build method will verify that the function matches one of these signatures.
+func (b *HelperBuilder) SetTenantFunc(value any) *HelperBuilder {
+	b.tenantFunc = value
+	return b
+}
+
 // Build uses the data stored in the builder to create a new reflection helper.
-func (b *HelperBuilder) Build() (result *Helper, err error) {
+func (b *HelperBuilder) Build() (result Helper, err error) {
 	// Check the parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
@@ -131,6 +169,15 @@ func (b *HelperBuilder) Build() (result *Helper, err error) {
 		return
 	}
 
+	// Normalize the tenant function to a canonical signature:
+	var tenantFunc func(context.Context) (string, error)
+	if b.tenantFunc != nil {
+		tenantFunc, err = NormalizeFunc[string](b.tenantFunc)
+		if err != nil {
+			return
+		}
+	}
+
 	// Prepare the set of packages:
 	packages := make(map[protoreflect.FullName]int, len(b.packages))
 	for name, order := range b.packages {
@@ -138,23 +185,24 @@ func (b *HelperBuilder) Build() (result *Helper, err error) {
 	}
 
 	// Create and populate the object:
-	result = &Helper{
+	result = &helper{
 		logger:     b.logger,
 		packages:   packages,
 		connection: b.connection,
 		scanOnce:   &sync.Once{},
-		helpers:    []ObjectHelper{},
+		helpers:    []objectHelper{},
+		tenantFunc: tenantFunc,
 	}
 	return
 }
 
-func (h *Helper) scanIfNeeded() {
+func (h *helper) scanIfNeeded() {
 	h.scanOnce.Do(func() {
 		h.scan()
 	})
 }
 
-func (h *Helper) scan() {
+func (h *helper) scan() {
 	protoregistry.GlobalFiles.RangeFiles(h.scanFile)
 	sort.Slice(
 		h.helpers,
@@ -171,7 +219,7 @@ func (h *Helper) scan() {
 	)
 }
 
-func (h *Helper) scanFile(fileDesc protoreflect.FileDescriptor) bool {
+func (h *helper) scanFile(fileDesc protoreflect.FileDescriptor) bool {
 	_, ok := h.packages[fileDesc.Package()]
 	if !ok {
 		h.logger.Debug(
@@ -192,7 +240,7 @@ func (h *Helper) scanFile(fileDesc protoreflect.FileDescriptor) bool {
 	return true
 }
 
-func (h *Helper) scanService(serviceDesc protoreflect.ServiceDescriptor) {
+func (h *helper) scanService(serviceDesc protoreflect.ServiceDescriptor) {
 	// The service must have the get, list, update and delete method:
 	h.logger.Debug(
 		"Scanning service",
@@ -310,13 +358,14 @@ func (h *Helper) scanService(serviceDesc protoreflect.ServiceDescriptor) {
 	metadataFieldDesc := objectFields.ByName(metadataFieldName)
 
 	// This is a supported object type:
-	helper := ObjectHelper{
+	helper := objectHelper{
 		parent:        h,
 		descriptor:    objectDesc,
 		idField:       idFieldDesc,
 		metadataField: metadataFieldDesc,
 		singular:      objectNameSingular,
 		plural:        objectNamePlural,
+		tenantScoped:  !platformScopedTypes[objectDesc.Name()],
 		template:      objectTemplate,
 		get: getInfo{
 			methodInfo: methodInfo{
@@ -368,7 +417,7 @@ func (h *Helper) scanService(serviceDesc protoreflect.ServiceDescriptor) {
 	h.helpers = append(h.helpers, helper)
 }
 
-func (h *Helper) getIdField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
+func (h *helper) getIdField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
 	fieldDesc := messageDesc.Fields().ByName(idFieldName)
 	if fieldDesc == nil {
 		return nil
@@ -382,7 +431,7 @@ func (h *Helper) getIdField(messageDesc protoreflect.MessageDescriptor) protoref
 	return fieldDesc
 }
 
-func (h *Helper) getObjectField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
+func (h *helper) getObjectField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
 	fieldDesc := messageDesc.Fields().ByName(objectFieldName)
 	if fieldDesc == nil {
 		return nil
@@ -396,7 +445,7 @@ func (h *Helper) getObjectField(messageDesc protoreflect.MessageDescriptor) prot
 	return fieldDesc
 }
 
-func (h *Helper) getFilterField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
+func (h *helper) getFilterField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
 	fieldDesc := messageDesc.Fields().ByName(filterFieldName)
 	if fieldDesc == nil {
 		return nil
@@ -410,7 +459,7 @@ func (h *Helper) getFilterField(messageDesc protoreflect.MessageDescriptor) prot
 	return fieldDesc
 }
 
-func (h *Helper) getLimitField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
+func (h *helper) getLimitField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
 	fieldDesc := messageDesc.Fields().ByName(limitFieldName)
 	if fieldDesc == nil {
 		return nil
@@ -424,7 +473,7 @@ func (h *Helper) getLimitField(messageDesc protoreflect.MessageDescriptor) proto
 	return fieldDesc
 }
 
-func (h *Helper) getItemsField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
+func (h *helper) getItemsField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
 	fieldDesc := messageDesc.Fields().ByName(itemsFieldName)
 	if fieldDesc == nil {
 		return nil
@@ -438,7 +487,7 @@ func (h *Helper) getItemsField(messageDesc protoreflect.MessageDescriptor) proto
 	return fieldDesc
 }
 
-func (h *Helper) getTotalField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
+func (h *helper) getTotalField(messageDesc protoreflect.MessageDescriptor) protoreflect.FieldDescriptor {
 	fieldDesc := messageDesc.Fields().ByName(totalFieldName)
 	if fieldDesc == nil {
 		return nil
@@ -452,9 +501,7 @@ func (h *Helper) getTotalField(messageDesc protoreflect.MessageDescriptor) proto
 	return fieldDesc
 }
 
-// Names returns the full names of the object types. The results are sorted by the order of the packages, and
-// alphabetically within each package.
-func (h *Helper) Names() []string {
+func (h *helper) Names() []string {
 	h.scanIfNeeded()
 	results := make([]string, len(h.helpers))
 	for i, objectInfo := range h.helpers {
@@ -463,8 +510,7 @@ func (h *Helper) Names() []string {
 	return results
 }
 
-// Singulars returns the object types in singular. The results are in lower case and sorted alphabetically.
-func (h *Helper) Singulars() []string {
+func (h *helper) Singulars() []string {
 	h.scanIfNeeded()
 	set := make(map[string]bool, len(h.helpers))
 	for _, objectInfo := range h.helpers {
@@ -475,8 +521,7 @@ func (h *Helper) Singulars() []string {
 	return results
 }
 
-// Plurals the object types in plural. The results are in lower case and sorted alphabetically..
-func (h *Helper) Plurals() []string {
+func (h *helper) Plurals() []string {
 	h.scanIfNeeded()
 	set := make(map[string]bool, len(h.helpers))
 	for _, objectInfo := range h.helpers {
@@ -487,35 +532,34 @@ func (h *Helper) Plurals() []string {
 	return results
 }
 
-// Lookup returns the helper for the given object type. Returns nil if there is no such object.
-func (h *Helper) Lookup(objectType string) *ObjectHelper {
+func (h *helper) Lookup(objectType string) ObjectHelper {
 	h.scanIfNeeded()
-	for i, objectInfo := range h.helpers {
+	for _, objectInfo := range h.helpers {
 		if objectType == string(objectInfo.descriptor.FullName()) {
-			return &h.helpers[i]
+			return &objectInfo
 		}
 		if strings.EqualFold(objectType, objectInfo.singular) {
-			return &h.helpers[i]
+			return &objectInfo
 		}
 		if strings.EqualFold(objectType, objectInfo.plural) {
-			return &h.helpers[i]
+			return &objectInfo
 		}
 	}
 	return nil
 }
 
-func (h *Helper) makeMethodPath(methodDesc protoreflect.MethodDescriptor) string {
+func (h *helper) makeMethodPath(methodDesc protoreflect.MethodDescriptor) string {
 	return fmt.Sprintf("/%s/%s", methodDesc.FullName().Parent(), methodDesc.Name())
 }
 
-func (h *Helper) makeMethodTemplates(methodDesc protoreflect.MethodDescriptor) (requestTemplate,
+func (h *helper) makeMethodTemplates(methodDesc protoreflect.MethodDescriptor) (requestTemplate,
 	responseTemplate proto.Message) {
 	requestTemplate = h.makeTemplate(methodDesc.Input())
 	responseTemplate = h.makeTemplate(methodDesc.Output())
 	return
 }
 
-func (h *Helper) makeTemplate(messageDesc protoreflect.MessageDescriptor) proto.Message {
+func (h *helper) makeTemplate(messageDesc protoreflect.MessageDescriptor) proto.Message {
 	messageType, err := protoregistry.GlobalTypes.FindMessageByName(messageDesc.FullName())
 	if err != nil {
 		panic(err)
@@ -523,12 +567,13 @@ func (h *Helper) makeTemplate(messageDesc protoreflect.MessageDescriptor) proto.
 	return messageType.New().Interface()
 }
 
-// ObjectHelper contains information about a message type that satisfies the conditions to be considered an object.
-type ObjectHelper struct {
-	parent        *Helper
+// objectHelper is the default implementation of the ObjectHelper interface.
+type objectHelper struct {
+	parent        *helper
 	descriptor    protoreflect.MessageDescriptor
 	singular      string
 	plural        string
+	tenantScoped  bool
 	template      proto.Message
 	list          listInfo
 	get           getInfo
@@ -576,27 +621,27 @@ type deleteInfo struct {
 	id protoreflect.FieldDescriptor
 }
 
-func (h *ObjectHelper) Descriptor() protoreflect.MessageDescriptor {
+func (h *objectHelper) Descriptor() protoreflect.MessageDescriptor {
 	return h.descriptor
 }
 
-func (h *ObjectHelper) Instance() proto.Message {
+func (h *objectHelper) Instance() proto.Message {
 	return proto.Clone(h.template)
 }
 
-func (h *ObjectHelper) FullName() protoreflect.FullName {
+func (h *objectHelper) FullName() protoreflect.FullName {
 	return h.descriptor.FullName()
 }
 
-func (h *ObjectHelper) String() string {
+func (h *objectHelper) String() string {
 	return string(h.descriptor.FullName())
 }
 
-func (h *ObjectHelper) Singular() string {
+func (h *objectHelper) Singular() string {
 	return h.singular
 }
 
-func (h *ObjectHelper) Plural() string {
+func (h *objectHelper) Plural() string {
 	return h.plural
 }
 
@@ -610,10 +655,29 @@ type ListResult struct {
 	Total int32
 }
 
-func (h *ObjectHelper) List(ctx context.Context, options ListOptions) (result ListResult, err error) {
+func (h *objectHelper) List(ctx context.Context, options ListOptions) (result ListResult, err error) {
+	filter := options.Filter
+
+	// Inject tenant filter from tenant function if needed:
+	if h.IsTenantScoped() && h.parent.tenantFunc != nil {
+		var tenant string
+		tenant, err = h.parent.tenantFunc(ctx)
+		if err != nil {
+			return
+		}
+		if tenant != "" {
+			tenantFilter := fmt.Sprintf("this.metadata.tenant == %q", tenant)
+			if filter != "" {
+				filter = fmt.Sprintf("%s && (%s)", tenantFilter, filter)
+			} else {
+				filter = tenantFilter
+			}
+		}
+	}
+
 	request := proto.Clone(h.list.request)
-	if options.Filter != "" {
-		request.ProtoReflect().Set(h.list.filter, protoreflect.ValueOfString(options.Filter))
+	if filter != "" {
+		request.ProtoReflect().Set(h.list.filter, protoreflect.ValueOfString(filter))
 	}
 	if options.Limit > 0 && h.list.limit != nil {
 		request.ProtoReflect().Set(h.list.limit, protoreflect.ValueOfInt32(options.Limit))
@@ -629,14 +693,14 @@ func (h *ObjectHelper) List(ctx context.Context, options ListOptions) (result Li
 		result.Items[i] = list.Get(i).Message().Interface()
 	}
 	if h.list.total != nil {
-		result.Total = int32(response.ProtoReflect().Get(h.list.total).Int())
+		result.Total = int32(response.ProtoReflect().Get(h.list.total).Int()) // #nosec G115 -- proto int32 field
 	} else {
-		result.Total = int32(len(result.Items))
+		result.Total = int32(len(result.Items)) // #nosec G115 -- bounded by MaxLimit
 	}
 	return
 }
 
-func (h *ObjectHelper) Get(ctx context.Context, id string) (result proto.Message, err error) {
+func (h *objectHelper) Get(ctx context.Context, id string) (result proto.Message, err error) {
 	request := proto.Clone(h.get.request)
 	h.setId(request, h.get.id, id)
 	response := proto.Clone(h.get.response)
@@ -648,19 +712,19 @@ func (h *ObjectHelper) Get(ctx context.Context, id string) (result proto.Message
 	return
 }
 
-func (h *ObjectHelper) GetId(object proto.Message) string {
+func (h *objectHelper) GetId(object proto.Message) string {
 	return object.ProtoReflect().Get(h.idField).String()
 }
 
-func (h *ObjectHelper) GetName(object proto.Message) string {
+func (h *objectHelper) GetName(object proto.Message) string {
 	return h.GetMetadata(object).GetName()
 }
 
-func (h *ObjectHelper) GetMetadata(object proto.Message) Metadata {
+func (h *objectHelper) GetMetadata(object proto.Message) Metadata {
 	return object.ProtoReflect().Get(h.metadataField).Message().Interface().(Metadata)
 }
 
-func (h *ObjectHelper) Create(ctx context.Context, object proto.Message) (result proto.Message, err error) {
+func (h *objectHelper) Create(ctx context.Context, object proto.Message) (result proto.Message, err error) {
 	request := proto.Clone(h.create.request)
 	h.setObject(request, h.create.in, object)
 	response := proto.Clone(h.create.response)
@@ -672,7 +736,7 @@ func (h *ObjectHelper) Create(ctx context.Context, object proto.Message) (result
 	return
 }
 
-func (h *ObjectHelper) Update(ctx context.Context, object proto.Message) (result proto.Message, err error) {
+func (h *objectHelper) Update(ctx context.Context, object proto.Message) (result proto.Message, err error) {
 	request := proto.Clone(h.update.request)
 	h.setObject(request, h.update.in, object)
 	response := proto.Clone(h.update.response)
@@ -684,21 +748,90 @@ func (h *ObjectHelper) Update(ctx context.Context, object proto.Message) (result
 	return
 }
 
-func (h *ObjectHelper) Delete(ctx context.Context, id string) error {
+func (h *objectHelper) Delete(ctx context.Context, id string) error {
 	request := proto.Clone(h.delete.request)
 	h.setId(request, h.delete.id, id)
 	response := proto.Clone(h.delete.response)
 	return h.parent.connection.Invoke(ctx, h.delete.path, request, response)
 }
 
-func (h *ObjectHelper) setId(message proto.Message, field protoreflect.FieldDescriptor, value string) {
+// tenantFieldName is the name of the tenant field in the metadata message.
+const tenantFieldName = protoreflect.Name("tenant")
+
+// SetTenant sets the tenant field on the object's metadata. If the metadata submessage does not
+// exist it is created.
+func (h *objectHelper) SetTenant(object proto.Message, tenant string) {
+	metadata := object.ProtoReflect().Mutable(h.metadataField).Message()
+	field := metadata.Descriptor().Fields().ByName(tenantFieldName)
+	if field != nil {
+		metadata.Set(field, protoreflect.ValueOfString(tenant))
+	}
+}
+
+// GetTenant returns the tenant field from the object's metadata.
+func (h *objectHelper) GetTenant(object proto.Message) string {
+	metadata := object.ProtoReflect().Get(h.metadataField).Message()
+	field := metadata.Descriptor().Fields().ByName(tenantFieldName)
+	if field == nil {
+		return ""
+	}
+	return metadata.Get(field).String()
+}
+
+// IsTenantScoped returns true if this resource type is scoped to a tenant.
+func (h *objectHelper) IsTenantScoped() bool {
+	return h.tenantScoped
+}
+
+func (h *objectHelper) setId(message proto.Message, field protoreflect.FieldDescriptor, value string) {
 	message.ProtoReflect().Set(field, protoreflect.ValueOfString(value))
 }
 
-func (h *ObjectHelper) setObject(message proto.Message, field protoreflect.FieldDescriptor, value proto.Message) {
+func (h *objectHelper) setObject(message proto.Message, field protoreflect.FieldDescriptor, value proto.Message) {
 	message.ProtoReflect().Set(field, protoreflect.ValueOfMessage(value.ProtoReflect()))
 }
 
-func (h *ObjectHelper) getObject(message proto.Message, field protoreflect.FieldDescriptor) proto.Message {
+func (h *objectHelper) getObject(message proto.Message, field protoreflect.FieldDescriptor) proto.Message {
 	return message.ProtoReflect().Get(field).Message().Interface()
+}
+
+// Frequently used names:
+const (
+	// Methods:
+	createMethodName = protoreflect.Name("Create")
+	deleteMethodName = protoreflect.Name("Delete")
+	getMethodName    = protoreflect.Name("Get")
+	listMethodName   = protoreflect.Name("List")
+	updateMethodName = protoreflect.Name("Update")
+
+	// Fields:
+	filterFieldName   = protoreflect.Name("filter")
+	idFieldName       = protoreflect.Name("id")
+	itemsFieldName    = protoreflect.Name("items")
+	limitFieldName    = protoreflect.Name("limit")
+	metadataFieldName = protoreflect.Name("metadata")
+	objectFieldName   = protoreflect.Name("object")
+	totalFieldName    = protoreflect.Name("total")
+)
+
+// platformScopedTypes lists the resource types that are NOT scoped to a tenant. Types not listed
+// here default to tenant-scoped, which means they get automatic tenant filter injection on List,
+// automatic tenant field setting on generic Create, and the TENANT column in table output. Keyed
+// by short message name so that public and private API variants are handled automatically.
+var platformScopedTypes = map[protoreflect.Name]bool{
+	"Capabilities":     true,
+	"ClusterVersion":   true,
+	"ConsoleSession":   true,
+	"ExternalIPPool":   true,
+	"HostType":         true,
+	"Hub":              true,
+	"IdentityProvider": true,
+	"InstanceType":     true,
+	"NetworkClass":     true,
+	"PublicIPPool":     true,
+	"Role":             true,
+	"StorageBackend":   true,
+	"StorageTier":      true,
+	"Tenant":           true,
+	"User":             true,
 }

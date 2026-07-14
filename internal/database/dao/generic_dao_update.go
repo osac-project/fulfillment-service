@@ -15,12 +15,16 @@ package dao
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -71,20 +75,28 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	}
 	fmt.Fprintf(&r.sql.filter, ` id = $%d`, len(r.sql.params))
 
-	// Get the requested finalizers, name, labels, annotations and tenants:
+	// Get the requested finalizers, name, labels, annotations and tenant:
 	metadata := r.getMetadata(r.object)
 	finalizers := r.getFinalizers(metadata)
 	var (
 		name        string
 		labels      map[string]string
 		annotations map[string]string
-		tenants     []string
+		tenant      string
+		project     string
 	)
 	if metadata != nil {
 		name = metadata.GetName()
 		labels = metadata.GetLabels()
 		annotations = metadata.GetAnnotations()
-		tenants = metadata.GetTenants()
+		tenant = metadata.GetTenant()
+		project = metadata.GetProject()
+	}
+
+	// Validate that tenant is not empty:
+	if tenant == "" {
+		err = errors.New("cannot update object with empty tenant")
+		return
 	}
 
 	// Marshal the data, labels and annotations:
@@ -113,18 +125,19 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	addColumn("finalizers", finalizers)
 	addColumn("labels", labelsData)
 	addColumn("annotations", annotationsData)
-	addColumn("tenants", tenants)
+	addColumn("tenant", tenant)
+	addColumn("project", project)
 	addColumn("data", data)
 	fmt.Fprintf(&buffer, ` version = version + 1`)
 	fmt.Fprintf(&buffer, ` where %s`, r.sql.filter.String())
-	fmt.Fprintf(&buffer, ` returning creation_timestamp, deletion_timestamp, creators, version`)
+	fmt.Fprintf(&buffer, ` returning creation_timestamp, deletion_timestamp, creator, project, version`)
 
 	// Run the SQL statement:
 	sql := buffer.String()
 	var (
 		creationTs time.Time
 		deletionTs time.Time
-		creators   []string
+		creator    string
 		version    int32
 	)
 	err = func() (err error) {
@@ -136,7 +149,8 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		err = row.Scan(
 			&creationTs,
 			&deletionTs,
-			&creators,
+			&creator,
+			&project,
 			&version,
 		)
 		return
@@ -148,6 +162,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		return
 	}
 	if err != nil {
+		err = r.translateError(ctx, id, name, tenant, err)
 		return
 	}
 
@@ -157,8 +172,9 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		creationTs:  creationTs,
 		deletionTs:  deletionTs,
 		finalizers:  finalizers,
-		creators:    creators,
-		tenants:     tenants,
+		creator:     creator,
+		tenant:      tenant,
+		project:     project,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
@@ -183,8 +199,9 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 			id:              id,
 			creationTs:      creationTs,
 			deletionTs:      deletionTs,
-			creators:        creators,
-			tenants:         tenants,
+			creator:         creator,
+			tenant:          tenant,
+			project:         project,
 			name:            name,
 			labelsData:      labelsData,
 			annotationsData: annotationsData,
@@ -208,6 +225,99 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		object: object,
 	}
 	return
+}
+
+// translateError translates raw PostgreSQL errors into domain-specific error types.
+func (r *UpdateRequest[O]) translateError(ctx context.Context, id, name, tenant string, err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	switch pgErr.Code {
+	case pgerrcode.UniqueViolation:
+		if strings.Contains(pgErr.ConstraintName, "_unique_name_") {
+			return &ErrAlreadyExists{
+				ID:   id,
+				Name: name,
+			}
+		}
+		return &ErrAlreadyExists{
+			ID: id,
+		}
+	case pgerrcode.ForeignKeyViolation:
+		switch {
+		case strings.HasSuffix(pgErr.ConstraintName, "_tenant_fk"):
+			return &ErrReference{
+				Reason: fmt.Sprintf("tenant '%s' doesn't exist", tenant),
+			}
+		default:
+			r.dao.logger.WarnContext(
+				ctx,
+				"Unknown foreign key violation",
+				slog.String("constraint", pgErr.ConstraintName),
+				slog.Any("error", err),
+			)
+			return &ErrReference{}
+		}
+	case errImmutableCode:
+		if pgErr.Detail == "" {
+			r.dao.logger.WarnContext(
+				ctx,
+				"Empty detail in immutable column trigger error",
+				slog.Any("error", err),
+			)
+			return &ErrImmutable{}
+		}
+		var columns []string
+		jsonErr := json.Unmarshal([]byte(pgErr.Detail), &columns)
+		if jsonErr != nil {
+			r.dao.logger.WarnContext(
+				ctx,
+				"Failed to parse immutable column names from trigger detail",
+				slog.Any("error", err),
+			)
+			return &ErrImmutable{}
+		}
+		if len(columns) == 0 {
+			r.dao.logger.WarnContext(
+				ctx,
+				"Empty columns in immutable column trigger error",
+				slog.Any("error", err),
+			)
+			return &ErrImmutable{}
+		}
+		var fields []string
+		for _, column := range columns {
+			switch column {
+			case "creator", "name", "project", "tenant":
+				fields = append(fields, fmt.Sprintf("metadata.%s", column))
+			default:
+				r.dao.logger.WarnContext(
+					ctx,
+					"Unknown immutable column in trigger detail",
+					slog.String("column", column),
+					slog.Any("error", err),
+				)
+			}
+		}
+		return &ErrImmutable{
+			Fields: fields,
+		}
+	case errNotUniqueCode:
+		// When the trigger provides a custom message, use it as Reason.
+		// If no message is provided, fall back to ID.
+		if pgErr.Message != "" {
+			return &ErrAlreadyExists{
+				ID:     id,
+				Reason: pgErr.Message,
+			}
+		}
+		return &ErrAlreadyExists{
+			ID: id,
+		}
+	default:
+		return err
+	}
 }
 
 // UpdateResponse represents the result of an update operation.

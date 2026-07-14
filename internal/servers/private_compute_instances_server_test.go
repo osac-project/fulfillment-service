@@ -17,68 +17,63 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Private compute instances server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
 	BeforeEach(func() {
 		var err error
 
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
+		// Create a default test virtual network and subnet for tests that don't explicitly create one:
+		vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
 			SetLogger(logger).
-			SetPool(pool).
+			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
+		vn := privatev1.VirtualNetwork_builder{
+			Id: "test-vnet",
+			Metadata: privatev1.Metadata_builder{
+				Tenant: auth.SharedTenant,
+			}.Build(),
+		}.Build()
 
-		// Create the tables:
-		err = dao.CreateTables[*privatev1.ComputeInstanceTemplate](ctx)
+		_, err = vnDao.Create().SetObject(vn).Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.ComputeInstance](ctx)
+
+		subnetsDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
+			SetLogger(logger).
+			SetTenancyLogic(tenancy).
+			Build()
 		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.Subnet](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.SecurityGroup](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.VirtualNetwork](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
+
+		subnet := privatev1.Subnet_builder{
+			Id: "test-subnet",
+			Metadata: privatev1.Metadata_builder{
+				Tenant: auth.SharedTenant,
+			}.Build(),
+			Spec: privatev1.SubnetSpec_builder{
+				VirtualNetwork: "test-vnet",
+				Ipv4Cidr:       new("10.0.0.0/24"),
+			}.Build(),
+			Status: privatev1.SubnetStatus_builder{
+				State: privatev1.SubnetState_SUBNET_STATE_READY,
+			}.Build(),
+		}.Build()
+
+		_, err = subnetsDao.Create().SetObject(subnet).Do(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -93,7 +88,7 @@ var _ = Describe("Private compute instances server", func() {
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -120,10 +115,10 @@ var _ = Describe("Private compute instances server", func() {
 
 		vn := privatev1.VirtualNetwork_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
-				Ipv4Cidr:     proto.String("10.0.0.0/16"),
+				Ipv4Cidr:     new("10.0.0.0/16"),
 				NetworkClass: networkClassID,
 			}.Build(),
 			Status: privatev1.VirtualNetworkStatus_builder{
@@ -146,11 +141,11 @@ var _ = Describe("Private compute instances server", func() {
 
 		subnet := privatev1.Subnet_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.SubnetSpec_builder{
 				VirtualNetwork: vnID,
-				Ipv4Cidr:       proto.String("10.0.1.0/24"),
+				Ipv4Cidr:       new("10.0.1.0/24"),
 			}.Build(),
 			Status: privatev1.SubnetStatus_builder{
 				State: state,
@@ -172,7 +167,7 @@ var _ = Describe("Private compute instances server", func() {
 
 		sg := privatev1.SecurityGroup_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.SecurityGroupSpec_builder{
 				VirtualNetwork: vnID,
@@ -239,6 +234,29 @@ var _ = Describe("Private compute instances server", func() {
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
+
+			// Create a default InstanceType for tests that need it:
+			instanceTypesDao, err := dao.NewGenericDAO[*privatev1.InstanceType]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = instanceTypesDao.Create().SetObject(
+				privatev1.InstanceType_builder{
+					Id: "standard-4-16",
+					Metadata: privatev1.Metadata_builder{
+						Name:   "standard-4-16",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.InstanceTypeSpec_builder{
+						Cores:     4,
+						MemoryGib: 16,
+						State:     privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE,
+					}.Build(),
+				}.Build(),
+			).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		// Helper function to create a template
@@ -261,7 +279,7 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Test Template",
 				Description: "Test template for validation",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{
@@ -282,8 +300,7 @@ var _ = Describe("Private compute instances server", func() {
 					},
 				},
 				SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-					Cores:     proto.Int32(2),
-					MemoryGib: proto.Int32(2),
+					InstanceType: new("standard-4-16"),
 					Image: privatev1.ComputeInstanceImage_builder{
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
@@ -291,7 +308,7 @@ var _ = Describe("Private compute instances server", func() {
 					BootDisk: privatev1.ComputeInstanceDisk_builder{
 						SizeGib: 10,
 					}.Build(),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 				}.Build(),
 			}.Build()
 
@@ -318,6 +335,11 @@ var _ = Describe("Private compute instances server", func() {
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:           "general.small",
 						TemplateParameters: templateParams,
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -344,6 +366,11 @@ var _ = Describe("Private compute instances server", func() {
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
 							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -372,6 +399,11 @@ var _ = Describe("Private compute instances server", func() {
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
 							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -383,7 +415,7 @@ var _ = Describe("Private compute instances server", func() {
 
 			// List the objects with limit:
 			response, err := server.List(ctx, privatev1.ComputeInstancesListRequest_builder{
-				Limit: proto.Int32(5),
+				Limit: new(int32(5)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -402,6 +434,11 @@ var _ = Describe("Private compute instances server", func() {
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
 							Template: templateID,
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
 						}.Build(),
 						Status: privatev1.ComputeInstanceStatus_builder{
 							State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -413,7 +450,7 @@ var _ = Describe("Private compute instances server", func() {
 
 			// List the objects with offset:
 			response, err := server.List(ctx, privatev1.ComputeInstancesListRequest_builder{
-				Offset: proto.Int32(5),
+				Offset: new(int32(5)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
@@ -430,6 +467,11 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -465,6 +507,11 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -508,6 +555,11 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "general.small",
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -596,6 +648,11 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "existing-template",
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -639,6 +696,11 @@ var _ = Describe("Private compute instances server", func() {
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:           "params-template",
 						TemplateParameters: map[string]*anypb.Any{"cpu_count": cpuParam},
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -678,6 +740,11 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "same-template",
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 					Status: privatev1.ComputeInstanceStatus_builder{
 						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
@@ -735,6 +802,11 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "defaults-template",
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -743,8 +815,7 @@ var _ = Describe("Private compute instances server", func() {
 
 			spec := response.GetObject().GetSpec()
 			// Template defaults should be stored:
-			Expect(spec.GetCores()).To(Equal(int32(2)))
-			Expect(spec.GetMemoryGib()).To(Equal(int32(2)))
+			Expect(spec.GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(spec.GetRunStrategy()).To(Equal("Always"))
 			Expect(spec.GetImage().GetSourceType()).To(Equal("registry"))
 			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/containerdisks/fedora:latest"))
@@ -756,14 +827,17 @@ var _ = Describe("Private compute instances server", func() {
 		It("User-provided spec fields override template defaults", func() {
 			createTemplate("override-template")
 
-			// Create with user-provided cores and memory:
+			// Create with user-provided run_strategy (overrides template default):
 			response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template:    "override-template",
-						Cores:       proto.Int32(8),
-						MemoryGib:   proto.Int32(16),
-						RunStrategy: proto.String("Halted"),
+						RunStrategy: new("Halted"),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -772,10 +846,9 @@ var _ = Describe("Private compute instances server", func() {
 
 			spec := response.GetObject().GetSpec()
 			// User-provided values should be stored:
-			Expect(spec.GetCores()).To(Equal(int32(8)))
-			Expect(spec.GetMemoryGib()).To(Equal(int32(16)))
 			Expect(spec.GetRunStrategy()).To(Equal("Halted"))
 			// Template defaults should be stored:
+			Expect(spec.GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(spec.GetImage().GetSourceType()).To(Equal("registry"))
 			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/containerdisks/fedora:latest"))
 			Expect(spec.GetBootDisk().GetSizeGib()).To(Equal(int32(10)))
@@ -794,7 +867,7 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "No Defaults Template",
 				Description: "Template without spec defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 			}.Build()
 			_, err = templatesDao.Create().SetObject(template).Do(ctx)
@@ -805,6 +878,11 @@ var _ = Describe("Private compute instances server", func() {
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: "no-defaults-template",
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -815,9 +893,8 @@ var _ = Describe("Private compute instances server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(ContainSubstring("boot_disk"))
-			Expect(status.Message()).To(ContainSubstring("cores"))
 			Expect(status.Message()).To(ContainSubstring("image"))
-			Expect(status.Message()).To(ContainSubstring("memory_gib"))
+			Expect(status.Message()).To(ContainSubstring("instance_type"))
 			Expect(status.Message()).To(ContainSubstring("run_strategy"))
 		})
 
@@ -834,7 +911,7 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Bare Template",
 				Description: "Template without defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 			}.Build()
 			_, err = templatesDao.Create().SetObject(template).Do(ctx)
@@ -844,9 +921,8 @@ var _ = Describe("Private compute instances server", func() {
 			response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
 				Object: privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template:  "bare-template",
-						Cores:     proto.Int32(4),
-						MemoryGib: proto.Int32(8),
+						Template:     "bare-template",
+						InstanceType: new("standard-4-16"),
 						Image: privatev1.ComputeInstanceImage_builder{
 							SourceType: "registry",
 							SourceRef:  "quay.io/containerdisks/fedora:latest",
@@ -854,13 +930,18 @@ var _ = Describe("Private compute instances server", func() {
 						BootDisk: privatev1.ComputeInstanceDisk_builder{
 							SizeGib: 20,
 						}.Build(),
-						RunStrategy: proto.String("Always"),
+						RunStrategy: new("Always"),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
-			Expect(response.GetObject().GetSpec().GetCores()).To(Equal(int32(4)))
+			Expect(response.GetObject().GetSpec().GetInstanceType()).To(Equal("standard-4-16"))
 		})
 
 		It("Partial defaults plus partial user input satisfies validation", func() {
@@ -876,12 +957,11 @@ var _ = Describe("Private compute instances server", func() {
 				Title:       "Partial Defaults Template",
 				Description: "Template with partial spec defaults",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-					Cores:       proto.Int32(2),
-					MemoryGib:   proto.Int32(4),
-					RunStrategy: proto.String("Always"),
+					InstanceType: new("standard-4-16"),
+					RunStrategy:  new("Always"),
 				}.Build(),
 			}.Build()
 			_, err = templatesDao.Create().SetObject(template).Do(ctx)
@@ -899,6 +979,11 @@ var _ = Describe("Private compute instances server", func() {
 						BootDisk: privatev1.ComputeInstanceDisk_builder{
 							SizeGib: 20,
 						}.Build(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet: "test-subnet",
+							}.Build(),
+						},
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -907,12 +992,429 @@ var _ = Describe("Private compute instances server", func() {
 
 			spec := response.GetObject().GetSpec()
 			// Template defaults should be stored:
-			Expect(spec.GetCores()).To(Equal(int32(2)))
-			Expect(spec.GetMemoryGib()).To(Equal(int32(4)))
+			Expect(spec.GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(spec.GetRunStrategy()).To(Equal("Always"))
 			// User-provided fields should be stored:
 			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/containerdisks/fedora:latest"))
 			Expect(spec.GetBootDisk().GetSizeGib()).To(Equal(int32(20)))
+		})
+
+		Describe("Catalog item", func() {
+			var catalogItemsDao *dao.GenericDAO[*privatev1.ComputeInstanceCatalogItem]
+
+			BeforeEach(func() {
+				var err error
+				catalogItemsDao, err = dao.NewGenericDAO[*privatev1.ComputeInstanceCatalogItem]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			createCICatalogItem := func(id string, published bool, fieldDefs []*privatev1.FieldDefinition) {
+				_, err := catalogItemsDao.Create().SetObject(
+					privatev1.ComputeInstanceCatalogItem_builder{
+						Id: id,
+						Metadata: privatev1.Metadata_builder{
+							Name:   id + "-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:            "Test CI Catalog Item",
+						Published:        published,
+						Template:         "ci-template-id",
+						FieldDefinitions: fieldDefs,
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			It("Creates compute instance with catalog item", func() {
+				createCICatalogItem("ci-cat-happy", true, nil)
+
+				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-happy",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetId()).ToNot(BeEmpty())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("ci-template-id"))
+				Expect(object.GetSpec().GetCatalogItem()).To(Equal("ci-cat-happy"))
+			})
+
+			It("Creates compute instance with catalog item specified by name", func() {
+				createCICatalogItem("ci-cat-byname", true, nil)
+
+				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-byname-name",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("ci-template-id"))
+			})
+
+			It("Fails when catalog item not found", func() {
+				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "nonexistent",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(Equal(
+					"there is no catalog item with identifier or name 'nonexistent'",
+				))
+			})
+
+			It("Fails when catalog item is not published", func() {
+				createCICatalogItem("ci-cat-unpub", false, nil)
+
+				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-unpub",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(Equal(
+					"catalog item 'ci-cat-unpub' is not published",
+				))
+			})
+
+			It("Fails when both catalog_item and template are set", func() {
+				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "any-catalog-item",
+							Template:    "some-template",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal("catalog_item and template are mutually exclusive"))
+			})
+
+			It("Rejects user value for non-editable field", func() {
+				createCICatalogItem("ci-cat-nonedit", true, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:     "ssh_key",
+						Editable: false,
+						Default:  structpb.NewStringValue("forced-key"),
+					}.Build(),
+					privatev1.FieldDefinition_builder{
+						Path:     "network_attachments",
+						Editable: true,
+					}.Build(),
+				})
+
+				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-nonedit",
+							SshKey:      new("user-key"),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("not editable"))
+			})
+
+			DescribeTable("validates editable field against JSON Schema",
+				func(catID string, value string, expectError bool) {
+					createCICatalogItem(catID, true, []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:             "ssh_key",
+							Editable:         true,
+							ValidationSchema: `{"type":"string","minLength":10}`,
+						}.Build(),
+						privatev1.FieldDefinition_builder{
+							Path:     "network_attachments",
+							Editable: true,
+						}.Build(),
+					})
+
+					response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+						Object: privatev1.ComputeInstance_builder{
+							Spec: privatev1.ComputeInstanceSpec_builder{
+								CatalogItem: catID,
+								SshKey:      new(value),
+								NetworkAttachments: []*privatev1.NetworkAttachment{
+									privatev1.NetworkAttachment_builder{
+										Subnet: "test-subnet",
+									}.Build(),
+								},
+							}.Build(),
+						}.Build(),
+					}.Build())
+					if expectError {
+						Expect(err).To(HaveOccurred())
+						status, ok := grpcstatus.FromError(err)
+						Expect(ok).To(BeTrue())
+						Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+						Expect(status.Message()).To(ContainSubstring("validation failed for field 'ssh_key'"))
+					} else {
+						Expect(err).ToNot(HaveOccurred())
+						Expect(response.GetObject().GetSpec().GetSshKey()).To(Equal(value))
+					}
+				},
+				Entry("rejects value below minLength", "ci-cat-schema-reject", "short-val", true),
+				Entry("accepts value meeting minLength", "ci-cat-schema-accept", "long-enough-key", false),
+			)
+
+			It("Applies default for editable field when not provided", func() {
+				createCICatalogItem("ci-cat-dflt", true, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:     "ssh_key",
+						Editable: true,
+						Default:  structpb.NewStringValue("default-key"),
+					}.Build(),
+					privatev1.FieldDefinition_builder{
+						Path:     "network_attachments",
+						Editable: true,
+					}.Build(),
+				})
+
+				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-dflt",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := response.GetObject()
+				Expect(object.GetSpec().GetSshKey()).To(Equal("default-key"))
+			})
+
+			It("Rejects changing catalog_item on update", func() {
+				createCICatalogItem("ci-cat-immut", true, nil)
+
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-immut",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := createResponse.GetObject()
+
+				_, err = server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "different-catalog-item",
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.catalog_item"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"cannot change spec.catalog_item from 'ci-cat-immut' to 'different-catalog-item': catalog item is immutable",
+				))
+			})
+
+			It("Validates instance_type from template spec_defaults via catalog item", func() {
+				// Create a template with instance_type in spec_defaults:
+				templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = templatesDao.Create().SetObject(
+					privatev1.ComputeInstanceTemplate_builder{
+						Id:    "ci-template-with-it",
+						Title: "Template with instance type",
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
+							InstanceType: new("nonexistent-instance-type"),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "quay.io/containerdisks/fedora:latest",
+							}.Build(),
+							BootDisk: privatev1.ComputeInstanceDisk_builder{
+								SizeGib: 10,
+							}.Build(),
+							RunStrategy: new("Always"),
+						}.Build(),
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a catalog item pointing to that template:
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ComputeInstanceCatalogItem_builder{
+						Id: "ci-cat-with-it",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "ci-cat-with-it-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item with IT",
+						Published: true,
+						Template:  "ci-template-with-it",
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create via catalog item — should fail because instance type doesn't exist:
+				_, err = server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-with-it",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(ContainSubstring("nonexistent-instance-type"))
+			})
+
+			It("Creates compute instance when template spec_defaults has valid instance_type", func() {
+				// Create a template with instance_type in spec_defaults
+				// (the "standard-4-16" instance type is already created by BeforeEach):
+				templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = templatesDao.Create().SetObject(
+					privatev1.ComputeInstanceTemplate_builder{
+						Id:    "ci-template-valid-it",
+						Title: "Template with valid instance type",
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
+							InstanceType: new("standard-4-16"),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "quay.io/containerdisks/fedora:latest",
+							}.Build(),
+							BootDisk: privatev1.ComputeInstanceDisk_builder{
+								SizeGib: 10,
+							}.Build(),
+							RunStrategy: new("Always"),
+						}.Build(),
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a catalog item pointing to that template:
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ComputeInstanceCatalogItem_builder{
+						Id: "ci-cat-valid-it",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "ci-cat-valid-it-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item with valid IT",
+						Published: true,
+						Template:  "ci-template-valid-it",
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create via catalog item — should succeed:
+				response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-valid-it",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("ci-template-valid-it"))
+				Expect(object.GetSpec().GetCatalogItem()).To(Equal("ci-cat-valid-it"))
+			})
 		})
 	})
 
@@ -943,12 +1445,35 @@ var _ = Describe("Private compute instances server", func() {
 			memoryDefault, err := anypb.New(wrapperspb.Int32(2))
 			Expect(err).ToNot(HaveOccurred())
 
+			// Create an InstanceType for network validation tests:
+			instanceTypesDao, err := dao.NewGenericDAO[*privatev1.InstanceType]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = instanceTypesDao.Create().SetObject(
+				privatev1.InstanceType_builder{
+					Id: "standard-4-16",
+					Metadata: privatev1.Metadata_builder{
+						Name:   "standard-4-16",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.InstanceTypeSpec_builder{
+						Cores:     4,
+						MemoryGib: 16,
+						State:     privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE,
+					}.Build(),
+				}.Build(),
+			).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
 			template = privatev1.ComputeInstanceTemplate_builder{
 				Id:          "test-template",
 				Title:       "Test Template",
 				Description: "Test template for network validation",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
 					{
@@ -969,8 +1494,7 @@ var _ = Describe("Private compute instances server", func() {
 					},
 				},
 				SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-					Cores:     proto.Int32(2),
-					MemoryGib: proto.Int32(2),
+					InstanceType: new("standard-4-16"),
 					Image: privatev1.ComputeInstanceImage_builder{
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
@@ -978,7 +1502,7 @@ var _ = Describe("Private compute instances server", func() {
 					BootDisk: privatev1.ComputeInstanceDisk_builder{
 						SizeGib: 10,
 					}.Build(),
-					RunStrategy: proto.String("Always"),
+					RunStrategy: new("Always"),
 				}.Build(),
 			}.Build()
 
@@ -994,14 +1518,18 @@ var _ = Describe("Private compute instances server", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		Context("Subnet validation", func() {
-			It("Should succeed with valid READY Subnet", func() {
-				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+		Context("network_attachments", func() {
+			It("Should succeed with two READY subnets as separate attachments", func() {
+				s1 := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				s2 := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
 
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String(subnet.GetId()),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: s1.GetId()}.Build(),
+							privatev1.NetworkAttachment_builder{Subnet: s2.GetId()}.Build(),
+						},
 					}.Build(),
 				}.Build()
 
@@ -1011,14 +1539,17 @@ var _ = Describe("Private compute instances server", func() {
 				response, err := server.Create(ctx, request)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response).ToNot(BeNil())
-				Expect(response.GetObject().GetSpec().GetSubnet()).To(Equal(subnet.GetId()))
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()).To(HaveLen(2))
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()[0].GetSubnet()).To(Equal(s1.GetId()))
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()[1].GetSubnet()).To(Equal(s2.GetId()))
 			})
+		})
 
-			It("Should fail with non-existent Subnet", func() {
+		Context("Required network fields", func() {
+			It("Should reject when network_attachments is missing", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String("non-existent-subnet-id"),
 					}.Build(),
 				}.Build()
 
@@ -1028,7 +1559,79 @@ var _ = Describe("Private compute instances server", func() {
 				response, err := server.Create(ctx, request)
 				Expect(err).To(HaveOccurred())
 				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("network_attachments"))
+				Expect(status.Message()).To(ContainSubstring("at least one network attachment is required"))
+			})
 
+			It("Should allow updating VM with empty network_attachments (pod network)", func() {
+				// Insert a VM with empty network_attachments directly into database
+				// (simulating a migrated VM that uses pod network)
+				ciDao, err := dao.NewGenericDAO[*privatev1.ComputeInstance]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+
+				podNetworkVM := privatev1.ComputeInstance_builder{
+					Id: "pod-network-vm",
+					Metadata: privatev1.Metadata_builder{
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						// No network_attachments - pod network
+					}.Build(),
+					Status: privatev1.ComputeInstanceStatus_builder{
+						State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+					}.Build(),
+				}.Build()
+
+				_, err = ciDao.Create().
+					SetObject(podNetworkVM).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Try to update the VM (e.g., change run strategy)
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: "pod-network-vm",
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template:    template.GetId(),
+							RunStrategy: new("Always"),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.run_strategy"},
+					},
+				}.Build())
+
+				// Update should succeed for backward compatibility
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse).ToNot(BeNil())
+				Expect(updateResponse.GetObject().GetSpec().GetRunStrategy()).To(Equal("Always"))
+			})
+		})
+
+		Context("NetworkAttachments validation", func() {
+			It("Should reject when subnet not found in network_attachments", func() {
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: "nonexistent-subnet"}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
@@ -1036,13 +1639,15 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Message()).To(ContainSubstring("does not exist"))
 			})
 
-			It("Should fail with Subnet not in READY state", func() {
+			It("Should reject when subnet not READY in network_attachments", func() {
 				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_PENDING)
 
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
-						Subnet:   proto.String(subnet.GetId()),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{Subnet: subnet.GetId()}.Build(),
+						},
 					}.Build(),
 				}.Build()
 
@@ -1052,48 +1657,25 @@ var _ = Describe("Private compute instances server", func() {
 				response, err := server.Create(ctx, request)
 				Expect(err).To(HaveOccurred())
 				Expect(response).To(BeNil())
-
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
-				Expect(status.Message()).To(ContainSubstring("not in READY state"))
-			})
-		})
-
-		Context("SecurityGroup validation", func() {
-			var subnet *privatev1.Subnet
-
-			BeforeEach(func() {
-				subnet = createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				Expect(status.Message()).To(ContainSubstring("subnet"))
+				Expect(status.Message()).To(ContainSubstring("is not in READY state"))
 			})
 
-			It("Should succeed with valid READY SecurityGroups", func() {
-				sg1 := createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
-				sg2 := createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
+			It("Should reject when security group not found in network_attachments", func() {
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
 
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
-						SecurityGroups: []string{sg1.GetId(), sg2.GetId()},
-					}.Build(),
-				}.Build()
-
-				request := &privatev1.ComputeInstancesCreateRequest{}
-				request.SetObject(vm)
-
-				response, err := server.Create(ctx, request)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response).ToNot(BeNil())
-				Expect(response.GetObject().GetSpec().GetSecurityGroups()).To(Equal([]string{sg1.GetId(), sg2.GetId()}))
-			})
-
-			It("Should fail with non-existent SecurityGroup", func() {
-				vm := privatev1.ComputeInstance_builder{
-					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
-						SecurityGroups: []string{"non-existent-sg-id"},
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet:         subnet.GetId(),
+								SecurityGroups: []string{"nonexistent-sg"},
+							}.Build(),
+						},
 					}.Build(),
 				}.Build()
 
@@ -1103,7 +1685,6 @@ var _ = Describe("Private compute instances server", func() {
 				response, err := server.Create(ctx, request)
 				Expect(err).To(HaveOccurred())
 				Expect(response).To(BeNil())
-
 				status, ok := grpcstatus.FromError(err)
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
@@ -1111,65 +1692,49 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Message()).To(ContainSubstring("does not exist"))
 			})
 
-			It("Should fail with SecurityGroup not in READY state", func() {
-				sg := createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_PENDING)
+			It("Should reject when security group belongs to wrong VirtualNetwork in network_attachments", func() {
+				// Create another virtual network with the same network class
+				otherVNet := createTestVirtualNetwork(ctx, networkClass.GetId())
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				wrongSG := createTestSecurityGroup(ctx, otherVNet.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
 
-				vm := privatev1.ComputeInstance_builder{
-					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
-						SecurityGroups: []string{sg.GetId()},
-					}.Build(),
-				}.Build()
-
-				request := &privatev1.ComputeInstancesCreateRequest{}
-				request.SetObject(vm)
-
-				response, err := server.Create(ctx, request)
-				Expect(err).To(HaveOccurred())
-				Expect(response).To(BeNil())
-
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
-				Expect(status.Message()).To(ContainSubstring("security group"))
-				Expect(status.Message()).To(ContainSubstring("not in READY state"))
-			})
-
-			It("Should fail with SecurityGroup from different VirtualNetwork", func() {
-				// Create another VirtualNetwork
-				otherVN := createTestVirtualNetwork(ctx, networkClass.GetId())
-				sgFromOtherVN := createTestSecurityGroup(ctx, otherVN.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
-
-				vm := privatev1.ComputeInstance_builder{
-					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template:       template.GetId(),
-						Subnet:         proto.String(subnet.GetId()),
-						SecurityGroups: []string{sgFromOtherVN.GetId()},
-					}.Build(),
-				}.Build()
-
-				request := &privatev1.ComputeInstancesCreateRequest{}
-				request.SetObject(vm)
-
-				response, err := server.Create(ctx, request)
-				Expect(err).To(HaveOccurred())
-				Expect(response).To(BeNil())
-
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("VirtualNetwork"))
-				Expect(status.Message()).To(ContainSubstring(virtualNetwork.GetId()))
-				Expect(status.Message()).To(ContainSubstring(otherVN.GetId()))
-			})
-		})
-
-		Context("Optional network fields", func() {
-			It("Should succeed with no network references", func() {
 				vm := privatev1.ComputeInstance_builder{
 					Spec: privatev1.ComputeInstanceSpec_builder{
 						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet:         subnet.GetId(),
+								SecurityGroups: []string{wrongSG.GetId()},
+							}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("security group"))
+				Expect(status.Message()).To(ContainSubstring("belongs to VirtualNetwork"))
+			})
+
+			It("Should allow empty security_groups in network_attachments", func() {
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet:         subnet.GetId(),
+								SecurityGroups: []string{},
+							}.Build(),
+						},
 					}.Build(),
 				}.Build()
 
@@ -1179,8 +1744,413 @@ var _ = Describe("Private compute instances server", func() {
 				response, err := server.Create(ctx, request)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response).ToNot(BeNil())
-				Expect(response.GetObject().GetSpec().GetSubnet()).To(BeEmpty())
-				Expect(response.GetObject().GetSpec().GetSecurityGroups()).To(BeEmpty())
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()).To(HaveLen(1))
+				Expect(response.GetObject().GetSpec().GetNetworkAttachments()[0].GetSecurityGroups()).To(BeEmpty())
+			})
+
+			It("Should reject when security group not in READY state in network_attachments", func() {
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				sg := createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_PENDING)
+
+				vm := privatev1.ComputeInstance_builder{
+					Spec: privatev1.ComputeInstanceSpec_builder{
+						Template: template.GetId(),
+						NetworkAttachments: []*privatev1.NetworkAttachment{
+							privatev1.NetworkAttachment_builder{
+								Subnet:         subnet.GetId(),
+								SecurityGroups: []string{sg.GetId()},
+							}.Build(),
+						},
+					}.Build(),
+				}.Build()
+
+				request := &privatev1.ComputeInstancesCreateRequest{}
+				request.SetObject(vm)
+
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+				Expect(status.Message()).To(ContainSubstring("security group"))
+				Expect(status.Message()).To(ContainSubstring("is not in READY state"))
+			})
+		})
+
+		Context("Update validation with deletion", func() {
+			It("Should skip state validation when isBeingDeleted=true", func() {
+				// Create with a READY subnet
+				subnet := createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				sg := createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
+
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet.GetId(),
+									SecurityGroups: []string{sg.GetId()},
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				created := createResponse.GetObject()
+
+				// Update subnet to non-READY state (simulate resource being deleted/modified)
+				subnet.GetStatus().SetState(privatev1.SubnetState_SUBNET_STATE_PENDING)
+				subnetDAO, err := dao.NewGenericDAO[*privatev1.Subnet]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = subnetDAO.Update().SetObject(subnet).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Mark the ComputeInstance as being deleted
+				deletionTime := timestamppb.Now()
+				created.GetMetadata().SetDeletionTimestamp(deletionTime)
+
+				// Try to update security groups while subnet is PENDING
+				// Should succeed because isBeingDeleted=true skips state validation
+				created.GetSpec().SetNetworkAttachments([]*privatev1.NetworkAttachment{
+					privatev1.NetworkAttachment_builder{
+						Subnet:         subnet.GetId(),
+						SecurityGroups: []string{}, // Change security groups (allowed)
+					}.Build(),
+				})
+				updateRequest := &privatev1.ComputeInstancesUpdateRequest{}
+				updateRequest.SetObject(created)
+				updateRequest.SetUpdateMask(&fieldmaskpb.FieldMask{Paths: []string{"spec.network_attachments"}})
+
+				response, err := server.Update(ctx, updateRequest)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+			})
+		})
+
+		Context("NetworkAttachments immutability", func() {
+			var (
+				subnet1 *privatev1.Subnet
+				subnet2 *privatev1.Subnet
+				sg1     *privatev1.SecurityGroup
+				sg2     *privatev1.SecurityGroup
+			)
+
+			BeforeEach(func() {
+				subnet1 = createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				subnet2 = createTestSubnet(ctx, virtualNetwork.GetId(), privatev1.SubnetState_SUBNET_STATE_READY)
+				sg1 = createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
+				sg2 = createTestSecurityGroup(ctx, virtualNetwork.GetId(), privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY)
+			})
+
+			It("Rejects changing subnet in network_attachments", func() {
+				// Create a ComputeInstance with networkAttachments
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet1.GetId(),
+									SecurityGroups: []string{sg1.GetId()},
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Try to change subnet reference
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet2.GetId(),
+									SecurityGroups: []string{sg1.GetId()},
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachments"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(updateResponse).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("subnet is immutable"))
+			})
+
+			It("Allows changing security groups in network_attachments", func() {
+				// Create a ComputeInstance with networkAttachments
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet1.GetId(),
+									SecurityGroups: []string{sg1.GetId()},
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Change security groups (should succeed)
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet:         subnet1.GetId(),                    // Same subnet
+									SecurityGroups: []string{sg1.GetId(), sg2.GetId()}, // Different SGs
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachments"},
+					},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse).ToNot(BeNil())
+				Expect(updateResponse.GetObject().GetSpec().GetNetworkAttachments()[0].GetSecurityGroups()).To(
+					Equal([]string{sg1.GetId(), sg2.GetId()}),
+				)
+			})
+
+			It("Rejects adding network attachments", func() {
+				// Create with 1 attachment
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet1.GetId(),
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Try to add second attachment
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet1.GetId(),
+								}.Build(),
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet2.GetId(),
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachments"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(updateResponse).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("cannot change number"))
+			})
+
+			It("Rejects removing network attachments", func() {
+				// Create with 2 attachments
+				createResponse, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet1.GetId(),
+								}.Build(),
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet2.GetId(),
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse).ToNot(BeNil())
+
+				id := createResponse.GetObject().GetId()
+
+				// Try to remove one attachment
+				updateResponse, err := server.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Id: id,
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template: template.GetId(),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: subnet1.GetId(),
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachments"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(updateResponse).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("cannot change number"))
+			})
+		})
+
+		Context("instance_type validation", func() {
+			// Helper to create an InstanceType with a specific state via DAO.
+			createInstanceTypeWithState := func(name string, state privatev1.InstanceTypeState) {
+				instanceTypesDao, err := dao.NewGenericDAO[*privatev1.InstanceType]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = instanceTypesDao.Create().SetObject(
+					privatev1.InstanceType_builder{
+						Id: name,
+						Metadata: privatev1.Metadata_builder{
+							Name:   name,
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.InstanceTypeSpec_builder{
+							Cores:     4,
+							MemoryGib: 16,
+							State:     state,
+						}.Build(),
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			// Helper to build a full ComputeInstance create request with all required fields.
+			createRequestWithInstanceType := func(instanceTypeName string) *privatev1.ComputeInstancesCreateRequest {
+				// Use a bare template without spec defaults so the instance_type
+				// on the spec is used directly.
+				templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+
+				templateID := fmt.Sprintf("bare-template-%s", instanceTypeName)
+				_, err = templatesDao.Create().SetObject(
+					privatev1.ComputeInstanceTemplate_builder{
+						Id:          templateID,
+						Title:       "Bare Template",
+						Description: "Template without defaults",
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				return privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							Template:     templateID,
+							InstanceType: new(instanceTypeName),
+							Image: privatev1.ComputeInstanceImage_builder{
+								SourceType: "registry",
+								SourceRef:  "quay.io/containerdisks/fedora:latest",
+							}.Build(),
+							BootDisk: privatev1.ComputeInstanceDisk_builder{
+								SizeGib: 20,
+							}.Build(),
+							RunStrategy: new("Always"),
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build()
+			}
+
+			It("Rejects creation when instance_type references a non-existent instance type", func() {
+				request := createRequestWithInstanceType("nonexistent-type")
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(ContainSubstring("nonexistent-type"))
+			})
+
+			It("Rejects creation when instance_type references an OBSOLETE instance type", func() {
+				createInstanceTypeWithState("obsolete-type",
+					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_OBSOLETE)
+
+				request := createRequestWithInstanceType("obsolete-type")
+				response, err := server.Create(ctx, request)
+				Expect(err).To(HaveOccurred())
+				Expect(response).To(BeNil())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+				Expect(status.Message()).To(ContainSubstring("obsolete"))
+			})
+
+			It("Returns warning when instance_type references a DEPRECATED instance type", func() {
+				createInstanceTypeWithState("deprecated-type",
+					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_DEPRECATED)
+
+				request := createRequestWithInstanceType("deprecated-type")
+				response, err := server.Create(ctx, request)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				Expect(response.GetWarnings()).To(HaveLen(1))
+				Expect(response.GetWarnings()[0]).To(ContainSubstring("deprecated"))
+			})
+
+			It("Succeeds when instance_type references an ACTIVE instance type", func() {
+				createInstanceTypeWithState("active-type",
+					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE)
+
+				request := createRequestWithInstanceType("active-type")
+				response, err := server.Create(ctx, request)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				Expect(response.GetWarnings()).To(BeEmpty())
 			})
 		})
 	})

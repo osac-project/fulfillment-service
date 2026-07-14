@@ -13,6 +13,9 @@ language governing permissions and limitations under the License.
 
 package computeinstance
 
+//go:generate mockgen -source=../../api/osac/private/v1/compute_instances_service_grpc.pb.go -destination=compute_instances_client_mock.go -package=computeinstance ComputeInstancesClient
+//go:generate mockgen -source=../../api/osac/private/v1/instance_types_service_grpc.pb.go -destination=instance_types_client_mock.go -package=computeinstance InstanceTypesClient
+
 import (
 	"context"
 	"errors"
@@ -21,6 +24,7 @@ import (
 	"math/rand/v2"
 	"slices"
 
+	"github.com/osac-project/fulfillment-service/internal/computeinstancespec"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	corev1 "k8s.io/api/core/v1"
@@ -60,6 +64,7 @@ type function struct {
 	hubCache               controllers.HubCache
 	computeInstancesClient privatev1.ComputeInstancesClient
 	hubsClient             privatev1.HubsClient
+	instanceTypesClient    privatev1.InstanceTypesClient
 	maskCalculator         *masks.Calculator
 }
 
@@ -116,6 +121,7 @@ func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privat
 		logger:                 b.logger,
 		computeInstancesClient: privatev1.NewComputeInstancesClient(b.connection),
 		hubsClient:             privatev1.NewHubsClient(b.connection),
+		instanceTypesClient:    privatev1.NewInstanceTypesClient(b.connection),
 		hubCache:               b.hubCache,
 		maskCalculator:         masks.NewCalculator().Build(),
 	}
@@ -169,13 +175,16 @@ func (t *task) update(ctx context.Context) error {
 		return err
 	}
 
-	// Select the hub:
+	// Select the hub and return immediately if it was just selected. This ensures the hub is
+	// persisted before any Kubernetes objects are created.
+	hubJustSelected := t.computeInstance.GetStatus().GetHub() == ""
 	if err := t.selectHub(ctx); err != nil {
 		return err
 	}
-
-	// Save the selected hub in the private data of the compute instance:
 	t.computeInstance.GetStatus().SetHub(t.hubId)
+	if hubJustSelected {
+		return nil
+	}
 
 	// Get the K8S object:
 	object, err := t.getKubeObject(ctx)
@@ -196,15 +205,19 @@ func (t *task) update(ctx context.Context) error {
 
 	// Create or update the Kubernetes object:
 	if object == nil {
+		objectLabels := map[string]string{
+			labels.ComputeInstanceUuid: t.computeInstance.GetId(),
+		}
+		if instanceTypeName := t.computeInstance.GetSpec().GetInstanceType(); instanceTypeName != "" {
+			objectLabels[labels.InstanceTypeName] = instanceTypeName
+		}
 		object = &osacv1alpha1.ComputeInstance{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:    t.hubNamespace,
 				GenerateName: objectPrefix,
-				Labels: map[string]string{
-					labels.ComputeInstanceUuid: t.computeInstance.GetId(),
-				},
+				Labels:       objectLabels,
 				Annotations: map[string]string{
-					annotations.Tenant: t.computeInstance.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.computeInstance.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -272,8 +285,8 @@ func (t *task) setConditionDefaults(value privatev1.ComputeInstanceConditionType
 }
 
 func (t *task) validateTenant() error {
-	if !t.computeInstance.HasMetadata() || len(t.computeInstance.GetMetadata().GetTenants()) != 1 {
-		return errors.New("Compute instance must have exactly one tenant assigned")
+	if !t.computeInstance.HasMetadata() || t.computeInstance.GetMetadata().GetTenant() == "" {
+		return errors.New("ComputeInstance must have a tenant assigned")
 	}
 	return nil
 }
@@ -288,6 +301,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	err = t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "compute_instance_id", t.computeInstance.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 
@@ -425,6 +444,33 @@ func (t *task) getSubnetCR(ctx context.Context, subnetID string) (*osacv1alpha1.
 	return &items[0], nil
 }
 
+// getSecurityGroupCR looks up a SecurityGroup CR in the hub cluster by its fulfillment UUID label.
+func (t *task) getSecurityGroupCR(ctx context.Context, securityGroupID string) (*osacv1alpha1.SecurityGroup, error) {
+	list := &osacv1alpha1.SecurityGroupList{}
+	err := t.hubClient.List(
+		ctx, list,
+		clnt.InNamespace(t.hubNamespace),
+		clnt.MatchingLabels{
+			labels.SecurityGroupUuid: securityGroupID,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	items := list.Items
+	count := len(items)
+	if count > 1 {
+		return nil, fmt.Errorf(
+			"expected at most one security group with identifier '%s' but found %d",
+			securityGroupID, count,
+		)
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	return &items[0], nil
+}
+
 // addFinalizer adds the controller finalizer if it is not already present. Returns true if the finalizer was added,
 // false if it was already present.
 func (t *task) addFinalizer() bool {
@@ -515,49 +561,111 @@ func (t *task) buildSpec(ctx context.Context) (osacv1alpha1.ComputeInstanceSpec,
 	}
 
 	// Add explicit spec fields if present:
-	t.addExplicitFields(&spec)
+	if err := t.addExplicitFields(ctx, &spec); err != nil {
+		return osacv1alpha1.ComputeInstanceSpec{}, err
+	}
 
-	// Add subnet reference if subnet is specified
-	if t.computeInstance.GetSpec().HasSubnet() {
-		subnetID := t.computeInstance.GetSpec().GetSubnet()
-		subnetCR, err := t.getSubnetCR(ctx, subnetID)
-		if err != nil {
-			t.r.logger.WarnContext(
-				ctx,
-				"Failed to look up Subnet CR",
-				slog.String("subnet_id", subnetID),
-				slog.String("error", err.Error()),
-			)
-			// Don't set subnetRef if lookup fails
-		} else if subnetCR != nil {
-			spec.SubnetRef = subnetCR.GetName()
-			t.r.logger.DebugContext(
-				ctx,
-				"Set subnetRef from Subnet CR",
-				slog.String("subnet_id", subnetID),
-				slog.String("subnet_ref", subnetCR.GetName()),
-			)
-		} else {
-			t.r.logger.WarnContext(
-				ctx,
-				"Subnet CR not found",
-				slog.String("subnet_id", subnetID),
-			)
-		}
+	// Handle network_attachments (required)
+	err = t.buildSpecNetworkAttachments(ctx, &spec)
+	if err != nil {
+		return osacv1alpha1.ComputeInstanceSpec{}, err
 	}
 
 	return spec, nil
 }
 
-func (t *task) addExplicitFields(spec *osacv1alpha1.ComputeInstanceSpec) {
+// buildSpecNetworkAttachments handles the network_attachments field.
+func (t *task) buildSpecNetworkAttachments(ctx context.Context, spec *osacv1alpha1.ComputeInstanceSpec) error {
 	ciSpec := t.computeInstance.GetSpec()
 
-	if ciSpec.HasCores() {
-		spec.Cores = ciSpec.GetCores()
+	// Validate network_attachments structure before processing
+	err := computeinstancespec.ValidateNetworkAttachments(ciSpec.GetNetworkAttachments())
+	if err != nil {
+		return fmt.Errorf(
+			"invalid network_attachments in database: %w", err)
 	}
-	if ciSpec.HasMemoryGib() {
-		spec.MemoryGiB = ciSpec.GetMemoryGib()
+
+	networkAttachments := make([]osacv1alpha1.NetworkAttachment, 0, len(ciSpec.GetNetworkAttachments()))
+	for i, att := range ciSpec.GetNetworkAttachments() {
+		subnetID := att.GetSubnet()
+		// subnetID is guaranteed to be non-empty by ValidateNetworkAttachments
+
+		subnetCR, err := t.getSubnetCR(ctx, subnetID)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to look up Subnet CR for network_attachments[%d] subnet %s: %w",
+				i, subnetID, err)
+		}
+		if subnetCR == nil {
+			return fmt.Errorf( //nolint:staticcheck // ST1005: Subnet is an API resource name
+				"Subnet CR not found for network_attachments[%d] subnet %s",
+				i, subnetID)
+		}
+		subnetRef := subnetCR.GetName()
+		t.r.logger.DebugContext(
+			ctx,
+			"Resolved subnetRef from Subnet CR",
+			slog.String("subnet_id", subnetID),
+			slog.String("subnet_ref", subnetRef),
+		)
+
+		sgRefs := make([]string, 0, len(att.GetSecurityGroups()))
+		for _, sgID := range att.GetSecurityGroups() {
+			if sgID == "" {
+				continue
+			}
+			sgCR, sgErr := t.getSecurityGroupCR(ctx, sgID)
+			if sgErr != nil {
+				return fmt.Errorf(
+					"failed to look up SecurityGroup CR for network_attachments[%d] security group %s: %w",
+					i, sgID, sgErr)
+			}
+			if sgCR == nil {
+				return fmt.Errorf(
+					"SecurityGroup CR not found for network_attachments[%d] security group %s",
+					i, sgID)
+			}
+			sgRefs = append(sgRefs, sgCR.GetName())
+			t.r.logger.DebugContext(
+				ctx,
+				"Resolved securityGroupRef from SecurityGroup CR",
+				slog.String("security_group_id", sgID),
+				slog.String("security_group_ref", sgCR.GetName()),
+			)
+		}
+
+		networkAttachments = append(networkAttachments, osacv1alpha1.NetworkAttachment{
+			SubnetRef:         subnetRef,
+			SecurityGroupRefs: sgRefs,
+		})
 	}
+
+	if len(networkAttachments) > 0 {
+		spec.NetworkAttachments = networkAttachments
+	}
+
+	return nil
+}
+
+func (t *task) addExplicitFields(ctx context.Context, spec *osacv1alpha1.ComputeInstanceSpec) error {
+	ciSpec := t.computeInstance.GetSpec()
+
+	instanceTypeName := ciSpec.GetInstanceType()
+	if instanceTypeName == "" {
+		return fmt.Errorf(
+			"compute instance '%s' has no instance_type set; cannot resolve compute resources",
+			t.computeInstance.GetId(),
+		)
+	}
+	response, err := t.r.instanceTypesClient.Get(ctx, privatev1.InstanceTypesGetRequest_builder{
+		Id: instanceTypeName,
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to resolve instance type '%s': %w", instanceTypeName, err)
+	}
+	itSpec := response.GetObject().GetSpec()
+	spec.Cores = itSpec.GetCores()
+	spec.MemoryGiB = itSpec.GetMemoryGib()
 	if ciSpec.HasRunStrategy() {
 		spec.RunStrategy = osacv1alpha1.RunStrategyType(ciSpec.GetRunStrategy())
 	}
@@ -589,6 +697,15 @@ func (t *task) addExplicitFields(spec *osacv1alpha1.ComputeInstanceSpec) {
 		}
 		spec.AdditionalDisks = disks
 	}
+
+	// Map is_windows boolean to guestOSFamily string
+	if ciSpec.HasIsWindows() && ciSpec.GetIsWindows() {
+		spec.GuestOSFamily = "windows"
+	} else {
+		spec.GuestOSFamily = "linux"
+	}
+
+	return nil
 }
 
 // ensureUserDataSecret creates a Kubernetes Secret containing the cloud-init user data

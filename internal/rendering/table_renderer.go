@@ -36,7 +36,9 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 	"gopkg.in/yaml.v3"
 
+	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
+	"github.com/osac-project/fulfillment-service/internal/util"
 )
 
 //go:embed tables
@@ -79,20 +81,18 @@ type columnLayout struct {
 // TableRendererBuilder is used to create table renderers. Don't create instances of this type directly, use the
 // NewTableRenderer function instead.
 type TableRendererBuilder struct {
-	logger         *slog.Logger
-	helper         *reflection.Helper
-	writer         io.Writer
-	includeDeleted bool
+	logger *slog.Logger
+	helper reflection.Helper
+	writer io.Writer
 }
 
 // TableRenderer is responsible for rendering protocol buffer messages as tables. Don't create instances of this type
 // directly, use the NewTableRenderer function instead.
 type TableRenderer struct {
-	logger         *slog.Logger
-	helper         *reflection.Helper
-	writer         *tabwriter.Writer
-	cache          map[protoreflect.FullName]map[string]string
-	includeDeleted bool
+	logger *slog.Logger
+	helper reflection.Helper
+	writer *tabwriter.Writer
+	cache  map[protoreflect.FullName]map[string]string
 }
 
 // NewTableRenderer creates a new builder for table renderers.
@@ -107,20 +107,14 @@ func (b *TableRendererBuilder) SetLogger(value *slog.Logger) *TableRendererBuild
 }
 
 // SetHelper sets the reflection helper that will be used to introspect objects. This is mandatory.
-func (b *TableRendererBuilder) SetHelper(value *reflection.Helper) *TableRendererBuilder {
-	b.helper = value
+func (b *TableRendererBuilder) SetHelper(value reflection.Helper) *TableRendererBuilder {
+	b.helper = util.NormalizeNil(value)
 	return b
 }
 
 // SetWriter sets the writer that the renderer will use to write messages to the console. This is mandatory.
 func (b *TableRendererBuilder) SetWriter(value io.Writer) *TableRendererBuilder {
 	b.writer = value
-	return b
-}
-
-// SetIncludeDeleted sets whether to include the DELETED column in the output.
-func (b *TableRendererBuilder) SetIncludeDeleted(value bool) *TableRendererBuilder {
-	b.includeDeleted = value
 	return b
 }
 
@@ -148,11 +142,10 @@ func (b *TableRendererBuilder) Build() (result *TableRenderer, err error) {
 
 	// Create and populate the object:
 	result = &TableRenderer{
-		logger:         b.logger,
-		helper:         b.helper,
-		writer:         writer,
-		cache:          cache,
-		includeDeleted: b.includeDeleted,
+		logger: b.logger,
+		helper: b.helper,
+		writer: writer,
+		cache:  cache,
 	}
 	return
 }
@@ -185,23 +178,43 @@ func (r *TableRenderer) Render(ctx context.Context, objects any) error {
 		return fmt.Errorf("failed to find object helper for type %q", descriptor.FullName())
 	}
 
-	// Try to load the table definition for this object type:
+	// Try to load the table definition for this object type.
+	// If loading fails for any reason (file not found, parse error, etc.),
+	// fall back to the default table so the CLI remains functional.
 	table, err := r.loadTable(helper)
 	if err != nil {
-		return err
-	}
-	if table == nil {
+		r.logger.Warn(
+			"Failed to load table definition, using default",
+			slog.String("type", string(helper.FullName())),
+			slog.Any("error", err),
+		)
+		table = r.defaultTable()
+	} else if table == nil {
 		table = r.defaultTable()
 	}
 
-	// If the user has asked to include deleted objects then add the deletion timestamp column:
-	if r.includeDeleted {
-		deletedCol := &columnLayout{
-			Header: "DELETED",
-			Value:  "has(this.metadata.deletion_timestamp)? string(this.metadata.deletion_timestamp): '-'",
+	// When no tenant is selected, inject a TENANT column for tenant-scoped types so users can
+	// see which tenant each resource belongs to.
+	if config.TenantFromContext(ctx) == "" && helper.IsTenantScoped() {
+		hasTenantCol := slices.ContainsFunc(table.Columns, func(c *columnLayout) bool {
+			return c.Header == "TENANT"
+		})
+		if !hasTenantCol {
+			tenantCol := &columnLayout{
+				Header: "TENANT",
+				Value:  "has(this.metadata.tenant)? this.metadata.tenant: '-'",
+			}
+			table.Columns = slices.Insert(table.Columns, 0, tenantCol)
 		}
-		table.Columns = slices.Insert(table.Columns, 1, deletedCol)
 	}
+
+	// Always show a DELETING column so users can see objects being torn down.
+	// TODO: remove this column once all resource types have DELETING in their state enum.
+	deletingCol := &columnLayout{
+		Header: "DELETING",
+		Value:  "has(this.metadata.deletion_timestamp)? 'Yes': '-'",
+	}
+	table.Columns = slices.Insert(table.Columns, 1, deletingCol)
 
 	// Get the descriptor for the object type:
 	thisDesc := helper.Descriptor()
@@ -254,13 +267,19 @@ func (r *TableRenderer) Render(ctx context.Context, objects any) error {
 }
 
 // loadTable loads the table definition for the given object type from the embedded filesystem.
-func (r *TableRenderer) loadTable(helper *reflection.ObjectHelper) (result *tableLayout, err error) {
+func (r *TableRenderer) loadTable(helper reflection.ObjectHelper) (result *tableLayout, err error) {
 	// Try to read the table definition file:
 	file := fmt.Sprintf("%s.yaml", helper.FullName())
 	data, err := fs.ReadFile(tablesFS, path.Join("tables", file))
 	if err != nil {
 		// If the file doesn't exist, that's okay - we'll use the default table.
-		return
+		// This handles both fs.ErrNotExist and any path-related errors.
+		r.logger.Debug(
+			"Table definition not found, will use default",
+			slog.String("type", string(helper.FullName())),
+			slog.String("file", file),
+		)
+		return nil, nil
 	}
 
 	// Unmarshal the table definition:
@@ -307,7 +326,7 @@ func (r *TableRenderer) renderHeader(cols []*columnLayout) error {
 
 // renderRow renders a single row of the table.
 func (r *TableRenderer) renderRow(ctx context.Context, cols []*columnLayout, prgs []cel.Program, object proto.Message,
-	helper *reflection.ObjectHelper) error {
+	helper reflection.ObjectHelper) error {
 	// Wrap the object in a top-level "this" field to avoid conflicts with reserved words:
 	in := map[string]any{
 		"this": object,
@@ -380,12 +399,13 @@ func (r *TableRenderer) renderCell(ctx context.Context, col *columnLayout, val r
 func (r *TableRenderer) renderCellEnum(val types.Int, enumDesc protoreflect.EnumDescriptor) error {
 	// Get the text of the name of the enum value:
 	valueDescs := enumDesc.Values()
-	valueDesc := valueDescs.ByNumber(protoreflect.EnumNumber(val))
+	valueDesc := valueDescs.ByNumber(protoreflect.EnumNumber(val)) // #nosec G115 -- proto enum fits int32
 	if valueDesc == nil {
 		_, err := fmt.Fprintf(r.writer, "UNKNOWN:%d", val)
 		if err != nil {
 			return err
 		}
+		return nil
 	}
 	valueTxt := string(valueDesc.Name())
 
@@ -456,7 +476,8 @@ func (r *TableRenderer) lookupName(ctx context.Context, messageFullName protoref
 		"this.id == %[1]q || this.metadata.name == %[1]q",
 		key,
 	)
-	listResult, err := helper.List(ctx, reflection.ListOptions{
+	lookupCtx := config.TenantIntoContext(ctx, "")
+	listResult, err := helper.List(lookupCtx, reflection.ListOptions{
 		Filter: filter,
 	})
 	if err != nil {
@@ -489,6 +510,6 @@ func (r *TableRenderer) lookupName(ctx context.Context, messageFullName protoref
 
 // renderCellAny renders any value type as a string.
 func (r *TableRenderer) renderCellAny(val ref.Val) error {
-	_, err := fmt.Fprintf(r.writer, "%s", val)
+	_, err := fmt.Fprintf(r.writer, "%v", val)
 	return err
 }

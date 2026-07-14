@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
@@ -48,9 +47,10 @@ var _ = Describe("Version", func() {
 		DeferCleanup(ctrl.Finish)
 
 		// Prepare the database pool:
-		db := server.MakeDatabase()
+		db, err := server.NewInstance().Build()
+		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
+		pool, err := db.Pool(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(pool.Close)
 
@@ -65,20 +65,38 @@ var _ = Describe("Version", func() {
 		tx, err = tm.Begin(ctx)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
+			err := tx.End(ctx)
 			Expect(err).ToNot(HaveOccurred())
 		})
 		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = CreateTables[*testsv1.Object](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create a tenancy logic without restrictions:
 		tenancy = auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
 			Return(collections.NewUniversalSet[string](), nil).
 			AnyTimes()
+
+		// Create the tenants used in the tests:
+		createTenant := func(name string) {
+			_, err = pool.Exec(ctx, `
+				insert into tenants (
+					id,
+					name,
+					tenant,
+					data
+				)
+				values (
+					$1,
+					$2,
+					$3,
+					'{}'
+				)
+				`,
+				name, name, name,
+			)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("my-tenant")
 
 		// Create the DAO:
 		generic, err = NewGenericDAO[*testsv1.Object]().
@@ -101,7 +119,9 @@ var _ = Describe("Version", func() {
 		response, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -116,7 +136,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -136,7 +158,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -157,7 +181,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -191,8 +217,10 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
-					MyInt32:  0,
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
+					MyInt32: 0,
 				}.Build(),
 			).
 			Do(ctx)
@@ -215,7 +243,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "my_value",
 				}.Build(),
 			).
@@ -253,7 +283,9 @@ var _ = Describe("Version", func() {
 		createResponse, err := generic.Create().
 			SetObject(
 				testsv1.Object_builder{
-					Metadata: testsv1.Metadata_builder{Tenants: []string{"my-tenant"}}.Build(),
+					Metadata: testsv1.Metadata_builder{
+						Tenant: "my-tenant",
+					}.Build(),
 					MyString: "v0",
 				}.Build(),
 			).

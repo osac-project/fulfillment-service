@@ -14,17 +14,18 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
+	"context"
 	"log/slog"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
+	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/logging"
-	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
 
 func TestServers(t *testing.T) {
@@ -33,12 +34,13 @@ func TestServers(t *testing.T) {
 }
 
 var (
+	ctx         context.Context
 	ctrl        *gomock.Controller
 	logger      *slog.Logger
-	server      *DatabaseServer
+	server      *database.Container
+	tm          database.TxManager
 	attribution *auth.MockAttributionLogic
 	tenancy     *auth.MockTenancyLogic
-	visibility  collections.Set[string]
 )
 
 var _ = BeforeSuite(func() {
@@ -57,26 +59,66 @@ var _ = BeforeSuite(func() {
 
 	// Create the attribution logic:
 	attribution = auth.NewMockAttributionLogic(ctrl)
-	attribution.EXPECT().DetermineAssignedCreators(gomock.Any()).
-		Return(collections.NewSet("system"), nil).
+	attribution.EXPECT().DetermineAssignedCreator(gomock.Any()).
+		Return("system", nil).
 		AnyTimes()
 
 	// Create the tenancy logic:
 	tenancy = auth.NewMockTenancyLogic(ctrl)
 	tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-		Return(collections.NewUniversalSet[string](), nil).
+		Return(auth.AllTenants, nil).
 		AnyTimes()
-	tenancy.EXPECT().DetermineDefaultTenants(gomock.Any()).
-		Return(collections.NewSet("system"), nil).
+	tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
+		Return(auth.SystemTenant, nil).
 		AnyTimes()
 	tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-		Return(collections.NewUniversalSet[string](), nil).
+		Return(auth.AllTenants, nil).
 		AnyTimes()
 
-	// Create the set of visible tenants:
-	visibility = collections.NewUniversalSet[string]()
-
 	// Create the database server:
-	server = MakeDatabaseServer()
-	DeferCleanup(server.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	DeferCleanup(cancel)
+	server, err = database.NewContainer().
+		SetLogger(logger).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+	err = server.Start(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		err = server.Stop(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	})
+})
+
+var _ = BeforeEach(func() {
+	var err error
+
+	// Create a context:
+	ctx = context.Background()
+
+	// Prepare the database pool:
+	db, err := server.NewInstance().Build()
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(db.Close)
+	pool, err := db.Pool(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(pool.Close)
+
+	// Create the transaction manager:
+	tm, err = database.NewTxManager().
+		SetLogger(logger).
+		SetPool(pool).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+
+	// Start a transaction and add it to the context:
+	tx, err := tm.Begin(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(func() {
+		err := tx.End(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	})
+	ctx = database.TxIntoContext(ctx, tx)
 })

@@ -15,5 +15,5 @@ package auth
 
 // Names of frequently used authentication and authorization headers.
 const (
-	SubjectHeader = "X-Subject"
+	Authorization = "authorization"
 )

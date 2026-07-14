@@ -18,4 +18,13 @@ repos:
       files: \.(yaml|yml)$
       types: [file, yaml]
       entry: yamllint --strict
-      exclude: ^charts/.*/templates/
+      exclude: ^(charts|it/charts)/.*/templates/
+
+- repo: local
+  hooks:
+  - id: golangci-lint
+    pass_filenames: false
+    name: golangci-lint
+    language: system
+    files: \.go$
+    entry: uv run dev.py lint

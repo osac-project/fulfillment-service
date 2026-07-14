@@ -237,6 +237,56 @@ var _ = Describe("ValidateTemplateParameters", func() {
 			err = ValidateTemplateParameters(template, params)
 			Expect(err).ToNot(HaveOccurred())
 		})
+
+		It("should validate bare metal instance template parameters correctly", func() {
+			bmiTemplate := &privatev1.BareMetalInstanceTemplate{
+				Id: "bmi-template",
+				Parameters: []*privatev1.BareMetalInstanceTemplateParameterDefinition{
+					{
+						Name:     "os_version",
+						Required: true,
+						Type:     "type.googleapis.com/google.protobuf.StringValue",
+					},
+				},
+			}
+			template = BareMetalInstanceTemplateAdapter{bmiTemplate}
+
+			stringValue := wrapperspb.String("rhel9.4")
+			anyValue, err := anypb.New(stringValue)
+			Expect(err).ToNot(HaveOccurred())
+			params["os_version"] = anyValue
+
+			err = ValidateTemplateParameters(template, params)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should process bare metal instance template parameters with defaults", func() {
+			defaultStringValue := wrapperspb.String("rhel9.4")
+			defaultAnyValue, err := anypb.New(defaultStringValue)
+			Expect(err).ToNot(HaveOccurred())
+
+			bmiTemplate := &privatev1.BareMetalInstanceTemplate{
+				Id: "bmi-template",
+				Parameters: []*privatev1.BareMetalInstanceTemplateParameterDefinition{
+					{
+						Name:     "os_version",
+						Required: false,
+						Type:     "type.googleapis.com/google.protobuf.StringValue",
+						Default:  defaultAnyValue,
+					},
+				},
+			}
+
+			result := ProcessTemplateParametersWithDefaults(
+				BareMetalInstanceTemplateAdapter{bmiTemplate}, nil,
+			)
+			Expect(result).To(HaveKey("os_version"))
+
+			var resultString wrapperspb.StringValue
+			err = result["os_version"].UnmarshalTo(&resultString)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resultString.Value).To(Equal("rhel9.4"))
+		})
 	})
 })
 

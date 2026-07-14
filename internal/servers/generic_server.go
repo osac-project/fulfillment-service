@@ -19,11 +19,10 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"sort"
 	"strings"
 	"sync"
 
-	"github.com/dustin/go-humanize/english"
+	"buf.build/go/protovalidate"
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -34,10 +33,10 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/masks"
+	"github.com/osac-project/fulfillment-service/internal/util"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
@@ -45,8 +44,10 @@ import (
 type GenericServerBuilder[O dao.Object] struct {
 	logger            *slog.Logger
 	service           string
+	table             string
 	ignoredFields     []any
-	notifier          *database.Notifier
+	notifier          events.Notifier
+	redactFunc        func(O) O
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -62,7 +63,6 @@ type GenericServer[O dao.Object] struct {
 	tenancyLogic     auth.TenancyLogic
 	template         proto.Message
 	metadataField    protoreflect.FieldDescriptor
-	nameField        protoreflect.FieldDescriptor
 	listRequest      proto.Message
 	listResponse     proto.Message
 	getRequest       proto.Message
@@ -75,10 +75,13 @@ type GenericServer[O dao.Object] struct {
 	deleteResponse   proto.Message
 	signalRequest    proto.Message
 	signalResponse   proto.Message
-	notifier         *database.Notifier
+	notifier         events.Notifier
+	redactFunc       func(O) O
+	payloadField     protoreflect.FieldDescriptor
 	pathCompiler     *masks.PathCompiler[O]
 	pathCache        map[string]*masks.Path[O]
 	pathCacheLock    *sync.Mutex
+	validator        protovalidate.Validator
 }
 
 type metadataIface interface {
@@ -86,10 +89,12 @@ type metadataIface interface {
 	GetName() string
 	GetLabels() map[string]string
 	GetAnnotations() map[string]string
-	GetCreators() []string
-	SetCreators([]string)
-	GetTenants() []string
-	SetTenants([]string)
+	GetCreator() string
+	SetCreator(string)
+	GetTenant() string
+	SetTenant(string)
+	GetProject() string
+	SetProject(string)
 	GetVersion() int32
 }
 
@@ -110,6 +115,13 @@ func (b *GenericServerBuilder[O]) SetService(value string) *GenericServerBuilder
 	return b
 }
 
+// SetTableName overrides the database table name. By default the table name is derived from the
+// protobuf message type name. Use this when the table name does not match the type name.
+func (b *GenericServerBuilder[O]) SetTableName(value string) *GenericServerBuilder[O] {
+	b.table = value
+	return b
+}
+
 // AddIgnoredFields adds a set of fields to be omitted when mapping objects. The values passed can be of the following
 // types:
 //
@@ -127,12 +139,20 @@ func (b *GenericServerBuilder[O]) AddIgnoredFields(values ...any) *GenericServer
 }
 
 // SetNotifier sets the notifier that the server will use to send change notifications. This is optional.
-func (b *GenericServerBuilder[O]) SetNotifier(value *database.Notifier) *GenericServerBuilder[O] {
-	b.notifier = value
+func (b *GenericServerBuilder[O]) SetNotifier(value events.Notifier) *GenericServerBuilder[O] {
+	b.notifier = util.NormalizeNil(value)
 	return b
 }
 
-// SetAttributionLogic sets the logic that will be used to determine the creators for objects.
+// SetRedactFunc sets a function that will be called to redact sensitive fields from objects before they are included in
+// event notification payloads. The function receives a clone of the object and should return it with the sensitive
+// fields cleared. This is optional.
+func (b *GenericServerBuilder[O]) SetRedactFunc(value func(O) O) *GenericServerBuilder[O] {
+	b.redactFunc = value
+	return b
+}
+
+// SetAttributionLogic sets the logic that will be used to determine the creator for objects.
 func (b *GenericServerBuilder[O]) SetAttributionLogic(value auth.AttributionLogic) *GenericServerBuilder[O] {
 	b.attributionLogic = value
 	return b
@@ -181,6 +201,13 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		return
 	}
 
+	// Create the protovalidate validator:
+	validator, err := protovalidate.New()
+	if err != nil {
+		err = fmt.Errorf("failed to create protovalidate validator: %w", err)
+		return
+	}
+
 	// Create the object early so that we can use its methods as callbacks:
 	s := &GenericServer[O]{
 		logger:           b.logger,
@@ -191,11 +218,18 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		pathCompiler:     pathCompiler,
 		pathCache:        map[string]*masks.Path[O]{},
 		pathCacheLock:    &sync.Mutex{},
+		validator:        validator,
 	}
+
+	// Set the redact function:
+	s.redactFunc = b.redactFunc
 
 	// Create the DAO:
 	daoBuilder := dao.NewGenericDAO[O]()
 	daoBuilder.SetLogger(b.logger)
+	if b.table != "" {
+		daoBuilder.SetTableName(b.table)
+	}
 	daoBuilder.SetTenancyLogic(b.tenancyLogic)
 	if b.notifier != nil {
 		daoBuilder.AddEventCallback(s.notifyEvent)
@@ -256,6 +290,12 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		return
 	}
 
+	// Find the payload field in the event message:
+	s.payloadField, err = b.findPayloadField()
+	if err != nil {
+		return
+	}
+
 	result = s
 	return
 }
@@ -279,16 +319,6 @@ func (b *GenericServerBuilder[O]) findService() (result protoreflect.ServiceDesc
 	}
 	return
 }
-
-// Names of gRPC methods:
-const (
-	listMethod   = "List"
-	getMethod    = "Get"
-	createMethod = "Create"
-	updateMethod = "Update"
-	deleteMethod = "Delete"
-	signalMethod = "Signal"
-)
 
 // findRequestAndResponse finds the request and response message types for the given method.
 func (b *GenericServerBuilder[O]) findRequestAndResponse(service protoreflect.ServiceDescriptor,
@@ -316,6 +346,30 @@ func (b *GenericServerBuilder[O]) findRequestAndResponse(service protoreflect.Se
 		}
 	}
 	err = fmt.Errorf("failed to find method '%s' in service '%s'", methodName, service.FullName())
+	return
+}
+
+// findPayloadField finds the field in the event message that corresponds to this object type. This is used later to
+// set the payload of event notifications without having to iterate the oneof fields every time. Returns nil if there
+// is no such field.
+func (b *GenericServerBuilder[O]) findPayloadField() (result protoreflect.FieldDescriptor, err error) {
+	var objectTempl O
+	objectDesc := objectTempl.ProtoReflect().Descriptor()
+	var eventTempl *privatev1.Event
+	eventDesc := eventTempl.ProtoReflect().Descriptor()
+	oneofDesc := eventDesc.Oneofs().ByName(eventPayloadField)
+	if oneofDesc == nil {
+		err = fmt.Errorf("failed to find the 'payload' field of the event type '%s'", eventDesc.FullName())
+		return
+	}
+	oneofFields := oneofDesc.Fields()
+	for i := range oneofFields.Len() {
+		payloadField := oneofFields.Get(i)
+		if payloadField.Message() != nil && payloadField.Message() == objectDesc {
+			result = payloadField
+			break
+		}
+	}
 	return
 }
 
@@ -419,29 +473,29 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	} else {
 		requestMetadata := s.getMetadata(requestObject)
 		if requestMetadata != nil {
-			err := s.validateMetadata(requestMetadata)
+			err := s.validateMetadata(ctx, requestMetadata)
 			if err != nil {
 				return err
 			}
 		}
 	}
 
-	// Calculate the assigned creators:
-	assignedCreators, err := s.determineAssignedCreators(ctx)
+	// Calculate the assigned creator:
+	assignedCreator, err := s.determineAssignedCreator(ctx)
 	if err != nil {
 		return err
 	}
-	err = s.setCreators(ctx, requestObject, assignedCreators)
+	err = s.setCreator(ctx, requestObject, assignedCreator)
 	if err != nil {
 		return err
 	}
 
-	// Calculate the assigned tenants:
-	assignedTenants, err := s.determineAssignedTenants(ctx, requestObject, requestObject)
+	// Calculate the assigned tenant:
+	assignedTenant, err := s.determineAssignedTenant(ctx, requestObject, requestObject)
 	if err != nil {
 		return err
 	}
-	err = s.setTenants(ctx, requestObject, assignedTenants)
+	err = s.setTenant(ctx, requestObject, assignedTenant)
 	if err != nil {
 		return err
 	}
@@ -453,15 +507,19 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	if err != nil {
 		var alreadyExistsErr *dao.ErrAlreadyExists
 		if errors.As(err, &alreadyExistsErr) {
-			return grpcstatus.Errorf(
-				grpccodes.AlreadyExists,
-				"object with identifier '%s' already exists",
-				alreadyExistsErr.ID,
-			)
+			return grpcstatus.Errorf(grpccodes.AlreadyExists, "%s", alreadyExistsErr.Error())
+		}
+		var notUniqueErr *dao.ErrNotUnique
+		if errors.As(err, &notUniqueErr) {
+			return grpcstatus.Errorf(grpccodes.AlreadyExists, "%s", notUniqueErr.Error())
 		}
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
-			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Error())
+		}
+		var referenceErr *dao.ErrReference
+		if errors.As(err, &referenceErr) {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument, "%s", referenceErr.Error())
 		}
 		s.logger.ErrorContext(
 			ctx,
@@ -579,21 +637,30 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		tmpObject = requestObject
 	}
 
+	// Validate the merged object using protovalidate.
+	// This ensures all validation constraints are checked after applying the update mask,
+	// avoiding false positives from partial request objects.
+	err = s.validator.Validate(tmpObject)
+	if err != nil {
+		s.logger.DebugContext(ctx, "Object validation failed after mask merge", "error", err.Error())
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "validation failed: %s", err.Error())
+	}
+
 	// Validate the resulting metadata:
 	tmpMetadata := s.getMetadata(tmpObject)
 	if tmpMetadata != nil {
-		err = s.validateMetadata(tmpMetadata)
+		err = s.validateMetadata(ctx, tmpMetadata)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Calculate the tenants for the updated object:
-	assignedTenants, err := s.determineAssignedTenants(ctx, tmpObject, currentObject)
+	// Calculate the tenant for the updated object:
+	assignedTenant, err := s.determineAssignedTenant(ctx, tmpObject, currentObject)
 	if err != nil {
 		return err
 	}
-	err = s.setTenants(ctx, tmpObject, assignedTenants)
+	err = s.setTenant(ctx, tmpObject, assignedTenant)
 	if err != nil {
 		return err
 	}
@@ -609,9 +676,25 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 			if errors.As(err, &conflictErr) {
 				return grpcstatus.Errorf(grpccodes.Aborted, "%s", conflictErr.Error())
 			}
+			var alreadyExistsErr *dao.ErrAlreadyExists
+			if errors.As(err, &alreadyExistsErr) {
+				return grpcstatus.Errorf(grpccodes.AlreadyExists, "%s", alreadyExistsErr.Error())
+			}
+			var referenceErr *dao.ErrReference
+			if errors.As(err, &referenceErr) {
+				return grpcstatus.Errorf(grpccodes.FailedPrecondition, "%s", referenceErr.Error())
+			}
+			var notUniqueErr *dao.ErrNotUnique
+			if errors.As(err, &notUniqueErr) {
+				return grpcstatus.Errorf(grpccodes.AlreadyExists, "%s", notUniqueErr.Error())
+			}
 			var deniedErr *dao.ErrDenied
 			if errors.As(err, &deniedErr) {
-				return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+				return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Error())
+			}
+			var immutableErr *dao.ErrImmutable
+			if errors.As(err, &immutableErr) {
+				return grpcstatus.Errorf(grpccodes.InvalidArgument, "%s", immutableErr.Error())
 			}
 			s.logger.ErrorContext(
 				ctx,
@@ -684,17 +767,21 @@ func (s *GenericServer[O]) Delete(ctx context.Context, request any, response any
 		SetId(requestId).
 		Do(ctx)
 	if err != nil {
-		var notFoundErr *dao.ErrNotFound
-		if errors.As(err, &notFoundErr) {
+		_, ok := errors.AsType[*dao.ErrNotFound](err)
+		if ok {
 			return grpcstatus.Errorf(
 				grpccodes.NotFound,
 				"object with identifier '%s' not found",
 				requestId,
 			)
 		}
-		var deniedErr *dao.ErrDenied
-		if errors.As(err, &deniedErr) {
-			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+		deniedErr, ok := errors.AsType[*dao.ErrDenied](err)
+		if ok {
+			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Error())
+		}
+		inUseErr, ok := errors.AsType[*dao.ErrInUse](err)
+		if ok {
+			return grpcstatus.Errorf(grpccodes.FailedPrecondition, "%s", inUseErr.Error())
 		}
 		s.logger.ErrorContext(
 			ctx,
@@ -807,48 +894,16 @@ func (s *GenericServer[O]) notifyEvent(ctx context.Context, e dao.Event) error {
 	return s.notifier.Notify(ctx, event)
 }
 
+// setPayload sets the payload of the event message. If the payload field is not found the event is left unchanged. If a
+// redact function has been configured, the object is cloned and redacted before being set.
 func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Message) error {
-	// TODO: This is the only part of the generic server that depends on specific object types. Is there a way
-	// to avoid that?
-	switch object := object.(type) {
-	case *privatev1.ClusterTemplate:
-		event.SetClusterTemplate(object)
-	case *privatev1.Cluster:
-		event.SetCluster(object)
-	case *privatev1.HostType:
-		event.SetHostType(object)
-	case *privatev1.Hub:
-		// TODO: We need to remove the Kubeconfig from the payload of the notification because that usually
-		// exceeds the default limit of 8000 bytes of the PostgreSQL notification mechanism. A better way to
-		// do this would be to store the payloads in a separate table. We will do that later.
-		object = proto.Clone(object).(*privatev1.Hub)
-		object.SetKubeconfig(nil)
-		event.SetHub(object)
-	case *privatev1.ComputeInstanceTemplate:
-		event.SetComputeInstanceTemplate(object)
-	case *privatev1.ComputeInstance:
-		event.SetComputeInstance(object)
-	case *privatev1.NetworkClass:
-		event.SetNetworkClass(object)
-	case *privatev1.VirtualNetwork:
-		event.SetVirtualNetwork(object)
-	case *privatev1.Subnet:
-		event.SetSubnet(object)
-	case *privatev1.SecurityGroup:
-		event.SetSecurityGroup(object)
-	case *privatev1.Lease:
-		event.SetLease(object)
-	case *privatev1.PublicIPPool:
-		event.SetPublicIpPool(object)
-	case *privatev1.PublicIP:
-		event.SetPublicIp(object)
-	case *privatev1.Organization:
-		event.SetOrganization(object)
-	case *privatev1.User:
-		event.SetUser(object)
-	default:
-		return fmt.Errorf("unknown object type '%T'", object)
+	if s.payloadField == nil {
+		return nil
 	}
+	if s.redactFunc != nil {
+		object = s.redactFunc(proto.Clone(object).(O))
+	}
+	event.ProtoReflect().Set(s.payloadField, protoreflect.ValueOfMessage(object.ProtoReflect()))
 	return nil
 }
 
@@ -860,14 +915,10 @@ func (s *GenericServer[O]) setPointer(pointer any, value any) {
 	reflect.ValueOf(pointer).Elem().Set(reflect.ValueOf(value))
 }
 
-func (s *GenericServer[O]) validateMetadata(metadata metadataIface) error {
-	name := metadata.GetName()
-	if name != "" {
-		err := s.validateName(name)
-		if err != nil {
-			return err
-		}
-	}
+func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metadataIface) error {
+	// Note: Name validation is handled by protovalidate annotations and the validation interceptor.
+	// No need to re-validate here.
+
 	labels := metadata.GetLabels()
 	if len(labels) > 0 {
 		err := s.validateLabels(labels)
@@ -885,53 +936,15 @@ func (s *GenericServer[O]) validateMetadata(metadata metadataIface) error {
 	return nil
 }
 
-// validateName validates that the 'metadata.name' field follows DNS label restrictions as defined in RFC 1035:
+// validateLabels validates label keys and values according to Kubernetes label naming conventions.
 //
-// - Must be between 1 and 63 characters long
-// - Must only contain lowercase letters (a-z), digits (0-9) and hyphens (-)
-// - Cannot start or end with a hyphen
-func (s *GenericServer[O]) validateName(name string) error {
-	// Max length:
-	if len(name) > 63 {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' must be at most 63 characters long, but it has %d characters",
-			len(name),
-		)
-	}
-
-	// Validate characters, only a-z, 0-9, and hyphen:
-	for i, c := range name {
-		isLower := c >= 'a' && c <= 'z'
-		isDigit := c >= '0' && c <= '9'
-		isHyphen := c == '-'
-		if !isLower && !isDigit && !isHyphen {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"field 'metadata.name' must only contain lowercase letters (a-z), digits (0-9) and "+
-					"hyphens (-), but contains '%c' at position %d",
-				c, i,
-			)
-		}
-	}
-
-	// Cannot start or end with hyphen:
-	if strings.HasPrefix(name, "-") {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' cannot start with a hyphen",
-		)
-	}
-	if strings.HasSuffix(name, "-") {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' cannot end with a hyphen",
-		)
-	}
-
-	return nil
-}
-
+// This validation complements protovalidate annotations on the Metadata message:
+// - Proto annotations enforce length constraints (keys: 1-316 chars, values: max 63 chars)
+// - This Go code enforces complex DNS subdomain rules that cannot be expressed in simple regex:
+//   - Prefix/name structure (optional "prefix/" followed by name)
+//   - Each dot-separated segment must be a valid DNS label
+//   - Character restrictions (alphanumeric, hyphens, underscores, dots)
+//   - Alphanumeric start/end requirements
 func (s *GenericServer[O]) validateLabels(labels map[string]string) error {
 	for key, value := range labels {
 		err := s.validateLabelKey("metadata.labels", key)
@@ -1105,46 +1118,38 @@ func (s *GenericServer[O]) setMetadata(object O, metadata metadataIface) {
 	}
 }
 
-// determineAssignedCreators calls the attribution logic to determine the creators that will be assigned to an object that
-// is being created or updated. In case of error it returns a gRPC error that can be directly returned to the client.
-func (s *GenericServer[O]) determineAssignedCreators(ctx context.Context) (result collections.Set[string], err error) {
-	result, err = s.attributionLogic.DetermineAssignedCreators(ctx)
+// determineAssignedCreator calls the attribution logic to determine the creator that will be assigned to an object
+// that is being created. In case of error it returns a gRPC error that can be directly returned to the client.
+func (s *GenericServer[O]) determineAssignedCreator(ctx context.Context) (result string, err error) {
+	result, err = s.attributionLogic.DetermineAssignedCreator(ctx)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,
-			"Failed to determine assigned creators",
+			"Failed to determine assigned creator",
 			slog.Any("error", err),
 		)
-		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assigned creators")
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assigned creator")
 		return
 	}
 	return
 }
 
-// setCreators sets the creators in the object's metadata, creating the metadata if necessary. In case of error it
+// setCreator sets the creator in the object's metadata, creating the metadata if necessary. In case of error it
 // returns a gRPC error that can be directly returned to the client.
-func (s *GenericServer[O]) setCreators(ctx context.Context, object O, creators collections.Set[string]) error {
+func (s *GenericServer[O]) setCreator(ctx context.Context, object O, creator string) error {
 	metadata := s.getMetadata(object)
 	if metadata == nil {
 		metadata = s.newMetadata()
 		s.setMetadata(object, metadata)
 	}
-	if !creators.Finite() {
-		s.logger.ErrorContext(
-			ctx,
-			"Trying to set an infinite creator set",
-			slog.Any("object", object),
-		)
-		return grpcstatus.Errorf(grpccodes.Internal, "failed to set creators")
-	}
-	metadata.SetCreators(creators.Inclusions())
+	metadata.SetCreator(creator)
 	return nil
 }
 
-// determineAssignedTenants calls the tenancy logic to determine what tenants will be assigned to an object that is
+// determineAssignedTenant calls the tenancy logic to determine which tenant will be assigned to an object that is
 // being created or updated. In case of error it returns a gRPC error that can be directly returned to the client.
-func (s *GenericServer[O]) determineAssignedTenants(ctx context.Context,
-	requestObject, currentObject O) (result collections.Set[string], err error) {
+func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
+	requestObject, currentObject O) (result string, err error) {
 	// Check that there are visible tenants:
 	visibleTenants, err := s.tenancyLogic.DetermineVisibleTenants(ctx)
 	if err != nil {
@@ -1177,136 +1182,85 @@ func (s *GenericServer[O]) determineAssignedTenants(ctx context.Context,
 		return
 	}
 
-	// Determine the tenants that are assigned by default to the object:
-	defaultTenants, err := s.tenancyLogic.DetermineDefaultTenants(ctx)
+	// Determine the default tenant:
+	defaultTenant, err := s.tenancyLogic.DetermineDefaultTenant(ctx)
 	if err != nil {
 		s.logger.ErrorContext(
 			ctx,
-			"Failed to determine default tenants",
+			"Failed to determine default tenant",
 			slog.Any("error", err),
 		)
-		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default tenants")
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default tenant")
 		return
 	}
-	if defaultTenants.Empty() {
-		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no default tenants")
-		return
-	}
-
-	// Get the tenants from the request and current object:
-	requestTenants, err := s.getTenants(ctx, requestObject)
-	if err != nil {
-		return
-	}
-	currentTenants, err := s.getTenants(ctx, currentObject)
-	if err != nil {
+	if defaultTenant == "" {
+		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there is no default tenant")
 		return
 	}
 
-	// Check that the user isn't tring to assign tenants that are invisible to them:
-	invisibleTenants := requestTenants.Difference(visibleTenants)
-	if !invisibleTenants.Empty() {
-		s.logger.WarnContext(
-			ctx,
-			"User is trying to assign tenants that are invisible to them",
-			slog.Any("visible", visibleTenants.Inclusions()),
-			slog.Any("requested", requestTenants.Inclusions()),
-		)
-		invisibleIds := invisibleTenants.Inclusions()
-		if len(invisibleIds) == 1 {
+	// Get the tenant from the request and current object:
+	requestTenant := s.getTenant(requestObject)
+	currentTenant := s.getTenant(currentObject)
+
+	// If the request specifies a tenant, check that it is visible and assignable:
+	if requestTenant != "" {
+		if !visibleTenants.Contains(requestTenant) {
+			s.logger.WarnContext(
+				ctx,
+				"User is trying to assign a tenant that is invisible to them",
+				slog.String("requested", requestTenant),
+			)
 			err = grpcstatus.Errorf(
 				grpccodes.PermissionDenied,
 				"tenant '%s' doesn't exist",
-				invisibleIds[0],
+				requestTenant,
 			)
 			return
 		}
-		sort.Strings(invisibleIds)
-		for i, invisibleId := range invisibleIds {
-			invisibleIds[i] = fmt.Sprintf("'%s'", invisibleId)
-		}
-		err = grpcstatus.Errorf(
-			grpccodes.PermissionDenied,
-			"tenants %s don't exist",
-			english.WordSeries(invisibleIds, "and"),
-		)
-		return
-	}
-
-	// Check that the user isn't tring to assign tenants that are unassignableTenants to them:
-	unassignableTenants := requestTenants.Difference(assignableTenants)
-	if !unassignableTenants.Empty() {
-		s.logger.WarnContext(
-			ctx,
-			"User is trying to assign tenants that are unassignable",
-			slog.Any("assignable", assignableTenants.Inclusions()),
-			slog.Any("requested", requestTenants.Inclusions()),
-		)
-		unassignableIds := unassignableTenants.Inclusions()
-		if len(unassignableIds) == 1 {
+		if !assignableTenants.Contains(requestTenant) {
+			s.logger.WarnContext(
+				ctx,
+				"User is trying to assign a tenant that is unassignable",
+				slog.String("requested", requestTenant),
+			)
 			err = grpcstatus.Errorf(
 				grpccodes.PermissionDenied,
 				"tenant '%s' can't be assigned",
-				unassignableIds[0],
+				requestTenant,
 			)
 			return
 		}
-		sort.Strings(unassignableIds)
-		for i, unassignableId := range unassignableIds {
-			unassignableIds[i] = fmt.Sprintf("'%s'", unassignableId)
-		}
-		err = grpcstatus.Errorf(
-			grpccodes.PermissionDenied,
-			"tenants %s can't be assigned",
-			english.WordSeries(unassignableIds, "and"),
-		)
+		result = requestTenant
 		return
 	}
 
-	// Start with the tenants from the request, or the current tenants, or the default tenants:
-	var initialTenants collections.Set[string]
-	if !requestTenants.Empty() {
-		initialTenants = requestTenants
-	} else if !currentTenants.Empty() {
-		initialTenants = currentTenants
+	// Fall back to the current tenant or the default:
+	if currentTenant != "" {
+		result = currentTenant
 	} else {
-		initialTenants = defaultTenants
+		result = defaultTenant
 	}
-
-	// To the initial tenants we add the assignable tenants that are visible to the user:
-	result = initialTenants.Union(assignableTenants.Intersection(visibleTenants.Negate()))
 	return
 }
 
-// getTenants extracts the tenants from an object's metadata. In case of error it returns a gRPC error that can be
-// directly returned to the client.
-func (s *GenericServer[O]) getTenants(ctx context.Context, object O) (result collections.Set[string], err error) {
-	var tenants []string
+// getTenant extracts the tenant from an object's metadata.
+func (s *GenericServer[O]) getTenant(object O) string {
 	metadata := s.getMetadata(object)
 	if metadata != nil {
-		tenants = metadata.GetTenants()
+		return metadata.GetTenant()
 	}
-	result = collections.NewSet(tenants...)
-	return
+	return ""
 }
 
-// setTenants sets the tenants in the object's metadata, creating the metadata if necessary. In case of error it
+// setTenant sets the tenant in the object's metadata, creating the metadata if necessary. In case of error it
 // returns a gRPC error that can be directly returned to the client.
-func (s *GenericServer[O]) setTenants(ctx context.Context, object O, tenants collections.Set[string]) error {
+func (s *GenericServer[O]) setTenant(ctx context.Context, object O, tenant string) error {
 	metadata := s.getMetadata(object)
 	if metadata == nil {
 		metadata = s.newMetadata()
 		s.setMetadata(object, metadata)
 	}
-	if !tenants.Finite() {
-		s.logger.ErrorContext(
-			ctx,
-			"Trying to set an infinite tenant set",
-			slog.Any("object", object),
-		)
-		return grpcstatus.Errorf(grpccodes.Internal, "failed to set tenants")
-	}
-	metadata.SetTenants(tenants.Inclusions())
+	metadata.SetTenant(tenant)
 	return nil
 }
 
@@ -1370,3 +1324,18 @@ func (s *GenericServer[O]) equivalentMetadata(x, y protoreflect.Message) bool {
 	}
 	return true
 }
+
+// Names of gRPC methods:
+const (
+	listMethod   = "List"
+	getMethod    = "Get"
+	createMethod = "Create"
+	updateMethod = "Update"
+	deleteMethod = "Delete"
+	signalMethod = "Signal"
+)
+
+// Names of fields:
+const (
+	eventPayloadField = "payload"
+)

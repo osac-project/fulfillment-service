@@ -13,7 +13,19 @@ language governing permissions and limitations under the License.
 
 package gvks
 
-import "k8s.io/apimachinery/pkg/runtime/schema"
+import (
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	osacv1alpha1 "github.com/osac-project/osac-operator/api/v1alpha1"
+)
+
+var PublicIPAttachment = schema.GroupVersionKind{
+	Group:   osacv1alpha1.GroupVersion.Group,
+	Version: osacv1alpha1.GroupVersion.Version,
+	Kind:    "PublicIPAttachment",
+}
+
+var PublicIPAttachmentList = listGVK(PublicIPAttachment)
 
 var HostedCluster = schema.GroupVersionKind{
 	Group:   "hypershift.openshift.io",

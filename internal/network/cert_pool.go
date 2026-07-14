@@ -33,6 +33,7 @@ type CertPoolBuilder struct {
 	root            string
 	files           []string
 	exts            []string
+	certs           []any
 }
 
 // NewCertPool creates a builder that can then used to configure and create a certificate pool.
@@ -66,7 +67,7 @@ func (b *CertPoolBuilder) AddSystemFiles(value bool) *CertPoolBuilder {
 	return b
 }
 
-// AddKubernetesFiles adds the Kubernetes CA files to the pool. The default is to add them.
+// AddKubernetesFiles adds the Kubernetes CA files to the pool. The default is to not add them.
 func (b *CertPoolBuilder) AddKubernetesFiles(value bool) *CertPoolBuilder {
 	b.kubernetesFiles = value
 	return b
@@ -110,6 +111,20 @@ func (b *CertPoolBuilder) AddExtensions(values ...string) *CertPoolBuilder {
 	return b
 }
 
+// AddCertificate adds a certificate to the pool. The value can be a string or a slice of bytes containing a PEM
+// encoded certificate, or a *x509.Certificate object.
+func (b *CertPoolBuilder) AddCertificate(value any) *CertPoolBuilder {
+	b.certs = append(b.certs, value)
+	return b
+}
+
+// AddCertificates adds multiple certificates to the pool. Each value can be a string or a slice of bytes containing
+// a PEM encoded certificate, or a *x509.Certificate object.
+func (b *CertPoolBuilder) AddCertificates(values ...any) *CertPoolBuilder {
+	b.certs = append(b.certs, values...)
+	return b
+}
+
 // Build uses the data stored in the builder to create a new certificate pool.
 func (b *CertPoolBuilder) Build() (result *x509.CertPool, err error) {
 	// Check parameters:
@@ -140,10 +155,36 @@ func (b *CertPoolBuilder) Build() (result *x509.CertPool, err error) {
 		}
 	}
 
-	// Load configured CA files:
+	// Load configured files:
 	err = b.loadConfiguredFiles(pool)
 	if err != nil {
 		return
+	}
+
+	// Load configured certificates:
+	for _, cert := range b.certs {
+		switch cert := cert.(type) {
+		case string:
+			ok := pool.AppendCertsFromPEM([]byte(cert))
+			if !ok {
+				err = fmt.Errorf("failed to add certificate to pool: %w", err)
+				return
+			}
+		case []byte:
+			ok := pool.AppendCertsFromPEM(cert)
+			if !ok {
+				err = fmt.Errorf("failed to add certificate to pool: %w", err)
+				return
+			}
+		case *x509.Certificate:
+			pool.AddCert(cert)
+		default:
+			err = fmt.Errorf(
+				"invalid certificate type '%T', should be 'string', '[]byte' or '*x509.Certificate'",
+				cert,
+			)
+			return
+		}
 	}
 
 	result = pool
@@ -218,7 +259,7 @@ func (b *CertPoolBuilder) loadFile(pool *x509.CertPool, caFile string) error {
 			fileExt := filepath.Ext(fileName)
 			if !b.validExt(fileExt) {
 				b.logger.Info(
-					"Igoring file because it doesn't have a valid extension",
+					"Ignoring file because it doesn't have a valid extension",
 					slog.String("directory", caFile),
 					slog.String("file", fileName),
 					slog.String("ext", fileExt),
@@ -236,7 +277,7 @@ func (b *CertPoolBuilder) loadFile(pool *x509.CertPool, caFile string) error {
 			"Loading CA file",
 			slog.String("file", caFile),
 		)
-		data, err := os.ReadFile(caFile)
+		data, err := os.ReadFile(filepath.Clean(caFile))
 		if err != nil {
 			return err
 		}

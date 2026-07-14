@@ -27,7 +27,6 @@ spec:
   tls:
     termination: passthrough
 
-{{ if .Values.internalHostname }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -35,7 +34,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   name: fulfillment-internal-api
 spec:
-  host: {{ .Values.internalHostname }}
+  host: {{ include "fulfillment-internal-api.hostname" . }}
   to:
     kind: Service
     name: fulfillment-internal-api
@@ -43,7 +42,6 @@ spec:
     targetPort: internal-api
   tls:
     termination: passthrough
-{{ end }}
 
 {{ end }}
 
@@ -67,7 +65,6 @@ spec:
     - name: fulfillment-api
       port: 8000
 
-{{ if .Values.internalHostname }}
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: TLSRoute
@@ -87,6 +84,5 @@ spec:
   - backendRefs:
     - name: fulfillment-internal-api
       port: 8001
-{{ end }}
 
 {{ end }}

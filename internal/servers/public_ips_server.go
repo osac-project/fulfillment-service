@@ -25,12 +25,12 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 type PublicIPsServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -58,7 +58,7 @@ func (b *PublicIPsServerBuilder) SetLogger(value *slog.Logger) *PublicIPsServerB
 }
 
 // SetNotifier sets the notifier to use. This is optional.
-func (b *PublicIPsServerBuilder) SetNotifier(value *database.Notifier) *PublicIPsServerBuilder {
+func (b *PublicIPsServerBuilder) SetNotifier(value events.Notifier) *PublicIPsServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -251,6 +251,56 @@ func (s *PublicIPsServer) Create(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.PublicIPsCreateResponse{}
 	response.SetObject(createdPublicPublicIP)
+	return
+}
+
+func (s *PublicIPsServer) Update(ctx context.Context,
+	request *publicv1.PublicIPsUpdateRequest) (response *publicv1.PublicIPsUpdateResponse, err error) {
+	// Map the public IP to private format:
+	publicPublicIP := request.GetObject()
+	if publicPublicIP == nil {
+		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
+		return
+	}
+	privatePublicIP := &privatev1.PublicIP{}
+	err = s.inMapper.Copy(ctx, publicPublicIP, privatePublicIP)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to map public IP to private",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process public IP")
+		return
+	}
+
+	// Delegate to the private server:
+	privateRequest := &privatev1.PublicIPsUpdateRequest{}
+	privateRequest.SetObject(privatePublicIP)
+	privateRequest.SetUpdateMask(request.GetUpdateMask())
+	privateRequest.SetLock(request.GetLock())
+	privateResponse, err := s.delegate.Update(ctx, privateRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map the private response back to public format:
+	updatedPrivatePublicIP := privateResponse.GetObject()
+	updatedPublicPublicIP := &publicv1.PublicIP{}
+	err = s.outMapper.Copy(ctx, updatedPrivatePublicIP, updatedPublicPublicIP)
+	if err != nil {
+		s.logger.ErrorContext(
+			ctx,
+			"Failed to map private public IP to public",
+			slog.Any("error", err),
+		)
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process public IP")
+		return
+	}
+
+	// Create the public response:
+	response = &publicv1.PublicIPsUpdateResponse{}
+	response.SetObject(updatedPublicPublicIP)
 	return
 }
 

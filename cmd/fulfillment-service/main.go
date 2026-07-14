@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -30,8 +31,8 @@ func main() {
 	root := service.Root()
 	err := root.ExecuteContext(ctx)
 	if err != nil {
-		exitErr, ok := err.(exit.Error)
-		if ok {
+		var exitErr exit.Error
+		if errors.As(err, &exitErr) {
 			os.Exit(exitErr.Code())
 		} else {
 			fmt.Fprintf(os.Stderr, "%s\n", err.Error())

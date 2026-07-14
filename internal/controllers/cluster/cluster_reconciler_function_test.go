@@ -15,10 +15,12 @@ package cluster
 
 import (
 	"context"
+	"slices"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -32,12 +34,12 @@ import (
 )
 
 var _ = Describe("validateTenant", func() {
-	It("should succeed when exactly one tenant is assigned", func() {
+	It("should succeed when a tenant is assigned", func() {
 		t := &task{
 			cluster: privatev1.Cluster_builder{
 				Id: "test-cluster",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"tenant-1"},
+					Tenant: "tenant-1",
 				}.Build(),
 			}.Build(),
 		}
@@ -46,34 +48,19 @@ var _ = Describe("validateTenant", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should fail when no tenants are assigned", func() {
+	It("should fail when tenant is empty", func() {
 		t := &task{
 			cluster: privatev1.Cluster_builder{
 				Id: "test-cluster",
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{},
+					Tenant: "",
 				}.Build(),
 			}.Build(),
 		}
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
-	})
-
-	It("should fail when multiple tenants are assigned", func() {
-		t := &task{
-			cluster: privatev1.Cluster_builder{
-				Id: "test-cluster",
-				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"tenant-1", "tenant-2"},
-				}.Build(),
-			}.Build(),
-		}
-
-		err := t.validateTenant()
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 
 	It("should fail when metadata is missing", func() {
@@ -85,7 +72,7 @@ var _ = Describe("validateTenant", func() {
 
 		err := t.validateTenant()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("exactly one tenant"))
+		Expect(err.Error()).To(ContainSubstring("tenant"))
 	})
 })
 
@@ -128,7 +115,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template: "test-template",
@@ -207,7 +194,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template: "test-template",
@@ -293,7 +280,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template: "test-template",
@@ -373,7 +360,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template: "test-template",
@@ -439,7 +426,7 @@ var _ = Describe("update tenant annotation", func() {
 			Id: clusterID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
-				Tenants:    []string{tenantName},
+				Tenant:     tenantName,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
 				Template:     "test-template",
@@ -482,5 +469,425 @@ var _ = Describe("update tenant annotation", func() {
 		Expect(createdCR.Spec.Network).ToNot(BeNil())
 		Expect(createdCR.Spec.Network.PodCIDR).To(Equal(podCIDR))
 		Expect(createdCR.Spec.Network.ServiceCIDR).To(Equal(serviceCIDR))
+	})
+})
+
+// newTaskForDelete creates a task configured for testing delete() with hub-dependent paths.
+func newTaskForDelete(clusterID, hubID string, hubCache controllers.HubCache) *task {
+	cluster := privatev1.Cluster_builder{
+		Id: clusterID,
+		Metadata: privatev1.Metadata_builder{
+			Finalizers: []string{finalizers.Controller},
+		}.Build(),
+		Status: privatev1.ClusterStatus_builder{
+			Hub: hubID,
+		}.Build(),
+	}.Build()
+
+	f := &function{
+		logger:   logger,
+		hubCache: hubCache,
+	}
+
+	return &task{
+		r:       f,
+		cluster: cluster,
+	}
+}
+
+// hasFinalizer checks if the fulfillment-controller finalizer is present on the cluster.
+func hasFinalizer(cluster *privatev1.Cluster) bool {
+	return slices.Contains(cluster.GetMetadata().GetFinalizers(), finalizers.Controller)
+}
+
+var _ = Describe("delete", func() {
+	const (
+		clusterID = "cluster-delete-id"
+		hubID     = "test-hub"
+	)
+
+	var (
+		ctx  context.Context
+		ctrl *gomock.Controller
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
+	})
+
+	It("should remove finalizer when hub cache returns ErrHubNotFound", func() {
+		// This test verifies the core behavior: when a hub is decommissioned/deleted,
+		// the reconciler removes its finalizer to allow the cluster to be archived.
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(nil, controllers.ErrHubNotFound)
+
+		t := newTaskForDelete(clusterID, hubID, hubCache)
+		Expect(hasFinalizer(t.cluster)).To(BeTrue())
+
+		err := t.delete(ctx)
+		// Should return nil (not propagate the error)
+		Expect(err).ToNot(HaveOccurred())
+		// Finalizer should be removed to allow archiving
+		Expect(hasFinalizer(t.cluster)).To(BeFalse())
+	})
+})
+
+var _ = Describe("hub persistence", func() {
+	const (
+		clusterID    = "test-cluster-hub"
+		tenantName   = "test-tenant"
+		hubID        = "test-hub-123"
+		hubNamespace = "hub-123-ns"
+	)
+
+	var (
+		ctx  context.Context
+		ctrl *gomock.Controller
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		ctrl = gomock.NewController(GinkgoT())
+		DeferCleanup(ctrl.Finish)
+	})
+
+	It("should select hub and return without creating ClusterOrder", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{
+				Namespace: hubNamespace,
+				Client:    fakeClient,
+			}, nil).
+			AnyTimes()
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+		hubsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.HubsListResponse{
+				Items: []*privatev1.Hub{
+					privatev1.Hub_builder{Id: hubID}.Build(),
+				},
+			}, nil)
+
+		clustersClient := NewMockClustersClient(ctrl)
+		clustersClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.ClustersUpdateRequest, opts ...grpc.CallOption) (*privatev1.ClustersUpdateResponse, error) {
+				Expect(req.GetObject().GetStatus().GetHub()).To(Equal(hubID))
+				return &privatev1.ClustersUpdateResponse{Object: req.GetObject()}, nil
+			}).
+			AnyTimes()
+
+		cluster := privatev1.Cluster_builder{
+			Id: clusterID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.ClusterSpec_builder{
+				Template: "test-template",
+			}.Build(),
+			Status: privatev1.ClusterStatus_builder{
+				State: privatev1.ClusterState_CLUSTER_STATE_PROGRESSING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			clustersClient: clustersClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		err := f.run(ctx, cluster)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(cluster.GetStatus().GetHub()).To(Equal(hubID))
+
+		list := &osacv1alpha1.ClusterOrderList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(BeEmpty(), "ClusterOrder should NOT be created on first reconcile")
+	})
+
+	It("should skip hub selection if already set", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{
+				Namespace: hubNamespace,
+				Client:    fakeClient,
+			}, nil).
+			AnyTimes()
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+
+		clustersClient := NewMockClustersClient(ctrl)
+		clustersClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.ClustersUpdateRequest, opts ...grpc.CallOption) (*privatev1.ClustersUpdateResponse, error) {
+				Expect(req.GetUpdateMask().GetPaths()).ToNot(ContainElement("status.hub"))
+				return &privatev1.ClustersUpdateResponse{Object: req.GetObject()}, nil
+			}).
+			AnyTimes()
+
+		cluster := privatev1.Cluster_builder{
+			Id: clusterID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.ClusterSpec_builder{
+				Template: "test-template",
+			}.Build(),
+			Status: privatev1.ClusterStatus_builder{
+				State: privatev1.ClusterState_CLUSTER_STATE_PROGRESSING,
+				Hub:   hubID,
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			clustersClient: clustersClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		err := f.run(ctx, cluster)
+		Expect(err).ToNot(HaveOccurred())
+
+		list := &osacv1alpha1.ClusterOrderList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(HaveLen(1))
+		Expect(list.Items[0].GetNamespace()).To(Equal(hubNamespace))
+	})
+
+	It("should create ClusterOrder on second reconcile after hub is persisted", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{
+				Namespace: hubNamespace,
+				Client:    fakeClient,
+			}, nil).
+			AnyTimes()
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+		hubsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.HubsListResponse{
+				Items: []*privatev1.Hub{
+					privatev1.Hub_builder{Id: hubID}.Build(),
+				},
+			}, nil).
+			AnyTimes()
+
+		clustersClient := NewMockClustersClient(ctrl)
+		clustersClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&privatev1.ClustersUpdateResponse{}, nil).
+			AnyTimes()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			clustersClient: clustersClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		// First reconcile: hub empty → select hub, return without creating CR
+		cluster1 := privatev1.Cluster_builder{
+			Id: clusterID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.ClusterSpec_builder{
+				Template: "test-template",
+			}.Build(),
+			Status: privatev1.ClusterStatus_builder{
+				State: privatev1.ClusterState_CLUSTER_STATE_PROGRESSING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		err := f.run(ctx, cluster1)
+		Expect(err).ToNot(HaveOccurred())
+
+		list := &osacv1alpha1.ClusterOrderList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(BeEmpty(), "no CR on first reconcile")
+
+		// Second reconcile: hub already set → creates CR
+		cluster2 := privatev1.Cluster_builder{
+			Id: clusterID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.ClusterSpec_builder{
+				Template: "test-template",
+			}.Build(),
+			Status: privatev1.ClusterStatus_builder{
+				State: privatev1.ClusterState_CLUSTER_STATE_PROGRESSING,
+				Hub:   hubID,
+			}.Build(),
+		}.Build()
+
+		err = f.run(ctx, cluster2)
+		Expect(err).ToNot(HaveOccurred())
+
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(HaveLen(1))
+		Expect(list.Items[0].GetNamespace()).To(Equal(hubNamespace))
+	})
+
+	It("should set ResourcesUnavailable condition when no hubs are available", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		_ = fakeClient
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+		hubsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.HubsListResponse{
+				Items: []*privatev1.Hub{},
+			}, nil).
+			AnyTimes()
+
+		clustersClient := NewMockClustersClient(ctrl)
+		clustersClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.ClustersUpdateRequest, opts ...grpc.CallOption) (*privatev1.ClustersUpdateResponse, error) {
+				return &privatev1.ClustersUpdateResponse{Object: req.GetObject()}, nil
+			}).
+			AnyTimes()
+
+		cluster := privatev1.Cluster_builder{
+			Id: clusterID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.ClusterSpec_builder{
+				Template: "test-template",
+			}.Build(),
+			Status: privatev1.ClusterStatus_builder{
+				State: privatev1.ClusterState_CLUSTER_STATE_PROGRESSING,
+				Hub:   "",
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			clustersClient: clustersClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		err := f.run(ctx, cluster)
+		Expect(err).ToNot(HaveOccurred())
+
+		conditions := cluster.GetStatus().GetConditions()
+		found := false
+		for _, c := range conditions {
+			if c.GetType() == privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_PROGRESSING {
+				Expect(c.GetStatus()).To(Equal(privatev1.ConditionStatus_CONDITION_STATUS_FALSE))
+				Expect(c.GetReason()).To(Equal("ResourcesUnavailable"))
+				found = true
+			}
+		}
+		Expect(found).To(BeTrue(), "should have set ResourcesUnavailable condition")
+	})
+
+	It("should handle cluster with no status without panicking", func() {
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{Namespace: hubNamespace, Client: fakeClient}, nil).
+			AnyTimes()
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+		hubsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.HubsListResponse{
+				Items: []*privatev1.Hub{privatev1.Hub_builder{Id: hubID}.Build()},
+			}, nil).
+			AnyTimes()
+
+		clustersClient := NewMockClustersClient(ctrl)
+		clustersClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.ClustersUpdateRequest, opts ...grpc.CallOption) (*privatev1.ClustersUpdateResponse, error) {
+				return &privatev1.ClustersUpdateResponse{Object: req.GetObject()}, nil
+			}).
+			AnyTimes()
+
+		cluster := privatev1.Cluster_builder{
+			Id: clusterID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.ClusterSpec_builder{
+				Template: "test-template",
+			}.Build(),
+			// No Status field — run() must initialize it without panicking
+		}.Build()
+
+		f := &function{
+			logger:         logger,
+			hubCache:       hubCache,
+			clustersClient: clustersClient,
+			hubsClient:     hubsClient,
+			maskCalculator: nil,
+		}
+
+		Expect(func() { f.run(ctx, cluster) }).ToNot(Panic())
 	})
 })

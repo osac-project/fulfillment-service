@@ -18,7 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
+	"net/netip"
 
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
@@ -26,13 +26,13 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 type PrivateSubnetsServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -57,7 +57,7 @@ func (b *PrivateSubnetsServerBuilder) SetLogger(value *slog.Logger) *PrivateSubn
 	return b
 }
 
-func (b *PrivateSubnetsServerBuilder) SetNotifier(value *database.Notifier) *PrivateSubnetsServerBuilder {
+func (b *PrivateSubnetsServerBuilder) SetNotifier(value events.Notifier) *PrivateSubnetsServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -152,7 +152,7 @@ func (s *PrivateSubnetsServer) Create(ctx context.Context,
 	if subnet.GetMetadata().GetAnnotations() == nil {
 		subnet.Metadata.Annotations = make(map[string]string)
 	}
-	subnet.Metadata.Annotations["osac.io/owner-reference"] = subnet.GetSpec().GetVirtualNetwork()
+	subnet.Metadata.Annotations["osac.openshift.io/owner-reference"] = subnet.GetSpec().GetVirtualNetwork()
 
 	err = s.generic.Create(ctx, request, &response)
 	return
@@ -226,18 +226,12 @@ func (s *PrivateSubnetsServer) validateSubnet(ctx context.Context,
 			"at least one of 'spec.ipv4_cidr' or 'spec.ipv6_cidr' must be provided")
 	}
 
-	// SUB-VAL-01: Validate IPv4 CIDR format
-	if spec.GetIpv4Cidr() != "" {
-		if err := validateCIDR(spec.GetIpv4Cidr(), "IPv4"); err != nil {
-			return err
-		}
-	}
-
-	// SUB-VAL-02: Validate IPv6 CIDR format
-	if spec.GetIpv6Cidr() != "" {
-		if err := validateCIDR(spec.GetIpv6Cidr(), "IPv6"); err != nil {
-			return err
-		}
+	// SUB-VAL-01, SUB-VAL-02: Validate and canonicalize CIDRs
+	if err := canonicalizeDualStackCIDRs(
+		spec.GetIpv4Cidr, spec.SetIpv4Cidr,
+		spec.GetIpv6Cidr, spec.SetIpv6Cidr,
+	); err != nil {
+		return err
 	}
 
 	// SUB-VAL-04, SUB-VAL-05, SUB-VAL-06, SUB-VAL-07, SUB-VAL-08: Validate parent VirtualNetwork
@@ -255,29 +249,29 @@ func (s *PrivateSubnetsServer) validateSubnet(ctx context.Context,
 // validateCIDRSubset validates that subnetCIDR is a proper subset of parentCIDR.
 func validateCIDRSubset(subnetCIDR string, parentCIDR string, ipVersion string) error {
 	// Parse subnet CIDR
-	_, subnetNetwork, err := net.ParseCIDR(subnetCIDR)
+	subnetPrefix, err := netip.ParsePrefix(subnetCIDR)
 	if err != nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"invalid subnet %s CIDR format '%s': %v", ipVersion, subnetCIDR, err)
 	}
 
 	// Parse parent CIDR
-	_, parentNetwork, err := net.ParseCIDR(parentCIDR)
+	parentPrefix, err := netip.ParsePrefix(parentCIDR)
 	if err != nil {
 		return grpcstatus.Errorf(grpccodes.Internal,
 			"invalid parent %s CIDR format '%s': %v", ipVersion, parentCIDR, err)
 	}
 
 	// Check parent contains subnet network address
-	if !parentNetwork.Contains(subnetNetwork.IP) {
+	if !parentPrefix.Contains(subnetPrefix.Addr()) {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"subnet %s CIDR '%s' is not within parent VirtualNetwork CIDR '%s'",
 			ipVersion, subnetCIDR, parentCIDR)
 	}
 
 	// Check subnet mask is more specific than parent mask (prevents subnet larger than parent)
-	subnetMaskSize, _ := subnetNetwork.Mask.Size()
-	parentMaskSize, _ := parentNetwork.Mask.Size()
+	subnetMaskSize := subnetPrefix.Bits()
+	parentMaskSize := parentPrefix.Bits()
 	if subnetMaskSize < parentMaskSize {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"subnet %s CIDR '%s' (/%d) is less specific than parent CIDR '%s' (/%d)",
@@ -331,7 +325,7 @@ func (s *PrivateSubnetsServer) validateVirtualNetworkReference(ctx context.Conte
 				"subnet has IPv4 CIDR but parent VirtualNetwork does not support IPv4")
 		}
 		// SUB-VAL-06: Validate IPv4 CIDR is subset of parent
-		if err := validateCIDRSubset(spec.GetIpv4Cidr(), parentSpec.GetIpv4Cidr(), "IPv4"); err != nil {
+		if err := validateCIDRSubset(spec.GetIpv4Cidr(), parentSpec.GetIpv4Cidr(), cidrIPv4); err != nil {
 			return err
 		}
 	}
@@ -343,7 +337,7 @@ func (s *PrivateSubnetsServer) validateVirtualNetworkReference(ctx context.Conte
 				"subnet has IPv6 CIDR but parent VirtualNetwork does not support IPv6")
 		}
 		// SUB-VAL-06: Validate IPv6 CIDR is subset of parent
-		if err := validateCIDRSubset(spec.GetIpv6Cidr(), parentSpec.GetIpv6Cidr(), "IPv6"); err != nil {
+		if err := validateCIDRSubset(spec.GetIpv6Cidr(), parentSpec.GetIpv6Cidr(), cidrIPv6); err != nil {
 			return err
 		}
 	}
@@ -429,15 +423,15 @@ func (s *PrivateSubnetsServer) validateNoCIDROverlap(ctx context.Context,
 
 // cidrsOverlap returns true if two CIDRs overlap (one contains any part of the other).
 func cidrsOverlap(cidrA, cidrB string) (bool, error) {
-	_, netA, errA := net.ParseCIDR(cidrA)
-	_, netB, errB := net.ParseCIDR(cidrB)
+	prefixA, errA := netip.ParsePrefix(cidrA)
+	prefixB, errB := netip.ParsePrefix(cidrB)
 	if errA != nil || errB != nil {
 		return false, fmt.Errorf(
-			"failed to parse CIDRs: %q: %v, %q: %v",
+			"failed to parse CIDRs: %q: %w, %q: %w",
 			cidrA, errA, cidrB, errB,
 		)
 	}
-	return netA.Contains(netB.IP) || netB.Contains(netA.IP), nil
+	return prefixA.Contains(prefixB.Addr()) || prefixB.Contains(prefixA.Addr()), nil
 }
 
 // validateImmutableFieldsSubnet validates that immutable fields have not been changed.
@@ -456,28 +450,30 @@ func validateImmutableFieldsSubnet(newSubnet *privatev1.Subnet, existingSubnet *
 			existingSpec.GetVirtualNetwork(), newSpec.GetVirtualNetwork())
 	}
 
-	// SUB-VAL-14: Preserve and check immutable ipv4_cidr field.
-	// If the request omits ipv4_cidr (HasIpv4Cidr() false), copy the existing value to prevent
-	// erasure — the private API has no Merge() step to preserve absent optional fields.
-	if existingSpec.HasIpv4Cidr() && !newSpec.HasIpv4Cidr() {
-		newSpec.SetIpv4Cidr(existingSpec.GetIpv4Cidr())
-	}
-	if newSpec.HasIpv4Cidr() && newSpec.GetIpv4Cidr() != existingSpec.GetIpv4Cidr() {
-		return grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"field 'spec.ipv4_cidr' is immutable and cannot be changed from '%s' to '%s'",
-			existingSpec.GetIpv4Cidr(), newSpec.GetIpv4Cidr())
-	}
-
-	// SUB-VAL-15: Preserve and check immutable ipv6_cidr field.
-	// If the request omits ipv6_cidr (HasIpv6Cidr() false), copy the existing value to prevent
-	// erasure — the private API has no Merge() step to preserve absent optional fields.
-	if existingSpec.HasIpv6Cidr() && !newSpec.HasIpv6Cidr() {
-		newSpec.SetIpv6Cidr(existingSpec.GetIpv6Cidr())
-	}
-	if newSpec.HasIpv6Cidr() && newSpec.GetIpv6Cidr() != existingSpec.GetIpv6Cidr() {
-		return grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"field 'spec.ipv6_cidr' is immutable and cannot be changed from '%s' to '%s'",
-			existingSpec.GetIpv6Cidr(), newSpec.GetIpv6Cidr())
+	// SUB-VAL-14, SUB-VAL-15: Preserve and check immutable CIDR fields.
+	for _, field := range []immutableCIDRField{
+		{
+			fieldName:       "spec.ipv4_cidr",
+			ipVersion:       cidrIPv4,
+			existingHasCIDR: existingSpec.HasIpv4Cidr,
+			existingCIDR:    existingSpec.GetIpv4Cidr,
+			newHasCIDR:      newSpec.HasIpv4Cidr,
+			newCIDR:         newSpec.GetIpv4Cidr,
+			setNewCIDR:      newSpec.SetIpv4Cidr,
+		},
+		{
+			fieldName:       "spec.ipv6_cidr",
+			ipVersion:       cidrIPv6,
+			existingHasCIDR: existingSpec.HasIpv6Cidr,
+			existingCIDR:    existingSpec.GetIpv6Cidr,
+			newHasCIDR:      newSpec.HasIpv6Cidr,
+			newCIDR:         newSpec.GetIpv6Cidr,
+			setNewCIDR:      newSpec.SetIpv6Cidr,
+		},
+	} {
+		if err := field.preserveAndValidate(); err != nil {
+			return err
+		}
 	}
 
 	return nil

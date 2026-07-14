@@ -36,7 +36,7 @@ var _ = Describe("Watch e2e", func() {
 		server       *testing.Server
 		conn         *grpc.ClientConn
 		eventsServer *testing.EventsServerFuncs
-		helper       *reflection.ObjectHelper
+		helper       reflection.ObjectHelper
 		console      *terminal.Console
 	)
 
@@ -132,10 +132,9 @@ var _ = Describe("Watch e2e", func() {
 			objectHelper: helper,
 			console:      console,
 			args: struct {
-				format         string
-				filter         string
-				includeDeleted bool
-				watch          bool
+				format string
+				filter string
+				watch  bool
 			}{
 				format: outputFormatTable,
 				watch:  true,

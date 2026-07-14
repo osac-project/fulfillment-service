@@ -44,6 +44,15 @@ message ComputeInstanceDisk {
   int32 size_gib = 1;
 }
 
+// Groups one subnet with security groups for that network attachment (multi-NIC VMs).
+message NetworkAttachment {
+  // Fulfillment Subnet ID.
+  string subnet = 1;
+
+  // Fulfillment SecurityGroup IDs for this NIC.
+  repeated string security_groups = 2;
+}
+
 message ComputeInstanceSpec {
   // Copies of the public fields.
   string template = 1;
@@ -53,11 +62,9 @@ message ComputeInstanceSpec {
   // Image configuration.
   optional ComputeInstanceImage image = 4;
 
-  // Number of CPU cores.
-  optional int32 cores = 5;
-
-  // Memory size in GiB.
-  optional int32 memory_gib = 6;
+  // Reserved field numbers for removed fields (do not reuse).
+  reserved 5, 6;
+  reserved "cores", "memory_gib";
 
   // SSH public key.
   optional string ssh_key = 7;
@@ -74,23 +81,40 @@ message ComputeInstanceSpec {
   // User data for the compute instance (e.g. cloud-init, ignition).
   optional string user_data = 11;
 
-  // Subnet ID for network attachment. References Subnet by fulfillment ID.
-  optional string subnet = 12;
+  // Reserved field numbers for removed fields (do not reuse).
+  reserved 12, 13;
+  reserved "subnet", "security_groups";
 
-  // SecurityGroup IDs for security policies. References SecurityGroups by fulfillment ID.
-  repeated string security_groups = 13;
+  // Network attachments: one entry per NIC.
+  repeated NetworkAttachment network_attachments = 14;
+
+  // Reference to a compute instance catalog item. Mutually exclusive with template during the migration period.
+  // When set, the server fetches the catalog item and applies its field definitions.
+  string catalog_item = 15;
+
+  // Indicates whether this compute instance runs a Windows guest OS (true) or Linux (false/omitted).
+  optional bool is_windows = 16;
+
+  // Reference to an instance type by name. Specifies the compute configuration (cores, memory)
+  // for this instance. The API validates that the instance type exists and is not OBSOLETE;
+  // resolution of cores/memory_gib happens in the reconciler.
+  optional string instance_type = 17;
 }
 
 message ComputeInstanceStatus {
   // Public fields.
   ComputeInstanceState state = 1;
   repeated ComputeInstanceCondition conditions = 2;
-  string ip_address = 3;
+  // Internal IP address of the compute instance.
+  string internal_ip_address = 3;
 
   // Identifier of the hub that was selected for this compute instance.
   string hub = 4;
 
   optional google.protobuf.Timestamp last_restarted_at = 5;
+
+  // Public IP address attached to the compute instance.
+  string public_ip_address = 6;
 }
 
 enum ComputeInstanceState {

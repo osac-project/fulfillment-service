@@ -37,7 +37,7 @@ var _ = Describe("Database context", func() {
 		input := NewMockTxManager(ctrl)
 		ctx = TxManagerIntoContext(ctx, input)
 		output, err := TxManagerFromContext(ctx)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(output).To(BeIdenticalTo(input))
 	})
 
@@ -50,7 +50,7 @@ var _ = Describe("Database context", func() {
 		input := NewMockTx(ctrl)
 		ctx = TxIntoContext(ctx, input)
 		output, err := TxFromContext(ctx)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(output).To(BeIdenticalTo(input))
 	})
 

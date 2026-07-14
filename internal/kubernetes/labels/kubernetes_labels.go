@@ -27,6 +27,9 @@ var ClusterOrderUuid = fmt.Sprintf("%s/%s", group, "clusterorder-uuid")
 // ComputeInstanceUuid is the label where the fulfillment API will write the identifier of the compute instance.
 var ComputeInstanceUuid = fmt.Sprintf("%s/%s", group, "computeinstance-uuid")
 
+// InstanceTypeName is the label where the fulfillment API will write the name of the instance type.
+var InstanceTypeName = fmt.Sprintf("%s/%s", group, "instance-type-name")
+
 // SubnetUuid is the label where the fulfillment API will write the identifier of the subnet.
 var SubnetUuid = fmt.Sprintf("%s/%s", group, "subnet-uuid")
 
@@ -44,3 +47,30 @@ var SecurityGroupUuid = fmt.Sprintf("%s/%s", group, "securitygroup-uuid")
 
 // PublicIPUuid is the label where the fulfillment API will write the identifier of the public IP.
 var PublicIPUuid = fmt.Sprintf("%s/%s", group, "publicip-uuid")
+
+// PublicIPAttachmentUuid is the label where the fulfillment API will write the identifier of the public IP attachment.
+var PublicIPAttachmentUuid = fmt.Sprintf("%s/%s", group, "publicipattachment-uuid")
+
+// BareMetalInstanceUuid is the label where the fulfillment API will write the identifier of the bare metal instance.
+var BareMetalInstanceUuid = fmt.Sprintf("%s/%s", group, "baremetalinstance-uuid")
+
+// ExternalIPPoolUuid is the label where the fulfillment API will write the identifier of the external IP pool.
+var ExternalIPPoolUuid = fmt.Sprintf("%s/%s", group, "externalippool-uuid")
+
+// ExternalIPUuid is the label where the fulfillment API will write the identifier of the external IP.
+var ExternalIPUuid = fmt.Sprintf("%s/%s", group, "externalip-uuid")
+
+// ExternalIPAttachmentUuid is the label where the fulfillment API will write the identifier of the external IP attachment.
+var ExternalIPAttachmentUuid = fmt.Sprintf("%s/%s", group, "externalipattachment-uuid")
+
+// NATGatewayUuid is the label where the fulfillment API will write the identifier of the NAT gateway.
+var NATGatewayUuid = fmt.Sprintf("%s/%s", group, "natgateway-uuid")
+
+// TenantUuid is the label where the fulfillment API will write the identifier of the tenant.
+var TenantUuid = fmt.Sprintf("%s/%s", group, "tenant-uuid")
+
+// TenantRef is the label used to reference the tenant object from associated resources (e.g., namespaces).
+var TenantRef = fmt.Sprintf("%s/%s", group, "tenant-ref")
+
+// Project is the label used to reference the project (namespace) in which the tenant object lives.
+var Project = fmt.Sprintf("%s/%s", group, "project")

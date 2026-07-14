@@ -1,6 +1,7 @@
 # Fulfillment service
 
-This project contains the code for the fulfillment service.
+This project contains the code for the fulfillment service. For instructions on how to install it
+in a production environment see the [installation guide](docs/INSTALL.md).
 
 ## Required development tools
 
@@ -10,7 +11,6 @@ To work with this project you will need the following tools:
 - [Buf](https://buf.build) - Used to generate Go code from gRPC specifications.
 - [Ginkgo](https://onsi.github.io/ginkgo) - Used to run unit tests.
 - [gomock](https://github.com/uber-go/mock) - Used to generate test mocks.
-- [Kustomize](https://kustomize.io) - Used to generate Kubernetes manifests.
 - [Kubectl](https://kubernetes.io/es/docs/reference/kubectl) - Used to deploy to an OpenShift cluster.
 - [PostgreSQL](https://www.postgresql.org) - Used to store persistent state.
 - [Podman](https://podman.io) - Used to build and run container images.
@@ -18,6 +18,12 @@ To work with this project you will need the following tools:
 - [curl](https://curl.se) - Used to test the REST API from the CLI.
 - [jq](https://jqlang.org) - Used by some of the commands in this document.
 - [kind](https://kind.sigs.k8s.io) - Used to create Kubernetes clusters for integration tests.
+- [helm](https://helm.sh/) - Used by default to deploy the service during integration tests.
+- [Python](https://www.python.org) - Used to run the `dev.py` script for development tasks like linting.
+- [uv](https://docs.astral.sh/uv) - Used to run the `dev.py` script without manually managing Python dependencies.
+
+See [dev/README.md](dev/README.md) for more information about the `dev.py` script and how to extend
+it with new commands.
 
 ## Building the binaries
 
@@ -57,7 +63,7 @@ To quickly run a local postgresql database in a container, run the following com
 ```
 podman run -d --name postgresql_database \
   -e POSTGRESQL_USER=user -e POSTGRESQL_PASSWORD=pass -e POSTGRESQL_DATABASE=db \
-  -p 127.0.0.1:5432:5432 quay.io/sclorg/postgresql-15-c9s:latest
+  -p 127.0.0.1:5432:5432 quay.io/sclorg/postgresql-18-c10s:latest
 ```
 
 Done!
@@ -160,81 +166,15 @@ command like this:
 
     $ podman build -t quay.io/myuser/fulfillment-service:latest .
 
+To build the debug variant (includes the `dlv` debugger and disables compiler optimisations), use the
+`runtime-debug` target:
+
+    $ podman build --build-arg DEBUG=true --target runtime-debug -t quay.io/myuser/fulfillment-service:latest .
+
 If you want to deploy to an OpenShift cluster then you will also need to push the image, so that the cluster can pull
 it:
 
     $ podman push quay.io/myuser/fulfillment-service:latest
-
-## Deploying to an OpenShift cluster
-
-In order to be able to use gRPC in an OpenShift cluster it is necessary to enable HTTP/2:
-
-    $ kubectl annotate ingresses.config/cluster ingress.operator.openshift.io/default-enable-http2=true
-
-To deploy using the default image run the following command:
-
-    $ kubectl apply -k manifests
-
-To undeploy:
-
-    $ kubectl delete -k manifests
-
-If you want to deploy using your own image, then you will need first to edit the manifests:
-
-    $ cd manifests
-    $ kustomize edit set image fulfillment-service=quay.io/myuser/fulfillment-service:latest
-
-The server deployed to the OpenShift cluster requires authentication. Before using it you will need to obtain the
-token of the `client` service account that is created for that. Use a command like this to obtain the token and save it
-into the `token` environment variable:
-
-    $ export token=$(kubectl create token -n osac client)
-
-To verify that the deployment is working get the URL of the route, and use `grpcurl` and `curl` to verify that both the
-gRPC server and the REST gateway are working:
-
-    $ kubectl get route -n osac fulfillment-api -o json | jq -r '.spec.host'
-    fulfillment-api-osac.apps.mycluster.com
-
-    $ grpcurl -insecure
-    -H "Authorization: Bearer ${token}" \
-    fulfillment-api-osac.apps.mycluster.com:443 osac.public.v1.ClusterTemplates/List
-    {
-      "size": 2,
-      "total": 2,
-      "items": [
-        {
-          "id": "my-template",
-          "title": "My template",
-          "description": "My template is *nice*."
-        },
-        {
-          "id": "your-template",
-          "title": "Your template",
-          "description": "Your template is _ugly_."
-        }
-      ]
-    }
-
-    $  curl --silent --insecure \
-    --header "Authorization: Bearer ${token}" \
-    https://fulfillment-api-osac.apps.mycluster.com:443/api/fulfillment/v1/cluster_templates | jq
-    {
-      "size": 2,
-      "total": 2,
-      "items": [
-        {
-          "id": "my-template",
-          "title": "My template",
-          "description": "My template is *nice*."
-        },
-        {
-          "id": "your-template",
-          "title": "Your template",
-          "description": "Your template is _ugly_."
-        }
-      ]
-    }
 
 ## Running integration tests
 
@@ -274,17 +214,6 @@ The integration tests will automatically:
 4. Run all test cases.
 5. Clean up the kind cluster.
 
-### Deployment mode
-
-By default, the integration tests deploy the service using _Helm_. You can also deploy using
-_Kustomize_ by setting the `IT_DEPLOY_MODE` environment variable:
-
-```bash
-$ IT_DEPLOY_MODE=kustomize ginkgo run it
-```
-
-Valid values are `helm` (default) and `kustomize`.
-
 ### Preserving the test cluster
 
 By default, the kind cluster is deleted after the tests complete. If you want to preserve the cluster
@@ -315,37 +244,95 @@ To clean up a preserved cluster manually:
 $ kind delete cluster --name fulfillment-service-it
 ```
 
-### Client secret for service accounts
+### Secret for passwords and credentials
 
-The integration tests automatically create two Keycloak service account clients: `osac-admin` and
-`osac-controller`. By default, a random secret is generated for them. If you want to use a known
-secret, for example to log in with the CLI afterwards, you can set the `IT_CLIENT_SECRET`
-environment variable:
+The integration tests use a single secret in all places where passwords or secrets are needed, such
+as service account client secrets and user passwords. By default, a random secret is generated. If
+you want to use a known value, for example to log in with the CLI afterwards, you can set the
+`IT_SECRET` environment variable:
 
 ```bash
-$ IT_KEEP_KIND=true IT_CLIENT_SECRET=my-secret ginkgo run --label-filter setup it
+$ IT_KEEP_KIND=true IT_SECRET=my-secret ginkgo run --label-filter setup it
 ```
+
+The secret used to run the integration tests is saved to the `random` secret inside the `default`
+namespace. This can be useful if you didn't use the `IT_SECRET` environment variable, but still
+want to use the secret. You can get it like this:
+
+```bash
+$ kubectl get secret -n default random -o json | jq -r '.data["secret"] | @base64d'
+```
+
+### Custom CA certificate
+
+By default, each integration test run generates a fresh CA private key and certificate. This means
+that the CA changes every time the cluster is recreated, which forces you to either re-extract the
+CA bundle and pass it to `osac login --ca-file`, or use `--insecure` to skip verification.
+
+To avoid this, you can provide your own pre-generated CA files via the `IT_CA_KEY` and `IT_CA_CRT`
+environment variables. Both must be set together and must point to PEM-encoded files. When provided,
+the integration tests will use them instead of generating a new CA. This allows you to configure the
+CA once in your browser or pass it to `osac login --ca-file` without having to update it after every
+run.
+
+To generate a CA key and certificate with `openssl`:
+
+```bash
+openssl req \
+-x509 \
+-newkey rsa:2048 \
+-nodes \
+-keyout ca.key \
+-out ca.crt \
+-days 365 \
+-subj "/CN=Default CA" \
+-addext "keyUsage=critical,keyCertSign,cRLSign" \
+-addext "basicConstraints=critical,CA:TRUE"
+```
+
+Then run the integration tests pointing to those files:
+
+```bash
+export IT_KEEP_KIND=true
+export IT_CA_KEY=ca.key
+export IT_CA_CRT=ca.crt
+ginkgo run -v it
+```
+
+Note that `-nodes` flag in the `openssl` command above means `ca.key` (referenced by `IT_CA_KEY`) is
+not passphrase-protected. This is fine for local development, but as a good habit consider setting
+restrictive permissions (`chmod 600 ca.key`) and avoiding committing it to version control. If the
+key is ever shared accidentally, simply regenerate both files and recreate the cluster.
+
+As long as you reuse the same files across runs, the CA will remain stable and you can use the
+certificate directly with the CLI:
+
+```bash
+osac login --ca-file ca.crt ...
+```
+
+### Login to the integration tests environment
 
 Once the cluster is running, you can log in using the credentials flow:
 
 ```bash
-$ osac login \
---ca-file bundle.pem \
---oauth-flow credentials \
---oauth-client-id osac-admin \
---oauth-client-secret my-secret \
+osac login \
+--ca-file ca.crt \
+--flow credentials \
+--client-id osac-admin \
+--client-secret my-secret \
 --private \
 https://fulfillment-internal-api.osac.svc.cluster.local:8000
 ```
 
-The same secret is shared by both `osac-admin` and `osac-controller`.
+The same secret is shared by all service accounts and users.
 
-The `--ca-file` flag should point to a file containing the trusted CA certificates. In the default
-installation, the CA bundle is stored in the `ca-bundle` ConfigMap created by _trust-manager_. You
-can extract it with:
+The `--ca-file` flag should point to a file containing the trusted CA certificates. If you used the
+`IT_CA_CRT` environment variable, you can point directly to that file. Otherwise, the CA bundle is
+stored in the `ca-bundle` ConfigMap created by _trust-manager_. You can extract it with:
 
 ```bash
-$ kubectl get configmap ca-bundle -n osac -o jsonpath='{.data.bundle\.pem}' > bundle.pem
+kubectl get configmap ca-bundle -n osac -o json | jq -r '.data["bundle.pem"]' > ca.crt
 ```
 
 ### Debugging in the integration tests environment

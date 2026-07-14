@@ -17,9 +17,15 @@ package osac.public.v1;
 
 import "osac/public/v1/cluster_template_type.proto";
 import "osac/public/v1/cluster_type.proto";
+import "osac/public/v1/cluster_version_type.proto";
 import "osac/public/v1/compute_instance_template_type.proto";
 import "osac/public/v1/compute_instance_type.proto";
 import "osac/public/v1/host_type_type.proto";
+import "osac/public/v1/instance_type_type.proto";
+import "osac/public/v1/role_binding_type.proto";
+import "osac/public/v1/project_type.proto";
+import "osac/public/v1/role_type.proto";
+import "osac/public/v1/tenant_type.proto";
 
 // Represents events delivered by the server.
 message Event {
@@ -36,6 +42,12 @@ message Event {
     HostType host_type = 5;
     ComputeInstanceTemplate compute_instance_template = 7;
     ComputeInstance compute_instance = 8;
+    Role role = 9;
+    RoleBinding role_binding = 10;
+    Project project = 11;
+    InstanceType instance_type = 12;
+    Tenant tenant = 13;
+    ClusterVersion cluster_version = 14;
   }
 }
 

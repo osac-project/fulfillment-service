@@ -28,8 +28,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"gopkg.in/yaml.v3"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
@@ -52,9 +55,11 @@ func Cmd() *cobra.Command {
 		},
 	}
 	result := &cobra.Command{
-		Use:   "edit OBJECT ID|NAME",
-		Short: "Edit objects",
-		RunE:  runner.run,
+		Use:                   "edit [FLAG...] OBJECT ID|NAME",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -62,10 +67,7 @@ func Cmd() *cobra.Command {
 		"output",
 		"o",
 		outputFormatYaml,
-		fmt.Sprintf(
-			"Output format, one of '%s' or '%s'.",
-			outputFormatJson, outputFormatYaml,
-		),
+		outputFlagHelp,
 	)
 	return result
 }
@@ -76,7 +78,7 @@ type runnerContext struct {
 	format         string
 	conn           *grpc.ClientConn
 	marshalOptions protojson.MarshalOptions
-	helper         *reflection.ObjectHelper
+	helper         reflection.ObjectHelper
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -96,11 +98,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -116,6 +115,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		SetLogger(c.logger).
 		SetConnection(c.conn).
 		AddPackages(cfg.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -156,12 +156,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	key := args[1]
 
 	// Find the object by identifier or name:
-	object, err := c.findObject(ctx, key)
+	object, err := c.helper.FindObject(ctx, key, c.console)
 	if err != nil {
 		return err
-	}
-	if object == nil {
-		return nil
 	}
 
 	// Render the object:
@@ -222,7 +219,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load the potentiall modified file:
-	data, err = os.ReadFile(tmpFile)
+	data, err = os.ReadFile(filepath.Clean(tmpFile))
 	if err != nil {
 		return fmt.Errorf("failed to read back temporary file '%s': %w", tmpFile, err)
 	}
@@ -246,7 +243,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	c.showWatchSuggestion(ctx, updated)
+	if c.isWatchable() {
+		c.showWatchSuggestion(ctx, updated)
+	}
 
 	return nil
 }
@@ -275,47 +274,29 @@ func (c *runnerContext) findEditor(ctx context.Context) string {
 	return defaultEditor
 }
 
-// findObject tries to find an object by identifier or name. It uses the list method with a filter that matches
-// either the identifier or the name. Returns an error if no match is found or if multiple matches are found.
-func (c *runnerContext) findObject(ctx context.Context, ref string) (result proto.Message, err error) {
-	// Find the objects matching the reference (identifier or name):
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
-	response, err := c.helper.List(ctx, reflection.ListOptions{
-		Filter: filter,
-		Limit:  10,
-	})
-	if err != nil {
-		err = fmt.Errorf("failed to find object of type '%s' with identifier or name '%s': %w", c.helper, ref, err)
-		return
-	}
-	items := response.Items
-	total := response.Total
-
-	// Prepare the response based on the number of objects found:
-	switch len(items) {
-	case 0:
-		c.console.Render(ctx, "no_matches.txt", map[string]any{
-			"Object": c.helper.Singular(),
-			"Ref":    ref,
-		})
-		return
-	case 1:
-		result = items[0]
-		return
-	default:
-		c.console.Render(ctx, "multiple_matches.txt", map[string]any{
-			"Matches": items,
-			"Object":  c.helper.Singular(),
-			"Ref":     ref,
-			"Total":   total,
-		})
-		return
-	}
-}
-
 func (c *runnerContext) update(ctx context.Context, object proto.Message) (result proto.Message, err error) {
 	result, err = c.helper.Update(ctx, object)
 	return
+}
+
+func (c *runnerContext) isWatchable() bool {
+	objectFullName := c.helper.Descriptor().FullName()
+	for _, eventDesc := range []protoreflect.MessageDescriptor{
+		(&publicv1.Event{}).ProtoReflect().Descriptor(),
+		(&privatev1.Event{}).ProtoReflect().Descriptor(),
+	} {
+		payloadOneof := eventDesc.Oneofs().ByName("payload")
+		if payloadOneof == nil {
+			continue
+		}
+		for i := 0; i < payloadOneof.Fields().Len(); i++ {
+			field := payloadOneof.Fields().Get(i)
+			if field.Message() != nil && field.Message().FullName() == objectFullName {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (c *runnerContext) showWatchSuggestion(ctx context.Context, object proto.Message) {
@@ -384,3 +365,33 @@ var editorEnvVars = []string{
 
 // defualtEditor is the editor used when the environment variables don't indicate any other editor.
 const defaultEditor = "vi"
+
+const shortHelp = `Edit objects`
+
+const longHelp = `
+Edit an object by opening it in a text editor.
+
+The object is fetched from the server, rendered as YAML (or JSON), and opened in your preferred editor. When you save
+and close the editor the modified object is sent back to the server.
+
+To edit a cluster:
+
+{{ bt 3 }}shell
+{{ binary }} edit cluster my-cluster
+{{ bt 3 }}
+
+The editor is selected from the {{ bt }}EDITOR{{ bt }} or {{ bt }}VISUAL{{ bt }} environment variables, falling back to
+{{ bt }}vi{{ bt }} if neither is set.
+
+By default the object is rendered as YAML. Use the {{ bt }}--output{{ bt }} flag to switch to JSON:
+
+{{ bt 3 }}shell
+{{ binary }} edit cluster my-cluster -o json
+{{ bt 3 }}
+
+Objects can be referenced by their identifier or by their name.
+`
+
+const outputFlagHelp = `
+_FORMAT_ - Format used for editing. Must be one of {{ bt }}json{{ bt }} or {{ bt }}yaml{{ bt }}.
+`

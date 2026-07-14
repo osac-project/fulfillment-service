@@ -38,4 +38,31 @@ message HostType {
 
   // Human friendly long description of the host type, using Markdown format.
   string description = 4;
+
+  // Physical network interfaces available on hosts of this type.
+  //
+  // This is only meaningful for bare metal host types. Virtual machine host types have an empty list because VMs
+  // receive virtual NICs from the overlay network, not physical interfaces. This also serves as the bare metal vs
+  // virtual machine discriminator: if a host type has interfaces it is bare metal, if empty it is virtual.
+  //
+  // Interfaces are ordered. When multiple interfaces share the same role, the first one in the list is the default
+  // for that role.
+  repeated NetworkInterface interfaces = 5;
+}
+
+// Describes a physical network interface available on hosts of a given type.
+//
+// For example, a bare metal host type may have two data interfaces (`data-0`, `data-1`) for fabric traffic and a
+// management interface (`mgmt-0`) for control plane traffic.
+message NetworkInterface {
+  // Interface identifier, unique within the host type. For example `data-0`, `data-1`, `mgmt-0`.
+  string name = 1;
+
+  // Role of the interface. Convention values are `fabric` (east-west tenant traffic), `management` (control plane
+  // traffic), `storage` (storage fabric traffic), and `lifecycle` (out-of-band PXE/BMC). Roles are conventions, not
+  // enforced enums.
+  string role = 2;
+
+  // Human-friendly description of the interface. For example `100GbE data interface`.
+  string description = 3;
 }

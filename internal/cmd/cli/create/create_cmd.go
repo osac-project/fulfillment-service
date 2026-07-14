@@ -28,10 +28,21 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"gopkg.in/yaml.v3"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstance"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstancecatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/cluster"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/clustercatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/computeinstance"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/computeinstancecatalogitem"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/externalip"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/externalipattachment"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/hub"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/instancetype"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/publicip"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/publicipattachment"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/securitygroup"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/storagebackend"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/storagetier"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/subnet"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/virtualnetwork"
 	"github.com/osac-project/fulfillment-service/internal/config"
@@ -43,24 +54,36 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "create [OPTION]...",
-		Short: "Create objects",
-		RunE:  runner.run,
+		Use:                   "create [FLAG...] -f FILE",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
+	result.AddCommand(baremetalinstance.Cmd())
+	result.AddCommand(baremetalinstancecatalogitem.Cmd())
 	result.AddCommand(cluster.Cmd())
+	result.AddCommand(clustercatalogitem.Cmd())
 	result.AddCommand(computeinstance.Cmd())
+	result.AddCommand(computeinstancecatalogitem.Cmd())
+	result.AddCommand(externalip.Cmd())
+	result.AddCommand(externalipattachment.Cmd())
 	result.AddCommand(hub.Cmd())
+	result.AddCommand(instancetype.Cmd())
+	result.AddCommand(publicip.Cmd())
+	result.AddCommand(publicipattachment.Cmd())
 	result.AddCommand(virtualnetwork.Cmd())
 	result.AddCommand(subnet.Cmd())
 	result.AddCommand(securitygroup.Cmd())
+	result.AddCommand(storagebackend.Cmd())
+	result.AddCommand(storagetier.Cmd())
 	flags := result.Flags()
 	flags.StringVarP(
 		&runner.args.file,
 		"filename",
 		"f",
 		"",
-		"Name of the file containg the object to create. This is mandatory. If the value is '-' the object is "+
-			"read from the standard input.",
+		filenameFlagHelp,
 	)
 	return result
 }
@@ -69,9 +92,10 @@ type runnerContext struct {
 	args struct {
 		file string
 	}
-	logger  *slog.Logger
-	console *terminal.Console
-	conn    *grpc.ClientConn
+	logger   *slog.Logger
+	console  *terminal.Console
+	settings *config.Settings
+	conn     *grpc.ClientConn
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -83,16 +107,14 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	c.settings = config.SettingsFromContext(ctx)
+	if !c.settings.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
 	// Create the gRPC connection from the configuration:
-	c.conn, err = cfg.Connect(ctx, cmd.Flags())
+	var err error
+	c.conn, err = c.settings.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
@@ -102,7 +124,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	helper, err := reflection.NewHelper().
 		SetLogger(c.logger).
 		SetConnection(c.conn).
-		AddPackages(cfg.Packages()).
+		AddPackages(c.settings.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -141,12 +164,16 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	tenant := config.TenantFromContext(ctx)
 	for i, object := range objects {
 		objectDesc := object.ProtoReflect().Descriptor()
 		objectType := string(objectDesc.FullName())
 		objectHelper := helper.Lookup(objectType)
 		if objectHelper == nil {
 			return fmt.Errorf("input object at index %d is of an unknown type '%s'", i, objectType)
+		}
+		if tenant != "" && objectHelper.IsTenantScoped() {
+			objectHelper.SetTenant(object, tenant)
 		}
 		object, err = objectHelper.Create(ctx, object)
 		if err != nil {
@@ -237,3 +264,32 @@ func (c *runnerContext) decodeObjects(input io.Reader) (result []proto.Message, 
 	result = objects
 	return
 }
+
+const shortHelp = `Create objects`
+
+const longHelp = `
+Create objects from a YAML or JSON file. The input file must contain one or more objects encoded as protocol buffers
+{{ bt }}Any{{ bt }} messages, which include the {{ bt }}@type{{ bt }} field to identify the object type.
+
+To create an object from a file:
+
+{{ bt 3 }}shell
+{{ binary }} create -f my-cluster.yaml
+{{ bt 3 }}
+
+To read the object from standard input:
+
+{{ bt 3 }}shell
+cat my-cluster.yaml | {{ binary }} create -f -
+{{ bt 3 }}
+
+The input file can contain multiple documents separated by {{ bt }}---{{ bt }}, and each document can be a single object
+or a list of objects. All objects are created in order.
+
+There are also subcommands for creating specific types of objects with dedicated flags instead of a file. Use {{ bt
+}}--help{{ bt }} on any subcommand for details.
+`
+
+const filenameFlagHelp = `
+_FILE_ - Name of the file containing the object to create. Use {{ bt }}-{{ bt }} to read from standard input.
+`

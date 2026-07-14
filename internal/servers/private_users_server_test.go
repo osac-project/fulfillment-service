@@ -14,56 +14,17 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Users Server", func() {
-	var (
-		ctx           context.Context
-		tx            database.Tx
-		privateServer *PrivateUsersServer
-	)
+	var privateServer *PrivateUsersServer
 
 	BeforeEach(func() {
 		var err error
-
-		// Create context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create DAO tables:
-		err = dao.CreateTables[*privatev1.User](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create server (without notifier for testing):
 		privateServer, err = NewPrivateUsersServer().
@@ -82,13 +43,9 @@ var _ = Describe("Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &privatev1.UserSpec{
-					Username:      "testuser",
-					Email:         "test@example.com",
-					EmailVerified: true,
-					Enabled:       true,
-					FirstName:     "Test",
-					LastName:      "User",
-					Organization:  "org-123",
+					Username: "testuser",
+					Email:    "test@example.com",
+					Enabled:  true,
 				},
 			},
 		}
@@ -249,7 +206,7 @@ var _ = Describe("Users Server", func() {
 			Object: &privatev1.User{
 				Id: createResp.Object.Id,
 				Spec: &privatev1.UserSpec{
-					FirstName: "Updated",
+					Email: "updated@example.com",
 					Credentials: &privatev1.UserCredentials{
 						Password: &password,
 					},
@@ -268,9 +225,8 @@ var _ = Describe("Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &privatev1.UserSpec{
-					Username:  "testuser",
-					Email:     "test@example.com",
-					FirstName: "Original",
+					Username: "testuser",
+					Email:    "test@example.com",
 				},
 			},
 		}
@@ -282,12 +238,12 @@ var _ = Describe("Users Server", func() {
 			Object: &privatev1.User{
 				Id: createResp.Object.Id,
 				Spec: &privatev1.UserSpec{
-					FirstName: "Updated",
+					Email: "updated@example.com",
 				},
 			},
 		}
 		updateResp, err := privateServer.Update(ctx, updateReq)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(updateResp.Object.Spec.FirstName).To(Equal("Updated"))
+		Expect(updateResp.Object.Spec.Email).To(Equal("updated@example.com"))
 	})
 })

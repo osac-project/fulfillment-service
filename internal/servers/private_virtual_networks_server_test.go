@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
@@ -25,50 +24,36 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Private virtual networks server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
 	BeforeEach(func() {
 		var err error
 
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
+		// Create the tenants used in the tests:
+		tenantsDao, err := dao.NewGenericDAO[*privatev1.Tenant]().
 			SetLogger(logger).
-			SetPool(pool).
+			SetTableName("tenants").
+			SetTenancyLogic(tenancy).
 			Build()
 		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
+		createTenant := func(name string) {
+			_, err = tenantsDao.Create().
+				SetObject(privatev1.Tenant_builder{
+					Id: name,
+					Metadata: privatev1.Metadata_builder{
+						Name:   name,
+						Tenant: name,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*privatev1.VirtualNetwork](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
-		Expect(err).ToNot(HaveOccurred())
+		}
+		createTenant("tenant-a")
+		createTenant("tenant-b")
 	})
 
 	// Helper function to create a NetworkClass for validation tests
@@ -83,7 +68,7 @@ var _ = Describe("Private virtual networks server", func() {
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -113,9 +98,9 @@ var _ = Describe("Private virtual networks server", func() {
 
 		nc := privatev1.NetworkClass_builder{
 			ImplementationStrategy: "test-strategy",
-			IsDefault:              proto.Bool(true),
+			IsDefault:              new(true),
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -186,7 +171,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("192.168.0.0/16"),
+						Ipv4Cidr:     new("192.168.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -199,7 +184,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects invalid IPv4 CIDR format", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("not-a-cidr"),
+						Ipv4Cidr: new("not-a-cidr"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build()
@@ -212,7 +197,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects IPv4 with invalid mask", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("192.168.0.0/33"),
+						Ipv4Cidr: new("192.168.0.0/33"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build()
@@ -225,7 +210,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects IPv6 address in IPv4 field", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("2001:db8::/32"),
+						Ipv4Cidr: new("2001:db8::/32"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build()
@@ -242,7 +227,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -255,7 +240,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects invalid IPv6 CIDR format", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv6Cidr: proto.String("not-ipv6"),
+						Ipv6Cidr: new("not-ipv6"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build()
@@ -268,7 +253,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects IPv6 with invalid mask", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv6Cidr: proto.String("2001:db8::/129"),
+						Ipv6Cidr: new("2001:db8::/129"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build()
@@ -281,7 +266,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects IPv4 address in IPv6 field", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv6Cidr: proto.String("192.168.0.0/16"),
+						Ipv6Cidr: new("192.168.0.0/16"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build()
@@ -289,6 +274,86 @@ var _ = Describe("Private virtual networks server", func() {
 				_, err := server.validateVirtualNetwork(ctx, vn, nil)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("contains IPv4 address"))
+			})
+		})
+
+		Context("CIDR canonicalization", func() {
+			It("canonicalizes non-canonical IPv4 and IPv6 CIDRs on Create", func() {
+				nc := createNetworkClass(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
+
+				ipv4VN := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Ipv4Cidr:     new("10.0.1.5/24"),
+						NetworkClass: nc.GetId(),
+						Region:       "us-west-1",
+					}.Build(),
+				}.Build()
+				_, err := server.validateVirtualNetwork(ctx, ipv4VN, nil)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(ipv4VN.GetSpec().GetIpv4Cidr()).To(Equal("10.0.1.0/24"))
+
+				ipv6VN := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Ipv6Cidr:     new("2001:db8::1/32"),
+						NetworkClass: nc.GetId(),
+						Region:       "us-west-1",
+					}.Build(),
+				}.Build()
+				_, err = server.validateVirtualNetwork(ctx, ipv6VN, nil)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(ipv6VN.GetSpec().GetIpv6Cidr()).To(Equal("2001:db8::/32"))
+			})
+
+			It("stores canonical IPv4 CIDR on Create round-trip", func() {
+				nc := createNetworkClass(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
+
+				createResponse, err := server.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
+					Object: privatev1.VirtualNetwork_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.VirtualNetworkSpec_builder{
+							Ipv4Cidr:     new("10.0.1.5/24"),
+							NetworkClass: nc.GetId(),
+							Region:       "us-west-1",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(createResponse.GetObject().GetSpec().GetIpv4Cidr()).To(Equal("10.0.1.0/24"))
+			})
+
+			It("canonicalizes on Update including preserved legacy CIDR when omitted", func() {
+				nc := createNetworkClass(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
+
+				existing := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Region:       "us-west-1",
+						NetworkClass: nc.GetId(),
+						Ipv4Cidr:     new("10.0.1.5/24"),
+					}.Build(),
+				}.Build()
+
+				equivalentRewrite := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Region:       "us-west-1",
+						NetworkClass: nc.GetId(),
+						Ipv4Cidr:     new("10.0.1.0/24"),
+					}.Build(),
+				}.Build()
+				_, err := server.validateVirtualNetwork(ctx, equivalentRewrite, existing)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(equivalentRewrite.GetSpec().GetIpv4Cidr()).To(Equal("10.0.1.0/24"))
+
+				omittedField := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Region:       "us-west-1",
+						NetworkClass: nc.GetId(),
+					}.Build(),
+				}.Build()
+				_, err = server.validateVirtualNetwork(ctx, omittedField, existing)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(omittedField.GetSpec().GetIpv4Cidr()).To(Equal("10.0.1.0/24"))
 			})
 		})
 
@@ -310,7 +375,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -325,7 +390,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -340,8 +405,8 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -358,7 +423,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -371,7 +436,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects non-existent NetworkClass", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: "non-existent-class",
 						Region:       "us-west-1",
 					}.Build(),
@@ -385,7 +450,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects empty NetworkClass when no default exists", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build()
@@ -402,7 +467,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -417,7 +482,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -436,7 +501,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -457,7 +522,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 						Capabilities: privatev1.VirtualNetworkCapabilities_builder{
@@ -481,7 +546,7 @@ var _ = Describe("Private virtual networks server", func() {
 				nc := privatev1.NetworkClass_builder{
 					ImplementationStrategy: "no-ipv4-class",
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Capabilities: privatev1.NetworkClassCapabilities_builder{
 						SupportsIpv4: false,
@@ -499,10 +564,10 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 						Capabilities: privatev1.VirtualNetworkCapabilities_builder{
@@ -521,7 +586,7 @@ var _ = Describe("Private virtual networks server", func() {
 			It("rejects empty region", func() {
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 					}.Build(),
 				}.Build()
 
@@ -536,7 +601,7 @@ var _ = Describe("Private virtual networks server", func() {
 
 				vn := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 						Region:       "us-west-1",
 					}.Build(),
@@ -552,7 +617,7 @@ var _ = Describe("Private virtual networks server", func() {
 				existing := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: "test-class",
 					}.Build(),
 				}.Build()
@@ -560,7 +625,7 @@ var _ = Describe("Private virtual networks server", func() {
 				updated := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-east-1",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: "test-class",
 					}.Build(),
 				}.Build()
@@ -580,7 +645,7 @@ var _ = Describe("Private virtual networks server", func() {
 				existing := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 					}.Build(),
 				}.Build()
@@ -588,7 +653,7 @@ var _ = Describe("Private virtual networks server", func() {
 				updated := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 					}.Build(),
 				}.Build()
@@ -603,7 +668,7 @@ var _ = Describe("Private virtual networks server", func() {
 				existing := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: "class-1",
 					}.Build(),
 				}.Build()
@@ -611,7 +676,7 @@ var _ = Describe("Private virtual networks server", func() {
 				updated := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: "class-2",
 					}.Build(),
 				}.Build()
@@ -631,7 +696,7 @@ var _ = Describe("Private virtual networks server", func() {
 				existing := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 					}.Build(),
 				}.Build()
@@ -639,13 +704,103 @@ var _ = Describe("Private virtual networks server", func() {
 				updated := privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						NetworkClass: nc.GetId(),
 					}.Build(),
 				}.Build()
 
 				_, err := server.validateVirtualNetwork(ctx, updated, existing)
 				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+
+		Context("implementation_strategy immutability on Update", func() {
+			It("rejects changing implementation_strategy", func() {
+				existing := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Region:                 "us-west-1",
+						NetworkClass:           "test-class",
+						Ipv4Cidr:               new("10.0.0.0/16"),
+						ImplementationStrategy: "strategy-a",
+					}.Build(),
+				}.Build()
+
+				updated := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Region:                 "us-west-1",
+						NetworkClass:           "test-class",
+						Ipv4Cidr:               new("10.0.0.0/16"),
+						ImplementationStrategy: "strategy-b",
+					}.Build(),
+				}.Build()
+
+				_, err := server.validateVirtualNetwork(ctx, updated, existing)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(err.Error()).To(ContainSubstring("implementation_strategy"))
+				Expect(err.Error()).To(ContainSubstring("immutable"))
+			})
+
+			It("allows same implementation_strategy on Update", func() {
+				nc := createNetworkClass(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
+
+				existing := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Region:                 "us-west-1",
+						NetworkClass:           nc.GetId(),
+						Ipv4Cidr:               new("10.0.0.0/16"),
+						ImplementationStrategy: "test-strategy",
+					}.Build(),
+				}.Build()
+
+				updated := privatev1.VirtualNetwork_builder{
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Region:                 "us-west-1",
+						NetworkClass:           nc.GetId(),
+						Ipv4Cidr:               new("10.0.0.0/16"),
+						ImplementationStrategy: "test-strategy",
+					}.Build(),
+				}.Build()
+
+				_, err := server.validateVirtualNetwork(ctx, updated, existing)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("preserves implementation_strategy when omitted in Update (round-trip)", func() {
+				nc := createNetworkClass(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
+
+				createResponse, err := server.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
+					Object: privatev1.VirtualNetwork_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.VirtualNetworkSpec_builder{
+							Ipv4Cidr:     new("10.0.0.0/16"),
+							NetworkClass: nc.GetId(),
+							Region:       "us-west-1",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				created := createResponse.GetObject()
+				Expect(created.GetSpec().GetImplementationStrategy()).To(Equal("test-strategy"))
+
+				updateResponse, err := server.Update(ctx, privatev1.VirtualNetworksUpdateRequest_builder{
+					Object: privatev1.VirtualNetwork_builder{
+						Id: created.GetId(),
+						Metadata: privatev1.Metadata_builder{
+							Name: "renamed-vn",
+						}.Build(),
+						Spec: privatev1.VirtualNetworkSpec_builder{
+							NetworkClass: nc.GetId(),
+							Region:       "us-west-1",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetImplementationStrategy()).To(Equal("test-strategy"))
 			})
 		})
 
@@ -658,7 +813,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 					}.Build(),
 				}.Build()
 
@@ -666,7 +821,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String("192.168.0.0/16"),
+						Ipv4Cidr:     new("192.168.0.0/16"),
 					}.Build(),
 				}.Build()
 
@@ -688,7 +843,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: nc.GetId(),
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 					}.Build(),
 				}.Build()
 
@@ -696,7 +851,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: nc.GetId(),
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 					}.Build(),
 				}.Build()
 
@@ -712,7 +867,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 					}.Build(),
 				}.Build()
 
@@ -720,8 +875,8 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 					}.Build(),
 				}.Build()
 
@@ -741,7 +896,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 					}.Build(),
 				}.Build()
 
@@ -749,8 +904,8 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String(""),
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv4Cidr:     new(""),
+						Ipv6Cidr:     new("2001:db8::/32"),
 					}.Build(),
 				}.Build()
 
@@ -770,7 +925,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 					}.Build(),
 				}.Build()
 
@@ -778,7 +933,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv6Cidr:     proto.String("fd00:1234::/32"),
+						Ipv6Cidr:     new("fd00:1234::/32"),
 					}.Build(),
 				}.Build()
 
@@ -798,7 +953,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: nc.GetId(),
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 					}.Build(),
 				}.Build()
 
@@ -806,7 +961,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: nc.GetId(),
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 					}.Build(),
 				}.Build()
 
@@ -823,7 +978,7 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 					}.Build(),
 				}.Build()
 
@@ -831,8 +986,8 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 					}.Build(),
 				}.Build()
 
@@ -853,8 +1008,8 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
-						Ipv6Cidr:     proto.String("2001:db8::/32"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
+						Ipv6Cidr:     new("2001:db8::/32"),
 					}.Build(),
 				}.Build()
 
@@ -862,8 +1017,8 @@ var _ = Describe("Private virtual networks server", func() {
 					Spec: privatev1.VirtualNetworkSpec_builder{
 						Region:       "us-west-1",
 						NetworkClass: "test-class",
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
-						Ipv6Cidr:     proto.String(""),
+						Ipv4Cidr:     new("10.0.0.0/16"),
+						Ipv6Cidr:     new(""),
 					}.Build(),
 				}.Build()
 
@@ -885,10 +1040,10 @@ var _ = Describe("Private virtual networks server", func() {
 				createResponse, err := server.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 					Object: privatev1.VirtualNetwork_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenants: []string{"shared"},
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Spec: privatev1.VirtualNetworkSpec_builder{
-							Ipv4Cidr:     proto.String("10.0.0.0/16"),
+							Ipv4Cidr:     new("10.0.0.0/16"),
 							NetworkClass: nc.GetId(),
 							Region:       "us-west-1",
 						}.Build(),
@@ -936,10 +1091,10 @@ var _ = Describe("Private virtual networks server", func() {
 		It("creates VirtualNetwork and generates ID", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					Ipv4Cidr:     proto.String("10.0.0.0/16"),
+					Ipv4Cidr:     new("10.0.0.0/16"),
 					Region:       "us-west-1",
 					NetworkClass: "class-id",
 				}.Build(),
@@ -958,10 +1113,10 @@ var _ = Describe("Private virtual networks server", func() {
 		It("retrieves VirtualNetwork by ID", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					Ipv4Cidr:     proto.String("10.0.0.0/16"),
+					Ipv4Cidr:     new("10.0.0.0/16"),
 					Region:       "us-west-1",
 					NetworkClass: "class-id",
 				}.Build(),
@@ -987,11 +1142,11 @@ var _ = Describe("Private virtual networks server", func() {
 			for i := range count {
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:    fmt.Sprintf("vn-%d", i),
-						Tenants: []string{"shared"},
+						Name:   fmt.Sprintf("vn-%d", i),
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String(fmt.Sprintf("10.%d.0.0/16", i)),
+						Ipv4Cidr:     new(fmt.Sprintf("10.%d.0.0/16", i)),
 						Region:       "us-west-1",
 						NetworkClass: "class-id",
 					}.Build(),
@@ -1017,11 +1172,11 @@ var _ = Describe("Private virtual networks server", func() {
 			for i := range 5 {
 				vn := privatev1.VirtualNetwork_builder{
 					Metadata: privatev1.Metadata_builder{
-						Name:    fmt.Sprintf("vn-%d", i),
-						Tenants: []string{"shared"},
+						Name:   fmt.Sprintf("vn-%d", i),
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String(fmt.Sprintf("10.%d.0.0/16", i)),
+						Ipv4Cidr:     new(fmt.Sprintf("10.%d.0.0/16", i)),
 						Region:       "us-west-1",
 						NetworkClass: "class-id",
 					}.Build(),
@@ -1045,11 +1200,11 @@ var _ = Describe("Private virtual networks server", func() {
 		It("updates VirtualNetwork", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name:    "original-name",
-					Tenants: []string{"shared"},
+					Name:   "original-name",
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					Ipv4Cidr:     proto.String("10.0.0.0/16"),
+					Ipv4Cidr:     new("10.0.0.0/16"),
 					Region:       "us-west-1",
 					NetworkClass: "class-id",
 				}.Build(),
@@ -1082,10 +1237,10 @@ var _ = Describe("Private virtual networks server", func() {
 			vn := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
 					Finalizers: []string{"test-finalizer"},
-					Tenants:    []string{"shared"},
+					Tenant:     auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					Ipv4Cidr:     proto.String("10.0.0.0/16"),
+					Ipv4Cidr:     new("10.0.0.0/16"),
 					Region:       "us-west-1",
 					NetworkClass: "class-id",
 				}.Build(),
@@ -1116,11 +1271,11 @@ var _ = Describe("Private virtual networks server", func() {
 			// Create VirtualNetwork with tenant-a
 			vn1 := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name:    "vn-tenant-a",
-					Tenants: []string{"tenant-a"},
+					Name:   "vn-tenant-a",
+					Tenant: "tenant-a",
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					Ipv4Cidr:     proto.String("10.1.0.0/16"),
+					Ipv4Cidr:     new("10.1.0.0/16"),
 					Region:       "us-west-1",
 					NetworkClass: "class-id",
 				}.Build(),
@@ -1134,11 +1289,11 @@ var _ = Describe("Private virtual networks server", func() {
 			// Create VirtualNetwork with tenant-b
 			vn2 := privatev1.VirtualNetwork_builder{
 				Metadata: privatev1.Metadata_builder{
-					Name:    "vn-tenant-b",
-					Tenants: []string{"tenant-b"},
+					Name:   "vn-tenant-b",
+					Tenant: "tenant-b",
 				}.Build(),
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					Ipv4Cidr:     proto.String("10.2.0.0/16"),
+					Ipv4Cidr:     new("10.2.0.0/16"),
 					Region:       "us-west-1",
 					NetworkClass: "class-id",
 				}.Build(),
@@ -1177,7 +1332,7 @@ var _ = Describe("Private virtual networks server", func() {
 			createResponse, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build(),
@@ -1194,7 +1349,7 @@ var _ = Describe("Private virtual networks server", func() {
 			_, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build(),
@@ -1214,7 +1369,7 @@ var _ = Describe("Private virtual networks server", func() {
 			createResponse, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						Region:       "us-west-1",
 						NetworkClass: ncB.GetId(),
 					}.Build(),
@@ -1232,7 +1387,7 @@ var _ = Describe("Private virtual networks server", func() {
 			_, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build(),
@@ -1254,9 +1409,9 @@ var _ = Describe("Private virtual networks server", func() {
 
 			nc := privatev1.NetworkClass_builder{
 				ImplementationStrategy: "test-strategy",
-				IsDefault:              proto.Bool(true),
+				IsDefault:              new(true),
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Capabilities: privatev1.NetworkClassCapabilities_builder{
 					SupportsIpv4: true,
@@ -1274,7 +1429,7 @@ var _ = Describe("Private virtual networks server", func() {
 			_, err = vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv6Cidr: proto.String("2001:db8::/32"),
+						Ipv6Cidr: new("2001:db8::/32"),
 						Region:   "us-west-1",
 						Capabilities: privatev1.VirtualNetworkCapabilities_builder{
 							EnableIpv6: true,
@@ -1304,7 +1459,7 @@ var _ = Describe("Private virtual networks server", func() {
 			_, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build(),
@@ -1318,6 +1473,8 @@ var _ = Describe("Private virtual networks server", func() {
 			defaultNC := createDefaultNetworkClassViaDAO(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
 
 			// Soft-delete the default NC by setting deletion_timestamp via SQL:
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, sqlErr := tx.Exec(ctx,
 				"UPDATE network_classes SET deletion_timestamp = now() WHERE id = $1",
 				defaultNC.GetId(),
@@ -1326,10 +1483,10 @@ var _ = Describe("Private virtual networks server", func() {
 
 			// Create VN without network_class. findDefaultNetworkClass excludes
 			// soft-deleted rows, so no active default is found and creation fails.
-			_, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
+			_, err = vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build(),
@@ -1346,7 +1503,7 @@ var _ = Describe("Private virtual networks server", func() {
 			createResponse, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
 				Object: privatev1.VirtualNetwork_builder{
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr: proto.String("10.0.0.0/16"),
+						Ipv4Cidr: new("10.0.0.0/16"),
 						Region:   "us-west-1",
 					}.Build(),
 				}.Build(),
@@ -1363,7 +1520,7 @@ var _ = Describe("Private virtual networks server", func() {
 				Object: privatev1.VirtualNetwork_builder{
 					Id: vn.GetId(),
 					Spec: privatev1.VirtualNetworkSpec_builder{
-						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						Ipv4Cidr:     new("10.0.0.0/16"),
 						Region:       "us-west-1",
 						NetworkClass: ncB.GetId(),
 					}.Build(),
@@ -1375,6 +1532,216 @@ var _ = Describe("Private virtual networks server", func() {
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(err.Error()).To(ContainSubstring("network_class"))
 			Expect(err.Error()).To(ContainSubstring("immutable"))
+		})
+	})
+
+	Describe("Deletion validation", func() {
+		var (
+			vnServer  *PrivateVirtualNetworksServer
+			subnetDao *dao.GenericDAO[*privatev1.Subnet]
+			sgDao     *dao.GenericDAO[*privatev1.SecurityGroup]
+		)
+
+		BeforeEach(func() {
+			var err error
+			vnServer, err = NewPrivateVirtualNetworksServer().
+				SetLogger(logger).
+				SetAttributionLogic(attribution).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			subnetDao, err = dao.NewGenericDAO[*privatev1.Subnet]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			sgDao, err = dao.NewGenericDAO[*privatev1.SecurityGroup]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		createVirtualNetwork := func() *privatev1.VirtualNetwork {
+			nc := createNetworkClass(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
+			createResp, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
+				Object: privatev1.VirtualNetwork_builder{
+					Metadata: privatev1.Metadata_builder{
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						NetworkClass: nc.GetId(),
+						Region:       "us-west-1",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			return createResp.GetObject()
+		}
+
+		setVirtualNetworkReady := func(vn *privatev1.VirtualNetwork) {
+			vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			vn.SetStatus(privatev1.VirtualNetworkStatus_builder{
+				State: privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY,
+			}.Build())
+			_, err = vnDao.Update().SetObject(vn).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		It("allows deletion when no child resources exist", func() {
+			vn := createVirtualNetwork()
+
+			_, err := vnServer.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vn.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("blocks deletion when a Subnet references the VirtualNetwork", func() {
+			vn := createVirtualNetwork()
+			setVirtualNetworkReady(vn)
+
+			subnet := privatev1.Subnet_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				Spec: privatev1.SubnetSpec_builder{
+					VirtualNetwork: vn.GetId(),
+					Ipv4Cidr:       proto.String("10.0.1.0/24"),
+				}.Build(),
+			}.Build()
+			_, err := subnetDao.Create().SetObject(subnet).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = vnServer.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vn.GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("Subnet"))
+			Expect(err.Error()).To(ContainSubstring(vn.GetId()))
+		})
+
+		It("blocks deletion when a SecurityGroup references the VirtualNetwork", func() {
+			vn := createVirtualNetwork()
+
+			sg := privatev1.SecurityGroup_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				Spec: privatev1.SecurityGroupSpec_builder{
+					VirtualNetwork: vn.GetId(),
+				}.Build(),
+			}.Build()
+			_, err := sgDao.Create().SetObject(sg).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = vnServer.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vn.GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("SecurityGroup"))
+			Expect(err.Error()).To(ContainSubstring(vn.GetId()))
+		})
+
+		It("blocks deletion when both Subnets and SecurityGroups reference the VirtualNetwork", func() {
+			vn := createVirtualNetwork()
+			setVirtualNetworkReady(vn)
+
+			subnet := privatev1.Subnet_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				Spec: privatev1.SubnetSpec_builder{
+					VirtualNetwork: vn.GetId(),
+					Ipv4Cidr:       proto.String("10.0.1.0/24"),
+				}.Build(),
+			}.Build()
+			_, err := subnetDao.Create().SetObject(subnet).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			sg := privatev1.SecurityGroup_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				Spec: privatev1.SecurityGroupSpec_builder{
+					VirtualNetwork: vn.GetId(),
+				}.Build(),
+			}.Build()
+			_, err = sgDao.Create().SetObject(sg).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = vnServer.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vn.GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("Subnet"))
+		})
+
+		It("allows deletion after all child resources are removed", func() {
+			vn := createVirtualNetwork()
+
+			sg := privatev1.SecurityGroup_builder{
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				Spec: privatev1.SecurityGroupSpec_builder{
+					VirtualNetwork: vn.GetId(),
+				}.Build(),
+			}.Build()
+			sgResp, err := sgDao.Create().SetObject(sg).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = sgDao.Delete().SetId(sgResp.GetObject().GetId()).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = vnServer.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vn.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("reports the correct count of referencing Subnets", func() {
+			vn := createVirtualNetwork()
+			setVirtualNetworkReady(vn)
+
+			for i := range 3 {
+				subnet := privatev1.Subnet_builder{
+					Metadata: privatev1.Metadata_builder{
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.SubnetSpec_builder{
+						VirtualNetwork: vn.GetId(),
+						Ipv4Cidr:       proto.String(fmt.Sprintf("10.0.%d.0/24", i)),
+					}.Build(),
+				}.Build()
+				_, err := subnetDao.Create().SetObject(subnet).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			_, err := vnServer.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vn.GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("3 Subnet"))
 		})
 	})
 })

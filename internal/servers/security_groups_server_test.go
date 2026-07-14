@@ -14,63 +14,24 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("SecurityGroups server", func() {
-	var (
-		ctx              context.Context
-		tx               database.Tx
-		virtualNetworkID string
-	)
+	var virtualNetworkID string
 
 	BeforeEach(func() {
 		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*publicv1.SecurityGroup](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.VirtualNetwork](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.NetworkClass](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create a default NetworkClass for tests:
 		ncDao, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
@@ -83,7 +44,7 @@ var _ = Describe("SecurityGroups server", func() {
 			Id:                     "default",
 			ImplementationStrategy: "ovn-kubernetes",
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Capabilities: privatev1.NetworkClassCapabilities_builder{
 				SupportsIpv4:      true,
@@ -110,12 +71,12 @@ var _ = Describe("SecurityGroups server", func() {
 
 		vn := privatev1.VirtualNetwork_builder{
 			Metadata: privatev1.Metadata_builder{
-				Tenants: []string{"shared"},
+				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Region:       "us-east-1",
 				NetworkClass: "default",
-				Ipv4Cidr:     proto.String("10.0.0.0/16"),
+				Ipv4Cidr:     new("10.0.0.0/16"),
 				Capabilities: privatev1.VirtualNetworkCapabilities_builder{
 					EnableIpv4: true,
 				}.Build(),
@@ -186,15 +147,15 @@ var _ = Describe("SecurityGroups server", func() {
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
-								PortFrom: proto.Int32(80),
-								PortTo:   proto.Int32(80),
-								Ipv4Cidr: proto.String("0.0.0.0/0"),
+								PortFrom: new(int32(80)),
+								PortTo:   new(int32(80)),
+								Ipv4Cidr: new("0.0.0.0/0"),
 							},
 						},
 						Egress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_ALL,
-								Ipv4Cidr: proto.String("0.0.0.0/0"),
+								Ipv4Cidr: new("0.0.0.0/0"),
 							},
 						},
 					}.Build(),
@@ -223,9 +184,9 @@ var _ = Describe("SecurityGroups server", func() {
 							Ingress: []*publicv1.SecurityRule{
 								{
 									Protocol: publicv1.Protocol_PROTOCOL_TCP,
-									PortFrom: proto.Int32(443),
-									PortTo:   proto.Int32(443),
-									Ipv4Cidr: proto.String("0.0.0.0/0"),
+									PortFrom: new(int32(443)),
+									PortTo:   new(int32(443)),
+									Ipv4Cidr: new("0.0.0.0/0"),
 								},
 							},
 						}.Build(),
@@ -258,7 +219,7 @@ var _ = Describe("SecurityGroups server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.SecurityGroupsListRequest_builder{
-				Limit: proto.Int32(1),
+				Limit: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -280,7 +241,7 @@ var _ = Describe("SecurityGroups server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.SecurityGroupsListRequest_builder{
-				Offset: proto.Int32(1),
+				Offset: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", count-1))
@@ -305,7 +266,7 @@ var _ = Describe("SecurityGroups server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, publicv1.SecurityGroupsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -322,9 +283,9 @@ var _ = Describe("SecurityGroups server", func() {
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
-								PortFrom: proto.Int32(22),
-								PortTo:   proto.Int32(22),
-								Ipv4Cidr: proto.String("10.0.0.0/8"),
+								PortFrom: new(int32(22)),
+								PortTo:   new(int32(22)),
+								Ipv4Cidr: new("10.0.0.0/8"),
 							},
 						},
 					}.Build(),
@@ -338,6 +299,83 @@ var _ = Describe("SecurityGroups server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(proto.Equal(createResponse.GetObject(), getResponse.GetObject())).To(BeTrue())
+		})
+
+		It("Canonicalizes non-canonical rule CIDRs on Create", func() {
+			response, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
+				Object: publicv1.SecurityGroup_builder{
+					Spec: publicv1.SecurityGroupSpec_builder{
+						VirtualNetwork: virtualNetworkID,
+						Ingress: []*publicv1.SecurityRule{
+							{
+								Protocol: publicv1.Protocol_PROTOCOL_TCP,
+								PortFrom: new(int32(80)),
+								PortTo:   new(int32(80)),
+								Ipv4Cidr: new("10.0.1.5/24"),
+							},
+						},
+						Egress: []*publicv1.SecurityRule{
+							{
+								Protocol: publicv1.Protocol_PROTOCOL_ALL,
+								Ipv4Cidr: new("0.0.0.0/0"),
+							},
+						},
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.GetObject().GetSpec().GetIngress()[0].GetIpv4Cidr()).To(Equal("10.0.1.0/24"))
+		})
+
+		It("Canonicalizes rule CIDRs on Update", func() {
+			createResponse, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
+				Object: publicv1.SecurityGroup_builder{
+					Spec: publicv1.SecurityGroupSpec_builder{
+						VirtualNetwork: virtualNetworkID,
+						Ingress: []*publicv1.SecurityRule{
+							{
+								Protocol: publicv1.Protocol_PROTOCOL_TCP,
+								PortFrom: new(int32(443)),
+								PortTo:   new(int32(443)),
+								Ipv4Cidr: new("0.0.0.0/0"),
+							},
+						},
+						Egress: []*publicv1.SecurityRule{
+							{
+								Protocol: publicv1.Protocol_PROTOCOL_ALL,
+								Ipv4Cidr: new("0.0.0.0/0"),
+							},
+						},
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			updateResponse, err := server.Update(ctx, publicv1.SecurityGroupsUpdateRequest_builder{
+				Object: publicv1.SecurityGroup_builder{
+					Id: object.GetId(),
+					Spec: publicv1.SecurityGroupSpec_builder{
+						VirtualNetwork: virtualNetworkID,
+						Ingress: []*publicv1.SecurityRule{
+							{
+								Protocol: publicv1.Protocol_PROTOCOL_TCP,
+								PortFrom: new(int32(8080)),
+								PortTo:   new(int32(8080)),
+								Ipv4Cidr: new("10.0.2.5/24"),
+							},
+						},
+						Egress: []*publicv1.SecurityRule{
+							{
+								Protocol: publicv1.Protocol_PROTOCOL_ALL,
+								Ipv4Cidr: new("0.0.0.0/0"),
+							},
+						},
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updateResponse.GetObject().GetSpec().GetIngress()[0].GetIpv4Cidr()).To(Equal("10.0.2.0/24"))
 		})
 
 		It("Update object", func() {
@@ -367,9 +405,9 @@ var _ = Describe("SecurityGroups server", func() {
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_UDP,
-								PortFrom: proto.Int32(53),
-								PortTo:   proto.Int32(53),
-								Ipv4Cidr: proto.String("0.0.0.0/0"),
+								PortFrom: new(int32(53)),
+								PortTo:   new(int32(53)),
+								Ipv4Cidr: new("0.0.0.0/0"),
 							},
 						},
 					}.Build(),
@@ -402,6 +440,8 @@ var _ = Describe("SecurityGroups server", func() {
 			// Add a finalizer, as otherwise the object will be immediately deleted and archived and it
 			// won't be possible to verify the deletion timestamp. This can't be done using the server
 			// because this is a public object, and public objects don't have the finalizers field.
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, err = tx.Exec(
 				ctx,
 				`update security_groups set finalizers = '{"a"}' where id = $1`,

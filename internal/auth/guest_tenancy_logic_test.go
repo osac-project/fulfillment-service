@@ -48,11 +48,11 @@ var _ = Describe("Guest tenancy logic", func() {
 		})
 	})
 
-	Describe("Determine default tenants", func() {
+	Describe("Determine default tenant", func() {
 		It("Should return the guest tenant", func() {
-			result, err := logic.DetermineDefaultTenants(ctx)
+			result, err := logic.DetermineDefaultTenant(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(result.Equal(GuestTenants)).To(BeTrue())
+			Expect(result).To(Equal("guest"))
 		})
 	})
 

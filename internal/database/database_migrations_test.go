@@ -14,7 +14,10 @@ language governing permissions and limitations under the License.
 package database
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -90,6 +93,43 @@ var _ = Describe("Migrations", func() {
 			}
 		}
 		Expect(violations).To(BeEmpty(), "migration filenames violate naming convention: %v", violations)
+	})
+
+	It("Has an up-to-date migrations hash", func() {
+		// Read the stored hash:
+		storedHashFile, err := filepath.Abs("migrations.sha256")
+		Expect(err).ToNot(HaveOccurred())
+		storedHashBytes, err := os.ReadFile(storedHashFile)
+		Expect(err).ToNot(HaveOccurred())
+		storedHashText := strings.TrimSpace(string(storedHashBytes))
+
+		// Get the names of the migration migrationFiles and sort them:
+		migrationFiles, err := filepath.Glob("migrations/*.up.sql")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(migrationFiles).ToNot(BeEmpty())
+		migrationNames := make([]string, len(migrationFiles))
+		for i, file := range migrationFiles {
+			migrationNames[i] = filepath.Base(file)
+		}
+		sort.Strings(migrationNames)
+
+		// Compute the SHA-256 hash of the migration file list:
+		computedHashSource := &bytes.Buffer{}
+		for _, migrationName := range migrationNames {
+			_, err := fmt.Fprintf(computedHashSource, "%s\n", migrationName)
+			Expect(err).ToNot(HaveOccurred())
+		}
+		computedHashBytes := sha256.Sum256(computedHashSource.Bytes())
+		computedHashText := fmt.Sprintf("%x", computedHashBytes)
+
+		// Compare the computed hash with the stored hash:
+		if computedHashText != storedHashText {
+			Fail(fmt.Sprintf(
+				"Database migrations hash in '%s' is outdated, run 'uv run dev.py update hashes' "+
+					"to update it",
+				storedHashFile,
+			))
+		}
 	})
 
 	It("Has no unexpected gaps in migration numbering", func() {

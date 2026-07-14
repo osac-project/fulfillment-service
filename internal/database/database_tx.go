@@ -20,7 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Tx is a database transaction automatically started and automatically commited or rolled back.
+// Tx is a database transaction automatically started and automatically committed or rolled back.
 //
 //go:generate mockgen -destination=database_tx_mock.go -package=database . Tx
 type Tx interface {
@@ -37,8 +37,8 @@ type Tx interface {
 	Exec(ctx context.Context, query string, args ...any) (tag pgconn.CommandTag, err error)
 
 	// ReportError adds a error that the transaction manager will use to determine if the transaction should be
-	// commited or rolled back. The default behaviour is that if there are no errors reported, or if they are all
-	// nil then the transaction will be commited. Otherwise it will be rolled back.
+	// committed or rolled back. The default behaviour is that if there are no errors reported, or if they are all
+	// nil then the transaction will be committed. Otherwise it will be rolled back.
 	//
 	// The recommended way to use this is with the defer mechanism:
 	//
@@ -62,4 +62,17 @@ type Tx interface {
 	//
 	// It this method is called multiple times for the same transaction the reported errors will be accumulated.
 	ReportError(err *error)
+
+	// Run executes the given task function within this transaction. If the task returns an error or panics, the
+	// error is reported to the transaction (marking it for rollback) and returned to the caller. The transaction is
+	// not ended by this method; the caller is still responsible for calling End.
+	//
+	// The task must be a function whose first parameter is either context.Context or Tx. Any additional parameters
+	// are passed via args. If the last return value implements the error interface, it will be used to determine
+	// the outcome.
+	Run(ctx context.Context, task any, args ...any) error
+
+	// End finishes a transaction. It will be committed if no errors have been reported, or rolled back otherwise.
+	// See the ReportError method for details on how errors are tracked.
+	End(ctx context.Context) error
 }

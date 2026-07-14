@@ -18,7 +18,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
@@ -37,9 +36,19 @@ var _ = Describe("Roles", func() {
 		publicClient = publicv1.NewRolesClient(tool.ExternalView().UserConn())
 	})
 
-	Describe("Private API (admin)", func() {
+	Describe("Private API", func() {
 		It("Can list built-in roles", func() {
-			listResponse, err := privateClient.List(ctx, privatev1.RolesListRequest_builder{}.Build())
+			listResponse, err := privateClient.List(ctx, privatev1.RolesListRequest_builder{
+				Filter: new(`
+					this.metadata.name in [
+						'cloud-provider-admin',
+						'cloud-provider-reader',
+						'tenant-admin',
+						'tenant-reader',
+						'tenant-user',
+					]
+				`),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResponse).ToNot(BeNil())
 			items := listResponse.GetItems()
@@ -60,7 +69,7 @@ var _ = Describe("Roles", func() {
 
 		It("Can get a specific built-in role", func() {
 			listResponse, err := privateClient.List(ctx, privatev1.RolesListRequest_builder{
-				Filter: proto.String("this.metadata.name == 'tenant-admin'"),
+				Filter: new("this.metadata.name == 'tenant-admin'"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResponse).ToNot(BeNil())
@@ -83,9 +92,19 @@ var _ = Describe("Roles", func() {
 		})
 	})
 
-	Describe("Public API (regular user)", func() {
+	Describe("Public API", func() {
 		It("Can list built-in roles", func() {
-			listResponse, err := publicClient.List(ctx, publicv1.RolesListRequest_builder{}.Build())
+			listResponse, err := publicClient.List(ctx, publicv1.RolesListRequest_builder{
+				Filter: new(`
+					this.metadata.name in [
+						'cloud-provider-admin',
+						'cloud-provider-reader',
+						'tenant-admin',
+						'tenant-reader',
+						'tenant-user',
+					]
+				`),
+			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResponse).ToNot(BeNil())
 			items := listResponse.GetItems()
@@ -106,7 +125,7 @@ var _ = Describe("Roles", func() {
 
 		It("Can get a specific built-in role", func() {
 			listResponse, err := publicClient.List(ctx, publicv1.RolesListRequest_builder{
-				Filter: proto.String("this.metadata.name == 'tenant-reader'"),
+				Filter: new("this.metadata.name == 'tenant-reader'"),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listResponse).ToNot(BeNil())

@@ -71,7 +71,7 @@ var _ = Describe("Transactions interceptor", func() {
 			// Prepare the manager mock:
 			tx := NewMockTx(ctrl)
 			manager.EXPECT().Begin(ctx).Return(tx, nil).Times(1)
-			manager.EXPECT().End(ctx, tx).Return(nil).Times(1)
+			tx.EXPECT().End(ctx).Return(nil).Times(1)
 
 			// Call the interceptor:
 			var request any
@@ -87,7 +87,7 @@ var _ = Describe("Transactions interceptor", func() {
 			// Prepare the manager mock:
 			tx := NewMockTx(ctrl)
 			manager.EXPECT().Begin(ctx).Return(tx, nil).Times(1)
-			manager.EXPECT().End(ctx, tx).Return(nil).Times(1)
+			tx.EXPECT().End(ctx).Return(nil).Times(1)
 
 			// Call the interceptor:
 			var request any
@@ -106,7 +106,7 @@ var _ = Describe("Transactions interceptor", func() {
 			// Prepare the manager mock:
 			tx := NewMockTx(ctrl)
 			manager.EXPECT().Begin(ctx).Return(tx, nil).Times(1)
-			manager.EXPECT().End(ctx, tx).Return(nil).Times(1)
+			tx.EXPECT().End(ctx).Return(nil).Times(1)
 
 			// Call the interceptor:
 			var request any
@@ -160,7 +160,7 @@ var _ = Describe("Transactions interceptor", func() {
 			// Prepare the manager mock:
 			tx := NewMockTx(ctrl)
 			manager.EXPECT().Begin(ctx).Return(tx, nil).Times(1)
-			manager.EXPECT().End(ctx, tx).Return(nil).Times(1)
+			tx.EXPECT().End(ctx).Return(nil).Times(1)
 
 			// Call the interceptor:
 			var request any
@@ -182,7 +182,7 @@ var _ = Describe("Transactions interceptor", func() {
 			tx := NewMockTx(ctrl)
 			err := errors.New("tx error")
 			manager.EXPECT().Begin(ctx).Return(tx, nil).Times(1)
-			manager.EXPECT().End(ctx, tx).Return(err).Times(1)
+			tx.EXPECT().End(ctx).Return(err).Times(1)
 
 			// Call the interceptor:
 			var request any

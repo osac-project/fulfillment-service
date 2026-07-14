@@ -14,7 +14,6 @@ language governing permissions and limitations under the License.
 package label
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"log/slog"
@@ -22,7 +21,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
@@ -37,9 +35,11 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "label OBJECT ID|NAME LABEL...",
-		Short: "Add or remove labels from objects",
-		RunE:  runner.run,
+		Use:                   "label [FLAG...] OBJECT ID|NAME LABEL...",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -48,7 +48,7 @@ type runnerContext struct {
 	logger  *slog.Logger
 	console *terminal.Console
 	conn    *grpc.ClientConn
-	helper  *reflection.ObjectHelper
+	helper  reflection.ObjectHelper
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -68,11 +68,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -88,6 +85,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		SetLogger(c.logger).
 		SetConnection(c.conn).
 		AddPackages(cfg.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -131,12 +129,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find the object by identifier or name:
-	object, err := c.findObject(ctx, ref)
+	object, err := c.helper.FindObject(ctx, ref, c.console)
 	if err != nil {
 		return err
-	}
-	if object == nil {
-		return nil
 	}
 
 	// Apply the label operations:
@@ -150,44 +145,6 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-// findObject tries to find an object by identifier or name. It uses the list method with a filter that matches
-// either the identifier or the name. Returns an error if no match is found or if multiple matches are found.
-func (c *runnerContext) findObject(ctx context.Context, ref string) (result proto.Message, err error) {
-	// Find the objects matching the reference (identifier or name):
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
-	response, err := c.helper.List(ctx, reflection.ListOptions{
-		Filter: filter,
-		Limit:  10,
-	})
-	if err != nil {
-		err = fmt.Errorf("failed to find object of type '%s' with identifier or name '%s': %w", c.helper, ref, err)
-		return
-	}
-	items := response.Items
-	total := response.Total
-
-	// Prepare the response based on the number of objects found:
-	switch len(items) {
-	case 0:
-		c.console.Render(ctx, "no_matches.txt", map[string]any{
-			"Object": c.helper.Singular(),
-			"Ref":    ref,
-		})
-		return
-	case 1:
-		result = items[0]
-		return
-	default:
-		c.console.Render(ctx, "multiple_matches.txt", map[string]any{
-			"Matches": items,
-			"Object":  c.helper.Singular(),
-			"Ref":     ref,
-			"Total":   total,
-		})
-		return
-	}
 }
 
 type labelOperation struct {
@@ -249,3 +206,38 @@ func (c *runnerContext) applyLabelOperations(metadata reflection.Metadata, opera
 		metadata.SetLabels(labels)
 	}
 }
+
+const shortHelp = `Add or remove labels from objects`
+
+const longHelp = `
+Add or remove labels from objects.
+
+Labels are key-value pairs attached to objects that can be used to organize and select them. Unlike annotations, labels
+are intended for identifying and grouping objects; for example, they can be used in filters when listing objects.
+
+To add or update a label use the {{ bt }}key=value{{ bt }} syntax:
+
+{{ bt 3 }}shell
+{{ binary }} label clusters my-cluster env=production
+{{ bt 3 }}
+
+Multiple labels can be set at once:
+
+{{ bt 3 }}shell
+{{ binary }} label clusters my-cluster env=production team=platform
+{{ bt 3 }}
+
+To remove a label append a dash ({{ bt }}-{{ bt }}) to the key name:
+
+{{ bt 3 }}shell
+{{ binary }} label clusters my-cluster env-
+{{ bt 3 }}
+
+Adding and removing labels can be combined in a single command:
+
+{{ bt 3 }}shell
+{{ binary }} label clusters my-cluster env- team=networking
+{{ bt 3 }}
+
+Objects can be referenced by their identifier or by their name.
+`

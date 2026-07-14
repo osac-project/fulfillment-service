@@ -17,16 +17,13 @@ package osac.private.v1;
 
 import "osac/private/v1/metadata_type.proto";
 
-// Represents a binding between a role and a set of subjects (groups).
+// Represents a binding between a role and a set of users.
 //
-// A RoleBinding grants the permissions defined by its referenced role to the subjects listed in its spec. This is
-// the mechanism by which roles are assigned to groups, enabling the members of those groups to perform the actions
-// permitted by the role.
+// A RoleBinding grants the permissions defined by its referenced role to the users listed in its spec. This is
+// the mechanism by which roles are assigned to users, enabling those users to perform the actions permitted by
+// the role.
 //
-// The subjects of a RoleBinding are groups as defined by the identity provider (IDP) of the tenant. This service
-// does not manage groups directly; it references them by their IDP-assigned identifiers. For example, if a tenant
-// uses Keycloak as its identity provider, the values in the `groups` field correspond to the names of Keycloak
-// groups within the tenant's realm.
+// Users are referenced by their internal User object IDs.
 message RoleBinding {
   // Unique identifier of the role binding.
   string id = 1;
@@ -44,13 +41,16 @@ message RoleBinding {
 // Desired state of a role binding.
 message RoleBindingSpec {
   // Identifier of the role that this binding refers to. This determines which permissions are granted to the
-  // subjects listed below.
+  // users listed below.
   string role = 1;
 
-  // Identifiers of the groups that are granted the permissions defined by the role. These are group identifiers
-  // as defined by the identity provider (IDP) of the tenant, not internal system identifiers. For example, in a
-  // Keycloak-based deployment these would be the Keycloak group names within the tenant's realm.
-  repeated string groups = 2;
+  // Identifiers of the users that are granted the permissions defined by the role. These are user identifiers
+  // (the `id` field of User objects), not usernames or email addresses.
+  //
+  // To grant a role to a user, create a RoleBinding with the desired role and include the user's ID in this list.
+  // To revoke a role from a user, either delete the entire RoleBinding (if the user is the only subject), or
+  // update the RoleBinding to remove the user's ID from this list.
+  repeated string users = 2;
 }
 
 // Current observed state of a role binding, reflecting its synchronization with the underlying authorization system.
@@ -61,6 +61,11 @@ message RoleBindingStatus {
   // Human-readable message providing additional details about the current state. For example, if the state is
   // FAILED, this field may explain why the synchronization with the authorization system failed.
   optional string message = 2;
+
+  // List of user IDs that have been successfully synced to the authorization system. This tracks which users
+  // currently have the role assigned in Keycloak, allowing the controller to detect when users are added or
+  // removed from the binding.
+  repeated string users = 3;
 }
 
 // Synchronization states for RoleBinding objects with the underlying authorization system.

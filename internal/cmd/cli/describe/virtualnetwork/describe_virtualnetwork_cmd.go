@@ -21,8 +21,10 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -32,17 +34,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "virtualnetwork [flags] ID_OR_NAME",
-		Aliases: []string{"virtualnetworks"},
-		Short:   "Describe a virtual network",
-		Long:    "Display detailed information about a virtual network, identified by ID or name.",
-		Example: `  # Describe a virtual network by ID
-  osac describe virtualnetwork vnet-abc123
-
-  # Describe a virtual network by name
-  osac describe virtualnetwork my-network`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "virtualnetwork [FLAG...] ID|NAME",
+		Aliases:               []string{"virtualnetworks"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -60,11 +58,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.logger = logging.LoggerFromContext(ctx)
 	c.console = terminal.ConsoleFromContext(ctx)
 
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg.Address == "" {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -76,29 +71,21 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewVirtualNetworksClient(conn)
 
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
-	listResponse, err := client.List(ctx, publicv1.VirtualNetworksListRequest_builder{
-		Filter: &filter,
-	}.Build())
+	matched, err := lookup.Find(ref, "virtual network", func(filter string, limit int32) ([]*publicv1.VirtualNetwork, error) {
+		resp, err := client.List(ctx, publicv1.VirtualNetworksListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe virtual network: %w", err)
+		}
+		return resp.GetItems(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to describe virtual network: %w", err)
-	}
-	if len(listResponse.GetItems()) == 0 {
-		return fmt.Errorf("virtual network not found: %s", ref)
-	}
-	if len(listResponse.GetItems()) > 1 {
-		return fmt.Errorf("multiple virtual networks match '%s', use the ID instead", ref)
+		return err
 	}
 
-	response, err := client.Get(ctx, publicv1.VirtualNetworksGetRequest_builder{
-		Id: listResponse.GetItems()[0].GetId(),
-	}.Build())
-	if err != nil {
-		return fmt.Errorf("failed to describe virtual network: %w", err)
-	}
-
-	vn := response.Object
-	RenderVirtualNetwork(c.console, vn)
+	RenderVirtualNetwork(c.console, matched)
 
 	return nil
 }
@@ -140,3 +127,21 @@ func RenderVirtualNetwork(w io.Writer, vn *publicv1.VirtualNetwork) {
 	fmt.Fprintf(writer, "Message:\t%s\n", message)
 	writer.Flush()
 }
+
+const shortHelp = `Describe a virtual network.`
+
+const longHelp = `
+Display detailed information about a virtual network, referenced by identifier or name.
+
+Examples:
+
+{{ bt 3 }}shell
+# Describe a virtual network by identifier:
+{{ binary }} describe virtualnetwork 019e5ff1-4c40-7185-8402-b2f0372b65e7
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Describe a virtual network by name:
+{{ binary }} describe virtualnetwork my-network
+{{ bt 3 }}
+`

@@ -23,7 +23,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/config"
@@ -38,16 +37,19 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:   "password [CLUSTER] [OPTION]...",
-		Short: "Get password",
-		RunE:  runner.run,
+		Use:                   "password [FLAG...] ID|NAME",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVar(
 		&runner.args.key,
 		"cluster",
 		"",
-		"Name or identifier of the cluster.",
+		clusterFlagHelp,
 	)
 	flags.MarkDeprecated("cluster", "use positional argument instead.\n")
 	return result
@@ -83,11 +85,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.flags = cmd.Flags()
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -117,8 +116,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		key,
 	)
 	listResponse, err := client.List(ctx, publicv1.ClustersListRequest_builder{
-		Filter: proto.String(listFilter),
-		Limit:  proto.Int32(10),
+		Filter: new(listFilter),
+		Limit:  new(int32(10)),
 	}.Build())
 	if err != nil {
 		return fmt.Errorf("failed to list clusters: %w", err)
@@ -126,13 +125,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	total := listResponse.GetTotal()
 	clusters := listResponse.GetItems()
 	var cluster *publicv1.Cluster
-	switch {
-	case total == 0:
+	switch total {
+	case 0:
 		c.console.Render(ctx, "no_match.txt", map[string]any{
 			"Key": key,
 		})
 		return exit.Error(1)
-	case total == 1:
+	case 1:
 		cluster = clusters[0]
 	default:
 		ids := make([]string, len(clusters))
@@ -160,3 +159,15 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+const shortHelp = `Get password`
+
+const longHelp = `
+Get password for a cluster.
+`
+
+const clusterFlagHelp = `
+_NAME|ID_ - Name or identifier of the cluster.
+
+This flag is deprecated. Use a positional argument instead.
+`

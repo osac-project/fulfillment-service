@@ -17,7 +17,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
@@ -31,17 +30,11 @@ var _ = Describe("Listener", func() {
 		// This doesn't need to be a working URL, just enough to be able to create the object.
 		const url = "postgresql://myserver/mydb"
 
-		// A payload callback that does nothing.
-		nothing := func(ctx context.Context, payload proto.Message) error {
-			return nil
-		}
-
 		It("Can be created when all the required parameters are set", func() {
 			listener, err := NewListener().
 				SetLogger(logger).
 				SetUrl(url).
 				SetChannel(channel).
-				AddPayloadCallback(nothing).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(listener).ToNot(BeNil())
@@ -51,7 +44,6 @@ var _ = Describe("Listener", func() {
 			listener, err := NewListener().
 				SetChannel(channel).
 				SetUrl(url).
-				AddPayloadCallback(nothing).
 				Build()
 			Expect(err).To(MatchError("logger is mandatory"))
 			Expect(listener).To(BeNil())
@@ -61,7 +53,6 @@ var _ = Describe("Listener", func() {
 			listener, err := NewListener().
 				SetLogger(logger).
 				SetUrl(url).
-				AddPayloadCallback(nothing).
 				Build()
 			Expect(err).To(MatchError("channel is mandatory"))
 			Expect(listener).To(BeNil())
@@ -71,19 +62,8 @@ var _ = Describe("Listener", func() {
 			listener, err := NewListener().
 				SetLogger(logger).
 				SetChannel(channel).
-				AddPayloadCallback(nothing).
 				Build()
 			Expect(err).To(MatchError("database connection URL is mandatory"))
-			Expect(listener).To(BeNil())
-		})
-
-		It("Can't be created without at least one payload callback", func() {
-			listener, err := NewListener().
-				SetLogger(logger).
-				SetChannel(channel).
-				SetUrl(url).
-				Build()
-			Expect(err).To(MatchError("at least one payload callback is mandatory"))
 			Expect(listener).To(BeNil())
 		})
 
@@ -92,7 +72,6 @@ var _ = Describe("Listener", func() {
 				SetLogger(logger).
 				SetChannel(channel).
 				SetUrl(url).
-				AddPayloadCallback(nothing).
 				SetWaitTimeout(-1 * time.Second).
 				Build()
 			Expect(err).To(MatchError("wait timeout should be positive, but it is -1s"))
@@ -104,7 +83,6 @@ var _ = Describe("Listener", func() {
 				SetLogger(logger).
 				SetChannel(channel).
 				SetUrl(url).
-				AddPayloadCallback(nothing).
 				SetRetryInterval(-1 * time.Second).
 				Build()
 			Expect(err).To(MatchError("retry interval should be positive, but it is -1s"))
@@ -130,52 +108,39 @@ var _ = Describe("Listener", func() {
 			DeferCleanup(cancel)
 
 			// Prepare the database pool:
-			db := dbServer.MakeDatabase()
+			db, err := server.NewInstance().Build()
+			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(db.Close)
-			pool, err := pgxpool.New(ctx, db.MakeURL())
+			pool, err := db.Pool(ctx)
 			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(pool.Close)
 
-			// Create the notifications table:
-			_, err = pool.Exec(
-				ctx,
-				`
-				create table notifications (
-					id text not null primary key,
-					creation_timestamp timestamp with time zone default now(),
-					payload bytea
-				);
-				`,
-			)
+			// Create a listener that writes the paylaods to a channel:
+			url, err := db.Url(ctx)
 			Expect(err).ToNot(HaveOccurred())
-
-			// Create the payloads channel:
 			payloads = make(chan proto.Message)
-
-			// Create the listener and wait till it is ready:
-			ready := make(chan struct{})
 			listener, err = NewListener().
 				SetLogger(logger).
-				SetUrl(db.MakeURL()).
+				SetUrl(url).
 				SetChannel(channel).
 				SetWaitTimeout(100 * time.Millisecond).
 				SetRetryInterval(10 * time.Millisecond).
-				AddReadyCallback(func(ctx context.Context) error {
-					close(ready)
-					return nil
-				}).
-				AddPayloadCallback(func(ctx context.Context, payload proto.Message) error {
-					payloads <- payload
-					return nil
-				}).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 			go func() {
 				defer GinkgoRecover()
-				err := listener.Listen(ctx)
+				err := listener.Listen(
+					ctx,
+					func(ctx context.Context, payload proto.Message) error {
+						payloads <- payload
+						return nil
+					},
+				)
 				Expect(err).To(MatchError(context.Canceled))
 			}()
-			Eventually(ready).Should(BeClosed())
+
+			// Wait until the listener is ready:
+			Eventually(listener.Ready).Should(BeTrue())
 
 			// Create the notifier:
 			notifier, err = NewNotifier().
@@ -193,31 +158,24 @@ var _ = Describe("Listener", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		// runWithTx starts a transaction, runs the given function using it, and ends the transaction when it
-		// finishes.
-		runWithTx := func(task func(ctx context.Context)) {
-			tx, err := tm.Begin(ctx)
-			Expect(err).ToNot(HaveOccurred())
-			taskCtx := TxIntoContext(ctx, tx)
-			task(taskCtx)
-			err = tm.End(ctx, tx)
+		// notify sends a payload through the database notification channel.
+		notify := func(ctx context.Context, payload proto.Message) {
+			err := tm.Run(ctx, func(ctx context.Context) {
+				err := notifier.Notify(ctx, payload)
+				Expect(err).ToNot(HaveOccurred())
+			})
 			Expect(err).ToNot(HaveOccurred())
 		}
 
 		It("Receives one notification", func() {
-			var err error
 			sent := wrapperspb.String("my payload")
-			runWithTx(func(ctx context.Context) {
-				err = notifier.Notify(ctx, sent)
-			})
-			Expect(err).ToNot(HaveOccurred())
+			notify(ctx, sent)
 			var received *wrapperspb.StringValue
 			Eventually(payloads).Should(Receive(&received))
 			Expect(proto.Equal(received, sent)).To(BeTrue())
 		})
 
 		It("Receives multiple notifications", func() {
-			var err error
 			sent := []string{
 				"cero",
 				"uno",
@@ -231,26 +189,13 @@ var _ = Describe("Listener", func() {
 				"nueve",
 			}
 			for _, value := range sent {
-				payload := wrapperspb.String(value)
-				runWithTx(func(ctx context.Context) {
-					err = notifier.Notify(ctx, payload)
-				})
-				Expect(err).ToNot(HaveOccurred())
+				notify(ctx, wrapperspb.String(value))
 			}
 			var received []string
-			ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
-			defer cancel()
-		loop:
-			for {
-				select {
-				case <-ctx.Done():
-				case payload := <-payloads:
-					wrapper := payload.(*wrapperspb.StringValue)
-					received = append(received, wrapper.Value)
-					if len(received) == len(sent) {
-						break loop
-					}
-				}
+			for range len(sent) {
+				var payload *wrapperspb.StringValue
+				Eventually(payloads).Should(Receive(&payload))
+				received = append(received, payload.GetValue())
 			}
 			Expect(received).To(Equal(sent))
 		})

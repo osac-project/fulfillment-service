@@ -19,6 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"math"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -34,7 +36,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-//go:embed migrations
+//go:embed migrations/*.sql
 var migrationsFS embed.FS
 
 // Tool tries to simplify and centralize database operations that are needed frequently during the startup of a process
@@ -44,8 +46,13 @@ type Tool interface {
 	// Wait waits till the database is available.
 	Wait(ctx context.Context) error
 
-	// Migrate runs the database migrations.
-	Migrate(ctx context.Context) error
+	// Migrate runs the database migrations up to and including the given version. Pass math.MaxUint to apply all
+	// available migrations.
+	Migrate(ctx context.Context, version uint) error
+
+	// CheckSchema checks that the database schema is consistent. Writes errors to the logger and returns an error if any
+	// consistency check fails.
+	CheckSchema(ctx context.Context) error
 
 	// Pool returns the pool of database connections.
 	Pool(ctx context.Context) (result *pgxpool.Pool, err error)
@@ -277,7 +284,7 @@ func (b *ToolBuilder) readURLDirectory(dir string) (url string, parameters map[s
 		}
 		path := filepath.Join(dir, name)
 		if name == "url" {
-			data, readErr := os.ReadFile(path)
+			data, readErr := os.ReadFile(filepath.Clean(path))
 			if readErr != nil {
 				err = fmt.Errorf("failed to read 'url' from file '%s': %w", path, readErr)
 				return
@@ -286,7 +293,7 @@ func (b *ToolBuilder) readURLDirectory(dir string) (url string, parameters map[s
 		} else if slices.Contains(toolFilePathParameters, name) {
 			parameters[name] = path
 		} else {
-			data, readErr := os.ReadFile(path)
+			data, readErr := os.ReadFile(filepath.Clean(path))
 			if readErr != nil {
 				err = fmt.Errorf(
 					"failed to read parameter '%s' from file '%s': %w", name, path, readErr,
@@ -342,8 +349,9 @@ func (t *tool) Wait(ctx context.Context) error {
 	}
 }
 
-// Migrate runs the database migrations.
-func (t *tool) Migrate(ctx context.Context) error {
+// Migrate runs the database migrations up to and including the given desired version. Pass math.MaxUint to apply all
+// available migrations.
+func (t *tool) Migrate(ctx context.Context, desiredVersion uint) error {
 	// The database connection URL given by the user will probably start with 'postgres', and that works fine for
 	// regular connections, but for the migration library it needs to be 'pgx5'.
 	parsed, err := neturl.Parse(t.url)
@@ -388,7 +396,7 @@ func (t *tool) Migrate(ctx context.Context) error {
 			slog.Uint64("version", uint64(version)),
 			slog.Bool("dirty", dirty),
 		)
-	case err == migrate.ErrNilVersion:
+	case errors.Is(err, migrate.ErrNilVersion):
 		t.logger.InfoContext(
 			ctx,
 			"Schema hasn't been created yet, will create it now",
@@ -398,17 +406,21 @@ func (t *tool) Migrate(ctx context.Context) error {
 	}
 
 	// Run the migrations:
-	err = migrations.Up()
+	if desiredVersion == math.MaxUint {
+		err = migrations.Up()
+	} else {
+		err = migrations.Migrate(desiredVersion)
+	}
 	switch {
 	case err == nil:
 		t.logger.InfoContext(
 			ctx,
 			"Migrations executed successfully",
 		)
-	case err == migrate.ErrNoChange:
+	case errors.Is(err, migrate.ErrNoChange):
 		t.logger.InfoContext(
 			ctx,
-			"Migrationd don't need to be executed",
+			"Migrations don't need to be executed",
 		)
 	default:
 		return err
@@ -440,6 +452,434 @@ func (t *tool) Pool(ctx context.Context) (result *pgxpool.Pool, err error) {
 	return
 }
 
+// CheckSchema checks that the database schema is consistent. Writes errors to the logger and returns an error if any
+// consistency check fails.
+func (t *tool) CheckSchema(ctx context.Context) error {
+	// Create a connection pool:
+	pool, err := t.Pool(ctx)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	// Get the list of object and archive tables:
+	objectTables, err := t.listObjectTables(ctx, pool)
+	if err != nil {
+		return err
+	}
+	archiveTables, err := t.listArchiveTables(ctx, pool)
+	if err != nil {
+		return err
+	}
+
+	// Perform the per-table checks:
+	issues := 0
+	for _, table := range objectTables {
+		issues += t.checkObjectTable(ctx, pool, table)
+	}
+	for _, table := range archiveTables {
+		issues += t.checkArchiveTable(ctx, pool, table)
+	}
+	if issues > 0 {
+		return fmt.Errorf("found %d issues in the database schema", issues)
+	}
+
+	return nil
+}
+
+// listObjectTables returns the sorted list of object table names from the public schema, excluding archive tables
+// and internal tables like notifications and schema_migrations.
+func (t *tool) listObjectTables(ctx context.Context, pool *pgxpool.Pool) (result []string, err error) {
+	rows, err := pool.Query(
+		ctx,
+		`
+		select
+			c.relname
+		from
+			pg_catalog.pg_class c
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		where
+			n.nspname = 'public' and
+			c.relkind = 'r' and
+			c.relname not like 'archived_%' and
+			c.relname not in (
+				'notifications',
+				'project_membership_subjects',
+				'schema_migrations',
+				'storage_tier_backends',
+				'tenant_domains'
+			)
+		order by
+			c.relname
+		`,
+	)
+	if err != nil {
+		err = fmt.Errorf("failed to get list of object tables: %w", err)
+		return
+	}
+	defer rows.Close()
+	var tables []string
+	for rows.Next() {
+		var name string
+		err = rows.Scan(&name)
+		if err != nil {
+			err = fmt.Errorf("failed to scan table name: %w", err)
+			return
+		}
+		tables = append(tables, name)
+	}
+	err = rows.Err()
+	if err != nil {
+		err = fmt.Errorf("failed to get list of object tables: %w", err)
+		return
+	}
+	result = tables
+	return
+}
+
+// listArchiveTables returns the sorted list of archive table names from the public schema.
+func (t *tool) listArchiveTables(ctx context.Context, pool *pgxpool.Pool) (result []string, err error) {
+	rows, err := pool.Query(
+		ctx,
+		`
+		select
+			c.relname
+		from
+			pg_catalog.pg_class c
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		where
+			n.nspname = 'public' and
+			c.relkind = 'r' and
+			c.relname like 'archived_%'
+		order by
+			c.relname
+		`,
+	)
+	if err != nil {
+		err = fmt.Errorf("failed to get list of archive tables: %w", err)
+		return
+	}
+	defer rows.Close()
+	var tables []string
+	for rows.Next() {
+		var name string
+		err = rows.Scan(&name)
+		if err != nil {
+			err = fmt.Errorf("failed to scan archive table name: %w", err)
+			return
+		}
+		tables = append(tables, name)
+	}
+	err = rows.Err()
+	if err != nil {
+		err = fmt.Errorf("failed to get list of archive tables: %w", err)
+		return
+	}
+	result = tables
+	return
+}
+
+// checkObjectTable performs all consistency checks for a single object table: verifies that it has the expected columns
+// with the correct types, a primary key on 'id', a tenant foreign key, and a corresponding archive table. Returns the
+// number of issues found.
+func (t *tool) checkObjectTable(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	// Make a copy of the expected columns so that we can adjust it for special cases without interfering with the
+	// original map:
+	objectColumns := maps.Clone(toolObjectColumns)
+
+	// The 'projects' table is special because the 'name' column is of type 'ltree' instead of 'text' like in all
+	// the other tables:
+	if table == "projects" {
+		objectColumns["name"] = "ltree"
+	}
+
+	// Perform the consistency checks:
+	issues := 0
+
+	// Check the columns:
+	issues += t.checkColumns(ctx, pool, table, objectColumns)
+
+	// Check the primary key. The 'tenants' table uses the 'name' column as its primary key, and the projects table
+	// uses the 'tenant' and 'name' columns. All the other tables, for now, use just the 'id'.
+	switch table {
+	case "tenants":
+		issues += t.checkPrimaryKey(ctx, pool, table, "name")
+	case "projects":
+		issues += t.checkPrimaryKey(ctx, pool, table, "tenant", "name")
+	default:
+		issues += t.checkPrimaryKey(ctx, pool, table, "id")
+	}
+
+	issues += t.checkTenantForeignKey(ctx, pool, table)
+	issues += t.checkTableExists(ctx, pool, "archived_"+table)
+	return issues
+}
+
+// checkArchiveTable performs all consistency checks for a single archive table: verifies that it has the expected
+// columns with the correct types and a corresponding object table. Returns the number of issues found.
+func (t *tool) checkArchiveTable(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	issues := 0
+	issues += t.checkColumns(ctx, pool, table, toolArchivedColumns)
+	issues += t.checkTableExists(ctx, pool, strings.TrimPrefix(table, "archived_"))
+	return issues
+}
+
+// checkColumns verifies that the given table contains all the columns specified in the expected map with the correct
+// data types. Returns the number of issues found.
+func (t *tool) checkColumns(ctx context.Context, pool *pgxpool.Pool, table string, expected map[string]string) int {
+	columns, err := t.fetchColumns(ctx, pool, table)
+	if err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to fetch columns",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	issues := 0
+	for column, expectedType := range expected {
+		actualType, ok := columns[column]
+		if !ok {
+			t.logger.ErrorContext(
+				ctx,
+				"Table doesn't have the expected column",
+				slog.String("table", table),
+				slog.String("column", column),
+			)
+			issues++
+		} else if !strings.EqualFold(actualType, expectedType) {
+			t.logger.ErrorContext(
+				ctx,
+				"Table column has unexpected type",
+				slog.String("table", table),
+				slog.String("column", column),
+				slog.String("expected", expectedType),
+				slog.String("actual", actualType),
+			)
+			issues++
+		}
+	}
+	return issues
+}
+
+// checkPrimaryKey verifies that the given table has a primary key constraint on exactly the specified columns. Returns
+// the number of issues found.
+func (t *tool) checkPrimaryKey(ctx context.Context, pool *pgxpool.Pool, table string, columns ...string) int {
+	var actualColumns []string
+	rows, err := pool.Query(
+		ctx,
+		`
+		select
+			a.attname
+		from
+			pg_catalog.pg_constraint con
+		join
+			pg_catalog.pg_class c on c.oid = con.conrelid
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		join
+			pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum = any(con.conkey)
+		where
+			n.nspname = 'public' and
+			c.relname = $1 and
+			con.contype = 'p'
+		order by
+			array_position(con.conkey, a.attnum)`,
+		table,
+	)
+	if err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to check primary key for table",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			t.logger.ErrorContext(
+				ctx,
+				"Failed to scan primary key column",
+				slog.String("table", table),
+				slog.Any("error", err),
+			)
+			return 1
+		}
+		actualColumns = append(actualColumns, column)
+	}
+	if err := rows.Err(); err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to check primary key for table",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	if !slices.Equal(actualColumns, columns) {
+		t.logger.ErrorContext(
+			ctx,
+			"Object table has unexpected primary key columns",
+			slog.String("table", table),
+			slog.Any("expected", columns),
+			slog.Any("actual", actualColumns),
+		)
+		return 1
+	}
+	return 0
+}
+
+// checkTableExists verifies that the given table exists in the public schema. Returns the number of issues found.
+func (t *tool) checkTableExists(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	var count int
+	row := pool.QueryRow(
+		ctx,
+		`
+		select
+			count(*)
+		from
+			pg_catalog.pg_class c
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		where
+			n.nspname = 'public' and
+			c.relkind = 'r' and
+			c.relname = $1`,
+		table,
+	)
+	err := row.Scan(&count)
+	if err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to check table existence",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	if count != 1 {
+		t.logger.ErrorContext(
+			ctx,
+			"Expected table doesn't exist",
+			slog.String("table", table),
+		)
+		return 1
+	}
+	return 0
+}
+
+// checkTenantForeignKey verifies that the given table has a foreign key constraint on the 'tenant' column referencing
+// the 'id' column of the 'tenants' table. Returns the number of issues found.
+func (t *tool) checkTenantForeignKey(ctx context.Context, pool *pgxpool.Pool, table string) int {
+	constraint := table + "_tenant_fk"
+	var count int
+	row := pool.QueryRow(
+		ctx,
+		`
+		select
+			count(*)
+		from
+			pg_catalog.pg_constraint con
+		join
+			pg_catalog.pg_class c on c.oid = con.conrelid
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		join
+			pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum = any(con.conkey)
+		join
+			pg_catalog.pg_class fc on fc.oid = con.confrelid
+		join
+			pg_catalog.pg_namespace fn on fn.oid = fc.relnamespace
+		join
+			pg_catalog.pg_attribute fa on fa.attrelid = fc.oid and fa.attnum = any(con.confkey)
+		where
+			n.nspname = 'public' and
+			c.relname = $1 and
+			con.conname = $2 and
+			con.contype = 'f' and
+			a.attname = 'tenant' and
+			fn.nspname = 'public' and
+			fc.relname = 'tenants' and
+			fa.attname = 'name'`,
+		table,
+		constraint,
+	)
+	err := row.Scan(&count)
+	if err != nil {
+		t.logger.ErrorContext(
+			ctx,
+			"Failed to check tenant foreign key for table",
+			slog.String("table", table),
+			slog.Any("error", err),
+		)
+		return 1
+	}
+	if count != 1 {
+		t.logger.ErrorContext(
+			ctx,
+			"Object table is missing the tenant foreign key constraint",
+			slog.String("table", table),
+			slog.String("constraint", constraint),
+		)
+		return 1
+	}
+	return 0
+}
+
+// fetchColumns returns a map from column name to its full normalized type for the given table.
+func (t *tool) fetchColumns(ctx context.Context, pool *pgxpool.Pool, table string) (result map[string]string,
+	err error) {
+	rows, err := pool.Query(
+		ctx,
+		`
+		select
+			a.attname,
+			format_type(a.atttypid, a.atttypmod)
+		from
+			pg_catalog.pg_attribute a
+		join
+			pg_catalog.pg_class c on c.oid = a.attrelid
+		join
+			pg_catalog.pg_namespace n on n.oid = c.relnamespace
+		where
+			n.nspname = 'public' and
+			c.relname = $1 and
+			a.attnum > 0 and
+			not a.attisdropped
+		order by
+			a.attname`,
+		table,
+	)
+	if err != nil {
+		err = fmt.Errorf("failed to get columns for table '%s': %w", table, err)
+		return
+	}
+	defer rows.Close()
+	columns := map[string]string{}
+	for rows.Next() {
+		var name, kind string
+		err = rows.Scan(&name, &kind)
+		if err != nil {
+			err = fmt.Errorf("failed to scan column for table '%s': %w", table, err)
+			return
+		}
+		columns[name] = kind
+	}
+	err = rows.Err()
+	if err != nil {
+		err = fmt.Errorf("failed to get columns for table '%s': %w", table, err)
+		return
+	}
+	result = columns
+	return
+}
+
 // migrationsLogger is an adapter to implement the logging interface of the underlying migrations library using our
 // logging library.
 type migrationsLogger struct {
@@ -467,4 +907,38 @@ var toolFilePathParameters = []string{
 	"sslrootcert",
 	"sslcrl",
 	"sslcrldir",
+}
+
+// toolObjectColumns maps each column name that the DAO expects in every object table to its expected PostgreSQL
+// full type, as reported by 'pg_catalog.format_type'.
+var toolObjectColumns = map[string]string{
+	"annotations":        "jsonb",
+	"creation_timestamp": "timestamp with time zone",
+	"creator":            "text",
+	"data":               "jsonb",
+	"deletion_timestamp": "timestamp with time zone",
+	"finalizers":         "text[]",
+	"id":                 "text",
+	"labels":             "jsonb",
+	"name":               "text",
+	"project":            "ltree",
+	"tenant":             "text",
+	"version":            "integer",
+}
+
+// toolArchivedColumns maps each column name that the DAO expects in every archived object table to its expected
+// PostgreSQL full type, as reported by 'pg_catalog.format_type'.
+var toolArchivedColumns = map[string]string{
+	"annotations":        "jsonb",
+	"archival_timestamp": "timestamp with time zone",
+	"creation_timestamp": "timestamp with time zone",
+	"creator":            "text",
+	"data":               "jsonb",
+	"deletion_timestamp": "timestamp with time zone",
+	"id":                 "text",
+	"labels":             "jsonb",
+	"name":               "text",
+	"project":            "ltree",
+	"tenant":             "text",
+	"version":            "integer",
 }

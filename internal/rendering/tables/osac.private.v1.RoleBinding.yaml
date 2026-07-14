@@ -13,6 +13,9 @@
 
 columns:
 
+- header: PROJECT
+  value: "has(this.metadata.project)? this.metadata.project: '-'"
+
 - header: ID
   value: this.id
 
@@ -28,8 +31,8 @@ columns:
   type: osac.private.v1.Role
   lookup: true
 
-- header: GROUPS
-  value: "size(this.spec.groups) > 0? this.spec.groups.join(', '): '-'"
+- header: USERS
+  value: "size(this.spec.users) > 0? this.spec.users.join(', '): '-'"
 
-- header: TENANTS
-  value: "size(this.metadata.tenants) > 0? this.metadata.tenants.join(', '): '-'"
+- header: TENANT
+  value: "this.metadata.tenant != ''? this.metadata.tenant: '-'"

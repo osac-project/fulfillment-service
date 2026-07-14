@@ -94,7 +94,7 @@ func (i *TxInterceptor) UnaryServer(ctx context.Context, request any, info *grpc
 	// transaction fails, then we will return an internal error.
 	defer func() {
 		// Try to end the transaction:
-		txErr := i.manager.End(ctx, tx)
+		txErr := tx.End(ctx)
 
 		// Write to the log both errors, the one returned by the method and the one resulting from trying to
 		// end the transaction.

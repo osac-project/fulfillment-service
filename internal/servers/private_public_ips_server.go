@@ -16,6 +16,7 @@ package servers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 
@@ -25,23 +26,22 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 // validPublicIPTransitions defines the allowed state transitions for PublicIP resources.
 // The key is the current state and the value is the list of valid target states.
 var validPublicIPTransitions = map[privatev1.PublicIPState][]privatev1.PublicIPState{
-	privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING:   {privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED},
-	privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED: {privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHED},
-	privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHED:  {privatev1.PublicIPState_PUBLIC_IP_STATE_RELEASING},
-	privatev1.PublicIPState_PUBLIC_IP_STATE_RELEASING: {privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED},
+	privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING:   {privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED, privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED},
+	privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED: {privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED, privatev1.PublicIPState_PUBLIC_IP_STATE_DELETING},
+	privatev1.PublicIPState_PUBLIC_IP_STATE_FAILED:    {privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED},
 }
 
 // PrivatePublicIPsServerBuilder contains the data and logic needed to create a PrivatePublicIPsServer.
 type PrivatePublicIPsServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -72,12 +72,12 @@ func (b *PrivatePublicIPsServerBuilder) SetLogger(value *slog.Logger) *PrivatePu
 }
 
 // SetNotifier sets the notifier that will be used to send change notifications.
-func (b *PrivatePublicIPsServerBuilder) SetNotifier(value *database.Notifier) *PrivatePublicIPsServerBuilder {
+func (b *PrivatePublicIPsServerBuilder) SetNotifier(value events.Notifier) *PrivatePublicIPsServerBuilder {
 	b.notifier = value
 	return b
 }
 
-// SetAttributionLogic sets the logic that will be used to determine the creators for objects. This is mandatory.
+// SetAttributionLogic sets the logic that will be used to determine the creator for objects. This is mandatory.
 func (b *PrivatePublicIPsServerBuilder) SetAttributionLogic(value auth.AttributionLogic) *PrivatePublicIPsServerBuilder {
 	b.attributionLogic = value
 	return b
@@ -169,11 +169,28 @@ func (s *PrivatePublicIPsServer) Create(ctx context.Context,
 		return
 	}
 
+	// Auto-select pool when not explicitly provided:
+	if publicIP.GetSpec().GetPool() == "" {
+		err = s.selectPool(ctx, publicIP)
+		if err != nil {
+			return
+		}
+	}
+
 	// Validate pool reference (existence, READY state, capacity):
 	poolID := publicIP.GetSpec().GetPool()
 	err = s.validatePoolReference(ctx, poolID)
 	if err != nil {
 		return
+	}
+
+	// Set initial state to PENDING
+	if publicIP.GetStatus() == nil {
+		publicIP.SetStatus(privatev1.PublicIPStatus_builder{
+			State: privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING,
+		}.Build())
+	} else {
+		publicIP.GetStatus().SetState(privatev1.PublicIPState_PUBLIC_IP_STATE_PENDING)
 	}
 
 	// Create the PublicIP:
@@ -217,7 +234,23 @@ func (s *PrivatePublicIPsServer) Update(ctx context.Context,
 	mask := request.GetUpdateMask()
 
 	if updateIncludesField(mask, "spec.pool") {
-		if err = validateImmutableFieldsPublicIP(request.GetObject(), existingPublicIP); err != nil {
+		newPool := request.GetObject().GetSpec().GetPool()
+		existingPool := existingPublicIP.GetSpec().GetPool()
+		if newPool != existingPool {
+			err = grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.pool' is immutable and cannot be changed from '%s' to '%s'",
+				existingPool, newPool)
+			return
+		}
+	}
+
+	if updateIncludesField(mask, "spec.ip_family") {
+		newIPFamily := request.GetObject().GetSpec().GetIpFamily()
+		existingIPFamily := existingPublicIP.GetSpec().GetIpFamily()
+		if newIPFamily != existingIPFamily {
+			err = grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.ip_family' is immutable and cannot be changed from '%s' to '%s'",
+				existingIPFamily.String(), newIPFamily.String())
 			return
 		}
 	}
@@ -258,10 +291,9 @@ func (s *PrivatePublicIPsServer) Delete(ctx context.Context,
 	existingPublicIP := getResponse.GetObject()
 
 	state := existingPublicIP.GetStatus().GetState()
-	if state == privatev1.PublicIPState_PUBLIC_IP_STATE_ATTACHED ||
-		state == privatev1.PublicIPState_PUBLIC_IP_STATE_RELEASING {
+	if state != privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED {
 		err = grpcstatus.Errorf(grpccodes.FailedPrecondition,
-			"cannot delete PublicIP: detach from ComputeInstance first")
+			"cannot delete PublicIP in state %s: must be in ALLOCATED state", state)
 		return
 	}
 
@@ -299,10 +331,63 @@ func (s *PrivatePublicIPsServer) validatePublicIP(ctx context.Context,
 	if spec == nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "public IP spec is mandatory")
 	}
-	if spec.GetPool() == "" {
+	family := spec.GetIpFamily()
+	switch family {
+	case privatev1.IPFamily_IP_FAMILY_UNSPECIFIED,
+		privatev1.IPFamily_IP_FAMILY_IPV4,
+		privatev1.IPFamily_IP_FAMILY_IPV6:
+	default:
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"field 'spec.pool' is required")
+			"unsupported 'spec.ip_family' value: must be IPv4 or IPv6")
 	}
+	if spec.GetPool() != "" && family != privatev1.IPFamily_IP_FAMILY_UNSPECIFIED {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"'spec.pool' and 'spec.ip_family' are mutually exclusive")
+	}
+	return nil
+}
+
+// selectPool auto-selects a READY PublicIPPool matching the requested IP family with available
+// capacity. If ip_family is unspecified, defaults to IPv4. Sets spec.pool on the PublicIP.
+func (s *PrivatePublicIPsServer) selectPool(ctx context.Context, publicIP *privatev1.PublicIP) error {
+	ipFamily := publicIP.GetSpec().GetIpFamily()
+	if ipFamily == privatev1.IPFamily_IP_FAMILY_UNSPECIFIED {
+		ipFamily = privatev1.IPFamily_IP_FAMILY_IPV4
+		publicIP.GetSpec().SetIpFamily(ipFamily)
+	}
+
+	filter := fmt.Sprintf(
+		"this.status.state == %d && this.spec.ip_family == %d && this.status.available > 0",
+		int32(privatev1.PublicIPPoolState_PUBLIC_IP_POOL_STATE_READY),
+		int32(ipFamily),
+	)
+	listResponse, err := s.publicIPPoolDao.List().
+		SetFilter(filter).
+		Do(ctx)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "Failed to query PublicIPPools for auto-selection",
+			slog.String("ip_family", ipFamily.String()),
+			slog.Any("error", err))
+		return grpcstatus.Errorf(grpccodes.Internal, "failed to allocate public IP")
+	}
+	if len(listResponse.GetItems()) == 0 {
+		familyName := "IPv4"
+		if ipFamily == privatev1.IPFamily_IP_FAMILY_IPV6 {
+			familyName = "IPv6"
+		}
+		return grpcstatus.Errorf(grpccodes.FailedPrecondition,
+			"no %s addresses available", familyName)
+	}
+
+	// Select the pool with the most available capacity.
+	bestPool := listResponse.GetItems()[0]
+	for _, pool := range listResponse.GetItems()[1:] {
+		if pool.GetStatus().GetAvailable() > bestPool.GetStatus().GetAvailable() {
+			bestPool = pool
+		}
+	}
+
+	publicIP.GetSpec().SetPool(bestPool.GetId())
 	return nil
 }
 
@@ -350,6 +435,7 @@ func (s *PrivatePublicIPsServer) validatePoolReference(ctx context.Context, pool
 func (s *PrivatePublicIPsServer) updatePoolCapacity(ctx context.Context, poolID string, delta int64) error {
 	poolResponse, err := s.publicIPPoolDao.Get().
 		SetId(poolID).
+		SetLock(true).
 		Do(ctx)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to get pool for capacity update",
@@ -385,24 +471,6 @@ func (s *PrivatePublicIPsServer) updatePoolCapacity(ctx context.Context, poolID 
 			return grpcstatus.Errorf(grpccodes.Aborted, "%s", conflictErr.Error())
 		}
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to update pool capacity")
-	}
-
-	return nil
-}
-
-// validateImmutableFieldsPublicIP validates that immutable fields have not been changed on Update.
-func validateImmutableFieldsPublicIP(newPublicIP, existingPublicIP *privatev1.PublicIP) error {
-	if existingPublicIP == nil {
-		return nil // Create operation, no immutability checks
-	}
-
-	newPool := newPublicIP.GetSpec().GetPool()
-	existingPool := existingPublicIP.GetSpec().GetPool()
-
-	if newPool != existingPool {
-		return grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"field 'spec.pool' is immutable and cannot be changed from '%s' to '%s'",
-			existingPool, newPool)
 	}
 
 	return nil

@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	bmfov1alpha1 "github.com/osac-project/bare-metal-fulfillment-operator/api/v1alpha1"
 	osacv1alpha1 "github.com/osac-project/osac-operator/api/v1alpha1"
 )
 
@@ -25,6 +26,9 @@ import (
 func NewHub() (*runtime.Scheme, error) {
 	s := runtime.NewScheme()
 	if err := osacv1alpha1.AddToScheme(s); err != nil {
+		return nil, err
+	}
+	if err := bmfov1alpha1.AddToScheme(s); err != nil {
 		return nil, err
 	}
 	if err := corev1.AddToScheme(s); err != nil {

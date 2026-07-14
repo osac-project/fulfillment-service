@@ -22,12 +22,12 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
 type PrivateHubsServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -51,7 +51,7 @@ func (b *PrivateHubsServerBuilder) SetLogger(value *slog.Logger) *PrivateHubsSer
 	return b
 }
 
-func (b *PrivateHubsServerBuilder) SetNotifier(value *database.Notifier) *PrivateHubsServerBuilder {
+func (b *PrivateHubsServerBuilder) SetNotifier(value events.Notifier) *PrivateHubsServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -84,11 +84,17 @@ func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error
 		return
 	}
 
+	// Create the server early so that we can use its functions to set up other objects:
+	s := &PrivateHubsServer{
+		logger: b.logger,
+	}
+
 	// Create the generic server:
-	generic, err := NewGenericServer[*privatev1.Hub]().
+	s.generic, err = NewGenericServer[*privatev1.Hub]().
 		SetLogger(b.logger).
 		SetService(privatev1.Hubs_ServiceDesc.ServiceName).
 		SetNotifier(b.notifier).
+		SetRedactFunc(s.redact).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
@@ -97,12 +103,18 @@ func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error
 		return
 	}
 
-	// Create and populate the object:
-	result = &PrivateHubsServer{
-		logger:  b.logger,
-		generic: generic,
-	}
+	// Return the server:
+	result = s
 	return
+}
+
+// redact clears sensitive fields from the hub before it is included in event notification payloads.
+func (s *PrivateHubsServer) redact(object *privatev1.Hub) *privatev1.Hub {
+	spec := object.GetSpec()
+	if spec != nil {
+		spec.SetKubeconfig(nil)
+	}
+	return object
 }
 
 func (s *PrivateHubsServer) List(ctx context.Context,

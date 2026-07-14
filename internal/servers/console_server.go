@@ -16,64 +16,34 @@ package servers
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/clientcmd"
-	clnt "sigs.k8s.io/controller-runtime/pkg/client"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
-	osacv1alpha1 "github.com/osac-project/osac-operator/api/v1alpha1"
-
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/console"
-	"github.com/osac-project/fulfillment-service/internal/database"
-	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
 )
 
-// HubClientFactory creates a Kubernetes client from raw kubeconfig bytes.
-type HubClientFactory func(kubeconfig []byte) (clnt.Client, error)
-
-// NewDefaultHubClientFactory creates a HubClientFactory that uses the given scheme
-// to create real Kubernetes clients from kubeconfig bytes.
-func NewDefaultHubClientFactory(scheme *runtime.Scheme) HubClientFactory {
-	return func(kubeconfig []byte) (clnt.Client, error) {
-		config, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse kubeconfig: %w", err)
-		}
-		return clnt.New(config, clnt.Options{Scheme: scheme})
-	}
-}
-
-// ConsoleServerBuilder builds a ConsoleServer.
+// ConsoleServerBuilder builds a ConsoleSessionsServer.
 type ConsoleServerBuilder struct {
-	logger           *slog.Logger
-	manager          *console.Manager
-	ciServer         privatev1.ComputeInstancesServer
-	hubServer        privatev1.HubsServer
-	txManager        database.TxManager
-	hubClientFactory HubClientFactory
-	scheme           *runtime.Scheme
+	logger         *slog.Logger
+	sessionService *console.SessionService
 }
 
-// consoleServer implements the Console gRPC service.
-type consoleServer struct {
-	publicv1.UnimplementedConsoleServer
-	logger           *slog.Logger
-	manager          *console.Manager
-	ciServer         privatev1.ComputeInstancesServer
-	hubServer        privatev1.HubsServer
-	txManager        database.TxManager
-	hubClientFactory HubClientFactory
+// consoleSessionsServer implements the ConsoleSessions gRPC service. It is a thin
+// adapter: validates and maps protobuf requests, delegates to the SessionService
+// for domain orchestration, and maps results back to protobuf responses.
+type consoleSessionsServer struct {
+	publicv1.UnimplementedConsoleSessionsServer
+	logger         *slog.Logger
+	sessionService *console.SessionService
 }
 
-// NewConsoleServer creates a new builder for the console server.
+// NewConsoleServer creates a new builder for the console sessions server.
 func NewConsoleServer() *ConsoleServerBuilder {
 	return &ConsoleServerBuilder{}
 }
@@ -83,408 +53,90 @@ func (b *ConsoleServerBuilder) SetLogger(value *slog.Logger) *ConsoleServerBuild
 	return b
 }
 
-func (b *ConsoleServerBuilder) SetManager(value *console.Manager) *ConsoleServerBuilder {
-	b.manager = value
+func (b *ConsoleServerBuilder) SetSessionService(value *console.SessionService) *ConsoleServerBuilder {
+	b.sessionService = value
 	return b
 }
 
-func (b *ConsoleServerBuilder) SetComputeInstancesServer(value privatev1.ComputeInstancesServer) *ConsoleServerBuilder {
-	b.ciServer = value
-	return b
-}
-
-func (b *ConsoleServerBuilder) SetHubServer(value privatev1.HubsServer) *ConsoleServerBuilder {
-	b.hubServer = value
-	return b
-}
-
-func (b *ConsoleServerBuilder) SetHubClientFactory(value HubClientFactory) *ConsoleServerBuilder {
-	b.hubClientFactory = value
-	return b
-}
-
-func (b *ConsoleServerBuilder) SetTxManager(value database.TxManager) *ConsoleServerBuilder {
-	b.txManager = value
-	return b
-}
-
-func (b *ConsoleServerBuilder) SetScheme(value *runtime.Scheme) *ConsoleServerBuilder {
-	b.scheme = value
-	return b
-}
-
-func (b *ConsoleServerBuilder) Build() (publicv1.ConsoleServer, error) {
+func (b *ConsoleServerBuilder) Build() (publicv1.ConsoleSessionsServer, error) {
 	if b.logger == nil {
 		return nil, errors.New("logger is mandatory")
 	}
-	if b.manager == nil {
-		return nil, errors.New("manager is mandatory")
+	if b.sessionService == nil {
+		return nil, errors.New("session service is mandatory")
 	}
-	if b.ciServer == nil {
-		return nil, errors.New("compute instances server is mandatory")
-	}
-	if b.hubServer == nil {
-		return nil, errors.New("hubs server is mandatory")
-	}
-	if b.txManager == nil {
-		return nil, errors.New("transaction manager is mandatory")
-	}
-	if b.scheme == nil {
-		return nil, errors.New("scheme is mandatory")
-	}
-	hubClientFactory := b.hubClientFactory
-	if hubClientFactory == nil {
-		hubClientFactory = NewDefaultHubClientFactory(b.scheme)
-	}
-	return &consoleServer{
-		logger:           b.logger,
-		manager:          b.manager,
-		ciServer:         b.ciServer,
-		hubServer:        b.hubServer,
-		txManager:        b.txManager,
-		hubClientFactory: hubClientFactory,
+
+	return &consoleSessionsServer{
+		logger:         b.logger,
+		sessionService: b.sessionService,
 	}, nil
 }
 
-// Connect handles bidirectional console streaming.
-func (s *consoleServer) Connect(stream publicv1.Console_ConnectServer) error {
-	ctx := stream.Context()
+// Create validates the protobuf request, delegates to the SessionService for
+// domain orchestration, and maps the result back to a protobuf response.
+func (s *consoleSessionsServer) Create(ctx context.Context,
+	req *publicv1.ConsoleSessionsCreateRequest) (response *publicv1.ConsoleSessionsCreateResponse, err error) {
+	obj := req.GetObject()
+	resourceType := obj.GetResourceType()
+	resourceID := obj.GetResourceId()
 
-	// Receive the init message.
-	req, err := stream.Recv()
-	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "failed to receive init message: %v", err)
+	if resourceID == "" {
+		err = status.Errorf(codes.InvalidArgument, "field 'resource_id' is mandatory")
+		return
 	}
 
-	init := req.GetInit()
-	if init == nil {
-		return status.Error(codes.InvalidArgument, "first message must be ConsoleConnectInit")
+	if resourceType != publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE {
+		err = status.Errorf(codes.Unimplemented, "unsupported resource type: %s", resourceType.String())
+		return
 	}
 
-	resourceType := init.GetResourceType()
-	resourceID := init.GetResourceId()
-
-	s.logger.InfoContext(ctx, "Console connect request",
-		slog.String("resource_type", resourceType.String()),
-		slog.String("resource_id", resourceID),
-	)
-
-	// Resolve the resource to a target.
-	target, err := s.resolveTarget(ctx, resourceType, resourceID)
-	if err != nil {
-		return err
+	consoleType := mapConsoleType(obj.GetType())
+	if consoleType == "" {
+		err = status.Errorf(codes.InvalidArgument, "unsupported console type: %s", obj.GetType().String())
+		return
 	}
 
-	// Get user identity for session tracking and audit.
+	clientID := obj.GetClientId()
+	if clientID != "" {
+		if _, err = uuid.Parse(clientID); err != nil {
+			err = status.Errorf(codes.InvalidArgument, "client_id must be a valid UUID or empty")
+			return
+		}
+	}
+
 	subject := auth.SubjectFromContext(ctx)
-	user := subject.User
 
-	// Send connecting status.
-	err = stream.Send(publicv1.ConsoleConnectResponse_builder{
-		Status: publicv1.ConsoleStatus_builder{
-			State:   publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTING,
-			Message: fmt.Sprintf("Connecting to %s...", resourceID),
+	result, err := s.sessionService.CreateSession(ctx, &console.CreateSessionRequest{
+		User:        subject.User,
+		ResourceID:  resourceID,
+		ConsoleType: consoleType,
+		ClientID:    clientID,
+	})
+	if err != nil {
+		return
+	}
+
+	response = publicv1.ConsoleSessionsCreateResponse_builder{
+		Object: publicv1.ConsoleSession_builder{
+			ResourceType: resourceType,
+			ResourceId:   resourceID,
+			Type:         obj.GetType(),
+			ClientId:     clientID,
+			Ticket:       result.Ticket,
+			ExpiresAt:    timestamppb.New(result.ExpiresAt),
 		}.Build(),
-	}.Build())
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to send status: %v", err)
-	}
-
-	// Open the backend connection.
-	conn, err := s.manager.Connect(ctx, *target, user)
-	if err != nil {
-		var sessionErr *console.ErrSessionExists
-		if errors.As(err, &sessionErr) {
-			return status.Errorf(codes.FailedPrecondition, "%v", sessionErr)
-		}
-		s.logger.ErrorContext(ctx, "Failed to open console backend connection",
-			slog.String("resource_type", resourceType.String()),
-			slog.String("resource_id", resourceID),
-			slog.String("hub", target.HubID),
-			slog.String("namespace", target.Namespace),
-			slog.String("vm", target.VMName),
-			slog.Any("error", err),
-		)
-		return status.Errorf(codes.Internal, "failed to connect: %v", err)
-	}
-	defer conn.Close()
-
-	// Send connected status.
-	err = stream.Send(publicv1.ConsoleConnectResponse_builder{
-		Status: publicv1.ConsoleStatus_builder{
-			State:   publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_CONNECTED,
-			Message: fmt.Sprintf("Connected to %s", resourceID),
-		}.Build(),
-	}.Build())
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to send status: %v", err)
-	}
-
-	// Proxy bidirectionally.
-	return s.proxy(ctx, stream, conn)
-}
-
-// proxy handles bidirectional data transfer between the gRPC stream and the backend connection.
-func (s *consoleServer) proxy(ctx context.Context, stream publicv1.Console_ConnectServer, conn io.ReadWriteCloser) error {
-	errCh := make(chan error, 2)
-
-	// Backend -> client: read from backend, send to gRPC stream.
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := conn.Read(buf)
-			if n > 0 {
-				sendErr := stream.Send(publicv1.ConsoleConnectResponse_builder{
-					Output: publicv1.ConsoleOutput_builder{
-						Data: append([]byte(nil), buf[:n]...),
-					}.Build(),
-				}.Build())
-				if sendErr != nil {
-					errCh <- fmt.Errorf("send to client: %w", sendErr)
-					return
-				}
-			}
-			if err != nil {
-				if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
-					errCh <- nil
-				} else {
-					errCh <- fmt.Errorf("read from backend: %w", err)
-				}
-				return
-			}
-		}
-	}()
-
-	// Client -> backend: read from gRPC stream, write to backend.
-	go func() {
-		for {
-			req, err := stream.Recv()
-			if err != nil {
-				if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
-					errCh <- nil
-				} else {
-					errCh <- fmt.Errorf("recv from client: %w", err)
-				}
-				return
-			}
-
-			if input := req.GetInput(); input != nil {
-				data := input.GetData()
-				if len(data) > 0 {
-					_, writeErr := conn.Write(data)
-					if writeErr != nil {
-						errCh <- fmt.Errorf("write to backend: %w", writeErr)
-						return
-					}
-				}
-			}
-			// ConsoleResize is a no-op for serial console.
-		}
-	}()
-
-	// Close the backend connection when context expires (e.g., session timeout)
-	// or when the proxy returns. This unblocks the read goroutine which would
-	// otherwise hang forever.
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		select {
-		case <-ctx.Done():
-			conn.Close()
-		case <-done:
-		}
-	}()
-
-	// Wait for either direction to finish.
-	select {
-	case err := <-errCh:
-		if err != nil && ctx.Err() == nil {
-			s.logger.InfoContext(ctx, "Console proxy ended with error",
-				slog.Any("error", err),
-			)
-			return err
-		}
-		if ctx.Err() != nil {
-			s.logger.InfoContext(ctx, "Console session timed out")
-			// Send a status message before returning, best-effort.
-			_ = stream.Send(publicv1.ConsoleConnectResponse_builder{
-				Status: publicv1.ConsoleStatus_builder{
-					State:   publicv1.ConsoleConnectionState_CONSOLE_CONNECTION_STATE_DISCONNECTED,
-					Message: "Session timed out",
-				}.Build(),
-			}.Build())
-		}
-		return nil
-	}
-}
-
-// resolveTarget resolves a resource type and ID to a console.Target.
-func (s *consoleServer) resolveTarget(ctx context.Context, resourceType publicv1.ConsoleResourceType, resourceID string) (*console.Target, error) {
-	switch resourceType {
-	case publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE:
-		return s.resolveComputeInstance(ctx, resourceID)
-	default:
-		return nil, status.Errorf(codes.Unimplemented, "unsupported resource type %q", resourceType.String())
-	}
-}
-
-// resolveComputeInstance fetches a ComputeInstance from the private server,
-// then queries the hub cluster directly for the VM reference.
-func (s *consoleServer) resolveComputeInstance(ctx context.Context, id string) (*console.Target, error) {
-	// The private server requires a database transaction in the context.
-	// Streaming RPCs don't get one from the interceptor, so we create one here.
-	tx, err := s.txManager.Begin(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to begin transaction: %v", err)
-	}
-	defer s.txManager.End(ctx, tx)
-
-	txCtx := database.TxIntoContext(ctx, tx)
-	resp, err := s.ciServer.Get(txCtx, privatev1.ComputeInstancesGetRequest_builder{
-		Id: id,
-	}.Build())
-	if err != nil {
-		// Preserve the original gRPC status code if available (e.g., Internal for DB
-		// errors, Unavailable for transient failures) so clients can retry appropriately.
-		if st, ok := status.FromError(err); ok {
-			return nil, status.Errorf(st.Code(), "failed to get compute instance %q: %v", id, st.Message())
-		}
-		return nil, status.Errorf(codes.Internal, "failed to get compute instance %q: %v", id, err)
-	}
-
-	ci := resp.GetObject()
-	ciStatus := ci.GetStatus()
-
-	// Verify running state.
-	if ciStatus.GetState() != privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_RUNNING {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"compute instance %q is not running (state: %s)", id, ciStatus.GetState().String())
-	}
-
-	// Read the hub ID from the compute instance status.
-	hubID := ciStatus.GetHub()
-	if hubID == "" {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"compute instance %q has no hub assigned", id)
-	}
-
-	// Query the hub cluster for the VM reference.
-	namespace, vmName, err := s.getVMReferenceFromHub(txCtx, hubID, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return &console.Target{
-		ResourceType: "compute_instance",
-		ResourceID:   id,
-		HubID:        hubID,
-		Namespace:    namespace,
-		VMName:       vmName,
-	}, nil
-}
-
-// getVMReferenceFromHub queries the hub cluster for the ComputeInstance CR
-// matching the given instance ID, and extracts the VM reference from its status.
-func (s *consoleServer) getVMReferenceFromHub(ctx context.Context, hubID, instanceID string) (namespace, vmName string, err error) {
-	// Get the hub's kubeconfig.
-	hubResp, err := s.hubServer.Get(ctx, privatev1.HubsGetRequest_builder{
-		Id: hubID,
-	}.Build())
-	if err != nil {
-		err = status.Errorf(codes.Internal, "failed to get hub %q: %v", hubID, err)
-		return
-	}
-	hub := hubResp.GetObject()
-
-	// Create a Kubernetes client for the hub cluster.
-	hubClient, err := s.hubClientFactory(hub.GetKubeconfig())
-	if err != nil {
-		err = status.Errorf(codes.Internal, "failed to create client for hub %q: %v", hubID, err)
-		return
-	}
-
-	// Query for the ComputeInstance CR by UUID label.
-	list := &osacv1alpha1.ComputeInstanceList{}
-	err = hubClient.List(
-		ctx, list,
-		clnt.InNamespace(hub.GetNamespace()),
-		clnt.MatchingLabels{
-			labels.ComputeInstanceUuid: instanceID,
-		},
-	)
-	if err != nil {
-		err = status.Errorf(codes.Internal, "failed to list compute instances on hub %q: %v", hubID, err)
-		return
-	}
-
-	items := list.Items
-	if len(items) == 0 {
-		s.logger.WarnContext(ctx, "Running compute instance not found on hub",
-			slog.String("instance_id", instanceID),
-			slog.String("hub_id", hubID),
-		)
-		err = status.Errorf(codes.FailedPrecondition,
-			"compute instance %q not found on hub %q; it may still be provisioning", instanceID, hubID)
-		return
-	}
-	if len(items) > 1 {
-		err = status.Errorf(codes.Internal,
-			"expected one compute instance with ID %q on hub %q but found %d", instanceID, hubID, len(items))
-		return
-	}
-
-	// Extract virtualMachineReference from the CR status.
-	obj := items[0]
-	vmRef := obj.Status.VirtualMachineReference
-	if vmRef == nil {
-		s.logger.WarnContext(ctx, "Running compute instance has no VM reference on hub",
-			slog.String("instance_id", instanceID),
-			slog.String("hub_id", hubID),
-			slog.String("cr_name", obj.GetName()),
-		)
-		err = status.Errorf(codes.FailedPrecondition,
-			"compute instance %q has no VM reference on hub; it may still be provisioning", instanceID)
-		return
-	}
-
-	namespace = vmRef.Namespace
-	vmName = vmRef.KubeVirtVirtualMachineName
-	if namespace == "" || vmName == "" {
-		err = status.Errorf(codes.FailedPrecondition,
-			"compute instance %q has incomplete VM reference on hub (namespace=%q, vmName=%q)",
-			instanceID, namespace, vmName)
-		return
-	}
-
+	}.Build()
 	return
 }
 
-// GetAccess checks console availability for a resource.
-func (s *consoleServer) GetAccess(ctx context.Context, req *publicv1.ConsoleGetAccessRequest) (*publicv1.ConsoleGetAccessResponse, error) {
-	resourceType := req.GetResourceType()
-	resourceID := req.GetResourceId()
-
-	switch resourceType {
-	case publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE:
-		_, err := s.resolveComputeInstance(ctx, resourceID)
-		if err != nil {
-			st, ok := status.FromError(err)
-			if ok {
-				return publicv1.ConsoleGetAccessResponse_builder{
-					Available: false,
-					Reason:    st.Message(),
-				}.Build(), nil
-			}
-			return nil, err
-		}
-		return publicv1.ConsoleGetAccessResponse_builder{
-			Available:      true,
-			SupportedTypes: []publicv1.ConsoleType{publicv1.ConsoleType_CONSOLE_TYPE_SERIAL},
-		}.Build(), nil
+// mapConsoleType maps proto ConsoleType to internal console type string.
+func mapConsoleType(ct publicv1.ConsoleType) string {
+	switch ct {
+	case publicv1.ConsoleType_CONSOLE_TYPE_SERIAL:
+		return console.ConsoleTypeSerial
+	case publicv1.ConsoleType_CONSOLE_TYPE_VNC:
+		return console.ConsoleTypeVNC
 	default:
-		return publicv1.ConsoleGetAccessResponse_builder{
-			Available: false,
-			Reason:    fmt.Sprintf("unsupported resource type: %s", resourceType.String()),
-		}.Build(), nil
+		return ""
 	}
 }

@@ -16,10 +16,10 @@ package it
 import (
 	"context"
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -35,12 +35,14 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		networkClassesClient           privatev1.NetworkClassesClient
 		computeInstancesClient         publicv1.ComputeInstancesClient
 		computeInstanceTemplatesClient privatev1.ComputeInstanceTemplatesClient
+		instanceTypesClient            privatev1.InstanceTypesClient
 
 		networkClassId            string
 		virtualNetworkId          string
 		subnetId                  string
 		computeInstanceId         string
 		computeInstanceTemplateId string
+		instanceTypeId            string
 	)
 
 	BeforeEach(func() {
@@ -52,10 +54,26 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		networkClassesClient = privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
 		computeInstancesClient = publicv1.NewComputeInstancesClient(tool.ExternalView().UserConn())
 		computeInstanceTemplatesClient = privatev1.NewComputeInstanceTemplatesClient(tool.InternalView().AdminConn())
+		instanceTypesClient = privatev1.NewInstanceTypesClient(tool.InternalView().AdminConn())
+
+		// Create InstanceType
+		instanceTypeId = fmt.Sprintf("test-it-%s", uuid.New())
+		_, err := instanceTypesClient.Create(ctx, privatev1.InstanceTypesCreateRequest_builder{
+			Object: privatev1.InstanceType_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: instanceTypeId,
+				}.Build(),
+				Spec: privatev1.InstanceTypeSpec_builder{
+					Cores:     2,
+					MemoryGib: 4,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
 
 		// Create ComputeInstanceTemplate
 		computeInstanceTemplateId = fmt.Sprintf("test-ci-template-%s", uuid.New())
-		_, err := computeInstanceTemplatesClient.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+		_, err = computeInstanceTemplatesClient.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
 			Object: privatev1.ComputeInstanceTemplate_builder{
 				Id:          computeInstanceTemplateId,
 				Title:       "Test CI Template",
@@ -69,6 +87,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 			Object: privatev1.NetworkClass_builder{
 				Title:                  "Test CUDN Network Class",
 				ImplementationStrategy: "cudn",
+				FabricManager:          "netris",
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -82,11 +101,22 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 				Spec: privatev1.VirtualNetworkSpec_builder{
 					NetworkClass: networkClassId,
 					Region:       "us-east-1",
-					Ipv4Cidr:     proto.String("10.100.0.0/16"),
+					Ipv4Cidr:     new("10.100.0.0/16"),
 				}.Build(),
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
+
+		// Wait for the VN reconciler to finish initial processing before
+		// overriding state, same as the subnet wait below.
+		Eventually(func(g Gomega) {
+			resp, err := virtualNetworksClient.Get(ctx, privatev1.VirtualNetworksGetRequest_builder{
+				Id: virtualNetworkId,
+			}.Build())
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(resp.GetObject().GetStatus().GetState()).To(
+				Equal(privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_PENDING))
+		}, time.Minute, time.Second).Should(Succeed())
 
 		// Set VirtualNetwork to READY state via private Update API
 		// In IT environment there is no osac-operator/feedback controller to reconcile state
@@ -111,11 +141,23 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 				Id: subnetId,
 				Spec: privatev1.SubnetSpec_builder{
 					VirtualNetwork: virtualNetworkId,
-					Ipv4Cidr:       proto.String("10.100.1.0/24"),
+					Ipv4Cidr:       new("10.100.1.0/24"),
 				}.Build(),
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
+
+		// Wait for the subnet reconciler to finish initial processing before
+		// overriding state. The reconciler sets state from UNSPECIFIED to PENDING;
+		// without this wait, a stale reconciler event can overwrite our READY state.
+		Eventually(func(g Gomega) {
+			resp, err := subnetsClient.Get(ctx, privatev1.SubnetsGetRequest_builder{
+				Id: subnetId,
+			}.Build())
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(resp.GetObject().GetStatus().GetState()).To(
+				Equal(privatev1.SubnetState_SUBNET_STATE_PENDING))
+		}, time.Minute, time.Second).Should(Succeed())
 
 		// Set Subnet to READY state via private Update API
 		subGetResp, err := subnetsClient.Get(ctx, privatev1.SubnetsGetRequest_builder{
@@ -168,19 +210,25 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 				Id: computeInstanceTemplateId,
 			}.Build())
 		}
+
+		// Clean up InstanceType
+		if instanceTypeId != "" {
+			instanceTypesClient.Delete(ctx, privatev1.InstanceTypesDeleteRequest_builder{
+				Id: instanceTypeId,
+			}.Build())
+		}
 	})
 
-	It("creates ComputeInstance with subnet reference", func() {
-		// Create ComputeInstance with subnet reference
+	It("creates ComputeInstance with network attachments", func() {
+		// Create ComputeInstance with network attachment
 		computeInstanceId = fmt.Sprintf("test-ci-%s", uuid.New())
 		createResp, err := computeInstancesClient.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
 			Object: publicv1.ComputeInstance_builder{
 				Id: computeInstanceId,
 				Spec: publicv1.ComputeInstanceSpec_builder{
-					Template:    computeInstanceTemplateId,
-					Cores:       proto.Int32(2),
-					MemoryGib:   proto.Int32(4),
-					RunStrategy: proto.String("Always"),
+					Template:     computeInstanceTemplateId,
+					InstanceType: new(instanceTypeId),
+					RunStrategy:  new("Always"),
 					BootDisk: publicv1.ComputeInstanceDisk_builder{
 						SizeGib: 20,
 					}.Build(),
@@ -188,32 +236,36 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
 					}.Build(),
-					Subnet: proto.String(subnetId),
+					NetworkAttachments: []*publicv1.NetworkAttachment{
+						publicv1.NetworkAttachment_builder{
+							Subnet: subnetId,
+						}.Build(),
+					},
 				}.Build(),
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(createResp.GetObject()).ToNot(BeNil())
 
-		// Verify the subnet reference is persisted via Get
+		// Verify the network attachment is persisted via Get
 		getResp, err := computeInstancesClient.Get(ctx, publicv1.ComputeInstancesGetRequest_builder{
 			Id: computeInstanceId,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
-		Expect(getResp.GetObject().GetSpec().GetSubnet()).To(Equal(subnetId),
-			"ComputeInstance should persist subnet reference")
+		Expect(getResp.GetObject().GetSpec().GetNetworkAttachments()).To(HaveLen(1))
+		Expect(getResp.GetObject().GetSpec().GetNetworkAttachments()[0].GetSubnet()).To(Equal(subnetId),
+			"ComputeInstance should persist network attachment with subnet reference")
 	})
 
-	It("rejects ComputeInstance with non-existent subnet", func() {
+	It("rejects ComputeInstance with non-existent subnet in network attachments", func() {
 		computeInstanceId = fmt.Sprintf("test-ci-%s", uuid.New())
 		_, err := computeInstancesClient.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
 			Object: publicv1.ComputeInstance_builder{
 				Id: computeInstanceId,
 				Spec: publicv1.ComputeInstanceSpec_builder{
-					Template:    computeInstanceTemplateId,
-					Cores:       proto.Int32(2),
-					MemoryGib:   proto.Int32(4),
-					RunStrategy: proto.String("Always"),
+					Template:     computeInstanceTemplateId,
+					InstanceType: new(instanceTypeId),
+					RunStrategy:  new("Always"),
 					BootDisk: publicv1.ComputeInstanceDisk_builder{
 						SizeGib: 20,
 					}.Build(),
@@ -221,7 +273,11 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
 					}.Build(),
-					Subnet: proto.String("non-existent-subnet"),
+					NetworkAttachments: []*publicv1.NetworkAttachment{
+						publicv1.NetworkAttachment_builder{
+							Subnet: "non-existent-subnet",
+						}.Build(),
+					},
 				}.Build(),
 			}.Build(),
 		}.Build())

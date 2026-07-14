@@ -55,16 +55,21 @@ func (mr *MockTxManagerMockRecorder) Begin(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Begin", reflect.TypeOf((*MockTxManager)(nil).Begin), ctx)
 }
 
-// End mocks base method.
-func (m *MockTxManager) End(ctx context.Context, tx Tx) error {
+// Run mocks base method.
+func (m *MockTxManager) Run(ctx context.Context, task any, args ...any) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "End", ctx, tx)
+	varargs := []any{ctx, task}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Run", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// End indicates an expected call of End.
-func (mr *MockTxManagerMockRecorder) End(ctx, tx any) *gomock.Call {
+// Run indicates an expected call of Run.
+func (mr *MockTxManagerMockRecorder) Run(ctx, task any, args ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "End", reflect.TypeOf((*MockTxManager)(nil).End), ctx, tx)
+	varargs := append([]any{ctx, task}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockTxManager)(nil).Run), varargs...)
 }

@@ -19,7 +19,7 @@ import "google/protobuf/timestamp.proto";
 import "osac/private/v1/condition_status_type.proto";
 import "osac/private/v1/metadata_type.proto";
 
-// A user in an organization's identity provider.
+// A user in a tenant's identity provider.
 message User {
   // Unique identifier of the user.
   string id = 1;
@@ -41,23 +41,11 @@ message UserSpec {
   // Email address.
   string email = 2;
 
-  // Whether the email has been verified.
-  bool email_verified = 3;
-
   // Whether the user account is enabled.
-  bool enabled = 4;
-
-  // First name of the user.
-  string first_name = 5;
-
-  // Last name of the user.
-  string last_name = 6;
-
-  // Organization that this user belongs to.
-  string organization = 7;
+  bool enabled = 3;
 
   // Credentials for the user. This is write-only and will not be returned in responses.
-  optional UserCredentials credentials = 8;
+  optional UserCredentials credentials = 4;
 }
 
 // UserCredentials contains the authentication credentials for a user.
@@ -76,6 +64,10 @@ message UserStatus {
 
   // Additional conditions.
   repeated UserCondition conditions = 2;
+
+  // The Keycloak user ID for this user in the identity provider.
+  // This is set when the user is created or imported and is used for role assignments.
+  string keycloak_user_id = 3;
 }
 
 // UserCondition represents a condition of a user.

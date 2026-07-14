@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"slices"
 
+	"github.com/gobuffalo/flect"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -39,6 +40,7 @@ type Object interface {
 // GenericDAOBuilder is a builder for creating generic data access objects.
 type GenericDAOBuilder[O Object] struct {
 	logger            *slog.Logger
+	table             string
 	defaultLimit      int32
 	maxLimit          int32
 	eventCallbacks    []EventCallback
@@ -54,8 +56,9 @@ type GenericDAOBuilder[O Object] struct {
 //   - `creation_timestamp` - The time the object was created.
 //   - `deletion_timestamp` - The time the object was deleted.
 //   - `finalizers` - The list of finalizers for the object.
-//   - `creators` - The list of creators for the object.
-//   - `tenants` - The list of tenants for the object.
+//   - `creator` - The creator of the object.
+//   - `tenant` - The tenant that the object belongs to.
+//   - `project` - The project that the object is assigned to.
 //   - `labels` - The labels assigned to the object.
 //   - `annotations` - The annotations assigned to the object.
 //   - `version` - The version number, automatically incremented on every update.
@@ -93,10 +96,12 @@ type metadataIface interface {
 	SetDeletionTimestamp(*timestamppb.Timestamp)
 	GetFinalizers() []string
 	SetFinalizers([]string)
-	GetCreators() []string
-	SetCreators([]string)
-	GetTenants() []string
-	SetTenants([]string)
+	GetCreator() string
+	SetCreator(string)
+	GetTenant() string
+	SetTenant(string)
+	GetProject() string
+	SetProject(string)
 	GetLabels() map[string]string
 	SetLabels(map[string]string)
 	GetAnnotations() map[string]string
@@ -122,13 +127,13 @@ func (b *GenericDAOBuilder[O]) SetLogger(value *slog.Logger) *GenericDAOBuilder[
 // SetDefaultLimit sets the default number of items returned. It will be used when the value of the limit parameter
 // of the list request is zero. This is optional, and the default is 100.
 func (b *GenericDAOBuilder[O]) SetDefaultLimit(value int) *GenericDAOBuilder[O] {
-	b.defaultLimit = int32(value)
+	b.defaultLimit = int32(value) // #nosec G115 -- small pagination constant
 	return b
 }
 
 // SetMaxLimit sets the maximum number of items returned. This is optional and the default value is 1000.
 func (b *GenericDAOBuilder[O]) SetMaxLimit(value int) *GenericDAOBuilder[O] {
-	b.maxLimit = int32(value)
+	b.maxLimit = int32(value) // #nosec G115 -- small pagination constant
 	return b
 }
 
@@ -173,6 +178,14 @@ func (b *GenericDAOBuilder[O]) SetTenancyLogic(value auth.TenancyLogic) *Generic
 // This is optional. If not set, no metrics will be recorded.
 func (b *GenericDAOBuilder[O]) SetMetricsRegisterer(value prometheus.Registerer) *GenericDAOBuilder[O] {
 	b.metricsRegisterer = value
+	return b
+}
+
+// SetTableName overrides the database table name. By default the table name is derived from the
+// protobuf message type name (e.g. Cluster becomes clusters). Use this when the table name does not
+// match the type name.
+func (b *GenericDAOBuilder[O]) SetTableName(value string) *GenericDAOBuilder[O] {
+	b.table = value
 	return b
 }
 
@@ -279,7 +292,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 	// Create and populate the object:
 	result = &GenericDAO[O]{
 		logger:           b.logger,
-		table:            TableName[O](),
+		table:            b.resolveTableName(),
 		defaultLimit:     b.defaultLimit,
 		maxLimit:         b.maxLimit,
 		timestampDesc:    timestampDesc,
@@ -295,6 +308,23 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 		opDurationMetric: opDurationMetric,
 	}
 	return
+}
+
+// resolveTableName returns the explicit table name if one was set via SetTableName, otherwise it
+// derives the name from the protobuf message type.
+func (b *GenericDAOBuilder[O]) resolveTableName() string {
+	if b.table != "" {
+		return b.table
+	}
+	return b.tableName()
+}
+
+// tableName calculates the table name from the protobuf message type name. It converts the CamelCase type
+// name to snake_case and pluralizes it. For example, `Cluster` becomes `clusters` and `ComputeInstance` becomes
+// `compute_instances`.
+func (b *GenericDAOBuilder[O]) tableName() string {
+	var object O
+	return flect.Pluralize(flect.Underscore(string(object.ProtoReflect().Descriptor().Name())))
 }
 
 func (b *GenericDAOBuilder[O]) registerOpDurationMetric() (result *prometheus.HistogramVec, err error) {

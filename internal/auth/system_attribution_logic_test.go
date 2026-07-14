@@ -50,10 +50,9 @@ var _ = Describe("System attribution logic", func() {
 				SetLogger(logger).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-			creators, err := logic.DetermineAssignedCreators(ctx)
+			creator, err := logic.DetermineAssignedCreator(ctx)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(creators.Finite()).To(BeTrue())
-			Expect(creators.Inclusions()).To(ConsistOf("system"))
+			Expect(creator).To(Equal("system"))
 		})
 	})
 })

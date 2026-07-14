@@ -32,7 +32,7 @@
 -- - ipv6_cidr: IPv6 source/destination CIDR (optional for IPv4-only rules)
 --
 -- Parent-child relationship with VirtualNetwork is established via metadata.annotations using the
--- 'osac.io/owner-reference' key. This enables proper resource hierarchy for garbage collection.
+-- 'osac.openshift.io/owner-reference' key. This enables proper resource hierarchy for garbage collection.
 --
 create table security_groups (
   id text not null primary key,

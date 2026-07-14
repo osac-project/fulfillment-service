@@ -28,8 +28,10 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/externalippool"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/kubeconfig"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/password"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/publicippool"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/token"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
@@ -55,12 +57,16 @@ func Cmd() *cobra.Command {
 		},
 	}
 	result := &cobra.Command{
-		Use:   "get OBJECT [OPTION]... [ID|NAME]...",
-		Short: "Get objects",
-		RunE:  runner.run,
+		Use:                   "get [FLAG...] OBJECT [ID|NAME]...",
+		DisableFlagsInUseLine: true,
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		RunE:                  runner.run,
 	}
+	result.AddCommand(externalippool.Cmd())
 	result.AddCommand(kubeconfig.Cmd())
 	result.AddCommand(password.Cmd())
+	result.AddCommand(publicippool.Cmd())
 	result.AddCommand(token.Cmd())
 	flags := result.Flags()
 	flags.StringVarP(
@@ -68,47 +74,37 @@ func Cmd() *cobra.Command {
 		"output",
 		"o",
 		outputFormatTable,
-		fmt.Sprintf(
-			"Output format, one of '%s', '%s' or '%s'.",
-			outputFormatTable, outputFormatJson, outputFormatYaml,
-		),
+		outputFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.filter,
 		"filter",
 		"",
-		"CEL expression used for filtering results.",
-	)
-	flags.BoolVar(
-		&runner.args.includeDeleted,
-		"include-deleted",
-		false,
-		"Include deleted objects.",
+		filterFlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.args.watch,
 		"watch",
 		"w",
 		false,
-		"Watch for changes to objects",
+		watchFlagHelp,
 	)
 	return result
 }
 
 type runnerContext struct {
 	args struct {
-		format         string
-		filter         string
-		includeDeleted bool
-		watch          bool
+		format string
+		filter string
+		watch  bool
 	}
 	ctx            context.Context
 	logger         *slog.Logger
 	console        *terminal.Console
 	conn           *grpc.ClientConn
 	marshalOptions protojson.MarshalOptions
-	globalHelper   *reflection.Helper
-	objectHelper   *reflection.ObjectHelper
+	globalHelper   reflection.Helper
+	objectHelper   reflection.ObjectHelper
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -132,11 +128,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -152,6 +145,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		SetLogger(c.logger).
 		SetConnection(c.conn).
 		AddPackages(cfg.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -232,16 +226,6 @@ func (c *runnerContext) list(ctx context.Context, keys []string) (results []prot
 		}
 	}
 
-	// Exclude deleted objects unless explicitly requested.
-	if !c.args.includeDeleted {
-		const notDeletedFilter = "!has(this.metadata.deletion_timestamp)"
-		if options.Filter != "" {
-			options.Filter = fmt.Sprintf("%s && (%s)", notDeletedFilter, options.Filter)
-		} else {
-			options.Filter = notDeletedFilter
-		}
-	}
-
 	listResult, err := c.objectHelper.List(ctx, options)
 	if err != nil {
 		return
@@ -262,7 +246,6 @@ func (c *runnerContext) renderTable(ctx context.Context, objects []proto.Message
 		SetLogger(c.logger).
 		SetHelper(c.globalHelper).
 		SetWriter(c.console).
-		SetIncludeDeleted(c.args.includeDeleted).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create table renderer: %w", err)
@@ -323,3 +306,70 @@ func (c *runnerContext) encodeObject(object proto.Message) (result any, err erro
 	err = json.Unmarshal(data, &result)
 	return
 }
+
+const shortHelp = `Get objects`
+
+const longHelp = `
+List or retrieve objects from the server.
+
+When called with just an object type it lists all objects of that type. When called with one or more identifiers or
+names it retrieves only the matching objects.
+
+To list all clusters:
+
+{{ bt 3 }}shell
+{{ binary }} get clusters
+{{ bt 3 }}
+
+To retrieve a specific cluster by name:
+
+{{ bt 3 }}shell
+{{ binary }} get cluster my-cluster
+{{ bt 3 }}
+
+Multiple identifiers or names can be specified at once:
+
+{{ bt 3 }}shell
+{{ binary }} get cluster my-cluster my-other-cluster
+{{ bt 3 }}
+
+Results can be filtered using CEL expressions with the
+{{ bt }}--filter{{ bt }} flag:
+
+{{ bt 3 }}shell
+{{ binary }} get clusters --filter "this.metadata.labels['env'] == 'production'"
+{{ bt 3 }}
+
+For more information about the CEL expressions supported by the server see
+https://github.com/osac-project/fulfillment-service/blob/main/docs/FILTER.md.
+
+The output format can be changed with the {{ bt }}--output{{ bt }} flag. Supported formats are {{ bt }}table{{ bt }}
+(default), {{ bt }}json{{ bt }} and {{ bt }}yaml{{ bt }}:
+
+{{ bt 3 }}shell
+{{ binary }} get clusters -o yaml
+{{ bt 3 }}
+
+To watch for changes to objects in real time use the
+{{ bt }}--watch{{ bt }} flag:
+
+{{ bt 3 }}shell
+{{ binary }} get clusters --watch
+{{ bt 3 }}
+
+There are also subcommands for retrieving specific kinds of data such as kubeconfigs, passwords and tokens. Use
+{{ bt }}--help{{ bt }} on any subcommand for details.
+`
+
+const outputFlagHelp = `
+_FORMAT_ - Output format. Must be one of {{ bt }}table{{ bt }}, {{ bt }}json{{ bt }} or {{ bt }}yaml{{ bt }}.
+`
+
+const filterFlagHelp = `
+_EXPRESSION_ - CEL expression used for filtering results. The expression is evaluated against each object and only those
+for which it returns true are included in the output.
+`
+
+const watchFlagHelp = `
+_[BOOLEAN]_ - Watch for changes to objects and display events in real time instead of listing the current state.
+`

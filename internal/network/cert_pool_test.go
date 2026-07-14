@@ -241,6 +241,131 @@ var _ = Describe("Certificate pool", func() {
 			Expect(err.Error()).To(ContainSubstring("doesn't contain any CA certificate"))
 			Expect(pool).To(BeNil())
 		})
+
+		It("Can be created with a single certificate from bytes", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(caPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with a single certificate from a string", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(string(caPem)).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with a single certificate from X.509 object", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(myCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with multiple certificates from bytes", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+			myPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			yourPem, err := os.ReadFile(yourCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificates(myPem, yourPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with multiple certificates from strings", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+			myPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			yourPem, err := os.ReadFile(yourCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificates(string(myPem), string(yourPem)).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Can be created with multiple certificates from X.509 objects", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificates(myCerts.caCert, yourCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pool).ToNot(BeNil())
+		})
+
+		It("Fails with invalid byte content", func() {
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate([]byte("junk")).
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to add certificate"))
+			Expect(pool).To(BeNil())
+		})
+
+		It("Fails with invalid string content", func() {
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate("not a valid certificate").
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to add certificate"))
+			Expect(pool).To(BeNil())
+		})
+
+		It("Fails with unsupported type", func() {
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddCertificate(12345).
+				Build()
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(
+				"invalid certificate type 'int', should be 'string', '[]byte' or '*x509.Certificate'",
+			))
+			Expect(pool).To(BeNil())
+		})
 	})
 
 	Describe("Behavior", func() {
@@ -446,6 +571,154 @@ var _ = Describe("Certificate pool", func() {
 				Roots: pool,
 			}
 			_, err = serviceCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Can verify certificates loaded from a byte slice", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificate(caPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificate using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool,
+			}
+			chains, err := myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(chains).ToNot(BeEmpty())
+		})
+
+		It("Can verify certificates loaded from a string", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			caPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificate(string(caPem)).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificate using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool,
+			}
+			chains, err := myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(chains).ToNot(BeEmpty())
+		})
+
+		It("Can verify certificates loaded from an X.509 object", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificate(myCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificate using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool,
+			}
+			chains, err := myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(chains).ToNot(BeEmpty())
+		})
+
+		It("Can verify certificates from multiple CAs loaded from byte slices", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+			myPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+			yourPem, err := os.ReadFile(yourCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificates(myPem, yourPem).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificates using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool,
+			}
+			_, err = myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = yourCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Can verify certificates from multiple CAs loaded from X.509 objects", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificates(myCerts.caCert, yourCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificates using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool,
+			}
+			_, err = myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = yourCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Can mix byte slices and X.509 objects in the same pool", func() {
+			// Create the certificates:
+			myCerts := makeCerts("My CA")
+			yourCerts := makeCerts("Your CA")
+			myPem, err := os.ReadFile(myCerts.caCertFile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create the pool:
+			pool, err := NewCertPool().
+				SetLogger(logger).
+				AddSystemFiles(false).
+				AddKubernetesFiles(false).
+				AddCertificates(myPem, yourCerts.caCert).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the TLS certificates using the pool:
+			opts := x509.VerifyOptions{
+				Roots: pool,
+			}
+			_, err = myCerts.tlsCert.Verify(opts)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = yourCerts.tlsCert.Verify(opts)
 			Expect(err).ToNot(HaveOccurred())
 		})
 

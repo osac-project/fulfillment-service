@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,10 +47,13 @@ var templatesFS embed.FS
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "computeinstance [flags]",
-		Aliases: []string{string(proto.MessageName((*publicv1.ComputeInstance)(nil)))},
-		Short:   "Create a compute instance",
-		RunE:    runner.run,
+		Use:                   "computeinstance [FLAG...]",
+		Aliases:               []string{string(proto.MessageName((*publicv1.ComputeInstance)(nil)))},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -57,83 +61,98 @@ func Cmd() *cobra.Command {
 		"name",
 		"n",
 		"",
-		"Name of the compute instance.",
+		nameFlagHelp,
 	)
 	flags.StringVarP(
 		&runner.args.template,
 		"template",
 		"t",
 		"",
-		"Template identifier or name",
+		templateFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.catalogItem,
+		"catalog-item",
+		"",
+		catalogItemFlagHelp,
 	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterValues,
 		"template-parameter",
 		"p",
 		[]string{},
-		"Template parameter in the format 'name=value'.",
+		templateParameterFlagHelp,
 	)
 	flags.StringSliceVarP(
 		&runner.args.templateParameterFiles,
 		"template-parameter-file",
 		"f",
 		[]string{},
-		"Template parameter from file in the format 'name=filename'.",
+		templateParameterFileFlagHelp,
 	)
-	flags.Int32Var(
-		&runner.args.cores,
-		"cores",
-		0,
-		"Number of CPU cores.",
-	)
-	flags.Int32Var(
-		&runner.args.memoryGiB,
-		"memory-gib",
-		0,
-		"Memory size in GiB.",
+	flags.StringVar(
+		&runner.args.instanceType,
+		"instance-type",
+		"",
+		instanceTypeFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.imageSourceRef,
 		"image",
 		"",
-		"Image reference (e.g. OCI image URL).",
+		imageFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.imageSourceType,
 		"image-source-type",
 		"registry",
-		"Image source type.",
+		imageSourceTypeFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.sshKey,
 		"ssh-key",
 		"",
-		"SSH public key.",
+		sshKeyFlagHelp,
 	)
 	flags.Int32Var(
 		&runner.args.bootDiskSizeGiB,
 		"boot-disk-size",
 		0,
-		"Boot disk size in GiB.",
+		bootDiskSizeFlagHelp,
 	)
 	flags.StringSliceVar(
 		&runner.args.additionalDisks,
 		"additional-disk",
 		[]string{},
-		"Additional disk size in GiB (e.g. '100'). Repeatable.",
+		additionalDiskFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.runStrategy,
 		"run-strategy",
 		"",
-		"Run strategy (e.g. 'Always' or 'Halted').",
+		runStrategyFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.userData,
 		"user-data",
 		"",
-		"User data for the compute instance (e.g. cloud-init, ignition).",
+		userDataFlagHelp,
 	)
+	flags.StringArrayVar(
+		&runner.args.networkAttachments,
+		"network-attachment",
+		nil,
+		networkAttachmentFlagHelp,
+	)
+	flags.BoolVar(
+		&runner.args.windows,
+		"windows",
+		false,
+		windowsFlagHelp,
+	)
+
+	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
+	result.MarkFlagsOneRequired("catalog-item", "template")
 	return result
 }
 
@@ -141,10 +160,10 @@ type runnerContext struct {
 	args struct {
 		name                    string
 		template                string
+		catalogItem             string
 		templateParameterValues []string
 		templateParameterFiles  []string
-		cores                   int32
-		memoryGiB               int32
+		instanceType            string
 		imageSourceRef          string
 		imageSourceType         string
 		sshKey                  string
@@ -152,9 +171,12 @@ type runnerContext struct {
 		additionalDisks         []string
 		runStrategy             string
 		userData                string
+		networkAttachments      []string
+		windows                 bool
 	}
 	logger                 *slog.Logger
 	console                *terminal.Console
+	settings               *config.Settings
 	templatesClient        publicv1.ComputeInstanceTemplatesClient
 	computeInstancesClient publicv1.ComputeInstancesClient
 }
@@ -175,22 +197,28 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load templates: %w", err)
 	}
 
-	// Get the configuration:
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
+	// Reject template parameters when using catalog item (per D-04):
+	if c.args.catalogItem != "" {
+		if len(c.args.templateParameterValues) > 0 || len(c.args.templateParameterFiles) > 0 {
+			return fmt.Errorf(
+				"--template-parameter and --template-parameter-file are not supported with --catalog-item",
+			)
+		}
 	}
-	if cfg.Address == "" {
+
+	// Deprecation warning for --template (per D-03):
+	if c.args.template != "" {
+		fmt.Fprintf(os.Stderr, "Warning: --template is deprecated, use --catalog-item instead\n")
+	}
+
+	// Get the configuration:
+	c.settings = config.SettingsFromContext(ctx)
+	if !c.settings.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
-	// Check that we have a template:
-	if c.args.template == "" {
-		return fmt.Errorf("template identifier or name is required")
-	}
-
 	// Create the gRPC connection from the configuration:
-	conn, err := cfg.Connect(ctx, cmd.Flags())
+	conn, err := c.settings.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
@@ -200,7 +228,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	helper, err := reflection.NewHelper().
 		SetLogger(c.logger).
 		SetConnection(conn).
-		AddPackages(cfg.Packages()).
+		AddPackages(c.settings.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -210,6 +239,39 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Create the gRPC clients:
 	c.templatesClient = publicv1.NewComputeInstanceTemplatesClient(conn)
 	c.computeInstancesClient = publicv1.NewComputeInstancesClient(conn)
+
+	if c.args.catalogItem != "" {
+		// Catalog item path: skip template lookup entirely (per D-04).
+		specResult, specErr := c.buildSpecFromCatalogItem(c.args.catalogItem)
+		if specErr != nil {
+			return specErr
+		}
+
+		computeInstance := publicv1.ComputeInstance_builder{
+			Metadata: publicv1.Metadata_builder{
+				Name:   c.args.name,
+				Tenant: c.settings.Tenant(),
+			}.Build(),
+			Spec: specResult,
+		}.Build()
+
+		response, err := c.computeInstancesClient.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
+			Object: computeInstance,
+		}.Build())
+		if err != nil {
+			return fmt.Errorf("failed to create compute instance: %w", err)
+		}
+
+		for _, w := range response.GetWarnings() {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+		}
+
+		computeInstance = response.Object
+		c.console.Infof(ctx, "Created compute instance '%s'.\n", computeInstance.Id)
+		return nil
+	}
+
+	// Legacy template path (existing code continues below):
 
 	// Fetch the compute instance template:
 	template, err := c.findTemplate(ctx)
@@ -254,6 +316,11 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create compute instance: %w", err)
 	}
 
+	// Display warnings from the server response:
+	for _, w := range response.GetWarnings() {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
+
 	// Display the result:
 	computeInstance = response.Object
 	c.console.Infof(ctx, "Created compute instance '%s'.\n", computeInstance.Id)
@@ -271,8 +338,8 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Comp
 		c.args.template,
 	)
 	response, err := c.templatesClient.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{
-		Filter: proto.String(filter),
-		Limit:  proto.Int32(10),
+		Filter: new(filter),
+		Limit:  new(int32(10)),
 	}.Build())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
@@ -299,7 +366,7 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Comp
 
 	// If we are here then no matches were found, we will show to the user some of the available templates:
 	response, err = c.templatesClient.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{
-		Limit: proto.Int32(10),
+		Limit: new(int32(10)),
 	}.Build())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
@@ -438,7 +505,7 @@ func (c *runnerContext) parseTemplateParameters(ctx context.Context,
 			)
 			continue
 		}
-		data, err := os.ReadFile(file)
+		data, err := os.ReadFile(filepath.Clean(file))
 		if errors.Is(err, os.ErrNotExist) {
 			issues = append(
 				issues, fmt.Sprintf(
@@ -641,14 +708,11 @@ func (c *runnerContext) buildSpec(templateID string,
 			SourceRef:  c.args.imageSourceRef,
 		}.Build()
 	}
-	if c.args.cores > 0 {
-		spec.Cores = proto.Int32(c.args.cores)
-	}
-	if c.args.memoryGiB > 0 {
-		spec.MemoryGib = proto.Int32(c.args.memoryGiB)
+	if c.args.instanceType != "" {
+		spec.InstanceType = new(c.args.instanceType)
 	}
 	if c.args.sshKey != "" {
-		spec.SshKey = proto.String(c.args.sshKey)
+		spec.SshKey = new(c.args.sshKey)
 	}
 	if c.args.bootDiskSizeGiB > 0 {
 		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
@@ -663,10 +727,162 @@ func (c *runnerContext) buildSpec(templateID string,
 		spec.AdditionalDisks = disks
 	}
 	if c.args.runStrategy != "" {
-		spec.RunStrategy = proto.String(c.args.runStrategy)
+		spec.RunStrategy = new(c.args.runStrategy)
 	}
 	if c.args.userData != "" {
-		spec.UserData = proto.String(c.args.userData)
+		spec.UserData = new(c.args.userData)
+	}
+	if c.args.windows {
+		spec.IsWindows = new(true)
+	}
+	if err := c.applyNetworkingFlags(&spec); err != nil {
+		return nil, err
+	}
+	return spec.Build(), nil
+}
+
+// applyNetworkingFlags sets spec.network_attachments from CLI flags.
+func (c *runnerContext) applyNetworkingFlags(spec *publicv1.ComputeInstanceSpec_builder) error {
+	if len(c.args.networkAttachments) == 0 {
+		return nil
+	}
+
+	attachments := make([]*publicv1.NetworkAttachment, 0, len(c.args.networkAttachments))
+	for _, raw := range c.args.networkAttachments {
+		na, err := parseNetworkAttachmentFlag(raw)
+		if err != nil {
+			return err
+		}
+		attachments = append(attachments, na)
+	}
+	spec.NetworkAttachments = attachments
+	return nil
+}
+
+// extractSecurityGroupListSuffix returns the substring before a trailing "security-groups=" or "security_groups="
+// clause (case-insensitive) and the list parsed from the remainder of the string after that clause.
+// Works entirely on the lowercase copy to avoid Unicode byte-offset issues.
+func extractSecurityGroupListSuffix(s string) (prefix string, groups []string, ok bool) {
+	lower := strings.ToLower(s)
+
+	// Try both "security-groups=" and "security_groups="
+	for _, marker := range []string{"security-groups=", "security_groups="} {
+		if i := strings.Index(lower, marker); i >= 0 {
+			// Work entirely on lowercase copy to avoid Unicode byte/rune offset mismatches
+			prefix = strings.TrimSpace(strings.TrimSuffix(lower[:i], ","))
+			rest := strings.TrimSpace(lower[i+len(marker):])
+			for _, id := range strings.Split(rest, ",") {
+				id = strings.TrimSpace(id)
+				if id != "" {
+					groups = append(groups, id)
+				}
+			}
+			return prefix, groups, true
+		}
+	}
+	return s, nil, false
+}
+
+// parseMainSubnetOnly parses the subnet portion of --network-attachment (no security-groups clause): either a bare id
+// or exactly subnet=<id>, optionally with a single comma between other parts only if we add more keys later.
+func parseMainSubnetOnly(main string) (string, error) {
+	main = strings.TrimSpace(strings.TrimSuffix(main, ","))
+	if main == "" {
+		return "", fmt.Errorf("--network-attachment must include a subnet or subnet=<id>")
+	}
+	if !strings.Contains(main, "=") {
+		return main, nil
+	}
+	var subnet string
+	for _, fragment := range strings.Split(main, ",") {
+		fragment = strings.TrimSpace(fragment)
+		if fragment == "" {
+			continue
+		}
+		key, val, ok := strings.Cut(fragment, "=")
+		if !ok {
+			return "", fmt.Errorf("invalid --network-attachment fragment %q (expected key=value)", fragment)
+		}
+		key = strings.TrimSpace(strings.ToLower(key))
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return "", fmt.Errorf("invalid --network-attachment fragment %q (value is empty)", fragment)
+		}
+		if key != "subnet" {
+			return "", fmt.Errorf("unknown key %q before security-groups (use subnet)", key)
+		}
+		if subnet != "" {
+			return "", fmt.Errorf("subnet appears more than once in --network-attachment %q", main)
+		}
+		subnet = val
+	}
+	if subnet == "" {
+		return "", fmt.Errorf("--network-attachment %q must include subnet=... or be a bare subnet id", main)
+	}
+	return subnet, nil
+}
+
+// parseNetworkAttachmentFlag parses one --network-attachment value: a bare subnet id, or subnet=<id> with optional
+// security-groups=/security_groups= suffix (commas allowed in the group list).
+func parseNetworkAttachmentFlag(s string) (*publicv1.NetworkAttachment, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf("empty --network-attachment value")
+	}
+	prefix, securityGroups, hadGroups := extractSecurityGroupListSuffix(s)
+	subnet, err := parseMainSubnetOnly(prefix)
+	if err != nil {
+		return nil, err
+	}
+	if !hadGroups && !strings.Contains(s, "=") {
+		return publicv1.NetworkAttachment_builder{Subnet: s}.Build(), nil
+	}
+	return publicv1.NetworkAttachment_builder{
+		Subnet:         subnet,
+		SecurityGroups: securityGroups,
+	}.Build(), nil
+}
+
+// buildSpecFromCatalogItem builds the spec for catalog-item-based creation.
+func (c *runnerContext) buildSpecFromCatalogItem(catalogItemID string) (*publicv1.ComputeInstanceSpec, error) {
+	spec := publicv1.ComputeInstanceSpec_builder{
+		CatalogItem: catalogItemID,
+	}
+	if c.args.imageSourceRef != "" {
+		spec.Image = publicv1.ComputeInstanceImage_builder{
+			SourceType: c.args.imageSourceType,
+			SourceRef:  c.args.imageSourceRef,
+		}.Build()
+	}
+	if c.args.instanceType != "" {
+		spec.InstanceType = new(c.args.instanceType)
+	}
+	if c.args.sshKey != "" {
+		spec.SshKey = new(c.args.sshKey)
+	}
+	if c.args.bootDiskSizeGiB > 0 {
+		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
+			SizeGib: c.args.bootDiskSizeGiB,
+		}.Build()
+	}
+	if len(c.args.additionalDisks) > 0 {
+		disks, diskErr := parseAdditionalDisks(c.args.additionalDisks)
+		if diskErr != nil {
+			return nil, diskErr
+		}
+		spec.AdditionalDisks = disks
+	}
+	if c.args.runStrategy != "" {
+		spec.RunStrategy = new(c.args.runStrategy)
+	}
+	if c.args.userData != "" {
+		spec.UserData = new(c.args.userData)
+	}
+	if c.args.windows {
+		spec.IsWindows = new(true)
+	}
+	if err := c.applyNetworkingFlags(&spec); err != nil {
+		return nil, err
 	}
 	return spec.Build(), nil
 }
@@ -741,3 +957,81 @@ func (c *runnerContext) validTemplateParameters(template *publicv1.ComputeInstan
 
 	return results
 }
+
+const shortHelp = `Create a compute instance.`
+
+const longHelp = `
+Create a compute instance.
+`
+
+const nameFlagHelp = `
+_NAME_ - Name of the compute instance.
+`
+
+const templateFlagHelp = `
+_TEMPLATE_ - Template identifier or name. Mutually exclusive with
+{{ bt }}--catalog-item{{ bt }}.
+`
+
+const catalogItemFlagHelp = `
+_ID_ - Catalog item identifier. Mutually exclusive with
+{{ bt }}--template{{ bt }}.
+`
+
+const templateParameterFlagHelp = `
+_NAME=VALUE_ - Template parameter in the format
+{{ bt }}name=value{{ bt }}. Can be specified multiple times.
+`
+
+const templateParameterFileFlagHelp = `
+_NAME=FILE_ - Template parameter whose value is read from a file, in the
+format {{ bt }}name=filename{{ bt }}. Can be specified multiple
+times.
+`
+
+const instanceTypeFlagHelp = `
+_NAME_ - Instance type name. Specifies the compute resource
+configuration for this instance.
+`
+
+const imageFlagHelp = `
+_URL_ - Image reference, for example an OCI image URL.
+`
+
+const imageSourceTypeFlagHelp = `
+_TYPE_ - Image source type.
+`
+
+const sshKeyFlagHelp = `
+_KEY_ - SSH public key.
+`
+
+const bootDiskSizeFlagHelp = `
+_SIZE_ - Boot disk size in GiB.
+`
+
+const additionalDiskFlagHelp = `
+_SIZE_ - Additional disk size in GiB. Can be specified multiple times to add
+more than one disk.
+`
+
+const runStrategyFlagHelp = `
+_STRATEGY_ - Run strategy, for example {{ bt }}Always{{ bt }} or
+{{ bt }}Halted{{ bt }}.
+`
+
+const userDataFlagHelp = `
+_DATA_ - User data for the compute instance, for example cloud-init or
+ignition configuration.
+`
+
+const networkAttachmentFlagHelp = `
+_SPEC_ - Per-NIC network attachment. The value can be a plain subnet ID, or a
+comma-separated specification in the format
+{{ bt }}subnet=ID[,security-groups=ID,ID...]{{ bt }}. Can be
+specified multiple times to attach multiple NICs.
+`
+
+const windowsFlagHelp = `
+_[BOOLEAN]_ - Create a Windows VM. Defaults to {{ bt }}false{{ bt }} (Linux VM).
+`

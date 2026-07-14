@@ -21,8 +21,10 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -32,17 +34,13 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	result := &cobra.Command{
-		Use:     "subnet [flags] ID_OR_NAME",
-		Aliases: []string{"subnets"},
-		Short:   "Describe a subnet",
-		Long:    "Display detailed information about a subnet, identified by ID or name.",
-		Example: `  # Describe a subnet by ID
-  osac describe subnet subnet-abc123
-
-  # Describe a subnet by name
-  osac describe subnet my-subnet`,
-		Args: cobra.ExactArgs(1),
-		RunE: runner.run,
+		Use:                   "subnet [FLAG...] ID|NAME",
+		Aliases:               []string{"subnets"},
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.ExactArgs(1),
+		RunE:                  runner.run,
 	}
 	return result
 }
@@ -60,11 +58,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.logger = logging.LoggerFromContext(ctx)
 	c.console = terminal.ConsoleFromContext(ctx)
 
-	cfg, err := config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if cfg.Address == "" {
+	cfg := config.SettingsFromContext(ctx)
+	if !cfg.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -76,29 +71,21 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 
 	client := publicv1.NewSubnetsClient(conn)
 
-	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
-	listResponse, err := client.List(ctx, publicv1.SubnetsListRequest_builder{
-		Filter: &filter,
-	}.Build())
+	matched, err := lookup.Find(ref, "subnet", func(filter string, limit int32) ([]*publicv1.Subnet, error) {
+		resp, err := client.List(ctx, publicv1.SubnetsListRequest_builder{
+			Filter: proto.String(filter),
+			Limit:  proto.Int32(limit),
+		}.Build())
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe subnet: %w", err)
+		}
+		return resp.GetItems(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to describe subnet: %w", err)
-	}
-	if len(listResponse.GetItems()) == 0 {
-		return fmt.Errorf("subnet not found: %s", ref)
-	}
-	if len(listResponse.GetItems()) > 1 {
-		return fmt.Errorf("multiple subnets match '%s', use the ID instead", ref)
+		return err
 	}
 
-	response, err := client.Get(ctx, publicv1.SubnetsGetRequest_builder{
-		Id: listResponse.GetItems()[0].GetId(),
-	}.Build())
-	if err != nil {
-		return fmt.Errorf("failed to describe subnet: %w", err)
-	}
-
-	s := response.Object
-	RenderSubnet(c.console, s)
+	RenderSubnet(c.console, matched)
 
 	return nil
 }
@@ -140,3 +127,21 @@ func RenderSubnet(w io.Writer, s *publicv1.Subnet) {
 	fmt.Fprintf(writer, "Message:\t%s\n", message)
 	writer.Flush()
 }
+
+const shortHelp = "Describe a subnet"
+
+const longHelp = `
+Display detailed information about a subnet, referenced by identifier or name.
+
+Examples:
+
+{{ bt 3 }}shell
+# Describe a subnet by identifier:
+{{ binary }} describe subnet 019e5ff0-6266-7310-acf3-94e99a3786c9
+{{ bt 3 }}
+
+{{ bt 3 }}shell
+# Describe a subnet by name:
+{{ binary }} describe subnet my-subnet
+{{ bt 3 }}
+`

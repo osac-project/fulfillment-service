@@ -149,6 +149,21 @@ var _ = Describe("ValidateClusterSpecFields", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
+	It("canonicalizes non-canonical pod and service CIDRs", func() {
+		podCidr := "10.128.0.5/14"
+		serviceCidr := "172.30.1.0/16"
+		spec := privatev1.ClusterSpec_builder{
+			Network: privatev1.ClusterNetwork_builder{
+				PodCidr:     &podCidr,
+				ServiceCidr: &serviceCidr,
+			}.Build(),
+		}.Build()
+		err := ValidateClusterSpecFields(spec)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(spec.GetNetwork().GetPodCidr()).To(Equal("10.128.0.0/14"))
+		Expect(spec.GetNetwork().GetServiceCidr()).To(Equal("172.30.0.0/16"))
+	})
+
 	It("Returns error for invalid pod_cidr", func() {
 		podCidr := "invalid-cidr"
 		spec := privatev1.ClusterSpec_builder{

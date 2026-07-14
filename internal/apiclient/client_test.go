@@ -195,7 +195,7 @@ var _ = Describe("HTTP Client", func() {
 			Expect(errors.As(err, &apiErr)).To(BeTrue())
 			Expect(apiErr.StatusCode).To(Equal(http.StatusBadRequest))
 			// Body should be truncated to 1MB (1<<20 bytes)
-			Expect(len(apiErr.Body)).To(Equal(1 << 20))
+			Expect(apiErr.Body).To(HaveLen(1 << 20))
 		})
 	})
 

@@ -267,8 +267,9 @@ func (f *codeFlow) startServer(ctx context.Context) (server *http.Server, redire
 
 	// Create and start the server:
 	server = &http.Server{
-		Handler: http.HandlerFunc(f.serve),
-		Addr:    actualAddress,
+		Handler:           http.HandlerFunc(f.serve),
+		Addr:              actualAddress,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
 		err := server.Serve(listener)
@@ -297,7 +298,7 @@ func (f *codeFlow) serve(w http.ResponseWriter, r *http.Request) {
 		"Received redirect request",
 		slog.String("method", r.Method),
 		slog.String("path", r.URL.Path),
-		slog.Any("query", query),
+		slog.Any("!query", query),
 	)
 
 	// Check for error parameter:

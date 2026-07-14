@@ -19,6 +19,7 @@ import (
 	"log/slog"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -37,7 +38,7 @@ var _ = Describe("Edit command", func() {
 		conn    *grpc.ClientConn
 		console *terminal.Console
 		output  *bytes.Buffer
-		helper  *reflection.ObjectHelper
+		helper  reflection.ObjectHelper
 	)
 
 	BeforeEach(func() {
@@ -82,6 +83,29 @@ var _ = Describe("Edit command", func() {
 		helper = reflectionHelper.Lookup("cluster")
 		Expect(helper).ToNot(BeNil())
 	})
+
+	DescribeTable("isWatchable",
+		func(objectType string, packages map[string]int, expected bool) {
+			builder := reflection.NewHelper().
+				SetLogger(logger).
+				SetConnection(conn)
+			for pkg, order := range packages {
+				builder = builder.AddPackage(pkg, order)
+			}
+			reflectionHelper, err := builder.Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			h := reflectionHelper.Lookup(objectType)
+			Expect(h).ToNot(BeNil(), "failed to look up object type %q", objectType)
+
+			runner := &runnerContext{helper: h}
+			Expect(runner.isWatchable()).To(Equal(expected))
+		},
+		Entry("public cluster is watchable", "cluster", map[string]int{"osac.public.v1": 0}, true),
+		Entry("public compute instance is watchable", "computeinstance", map[string]int{"osac.public.v1": 0}, true),
+		Entry("public identity provider is not watchable", "identityprovider", map[string]int{"osac.public.v1": 0}, false),
+		Entry("private hub is watchable", "hub", map[string]int{"osac.private.v1": 0}, true),
+	)
 
 	Describe("showWatchSuggestion", func() {
 		It("should render watch suggestion with object type and ID", func() {

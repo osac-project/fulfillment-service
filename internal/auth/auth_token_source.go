@@ -23,4 +23,8 @@ import (
 type TokenSource interface {
 	// Token returns the token for the token source.
 	Token(ctx context.Context) (result *Token, err error)
+
+	// Invalidate clears any cached tokens, forcing a fresh token to be generated on the next Token() call.
+	// This is useful when the token needs to be refreshed due to external changes (e.g., new realm creation).
+	Invalidate(ctx context.Context) error
 }

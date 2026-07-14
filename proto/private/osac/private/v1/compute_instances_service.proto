@@ -45,6 +45,10 @@ message ComputeInstancesCreateRequest {
 
 message ComputeInstancesCreateResponse {
   ComputeInstance object = 1;
+
+  // Deprecation notices returned when the compute instance references a DEPRECATED instance type
+  // or uses the legacy cores/memory_gib fields directly.
+  repeated string warnings = 2;
 }
 
 message ComputeInstancesDeleteRequest {

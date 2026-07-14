@@ -111,6 +111,7 @@ func (b *GenericMapperBuilder[From, To]) Build() (result *GenericMapper[From, To
 		logger:                b.logger,
 		ignoredFieldNames:     ignoredFieldNames,
 		ignoredFieldFullNames: ignoredFieldFullNames,
+		strict:                b.strict,
 	}
 	return
 }

@@ -36,14 +36,17 @@ func ApplySpecDefaults(spec *privatev1.ComputeInstanceSpec, defaults *privatev1.
 	if spec == nil || defaults == nil {
 		return
 	}
-	if !spec.HasCores() && defaults.HasCores() {
-		spec.SetCores(defaults.GetCores())
+
+	// Apply instance_type default.
+	if spec.GetInstanceType() == "" && defaults.HasInstanceType() && defaults.GetInstanceType() != "" {
+		spec.SetInstanceType(defaults.GetInstanceType())
 	}
-	if !spec.HasMemoryGib() && defaults.HasMemoryGib() {
-		spec.SetMemoryGib(defaults.GetMemoryGib())
-	}
+
 	if !spec.HasRunStrategy() && defaults.HasRunStrategy() {
 		spec.SetRunStrategy(defaults.GetRunStrategy())
+	}
+	if !spec.HasIsWindows() && defaults.HasIsWindows() {
+		spec.SetIsWindows(defaults.GetIsWindows())
 	}
 	mergeImageDefaults(spec, defaults)
 	mergeBootDiskDefaults(spec, defaults)
@@ -83,7 +86,7 @@ func mergeBootDiskDefaults(spec *privatev1.ComputeInstanceSpec, defaults *privat
 }
 
 // ValidateRequiredSpecFields checks that all fields required by the Kubernetes ComputeInstance CRD
-// are present in the spec.
+// are present in the spec. instance_type is always required (TMPL-03, COMP-06).
 func ValidateRequiredSpecFields(spec *privatev1.ComputeInstanceSpec) error {
 	if spec == nil {
 		return grpcstatus.Errorf(
@@ -92,11 +95,9 @@ func ValidateRequiredSpecFields(spec *privatev1.ComputeInstanceSpec) error {
 		)
 	}
 	var missing []string
-	if !spec.HasCores() {
-		missing = append(missing, "cores")
-	}
-	if !spec.HasMemoryGib() {
-		missing = append(missing, "memory_gib")
+	// instance_type is always required.
+	if spec.GetInstanceType() == "" {
+		missing = append(missing, "instance_type")
 	}
 	if !spec.HasImage() {
 		missing = append(missing, "image")

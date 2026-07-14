@@ -14,10 +14,8 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
@@ -30,60 +28,20 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Clusters server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
 	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
+		// Put a context into the subject:
 		ctx = auth.ContextWithSubject(
 			ctx,
 			&auth.Subject{
-				User:    "system",
-				Tenants: collections.NewUniversalSet[string](),
+				User:    auth.SystemTenant,
+				Tenants: auth.AllTenants,
 			},
 		)
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*privatev1.ClusterTemplate](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.Cluster](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.HostType](ctx)
-		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Describe("Creation", func() {
@@ -182,7 +140,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "ACME 1TiB",
 						Description: "ACME 1TiB.",
 						Metadata: privatev1.Metadata_builder{
-							Tenants: []string{"shared"},
+							Tenant: auth.SharedTenant,
 						}.Build(),
 					}.Build()).
 				Do(ctx)
@@ -194,7 +152,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "ACME GPU",
 						Description: "ACME GPU.",
 						Metadata: privatev1.Metadata_builder{
-							Tenants: []string{"shared"},
+							Tenant: auth.SharedTenant,
 						}.Build(),
 					}.Build(),
 				).
@@ -207,7 +165,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "HAL 9000",
 						Description: "Heuristically programmed ALgorithmic computer.",
 						Metadata: privatev1.Metadata_builder{
-							Tenants: []string{"shared"},
+							Tenant: auth.SharedTenant,
 						}.Build(),
 					}.Build(),
 				).
@@ -222,7 +180,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "My template",
 						Description: "My template",
 						Metadata: privatev1.Metadata_builder{
-							Tenants: []string{"shared"},
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 							"compute": privatev1.ClusterTemplateNodeSet_builder{
@@ -250,7 +208,7 @@ var _ = Describe("Clusters server", func() {
 						Description: "My deleted template",
 						Metadata: privatev1.Metadata_builder{
 							Finalizers: []string{"a"},
-							Tenants:    []string{"shared"},
+							Tenant:     auth.SharedTenant,
 						}.Build(),
 					}.Build(),
 				).
@@ -269,7 +227,7 @@ var _ = Describe("Clusters server", func() {
 						Title:       "My with parameters",
 						Description: "My with parameters.",
 						Metadata: privatev1.Metadata_builder{
-							Tenants: []string{"shared"},
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Parameters: []*privatev1.ClusterTemplateParameterDefinition{
 							privatev1.ClusterTemplateParameterDefinition_builder{
@@ -708,7 +666,7 @@ var _ = Describe("Clusters server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.ClustersListRequest_builder{
-				Limit: proto.Int32(1),
+				Limit: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -730,7 +688,7 @@ var _ = Describe("Clusters server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, publicv1.ClustersListRequest_builder{
-				Offset: proto.Int32(1),
+				Offset: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", count-1))
@@ -755,7 +713,7 @@ var _ = Describe("Clusters server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, publicv1.ClustersListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -885,9 +843,11 @@ var _ = Describe("Clusters server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 
-			// Add a finalizer, as otherwise the object will be immediatelly deleted and archived and it
+			// Add a finalizer, as otherwise the object will be immediately deleted and archived and it
 			// won't be possible to verify the deletion timestamp. This can't be done using the server
 			// because this is a public object, and public objects don't have the finalizers field.
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, err = tx.Exec(
 				ctx,
 				`update clusters set finalizers = '{"a"}' where id = $1`,
@@ -934,7 +894,7 @@ var _ = Describe("Clusters server", func() {
 				SetObject(
 					privatev1.Cluster_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenants: []string{"shared"},
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Spec: privatev1.ClusterSpec_builder{
 							Template: "my_template",
@@ -1017,7 +977,7 @@ var _ = Describe("Clusters server", func() {
 				SetObject(
 					privatev1.Cluster_builder{
 						Metadata: privatev1.Metadata_builder{
-							Tenants: []string{"shared"},
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Spec: privatev1.ClusterSpec_builder{
 							Template: "my_template",
@@ -1228,83 +1188,10 @@ var _ = Describe("Clusters server", func() {
 			Expect(status.Code()).To(Equal(grpccodes.NotFound))
 		})
 
-		DescribeTable(
-			"Rejects creation with invalid name",
-			func(name, expectedError string) {
-				response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
-					Object: publicv1.Cluster_builder{
-						Metadata: publicv1.Metadata_builder{
-							Name: name,
-						}.Build(),
-						Spec: publicv1.ClusterSpec_builder{
-							Template: "my_template",
-						}.Build(),
-					}.Build(),
-				}.Build())
-				Expect(err).To(HaveOccurred())
-				Expect(response).To(BeNil())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring(expectedError))
-			},
-			Entry(
-				"Too long",
-				"a234567890123456789012345678901234567890123456789012345678901234",
-				"must be at most 63 characters long",
-			),
-			Entry(
-				"Contains uppercase letters",
-				"MyCluster",
-				"must only contain lowercase letters",
-			),
-			Entry(
-				"Contains special characters",
-				"my_cluster",
-				"must only contain lowercase letters",
-			),
-			Entry(
-				"Starts with hyphen",
-				"-mycluster",
-				"cannot start with a hyphen",
-			),
-			Entry(
-				"Ends with hyphen",
-				"mycluster-",
-				"cannot end with a hyphen",
-			),
-		)
-
-		It("Rejects update with invalid name", func() {
-			// Create the object with a valid name:
-			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
-				Object: publicv1.Cluster_builder{
-					Metadata: publicv1.Metadata_builder{
-						Name: "valid-name",
-					}.Build(),
-					Spec: publicv1.ClusterSpec_builder{
-						Template: "my_template",
-					}.Build(),
-				}.Build(),
-			}.Build())
-			Expect(err).ToNot(HaveOccurred())
-
-			// Try to update with an invalid name:
-			updateResponse, err := server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
-				Object: publicv1.Cluster_builder{
-					Id: createResponse.GetObject().GetId(),
-					Metadata: publicv1.Metadata_builder{
-						Name: "Invalid_Name",
-					}.Build(),
-				}.Build(),
-			}.Build())
-			Expect(err).To(HaveOccurred())
-			Expect(updateResponse).To(BeNil())
-			status, ok := grpcstatus.FromError(err)
-			Expect(ok).To(BeTrue())
-			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("must only contain lowercase letters"))
-		})
+		// Note: Name validation tests are in internal/validation/protovalidate_interceptor_test.go
+		// and it/it_validation_test.go. Name validation is handled by the protovalidate interceptor
+		// at the gRPC layer, not by the server code. Unit tests that call the server directly
+		// bypass the interceptor, so they cannot test name validation.
 
 		DescribeTable(
 			"Accepts creation with valid names",
@@ -1629,7 +1516,7 @@ var _ = Describe("Clusters server", func() {
 					Id:    "acme_1tib",
 					Title: "ACME 1TiB",
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: auth.SharedTenant,
 					}.Build(),
 				}.Build()).
 				Do(ctx)
@@ -1646,7 +1533,7 @@ var _ = Describe("Clusters server", func() {
 					Id:    "my_template",
 					Title: "My template",
 					Metadata: privatev1.Metadata_builder{
-						Tenants: []string{"shared"},
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 						"compute": privatev1.ClusterTemplateNodeSet_builder{
@@ -1858,6 +1745,62 @@ var _ = Describe("Clusters server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetObject().GetSpec().GetNetwork().GetPodCidr()).To(Equal(podCIDR))
 			Expect(response.GetObject().GetSpec().GetNetwork().GetServiceCidr()).To(Equal(serviceCIDR))
+		})
+
+		It("Rejects invalid pod_cidr on update", func() {
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
+						Template: "my_template",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			invalidCIDR := "not-a-cidr"
+			_, err = server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Id: createResponse.GetObject().GetId(),
+					Spec: publicv1.ClusterSpec_builder{
+						Network: publicv1.ClusterNetwork_builder{
+							PodCidr: &invalidCIDR,
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("pod_cidr"))
+		})
+
+		It("Rejects invalid service_cidr on update", func() {
+			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Spec: publicv1.ClusterSpec_builder{
+						Template: "my_template",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			invalidCIDR := "999.999.999.999/99"
+			_, err = server.Update(ctx, publicv1.ClustersUpdateRequest_builder{
+				Object: publicv1.Cluster_builder{
+					Id: createResponse.GetObject().GetId(),
+					Spec: publicv1.ClusterSpec_builder{
+						Network: publicv1.ClusterNetwork_builder{
+							ServiceCidr: &invalidCIDR,
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("service_cidr"))
 		})
 	})
 })

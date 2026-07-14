@@ -22,10 +22,18 @@ import (
 // Cmd creates and returns the `probe` command.
 func Cmd() *cobra.Command {
 	result := &cobra.Command{
-		Use:   "probe",
-		Short: "Probes components",
-		Args:  cobra.NoArgs,
+		Use:                   "probe COMMAND [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
 	}
 	result.AddCommand(grpcserver.Cmd())
 	return result
 }
+
+const shortHelp = `Probes components`
+
+const longHelp = `
+Probes components.
+`

@@ -13,13 +13,16 @@
 
 columns:
 
+- header: PROJECT
+  value: "has(this.metadata.project)? this.metadata.project: '-'"
+
 - header: ID
   value: this.id
 
 - header: NAME
   value: "has(this.metadata.name)? this.metadata.name: '-'"
 
-- header: ORGANIZATION
-  value: this.spec.organization
-  type: osac.private.v1.Organization
+- header: TENANT
+  value: "has(this.metadata.tenant)? this.metadata.tenant: '-'"
+  type: osac.private.v1.Tenant
   lookup: true

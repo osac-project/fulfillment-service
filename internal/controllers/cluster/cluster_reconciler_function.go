@@ -169,9 +169,9 @@ func (t *task) update(ctx context.Context) error {
 		return nil
 	}
 
-	// Select the hub, and if no hubs are available, update the condition to inform the user that creation is
-	// pending. Note that we don't want to disclose the existence of hubs to the user, as that is a internal
-	// implementation detail, so keep the message generic enough to not reveal that information.
+	// Select the hub and return immediately if it was just selected. This ensures the hub is
+	// persisted before any Kubernetes objects are created.
+	hubJustSelected := t.cluster.GetStatus().GetHub() == ""
 	err := t.selectHub(ctx)
 	if err != nil {
 		t.r.logger.ErrorContext(
@@ -188,9 +188,10 @@ func (t *task) update(ctx context.Context) error {
 		)
 		return nil
 	}
-
-	// Save the selected hub in the private data of the cluster:
 	t.cluster.GetStatus().SetHub(t.hubId)
+	if hubJustSelected {
+		return nil
+	}
 
 	// Get the K8S object:
 	object, err := t.getKubeObject(ctx)
@@ -214,7 +215,7 @@ func (t *task) update(ctx context.Context) error {
 					labels.ClusterOrderUuid: t.cluster.GetId(),
 				},
 				Annotations: map[string]string{
-					annotations.Tenant: t.cluster.GetMetadata().GetTenants()[0],
+					annotations.Tenant: t.cluster.GetMetadata().GetTenant(),
 				},
 			},
 			Spec: spec,
@@ -280,8 +281,8 @@ func (t *task) setConditionDefaults(value privatev1.ClusterConditionType) {
 }
 
 func (t *task) validateTenant() error {
-	if !t.cluster.HasMetadata() || len(t.cluster.GetMetadata().GetTenants()) != 1 {
-		return errors.New("Cluster must have exactly one tenant assigned")
+	if !t.cluster.HasMetadata() || t.cluster.GetMetadata().GetTenant() == "" {
+		return errors.New("Cluster must have a tenant assigned") //nolint:staticcheck // ST1005: Cluster is an API resource name
 	}
 	return nil
 }
@@ -334,10 +335,16 @@ func (t *task) addExplicitFields(spec *osacv1alpha1.ClusterOrderSpec) {
 }
 
 func (t *task) prepareNodeRequests() []osacv1alpha1.NodeRequest {
-	var nodeRequests []osacv1alpha1.NodeRequest
-	for _, nodeSet := range t.cluster.GetSpec().GetNodeSets() {
-		nodeRequest := t.prepareNodeRequest(nodeSet)
-		nodeRequests = append(nodeRequests, nodeRequest)
+	nodeSets := t.cluster.GetSpec().GetNodeSets()
+	keys := make([]string, 0, len(nodeSets))
+	for key := range nodeSets {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+
+	nodeRequests := make([]osacv1alpha1.NodeRequest, 0, len(keys))
+	for _, key := range keys {
+		nodeRequests = append(nodeRequests, t.prepareNodeRequest(nodeSets[key]))
 	}
 	return nodeRequests
 }
@@ -350,13 +357,6 @@ func (t *task) prepareNodeRequest(nodeSet *privatev1.ClusterNodeSet) osacv1alpha
 }
 
 func (t *task) delete(ctx context.Context) (err error) {
-	// Remember to remove the finalizer if there was no error:
-	defer func() {
-		if err == nil {
-			t.removeFinalizer()
-		}
-	}()
-
 	// Do nothing if we don't know the hub yet:
 	t.hubId = t.cluster.GetStatus().GetHub()
 	if t.hubId == "" {
@@ -364,6 +364,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 	err = t.getHub(ctx)
 	if err != nil {
+		// Check if the hub has been decommissioned (deleted from database)
+		if errors.Is(err, controllers.ErrHubNotFound) {
+			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "cluster_id", t.cluster.GetId(), t.removeFinalizer)
+			return nil
+		}
+		// For transient errors (network, timeout, etc.), continue retrying
 		return
 	}
 
@@ -378,6 +384,7 @@ func (t *task) delete(ctx context.Context) (err error) {
 			"Cluster order doesn't exist",
 			slog.String("id", t.cluster.GetId()),
 		)
+		t.removeFinalizer()
 		return
 	}
 	err = t.hubClient.Delete(ctx, object)
@@ -391,6 +398,7 @@ func (t *task) delete(ctx context.Context) (err error) {
 		slog.String("name", object.GetName()),
 	)
 
+	t.removeFinalizer()
 	return
 }
 
@@ -447,7 +455,7 @@ func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.ClusterO
 	count := len(items)
 	if count > 1 {
 		err = fmt.Errorf(
-			"expected at most one cluster order with identifer '%s' but found %d",
+			"expected at most one cluster order with identifier '%s' but found %d",
 			t.cluster.GetId(), count,
 		)
 		return

@@ -17,7 +17,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -73,27 +75,23 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		name        string
 		labels      map[string]string
 		annotations map[string]string
-		tenants     []string
-		creators    []string
+		tenant      string
+		project     string
+		creator     string
 	)
 	if metadata != nil {
 		name = metadata.GetName()
 		labels = metadata.GetLabels()
 		annotations = metadata.GetAnnotations()
-		tenants = metadata.GetTenants()
-		creators = metadata.GetCreators()
+		tenant = metadata.GetTenant()
+		project = metadata.GetProject()
+		creator = metadata.GetCreator()
 	}
 
-	// Validate that tenants are not empty:
-	if len(tenants) == 0 {
-		err = errors.New("cannot create object with empty tenants")
+	// Validate that tenant is not empty:
+	if tenant == "" {
+		err = errors.New("cannot create object with empty tenant")
 		return
-	}
-
-	// The list of creators may be empty, but not nil, as otherwise that results in a null database column, and
-	// that violates the database constraints.
-	if creators == nil {
-		creators = []string{}
 	}
 
 	// Save the object:
@@ -115,8 +113,9 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			id,
 			name,
 			finalizers,
-			creators,
-			tenants,
+			creator,
+			tenant,
+			project,
 			labels,
 			annotations,
 			data
@@ -128,7 +127,8 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			$5,
 			$6,
 			$7,
-			$8
+			$8,
+			$9
 		)
 		returning
 			creation_timestamp,
@@ -151,8 +151,9 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 			id,
 			name,
 			finalizers,
-			creators,
-			tenants,
+			creator,
+			tenant,
+			project,
 			labelsData,
 			annotationsData,
 			data,
@@ -167,12 +168,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		)
 	}()
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-			err = &ErrAlreadyExists{
-				ID: id,
-			}
-		}
+		err = r.translateError(ctx, id, tenant, project, name, err)
 		return
 	}
 	created := r.cloneObject(r.object)
@@ -180,8 +176,9 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		creationTs:  creationTs,
 		deletionTs:  deletionTs,
 		finalizers:  finalizers,
-		creators:    creators,
-		tenants:     tenants,
+		creator:     creator,
+		tenant:      tenant,
+		project:     project,
 		name:        name,
 		labels:      labels,
 		annotations: annotations,
@@ -204,6 +201,61 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		object: created,
 	}
 	return
+}
+
+// translateError translates raw PostgreSQL errors into domain-specific error types.
+func (r *CreateRequest[O]) translateError(ctx context.Context, id, tenant, project, name string, err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	switch pgErr.Code {
+	case pgerrcode.UniqueViolation:
+		return &ErrAlreadyExists{
+			Table: r.dao.table,
+			ID:    id,
+			Name:  name,
+		}
+	case errReferenceCode:
+		return &ErrReference{
+			Reason: pgErr.Message,
+		}
+	case pgerrcode.ForeignKeyViolation:
+		switch {
+		case strings.HasSuffix(pgErr.ConstraintName, "_tenant_fk"):
+			return &ErrReference{
+				Reason: fmt.Sprintf("tenant '%s' doesn't exist", tenant),
+			}
+		case strings.HasSuffix(pgErr.ConstraintName, "_parent_project_fk"):
+			return &ErrReference{
+				Reason: fmt.Sprintf("parent project '%s' doesn't exist", project),
+			}
+		case strings.HasSuffix(pgErr.ConstraintName, "_project_fk"):
+			return &ErrReference{
+				Reason: fmt.Sprintf("project '%s' doesn't exist", project),
+			}
+		default:
+			r.dao.logger.WarnContext(
+				ctx,
+				"Unknown foreign key violation",
+				slog.String("constraint", pgErr.ConstraintName),
+			)
+			return &ErrReference{}
+		}
+	case errNotUniqueCode:
+		// When the trigger provides a custom message, use it as Reason.
+		// If no message is provided, fall back to ID.
+		if pgErr.Message != "" {
+			return &ErrAlreadyExists{
+				ID:     id,
+				Reason: pgErr.Message,
+			}
+		}
+		return &ErrAlreadyExists{
+			ID: id,
+		}
+	}
+	return err
 }
 
 // CreateResponse represents the result of a create operation.

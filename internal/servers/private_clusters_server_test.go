@@ -14,11 +14,9 @@ language governing permissions and limitations under the License.
 package servers
 
 import (
-	"context"
 	"fmt"
 	"math"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
@@ -26,57 +24,15 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
-	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Private clusters server", func() {
-	var (
-		ctx context.Context
-		tx  database.Tx
-	)
-
-	BeforeEach(func() {
-		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*privatev1.ClusterTemplate](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.Cluster](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.HostType](ctx)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	Describe("Creation", func() {
 		It("Can be built if all the required parameters are set", func() {
 			server, err := NewPrivateClustersServer().
@@ -150,8 +106,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.HostType_builder{
 						Id: "acme-1ti-id",
 						Metadata: privatev1.Metadata_builder{
-							Name:    "acme-1ti-name",
-							Tenants: []string{"shared"},
+							Name:   "acme-1ti-name",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Title:       "ACME 1TiB",
 						Description: "ACME 1TiB.",
@@ -164,8 +120,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.HostType_builder{
 						Id: "acme-gpu-id",
 						Metadata: privatev1.Metadata_builder{
-							Name:    "acme-gpu-name",
-							Tenants: []string{"shared"},
+							Name:   "acme-gpu-name",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Title:       "ACME GPU",
 						Description: "ACME GPU.",
@@ -180,8 +136,8 @@ var _ = Describe("Private clusters server", func() {
 					privatev1.ClusterTemplate_builder{
 						Id: "my-template-id",
 						Metadata: privatev1.Metadata_builder{
-							Name:    "my-template-name",
-							Tenants: []string{"shared"},
+							Name:   "my-template-name",
+							Tenant: auth.SharedTenant,
 						}.Build(),
 						Title:       "My template",
 						Description: "My template",
@@ -209,7 +165,7 @@ var _ = Describe("Private clusters server", func() {
 							Title:       fmt.Sprintf("My template %d", i),
 							Description: fmt.Sprintf("My template %d", i),
 							Metadata: privatev1.Metadata_builder{
-								Tenants: []string{"shared"},
+								Tenant: auth.SharedTenant,
 							}.Build(),
 							NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 								"compute": privatev1.ClusterTemplateNodeSet_builder{
@@ -537,7 +493,7 @@ var _ = Describe("Private clusters server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, privatev1.ClustersListRequest_builder{
-				Limit: proto.Int32(1),
+				Limit: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -562,7 +518,7 @@ var _ = Describe("Private clusters server", func() {
 
 			// List the objects:
 			response, err := server.List(ctx, privatev1.ClustersListRequest_builder{
-				Offset: proto.Int32(1),
+				Offset: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", count-1))
@@ -590,7 +546,7 @@ var _ = Describe("Private clusters server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := server.List(ctx, privatev1.ClustersListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -618,6 +574,49 @@ var _ = Describe("Private clusters server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(proto.Equal(createResponse.GetObject(), getResponse.GetObject())).To(BeTrue())
+		})
+
+		It("Canonicalizes network CIDRs on Update", func() {
+			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Spec: privatev1.ClusterSpec_builder{
+						Template: "my-template-id",
+					}.Build(),
+					Status: privatev1.ClusterStatus_builder{
+						Hub: "my-hub-id",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Id: object.GetId(),
+					Spec: privatev1.ClusterSpec_builder{
+						Template: object.GetSpec().GetTemplate(),
+						Network: privatev1.ClusterNetwork_builder{
+							PodCidr:     new("10.128.0.5/14"),
+							ServiceCidr: new("172.30.1.0/16"),
+						}.Build(),
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"spec.network.pod_cidr", "spec.network.service_cidr"},
+				},
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			network := updateResponse.GetObject().GetSpec().GetNetwork()
+			Expect(network.GetPodCidr()).To(Equal("10.128.0.0/14"))
+			Expect(network.GetServiceCidr()).To(Equal("172.30.0.0/16"))
+
+			getResponse, err := server.Get(ctx, privatev1.ClustersGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			network = getResponse.GetObject().GetSpec().GetNetwork()
+			Expect(network.GetPodCidr()).To(Equal("10.128.0.0/14"))
+			Expect(network.GetServiceCidr()).To(Equal("172.30.0.0/16"))
 		})
 
 		It("Update object", func() {
@@ -1045,6 +1044,262 @@ var _ = Describe("Private clusters server", func() {
 			Expect(status.Message()).To(Equal("cannot change spec.template_parameters: template parameters are immutable"))
 		})
 
+		Describe("Catalog item", func() {
+			var catalogItemsDao *dao.GenericDAO[*privatev1.ClusterCatalogItem]
+
+			BeforeEach(func() {
+				var err error
+				catalogItemsDao, err = dao.NewGenericDAO[*privatev1.ClusterCatalogItem]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			createCatalogItem := func(id string, published bool, fieldDefs []*privatev1.FieldDefinition) {
+				_, err := catalogItemsDao.Create().SetObject(
+					privatev1.ClusterCatalogItem_builder{
+						Id: id,
+						Metadata: privatev1.Metadata_builder{
+							Name:   id + "-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:            "Test Catalog Item",
+						Published:        published,
+						Template:         "my-template-id",
+						FieldDefinitions: fieldDefs,
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			It("Creates cluster with catalog item", func() {
+				createCatalogItem("cat-happy", true, nil)
+
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-happy",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetId()).ToNot(BeEmpty())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+				Expect(object.GetSpec().GetCatalogItem()).To(Equal("cat-happy"))
+			})
+
+			It("Creates cluster with catalog item specified by name", func() {
+				createCatalogItem("cat-by-name", true, nil)
+
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-by-name-name",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+			})
+
+			It("Fails when catalog item not found", func() {
+				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "nonexistent",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(Equal(
+					"there is no catalog item with identifier or name 'nonexistent'",
+				))
+			})
+
+			It("Fails when catalog item is not published", func() {
+				createCatalogItem("cat-unpublished", false, nil)
+
+				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-unpublished",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.NotFound))
+				Expect(status.Message()).To(Equal(
+					"catalog item 'cat-unpublished' is not published",
+				))
+			})
+
+			It("Fails when both catalog_item and template are set", func() {
+				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "any-catalog-item",
+							Template:    "my-template-id",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal("catalog_item and template are mutually exclusive"))
+			})
+
+			It("Rejects user value for non-editable field", func() {
+				createCatalogItem("cat-noneditable", true, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:     "pull_secret",
+						Editable: false,
+						Default:  structpb.NewStringValue("forced-secret"),
+					}.Build(),
+				})
+
+				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-noneditable",
+							PullSecret:  new("user-secret"),
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("not editable"))
+			})
+
+			DescribeTable("validates editable field against JSON Schema",
+				func(catID string, value string, expectError bool) {
+					createCatalogItem(catID, true, []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:             "pull_secret",
+							Editable:         true,
+							ValidationSchema: `{"type":"string","minLength":10}`,
+						}.Build(),
+					})
+
+					response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+						Object: privatev1.Cluster_builder{
+							Spec: privatev1.ClusterSpec_builder{
+								CatalogItem: catID,
+								PullSecret:  new(value),
+							}.Build(),
+							Status: privatev1.ClusterStatus_builder{
+								Hub: "my-hub-id",
+							}.Build(),
+						}.Build(),
+					}.Build())
+					if expectError {
+						Expect(err).To(HaveOccurred())
+						status, ok := grpcstatus.FromError(err)
+						Expect(ok).To(BeTrue())
+						Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+						Expect(status.Message()).To(ContainSubstring("validation failed for field 'pull_secret'"))
+					} else {
+						Expect(err).ToNot(HaveOccurred())
+						Expect(response.GetObject().GetSpec().GetPullSecret()).To(Equal(value))
+					}
+				},
+				Entry("rejects value below minLength", "cat-schema-reject", "short-val", true),
+				Entry("accepts value meeting minLength", "cat-schema-accept", "long-enough-value", false),
+			)
+
+			It("Applies default for editable field when not provided", func() {
+				createCatalogItem("cat-default", true, []*privatev1.FieldDefinition{
+					privatev1.FieldDefinition_builder{
+						Path:     "pull_secret",
+						Editable: true,
+						Default:  structpb.NewStringValue("default-secret"),
+					}.Build(),
+				})
+
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-default",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := response.GetObject()
+				Expect(object.GetSpec().GetPullSecret()).To(Equal("default-secret"))
+			})
+
+			It("Rejects changing catalog_item on update", func() {
+				createCatalogItem("cat-immut", true, nil)
+
+				createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-immut",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := createResponse.GetObject()
+
+				_, err = server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "different-catalog-item",
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.catalog_item"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"cannot change spec.catalog_item from 'cat-immut' to 'different-catalog-item': catalog item is immutable",
+				))
+			})
+		})
+
 		Describe("Version", func() {
 			createCluster := func() *privatev1.Cluster {
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
@@ -1081,7 +1336,7 @@ var _ = Describe("Private clusters server", func() {
 				object := createCluster()
 				id := object.GetId()
 				listResponse, err := server.List(ctx, privatev1.ClustersListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == %q", id)),
+					Filter: new(fmt.Sprintf("this.id == %q", id)),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				items := listResponse.GetItems()

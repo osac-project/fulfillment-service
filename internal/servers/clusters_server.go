@@ -36,8 +36,8 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/jq"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/gvks"
 	"github.com/osac-project/fulfillment-service/internal/kubernetes/labels"
@@ -45,7 +45,7 @@ import (
 
 type ClustersServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -58,7 +58,6 @@ type ClustersServer struct {
 	publicv1.UnimplementedClustersServer
 
 	logger          *slog.Logger
-	notifier        *database.Notifier
 	private         privatev1.ClustersServer
 	inMapper        *GenericMapper[*publicv1.Cluster, *privatev1.Cluster]
 	outMapper       *GenericMapper[*privatev1.Cluster, *publicv1.Cluster]
@@ -80,7 +79,7 @@ func (b *ClustersServerBuilder) SetLogger(value *slog.Logger) *ClustersServerBui
 }
 
 // SetNotifier sets the notifier to use. This is optional.
-func (b *ClustersServerBuilder) SetNotifier(value *database.Notifier) *ClustersServerBuilder {
+func (b *ClustersServerBuilder) SetNotifier(value events.Notifier) *ClustersServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -187,7 +186,6 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 	// Create and populate the object:
 	result = &ClustersServer{
 		logger:          b.logger,
-		notifier:        b.notifier,
 		jqTool:          jqTool,
 		hubsDao:         hubsDao,
 		kubeClients:     map[string]clnt.Client{},
@@ -637,7 +635,7 @@ func (s *ClustersServer) getHostedClusterSecret(ctx context.Context, clusterId s
 	}
 
 	// Get the cluster order from the hub:
-	order, err := s.getKubeClusterOrder(ctx, hubClient, hub.Namespace, cluster.GetId())
+	order, err := s.getKubeClusterOrder(ctx, hubClient, hub.GetSpec().GetNamespace(), cluster.GetId())
 	if err != nil {
 		return
 	}
@@ -689,7 +687,7 @@ func (s *ClustersServer) getKubeClient(ctx context.Context, hub *privatev1.Hub) 
 }
 
 func (s *ClustersServer) createKubeClient(ctx context.Context, hub *privatev1.Hub) (result clnt.Client, err error) {
-	config, err := clientcmd.RESTConfigFromKubeConfig(hub.Kubeconfig)
+	config, err := clientcmd.RESTConfigFromKubeConfig(hub.GetSpec().GetKubeconfig())
 	if err != nil {
 		return
 	}

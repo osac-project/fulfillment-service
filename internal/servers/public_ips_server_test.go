@@ -17,58 +17,23 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
 var _ = Describe("Public IPs server", func() {
-	var (
-		ctx             context.Context
-		tx              database.Tx
-		publicIPPoolDao *dao.GenericDAO[*privatev1.PublicIPPool]
-	)
+	var publicIPPoolDao *dao.GenericDAO[*privatev1.PublicIPPool]
 
 	BeforeEach(func() {
 		var err error
-
-		// Create a context:
-		ctx = context.Background()
-
-		// Prepare the database pool:
-		db := server.MakeDatabase()
-		DeferCleanup(db.Close)
-		pool, err := pgxpool.New(ctx, db.MakeURL())
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(pool.Close)
-
-		// Create the transaction manager:
-		tm, err := database.NewTxManager().
-			SetLogger(logger).
-			SetPool(pool).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
-		// Start a transaction and add it to the context:
-		tx, err = tm.Begin(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := tm.End(ctx, tx)
-			Expect(err).ToNot(HaveOccurred())
-		})
-		ctx = database.TxIntoContext(ctx, tx)
-
-		// Create the tables:
-		err = dao.CreateTables[*privatev1.PublicIP](ctx)
-		Expect(err).ToNot(HaveOccurred())
-		err = dao.CreateTables[*privatev1.PublicIPPool](ctx)
-		Expect(err).ToNot(HaveOccurred())
 
 		// Create the PublicIPPool DAO:
 		publicIPPoolDao, err = dao.NewGenericDAO[*privatev1.PublicIPPool]().
@@ -83,7 +48,7 @@ var _ = Describe("Public IPs server", func() {
 		resp, err := publicIPPoolDao.Create().SetObject(
 			privatev1.PublicIPPool_builder{
 				Metadata: privatev1.Metadata_builder{
-					Tenants: []string{"shared"},
+					Tenant: auth.SharedTenant,
 				}.Build(),
 				Spec: privatev1.PublicIPPoolSpec_builder{
 					Cidrs: []string{"10.0.0.0/24"},
@@ -213,7 +178,7 @@ var _ = Describe("Public IPs server", func() {
 
 			// List the objects:
 			response, err := publicIPsServer.List(ctx, publicv1.PublicIPsListRequest_builder{
-				Limit: proto.Int32(1),
+				Limit: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -235,7 +200,7 @@ var _ = Describe("Public IPs server", func() {
 
 			// List the objects:
 			response, err := publicIPsServer.List(ctx, publicv1.PublicIPsListRequest_builder{
-				Offset: proto.Int32(1),
+				Offset: new(int32(1)),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetSize()).To(BeNumerically("==", count-1))
@@ -260,7 +225,7 @@ var _ = Describe("Public IPs server", func() {
 			// List the objects:
 			for _, object := range objects {
 				response, err := publicIPsServer.List(ctx, publicv1.PublicIPsListRequest_builder{
-					Filter: proto.String(fmt.Sprintf("this.id == '%s'", object.GetId())),
+					Filter: new(fmt.Sprintf("this.id == '%s'", object.GetId())),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.GetSize()).To(BeNumerically("==", 1))
@@ -287,6 +252,52 @@ var _ = Describe("Public IPs server", func() {
 			Expect(proto.Equal(createResponse.GetObject(), getResponse.GetObject())).To(BeTrue())
 		})
 
+		It("Updates labels on a public IP", func() {
+			createResponse, err := publicIPsServer.Create(ctx, publicv1.PublicIPsCreateRequest_builder{
+				Object: publicv1.PublicIP_builder{
+					Spec: publicv1.PublicIPSpec_builder{
+						Pool: poolID,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			created := createResponse.GetObject()
+
+			updateResponse, err := publicIPsServer.Update(ctx,
+				publicv1.PublicIPsUpdateRequest_builder{
+					Object: publicv1.PublicIP_builder{
+						Id: created.GetId(),
+						Metadata: publicv1.Metadata_builder{
+							Labels: map[string]string{
+								"env": "test",
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"metadata.labels"},
+					},
+				}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updateResponse.GetObject().GetMetadata().GetLabels()).To(
+				HaveKeyWithValue("env", "test"),
+			)
+
+			getResponse, err := publicIPsServer.Get(ctx, publicv1.PublicIPsGetRequest_builder{
+				Id: created.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getResponse.GetObject().GetMetadata().GetLabels()).To(
+				HaveKeyWithValue("env", "test"),
+			)
+		})
+
+		It("Rejects update with nil object", func() {
+			_, err := publicIPsServer.Update(ctx,
+				publicv1.PublicIPsUpdateRequest_builder{}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("object is mandatory"))
+		})
+
 		It("Delete object", func() {
 			// Create the object:
 			createResponse, err := publicIPsServer.Create(ctx, publicv1.PublicIPsCreateRequest_builder{
@@ -299,12 +310,16 @@ var _ = Describe("Public IPs server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object := createResponse.GetObject()
 
-			// Add a finalizer, as otherwise the object will be immediately deleted and archived and it
-			// won't be possible to verify the deletion timestamp. This can't be done using the server
-			// because this is a public object, and public objects don't have the finalizers field.
+			// Add a finalizer and transition to ALLOCATED. Finalizer prevents immediate
+			// archival so we can verify the deletion timestamp. State must be ALLOCATED
+			// because only ALLOCATED PublicIPs can be deleted. Both are set via raw SQL
+			// because the public API doesn't expose finalizers or status.state.
+			tx, err := database.TxFromContext(ctx)
+			Expect(err).ToNot(HaveOccurred())
 			_, err = tx.Exec(
 				ctx,
-				`update public_ips set finalizers = '{"a"}' where id = $1`,
+				`update public_ips set finalizers = '{"a"}',`+
+					` data = jsonb_set(data, '{status,state}', '"PUBLIC_IP_STATE_ALLOCATED"') where id = $1`,
 				object.GetId(),
 			)
 			Expect(err).ToNot(HaveOccurred())

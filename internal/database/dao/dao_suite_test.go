@@ -14,14 +14,15 @@ language governing permissions and limitations under the License.
 package dao
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
+	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/logging"
-	. "github.com/osac-project/fulfillment-service/internal/testing"
 )
 
 func TestDAO(t *testing.T) {
@@ -31,10 +32,10 @@ func TestDAO(t *testing.T) {
 
 var (
 	logger *slog.Logger
-	server *DatabaseServer
+	server *database.Container
 )
 
-var _ = BeforeSuite(func() {
+var _ = BeforeSuite(func(ctx context.Context) {
 	var err error
 
 	// Create the logger:
@@ -44,7 +45,15 @@ var _ = BeforeSuite(func() {
 		Build()
 	Expect(err).ToNot(HaveOccurred())
 
-	// Create the database server:
-	server = MakeDatabaseServer()
-	DeferCleanup(server.Close)
+	// Create and start the database server:
+	server, err = database.NewContainer().
+		SetLogger(logger).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+	err = server.Start(ctx)
+	Expect(err).ToNot(HaveOccurred())
+	DeferCleanup(func(ctx context.Context) {
+		err = server.Stop(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	})
 })

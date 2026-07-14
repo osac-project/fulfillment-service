@@ -24,7 +24,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -37,10 +36,12 @@ import (
 func Cmd() *cobra.Command {
 	runner := &runnerContext{}
 	command := &cobra.Command{
-		Use:   "watch",
-		Short: "Watch for events",
-		Args:  cobra.NoArgs,
-		RunE:  runner.run,
+		Use:                   "watch [FLAG...]",
+		Short:                 shortHelp,
+		Long:                  longHelp,
+		DisableFlagsInUseLine: true,
+		Args:                  cobra.NoArgs,
+		RunE:                  runner.run,
 	}
 	flags := command.Flags()
 	network.AddGrpcClientFlags(flags, network.GrpcClientName, network.DefaultGrpcAddress)
@@ -48,19 +49,19 @@ func Cmd() *cobra.Command {
 		&runner.args.filter,
 		"filter",
 		"",
-		"Event filter",
+		filterFlagHelp,
 	)
 	flags.StringArrayVar(
 		&runner.args.caFiles,
 		"ca-file",
 		[]string{},
-		"File or directory containing trusted CA certificates.",
+		caFileFlagHelp,
 	)
 	flags.StringVar(
 		&runner.args.tokenFile,
 		"token-file",
 		"",
-		"File containing the token to use for authentication.",
+		tokenFileFlagHelp,
 	)
 	return command
 }
@@ -134,7 +135,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 	// Start watching events:
 	eventsClient := publicv1.NewEventsClient(grpcClient)
 	eventsStream, err := eventsClient.Watch(ctx, &publicv1.EventsWatchRequest{
-		Filter: proto.String(c.args.filter),
+		Filter: new(c.args.filter),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start stream: %w", err)
@@ -165,3 +166,21 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error {
 
 // watchUserAgent is the user agent string for the watch command.
 const watchUserAgent = "fulfillment-watch"
+
+const shortHelp = `Watch for events`
+
+const longHelp = `
+Watch for events.
+`
+
+const filterFlagHelp = `
+_FILTER_ - Event filter expression.
+`
+
+const caFileFlagHelp = `
+_FILE|DIRECTORY_ - File or directory containing trusted CA certificates.
+`
+
+const tokenFileFlagHelp = `
+_FILE_ - File containing the token to use for authentication.
+`

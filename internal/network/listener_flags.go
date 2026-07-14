@@ -36,22 +36,22 @@ func AddListenerFlags(flags *pflag.FlagSet, name, addr string) {
 	_ = flags.String(
 		listenerFlagName(name, listenerAddrFlagSuffix),
 		addr,
-		fmt.Sprintf("%s listen address.", name),
+		fmt.Sprintf(listenerAddrFlagHelp, name),
 	)
 	_ = flags.String(
 		listenerFlagName(name, listenerNetworkFlagSuffix),
 		"tcp",
-		fmt.Sprintf("%s listen network.", name),
+		fmt.Sprintf(listenerNetworkFlagHelp, name),
 	)
 	_ = flags.String(
 		listenerFlagName(name, listenerTLSCrtFlagSuffix),
 		"",
-		fmt.Sprintf("%s TLS certificate in PEM format.", name),
+		fmt.Sprintf(listenerTLSCrtFlagHelp, name),
 	)
 	_ = flags.String(
 		listenerFlagName(name, listenerTLSKeyFlagSuffix),
 		"",
-		fmt.Sprintf("%s TLS key in PEM format.", name),
+		fmt.Sprintf(listenerTLSKeyFlagHelp, name),
 	)
 }
 
@@ -68,3 +68,19 @@ const (
 func listenerFlagName(name, suffix string) string {
 	return fmt.Sprintf("%s-%s", strings.ToLower(name), suffix)
 }
+
+const listenerAddrFlagHelp = `
+_ADDRESS_ - %s listen address.
+`
+
+const listenerNetworkFlagHelp = `
+_NETWORK_ - %s listen network.
+`
+
+const listenerTLSCrtFlagHelp = `
+_FILE_ - %s TLS certificate in PEM format.
+`
+
+const listenerTLSKeyFlagHelp = `
+_FILE_ - %s TLS key in PEM format.
+`

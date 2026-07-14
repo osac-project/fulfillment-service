@@ -19,8 +19,6 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
-	"google.golang.org/protobuf/proto"
-
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 )
 
@@ -41,8 +39,8 @@ var _ = Describe("Describe Subnet", func() {
 				}.Build(),
 				Spec: publicv1.SubnetSpec_builder{
 					VirtualNetwork: "vnet-abc123",
-					Ipv4Cidr:       proto.String("10.0.1.0/24"),
-					Ipv6Cidr:       proto.String("2001:db8::/64"),
+					Ipv4Cidr:       new("10.0.1.0/24"),
+					Ipv6Cidr:       new("2001:db8::/64"),
 				}.Build(),
 				Status: publicv1.SubnetStatus_builder{
 					State:   publicv1.SubnetState_SUBNET_STATE_READY,
@@ -79,7 +77,7 @@ var _ = Describe("Describe Subnet", func() {
 				Id: "subnet-003",
 				Spec: publicv1.SubnetSpec_builder{
 					VirtualNetwork: "vnet-abc123",
-					Ipv6Cidr:       proto.String("2001:db8::/64"),
+					Ipv6Cidr:       new("2001:db8::/64"),
 				}.Build(),
 			}.Build()
 
@@ -109,7 +107,7 @@ var _ = Describe("Describe Subnet", func() {
 				Id: "subnet-006",
 				Spec: publicv1.SubnetSpec_builder{
 					VirtualNetwork: "vnet-abc123",
-					Ipv4Cidr:       proto.String("10.0.1.0/24"),
+					Ipv4Cidr:       new("10.0.1.0/24"),
 				}.Build(),
 			}.Build()
 

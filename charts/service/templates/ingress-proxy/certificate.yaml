@@ -28,12 +28,8 @@ spec:
   - fulfillment-internal-api
   - fulfillment-internal-api.{{ .Release.Namespace }}
   - fulfillment-internal-api.{{ .Release.Namespace }}.svc.cluster.local
-{{- if .Values.externalHostname }}
-  - {{ .Values.externalHostname | quote}}
-{{- end }}
-{{- if .Values.internalHostname }}
-  - {{ .Values.internalHostname | quote}}
-{{- end }}
+  - {{ include "fulfillment-api.hostname" . | quote }}
+  - {{ include "fulfillment-internal-api.hostname" . | quote }}
   secretName: fulfillment-api-tls
   privateKey:
     rotationPolicy: Always

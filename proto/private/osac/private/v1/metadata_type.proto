@@ -15,6 +15,7 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 
 // Metadata common to all kinds of objects.
@@ -29,11 +30,11 @@ message Metadata {
   // has been deleted and this list is empty the system will automatically archive the object.
   repeated string finalizers = 3;
 
-  // Creators contains the identifiers of the users and groups that created the object.
-  repeated string creators = 4;
+  // Creator contains the identifier of the user or group that created the object.
+  string creator = 4;
 
-  // Tenants contains the identifiers of the tenants that the object belongs to.
-  repeated string tenants = 5;
+  // Tenant contains the identifier of the tenant that the object belongs to.
+  string tenant = 5;
 
   // Human friendly name of the object.
   //
@@ -44,7 +45,10 @@ message Metadata {
   // - It isn't case sensitive.
   //
   // It is optional and not unique, so multiple objecs, even created by the same user or tenant, can have the same name.
-  string name = 6;
+  string name = 6 [(buf.validate.field).string = {
+    max_len: 63,
+    pattern: "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)?$"
+  }];
 
   // Labels contains key-value pairs for organizing and selecting objects.
   //
@@ -68,4 +72,23 @@ message Metadata {
 
   // Version is a numeric field that is automatically incremented with every change to the object.
   int32 version = 9;
+
+  // Full name of the project that the object is assigned to. It can be empty, which means the object belongs to
+  // the default project of the tenant.
+  //
+  // When not empty, the value is a dot-separated path of labels representing a hierarchy of projects. For example,
+  // `team-a.frontend.staging` represents a project nested three levels deep.
+  //
+  // Each label in the path has the same restrictions as DNS labels, as described in RFC 1035:
+  //
+  // - Must be between 1 and 63 characters long.
+  // - Must only contain letters (a-z), digits (0-9) and hyphens (-).
+  // - It isn't case sensitive.
+  //
+  // For project objects this field represents the parent project. For example, if a project named `frontend` has
+  // this field set to `team-a`, it means that `frontend` is a child of the `team-a` project, and its full name is
+  // `team-a.frontend`.
+  //
+  // For organization objects this field is always empty, as organizations don't belong to a project.
+  string project = 10;
 }

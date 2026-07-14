@@ -45,10 +45,8 @@ const (
 //
 // Service for managing role bindings.
 //
-// Role bindings grant the permissions defined by a role to a set of subjects (groups). The groups referenced in a
-// role binding are identified by their identity provider (IDP) identifiers, as this service does not manage groups
-// directly. Only administrators can create, update, or delete role bindings. Regular users can only get and list
-// them.
+// Role bindings grant the permissions defined by a role to a set of users. Only administrators can create, update,
+// or delete role bindings. Regular users can only get and list them.
 type RoleBindingsClient interface {
 	// Retrieves the list of role bindings.
 	List(ctx context.Context, in *RoleBindingsListRequest, opts ...grpc.CallOption) (*RoleBindingsListResponse, error)
@@ -132,10 +130,8 @@ func (c *roleBindingsClient) Delete(ctx context.Context, in *RoleBindingsDeleteR
 //
 // Service for managing role bindings.
 //
-// Role bindings grant the permissions defined by a role to a set of subjects (groups). The groups referenced in a
-// role binding are identified by their identity provider (IDP) identifiers, as this service does not manage groups
-// directly. Only administrators can create, update, or delete role bindings. Regular users can only get and list
-// them.
+// Role bindings grant the permissions defined by a role to a set of users. Only administrators can create, update,
+// or delete role bindings. Regular users can only get and list them.
 type RoleBindingsServer interface {
 	// Retrieves the list of role bindings.
 	List(context.Context, *RoleBindingsListRequest) (*RoleBindingsListResponse, error)

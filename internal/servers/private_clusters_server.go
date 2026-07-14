@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,14 +34,14 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
-	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/utils"
 )
 
 type PrivateClustersServerBuilder struct {
 	logger            *slog.Logger
-	notifier          *database.Notifier
+	notifier          events.Notifier
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -52,10 +51,11 @@ var _ privatev1.ClustersServer = (*PrivateClustersServer)(nil)
 
 type PrivateClustersServer struct {
 	privatev1.UnimplementedClustersServer
-	logger       *slog.Logger
-	templatesDao *dao.GenericDAO[*privatev1.ClusterTemplate]
-	hostTypesDao *dao.GenericDAO[*privatev1.HostType]
-	generic      *GenericServer[*privatev1.Cluster]
+	logger          *slog.Logger
+	templatesDao    *dao.GenericDAO[*privatev1.ClusterTemplate]
+	catalogItemsDao *dao.GenericDAO[*privatev1.ClusterCatalogItem]
+	hostTypesDao    *dao.GenericDAO[*privatev1.HostType]
+	generic         *GenericServer[*privatev1.Cluster]
 }
 
 func NewPrivateClustersServer() *PrivateClustersServerBuilder {
@@ -67,7 +67,7 @@ func (b *PrivateClustersServerBuilder) SetLogger(value *slog.Logger) *PrivateClu
 	return b
 }
 
-func (b *PrivateClustersServerBuilder) SetNotifier(value *database.Notifier) *PrivateClustersServerBuilder {
+func (b *PrivateClustersServerBuilder) SetNotifier(value events.Notifier) *PrivateClustersServerBuilder {
 	b.notifier = value
 	return b
 }
@@ -110,6 +110,16 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 		return
 	}
 
+	// Create the catalog items DAO:
+	catalogItemsDao, err := dao.NewGenericDAO[*privatev1.ClusterCatalogItem]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	// Create the host types DAO:
 	hostTypesDao, err := dao.NewGenericDAO[*privatev1.HostType]().
 		SetLogger(b.logger).
@@ -135,10 +145,11 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 
 	// Create and populate the object:
 	result = &PrivateClustersServer{
-		logger:       b.logger,
-		templatesDao: templatesDao,
-		hostTypesDao: hostTypesDao,
-		generic:      generic,
+		logger:          b.logger,
+		templatesDao:    templatesDao,
+		catalogItemsDao: catalogItemsDao,
+		hostTypesDao:    hostTypesDao,
+		generic:         generic,
 	}
 	return
 }
@@ -180,10 +191,24 @@ func (s *PrivateClustersServer) Create(ctx context.Context,
 		return
 	}
 
-	// Validate template and perform transformations:
-	err = s.validateAndTransformCluster(ctx, request.GetObject())
-	if err != nil {
+	// Dispatch between catalog item and template paths:
+	catalogItemRef := spec.GetCatalogItem()
+	templateRef := spec.GetTemplate()
+	if catalogItemRef != "" && templateRef != "" {
+		err = grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"catalog_item and template are mutually exclusive")
 		return
+	}
+	if catalogItemRef != "" {
+		err = s.validateAndTransformCatalogItem(ctx, request.GetObject())
+		if err != nil {
+			return
+		}
+	} else {
+		err = s.validateAndTransformCluster(ctx, request.GetObject())
+		if err != nil {
+			return
+		}
 	}
 
 	err = s.generic.Create(ctx, request, &response)
@@ -202,6 +227,9 @@ func (s *PrivateClustersServer) Update(ctx context.Context,
 	}
 	err = s.validateNodeSetsUpdate(ctx, request)
 	if err != nil {
+		return
+	}
+	if err = utils.ValidateClusterSpecFields(request.GetObject().GetSpec()); err != nil {
 		return
 	}
 	err = s.generic.Update(ctx, request, &response)
@@ -307,14 +335,14 @@ func (s *PrivateClustersServer) validateNoDuplicateConditions(object *privatev1.
 	conditionTypes := &bitset.BitSet{}
 	for _, condition := range conditions {
 		conditionType := condition.GetType()
-		if conditionTypes.Test(uint(conditionType)) {
+		if conditionTypes.Test(uint(conditionType)) { // #nosec G115 -- proto enum, non-negative
 			return grpcstatus.Errorf(
 				grpccodes.InvalidArgument,
 				"condition '%s' is duplicated",
 				conditionType.String(),
 			)
 		}
-		conditionTypes.Set(uint(conditionType))
+		conditionTypes.Set(uint(conditionType)) // #nosec G115 -- proto enum, non-negative
 	}
 	return nil
 }
@@ -455,13 +483,14 @@ func (s *PrivateClustersServer) validateNodeSetHostTypeImmutability(
 // cannot be changed after cluster creation.
 func (s *PrivateClustersServer) validateTemplateImmutability(ctx context.Context,
 	request *privatev1.ClustersUpdateRequest) error {
-	// Check if template or template_parameters are being updated:
+	// Check if template, template_parameters, or catalog_item are being updated:
 	updateMask := request.GetUpdateMask()
 	updatingTemplate := s.isFieldInMask(updateMask, "spec.template")
 	updatingTemplateParams := s.isFieldInMask(updateMask, "spec.template_parameters")
+	updatingCatalogItem := s.isFieldInMask(updateMask, "spec.catalog_item")
 
-	// If neither field is being updated, no validation needed:
-	if !updatingTemplate && !updatingTemplateParams {
+	// If none of the immutable fields are being updated, no validation needed:
+	if !updatingTemplate && !updatingTemplateParams && !updatingCatalogItem {
 		return nil
 	}
 
@@ -493,12 +522,21 @@ func (s *PrivateClustersServer) validateTemplateImmutability(ctx context.Context
 		templateParamsEqual := func(first, second *anypb.Any) bool {
 			return proto.Equal(first, second)
 		}
-		if !maps.EqualFunc(existingSpec.GetTemplateParameters(), newSpec.GetTemplateParameters(), templateParamsEqual) {
+		if !maps.EqualFunc(existingSpec.GetTemplateParameters(), newSpec.GetTemplateParameters(), templateParamsEqual) { //nolint:govet // inline: Go compiler doesn't support type param inference for inlining yet
 			return grpcstatus.Errorf(
 				grpccodes.InvalidArgument,
 				"cannot change spec.template_parameters: template parameters are immutable",
 			)
 		}
+	}
+
+	if updatingCatalogItem && existingSpec.GetCatalogItem() != newSpec.GetCatalogItem() {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"cannot change spec.catalog_item from '%s' to '%s': catalog item is immutable",
+			existingSpec.GetCatalogItem(),
+			newSpec.GetCatalogItem(),
+		)
 	}
 
 	return nil
@@ -531,7 +569,53 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 	}
 
 	// Check that the host types given in the cluster and the template exist, and index them by identifier and
-	// name, so tha it will be easier to look them up later..
+	// name, so that it will be easier to look them up later.
+	hostTypes, err := s.lookupAndIndexHostTypes(ctx, template)
+	if err != nil {
+		return err
+	}
+
+	// Validate node sets against the template:
+	templateNodeSets := template.GetNodeSets()
+	clusterNodeSets := cluster.GetSpec().GetNodeSets()
+	if err = s.validateNodeSets(clusterNodeSets, templateNodeSets, hostTypes, templateRef); err != nil {
+		return err
+	}
+
+	// Replace the node sets given in the cluster with those from the template, taking only the size from cluster:
+	mergeNodeSetsWithTemplate(cluster, templateNodeSets, clusterNodeSets)
+
+	// Validate template parameters:
+	clusterParameters := cluster.GetSpec().GetTemplateParameters()
+	err = utils.ValidateClusterTemplateParameters(template, clusterParameters)
+	if err != nil {
+		return err
+	}
+
+	// Set default values for template parameters:
+	actualClusterParameters := utils.ProcessTemplateParametersWithDefaults(
+		utils.ClusterTemplateAdapter{ClusterTemplate: template},
+		clusterParameters,
+	)
+	cluster.GetSpec().SetTemplateParameters(actualClusterParameters)
+
+	// Make sure that the template and the host types of the node sets are referenced by their identifiers, as
+	// that is what we want to save to the database.
+	cluster.GetSpec().SetTemplate(template.GetId())
+	for _, clusterNodeSet := range cluster.GetSpec().GetNodeSets() {
+		hostTypeRef := clusterNodeSet.GetHostType()
+		hostType := hostTypes[hostTypeRef]
+		clusterNodeSet.SetHostType(hostType.GetId())
+	}
+
+	return nil
+}
+
+// lookupAndIndexHostTypes fetches host types referenced by the template's node sets and indexes them
+// by both identifier and name.
+func (s *PrivateClustersServer) lookupAndIndexHostTypes(
+	ctx context.Context, template *privatev1.ClusterTemplate,
+) (map[string]*privatev1.HostType, error) {
 	hostTypes := map[string]*privatev1.HostType{}
 	for _, nodeSet := range template.GetNodeSets() {
 		hostTypeRef := nodeSet.GetHostType()
@@ -540,7 +624,7 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 		}
 		hostType, err := s.lookupHostType(ctx, hostTypeRef)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		hostTypeName := hostType.GetMetadata().GetName()
 		if hostTypeName != "" {
@@ -549,23 +633,17 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 		hostTypeId := hostType.GetId()
 		hostTypes[hostTypeId] = hostType
 	}
-	for _, nodeSet := range template.GetNodeSets() {
-		hostTypeRef := nodeSet.GetHostType()
-		hostType, err := s.lookupHostType(ctx, hostTypeRef)
-		if err != nil {
-			return err
-		}
-		hostTypeName := hostType.GetMetadata().GetName()
-		if hostTypeName != "" {
-			hostTypes[hostTypeName] = hostType
-		}
-		hostTypeId := hostType.GetId()
-		hostTypes[hostTypeId] = hostType
-	}
+	return hostTypes, nil
+}
 
+// validateNodeSets checks membership, host-type consistency, and positive size for cluster node sets.
+func (s *PrivateClustersServer) validateNodeSets(
+	clusterNodeSets map[string]*privatev1.ClusterNodeSet,
+	templateNodeSets map[string]*privatev1.ClusterTemplateNodeSet,
+	hostTypes map[string]*privatev1.HostType,
+	templateRef string,
+) error {
 	// Check that all the node sets given in the cluster correspond to node sets that exist in the template:
-	templateNodeSets := template.GetNodeSets()
-	clusterNodeSets := cluster.GetSpec().GetNodeSets()
 	for clusterNodeSetKey := range clusterNodeSets {
 		templateNodeSet := templateNodeSets[clusterNodeSetKey]
 		if templateNodeSet == nil {
@@ -634,7 +712,16 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 		}
 	}
 
-	// Replace the node sets given in the cluster with those from the template, taking only the size from cluster:
+	return nil
+}
+
+// mergeNodeSetsWithTemplate replaces the cluster's node sets with template-derived sets, keeping only
+// the size from the cluster.
+func mergeNodeSetsWithTemplate(
+	cluster *privatev1.Cluster,
+	templateNodeSets map[string]*privatev1.ClusterTemplateNodeSet,
+	clusterNodeSets map[string]*privatev1.ClusterNodeSet,
+) {
 	actualNodeSets := map[string]*privatev1.ClusterNodeSet{}
 	for templateNodeSetKey, templateNodeSet := range templateNodeSets {
 		var actualNodeSetSize int32
@@ -650,46 +737,69 @@ func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context,
 		}.Build()
 	}
 	cluster.GetSpec().SetNodeSets(actualNodeSets)
+}
 
-	// Validate template parameters:
-	clusterParameters := cluster.GetSpec().GetTemplateParameters()
-	err = utils.ValidateClusterTemplateParameters(template, clusterParameters)
+func (s *PrivateClustersServer) validateAndTransformCatalogItem(ctx context.Context, cluster *privatev1.Cluster) error {
+	if cluster == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
+	}
+	catalogItemRef := cluster.GetSpec().GetCatalogItem()
+	if catalogItemRef == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "catalog_item is mandatory")
+	}
+
+	catalogItem, err := s.lookupCatalogItem(ctx, catalogItemRef)
 	if err != nil {
 		return err
 	}
 
-	// Set default values for template parameters:
-	actualClusterParameters := utils.ProcessTemplateParametersWithDefaults(
-		utils.ClusterTemplateAdapter{ClusterTemplate: template},
-		clusterParameters,
-	)
-	cluster.GetSpec().SetTemplateParameters(actualClusterParameters)
-
-	// Validate network CIDRs if provided:
-	if cluster.GetSpec().HasNetwork() {
-		network := cluster.GetSpec().GetNetwork()
-		if network.HasPodCidr() {
-			if _, _, err := net.ParseCIDR(network.GetPodCidr()); err != nil {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"invalid pod_cidr format '%s': %v", network.GetPodCidr(), err)
-			}
-		}
-		if network.HasServiceCidr() {
-			if _, _, err := net.ParseCIDR(network.GetServiceCidr()); err != nil {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"invalid service_cidr format '%s': %v", network.GetServiceCidr(), err)
-			}
-		}
+	if err := validateCatalogItemAccess(catalogItem, catalogItemRef); err != nil {
+		return err
 	}
 
-	// Make sure that the templte and the host types of the node sets are reference by their identifiers, as that
-	// is what we want to save to the database.
-	cluster.GetSpec().SetTemplate(template.GetId())
-	for _, clusterNodeSet := range cluster.GetSpec().GetNodeSets() {
-		hostTypeRef := clusterNodeSet.GetHostType()
-		hostType := hostTypes[hostTypeRef]
-		clusterNodeSet.SetHostType(hostType.GetId())
+	templateRef := catalogItem.GetTemplate()
+	if templateRef != "" {
+		cluster.GetSpec().SetTemplate(templateRef)
+	}
+
+	if err := applyFieldDefinitions(cluster.GetSpec(), catalogItem.GetFieldDefinitions()); err != nil {
+		return err
+	}
+
+	if err := utils.ValidateClusterSpecFields(cluster.GetSpec()); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func (s *PrivateClustersServer) lookupCatalogItem(ctx context.Context,
+	key string) (result *privatev1.ClusterCatalogItem, err error) {
+	if key == "" {
+		return
+	}
+	response, err := s.catalogItemsDao.List().
+		SetFilter(fmt.Sprintf("this.id == %[1]s || this.metadata.name == %[1]s", strconv.Quote(key))).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		var deniedErr *dao.ErrDenied
+		if errors.As(err, &deniedErr) {
+			err = grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+			return
+		}
+		s.logger.ErrorContext(ctx, "Failed to lookup catalog item",
+			slog.String("key", key),
+			slog.Any("error", err))
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item")
+		return
+	}
+	items := response.GetItems()
+	if len(items) == 0 {
+		err = grpcstatus.Errorf(grpccodes.NotFound,
+			"there is no catalog item with identifier or name '%s'", key)
+		return
+	}
+	result = items[0]
+	return
 }
