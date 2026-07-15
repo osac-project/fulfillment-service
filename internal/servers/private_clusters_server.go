@@ -211,7 +211,11 @@ func (s *PrivateClustersServer) Create(ctx context.Context,
 		}
 	}
 
-	err = s.generic.Create(ctx, request, &response)
+	if request.GetDryRun() {
+		err = s.generic.CreateDryRun(ctx, request, &response)
+	} else {
+		err = s.generic.Create(ctx, request, &response)
+	}
 	return
 }
 
