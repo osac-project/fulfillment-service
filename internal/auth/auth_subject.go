@@ -78,13 +78,13 @@ func (s *Subject) MarshalJSON() (data []byte, err error) {
 		tenants = s.Tenants.Inclusions()
 	} else {
 		err = fmt.Errorf("the tenant set is infinite")
-		return
+		return data, err
 	}
 	data, err = json.Marshal(subjectJson{
 		User:    s.User,
 		Tenants: tenants,
 	})
-	return
+	return data, err
 }
 
 // universalMarker is the special value used in the subject's tenant list to indicate that the subject has access to all

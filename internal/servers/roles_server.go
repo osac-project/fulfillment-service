@@ -89,11 +89,11 @@ func (b *RolesServerBuilder) SetMetricsRegisterer(value prometheus.Registerer) *
 func (b *RolesServerBuilder) Build() (result *RolesServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.Role, *privatev1.Role]().
@@ -101,14 +101,14 @@ func (b *RolesServerBuilder) Build() (result *RolesServer, err error) {
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.Role, *publicv1.Role]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateRolesServer().
@@ -119,7 +119,7 @@ func (b *RolesServerBuilder) Build() (result *RolesServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &RolesServer{
@@ -128,7 +128,7 @@ func (b *RolesServerBuilder) Build() (result *RolesServer, err error) {
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *RolesServer) List(ctx context.Context,
@@ -164,7 +164,7 @@ func (s *RolesServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *RolesServer) Get(ctx context.Context,
@@ -191,7 +191,7 @@ func (s *RolesServer) Get(ctx context.Context,
 
 	response = &publicv1.RolesGetResponse{}
 	response.SetObject(publicRole)
-	return
+	return response, err
 }
 
 func (s *RolesServer) Create(ctx context.Context,
@@ -199,7 +199,7 @@ func (s *RolesServer) Create(ctx context.Context,
 	publicRole := request.GetObject()
 	if publicRole == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateRole := &privatev1.Role{}
 	err = s.inMapper.Copy(ctx, publicRole, privateRole)
@@ -210,7 +210,7 @@ func (s *RolesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process role")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.RolesCreateRequest{}
@@ -230,12 +230,12 @@ func (s *RolesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process role")
-		return
+		return response, err
 	}
 
 	response = &publicv1.RolesCreateResponse{}
 	response.SetObject(createdPublicRole)
-	return
+	return response, err
 }
 
 func (s *RolesServer) Update(ctx context.Context,
@@ -243,11 +243,11 @@ func (s *RolesServer) Update(ctx context.Context,
 	publicRole := request.GetObject()
 	if publicRole == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	if publicRole.GetId() == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	privateRole := &privatev1.Role{}
@@ -259,7 +259,7 @@ func (s *RolesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process role")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.RolesUpdateRequest{}
@@ -281,12 +281,12 @@ func (s *RolesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process role")
-		return
+		return response, err
 	}
 
 	response = &publicv1.RolesUpdateResponse{}
 	response.SetObject(updatedPublicRole)
-	return
+	return response, err
 }
 
 func (s *RolesServer) Delete(ctx context.Context,
@@ -300,5 +300,5 @@ func (s *RolesServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.RolesDeleteResponse{}
-	return
+	return response, err
 }

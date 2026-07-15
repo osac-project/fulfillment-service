@@ -81,7 +81,7 @@ func (b *WriterBuilder) Build() (result *Writer, err error) {
 	// Check arguments:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Remove empty secrets to prevent log amplification attacks:
@@ -99,7 +99,7 @@ func (b *WriterBuilder) Build() (result *Writer, err error) {
 		context: b.context,
 		secrets: secrets,
 	}
-	return
+	return result, err
 }
 
 // Write implements the io.Writer interface.
@@ -121,5 +121,5 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 		slog.Int("size", n),
 		slog.String("data", text),
 	)
-	return
+	return n, err
 }

@@ -84,11 +84,11 @@ func (b *PrivateProjectMembershipsServerBuilder) SetMetricsRegisterer(value prom
 func (b *PrivateProjectMembershipsServerBuilder) Build() (result *PrivateProjectMembershipsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.ProjectMembership]().
@@ -100,14 +100,14 @@ func (b *PrivateProjectMembershipsServerBuilder) Build() (result *PrivateProject
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateProjectMembershipsServer{
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateProjectMembershipsServer) List(ctx context.Context,

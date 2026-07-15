@@ -150,36 +150,36 @@ func (b *ReconcilerBuilder[O]) Build() (result *Reconciler[O], err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.name == "" {
 		err = errors.New("name is mandatory")
-		return
+		return result, err
 	}
 	if b.grpcClient == nil {
 		err = errors.New("gRPC client is mandatory")
-		return
+		return result, err
 	}
 	if b.function == nil {
 		err = errors.New("function is mandatory")
-		return
+		return result, err
 	}
 	if b.syncInterval <= 0 {
 		err = fmt.Errorf("sync interval should be positive, but it is %s", b.syncInterval)
-		return
+		return result, err
 	}
 	// Find the field of the event payload that contains the type of objects supported by the reconciler:
 	payloadField, err := b.findPayloadField()
 	if err != nil {
 		err = fmt.Errorf("failed to find payload field: %w", err)
-		return
+		return result, err
 	}
 
 	// Find the method that will be used to list objects during synchronization:
 	listMethod, listRequest, listResponse, err := b.findListMethod()
 	if err != nil {
 		err = fmt.Errorf("failed to find list method: %w", err)
-		return
+		return result, err
 	}
 
 	// Set the default event filter:
@@ -228,7 +228,7 @@ func (b *ReconcilerBuilder[O]) Build() (result *Reconciler[O], err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create sync loop: %w", err)
-		return
+		return result, err
 	}
 
 	// Create the watch loop:
@@ -240,12 +240,12 @@ func (b *ReconcilerBuilder[O]) Build() (result *Reconciler[O], err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create watch loop: %w", err)
-		return
+		return result, err
 	}
 
 	// Return the result:
 	result = reconciler
-	return
+	return result, err
 }
 
 // findPayloadField finds the field of the event type that contains the payload for the type supported by the
@@ -266,11 +266,11 @@ func (b *ReconcilerBuilder[O]) findPayloadField() (result protoreflect.FieldDesc
 		}
 		if eventField.Message().FullName() == objectDesc.FullName() {
 			result = eventField
-			return
+			return result, err
 		}
 	}
 	err = fmt.Errorf("failed to find event field for type '%T'", object)
-	return
+	return result, err
 }
 
 // findListMethod finds the method that will be used to list objects.
@@ -311,18 +311,18 @@ func (b *ReconcilerBuilder[O]) findListMethod() (name string, request, response 
 	)
 	if methodDesc == nil {
 		err = fmt.Errorf("failed to find list method for type '%T", object)
-		return
+		return name, request, response, err
 	}
 
 	// Find the request and response types:
 	requestType, err := protoregistry.GlobalTypes.FindMessageByName(methodDesc.Input().FullName())
 	if err != nil {
-		return
+		return name, request, response, err
 	}
 	request = requestType.New().Interface()
 	responseType, err := protoregistry.GlobalTypes.FindMessageByName(methodDesc.Output().FullName())
 	if err != nil {
-		return
+		return name, request, response, err
 	}
 	response = responseType.New().Interface()
 
@@ -330,7 +330,7 @@ func (b *ReconcilerBuilder[O]) findListMethod() (name string, request, response 
 	fullMethodName := methodDesc.FullName()
 	name = fmt.Sprintf("/%s/%s", fullMethodName.Parent(), fullMethodName.Name())
 
-	return
+	return name, request, response, err
 }
 
 // Start starts the controller. To stop it cancel the context.

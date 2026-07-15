@@ -105,15 +105,15 @@ func (b *HubCacheBuilder) Build() (result HubCache, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.connection == nil {
 		err = errors.New("gRPC connection is mandatory")
-		return
+		return result, err
 	}
 	if b.scheme == nil {
 		err = errors.New("scheme is mandatory")
-		return
+		return result, err
 	}
 
 	// Set default TTL if not specified:
@@ -131,7 +131,7 @@ func (b *HubCacheBuilder) Build() (result HubCache, err error) {
 		entriesLock: &sync.Mutex{},
 		ttl:         ttl,
 	}
-	return
+	return result, err
 }
 
 func (r *hubCache) Get(ctx context.Context, id string) (result *HubEntry, err error) {
@@ -153,7 +153,7 @@ func (r *hubCache) Get(ctx context.Context, id string) (result *HubEntry, err er
 		// Classify the error to distinguish decommissioned hubs (NotFound)
 		// from transient failures (network, timeout, etc.)
 		err = ClassifyHubError(err)
-		return
+		return result, err
 	}
 
 	r.entries[id] = &cachedHubEntry{
@@ -169,20 +169,20 @@ func (r *hubCache) create(ctx context.Context, id string) (result *HubEntry, err
 		Id: id,
 	}.Build())
 	if err != nil {
-		return
+		return result, err
 	}
 	hub := response.GetObject()
 	config, err := clientcmd.RESTConfigFromKubeConfig(hub.GetSpec().GetKubeconfig())
 	if err != nil {
-		return
+		return result, err
 	}
 	client, err := clnt.New(config, clnt.Options{Scheme: r.scheme})
 	if err != nil {
-		return
+		return result, err
 	}
 	result = &HubEntry{
 		Namespace: hub.GetSpec().GetNamespace(),
 		Client:    client,
 	}
-	return
+	return result, err
 }

@@ -118,11 +118,11 @@ func (b *PrivateNetworkClassesServerBuilder) Build() (result *PrivateNetworkClas
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -135,7 +135,7 @@ func (b *PrivateNetworkClassesServerBuilder) Build() (result *PrivateNetworkClas
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -143,7 +143,7 @@ func (b *PrivateNetworkClassesServerBuilder) Build() (result *PrivateNetworkClas
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateNetworkClassesServer) List(ctx context.Context,
@@ -163,7 +163,7 @@ func (s *PrivateNetworkClassesServer) Create(ctx context.Context,
 	// Validate before creating:
 	err = s.validateNetworkClass(ctx, request.GetObject(), nil)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Set status to READY on creation since NetworkClass has no backend provisioning.
@@ -201,7 +201,7 @@ func (s *PrivateNetworkClassesServer) Create(ctx context.Context,
 			}
 		}
 	}
-	return
+	return response, err
 }
 
 func (s *PrivateNetworkClassesServer) Update(ctx context.Context,
@@ -210,7 +210,7 @@ func (s *PrivateNetworkClassesServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.NetworkClassesGetRequest{}
@@ -218,7 +218,7 @@ func (s *PrivateNetworkClassesServer) Update(ctx context.Context,
 	var getResponse *privatev1.NetworkClassesGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingNC := getResponse.GetObject()
@@ -231,7 +231,7 @@ func (s *PrivateNetworkClassesServer) Update(ctx context.Context,
 	// Validate the merged result against the original for immutability checks:
 	err = s.validateNetworkClass(ctx, merged, existingNC)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Default-swap: if the update sets is_default=true AND the field is actually being applied
@@ -263,7 +263,7 @@ func (s *PrivateNetworkClassesServer) Update(ctx context.Context,
 	// normalized (no raw DB details leak), but the message is opaque. Fixing this
 	// requires GenericServer to preserve pgconn errors in the chain.
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateNetworkClassesServer) Delete(ctx context.Context,

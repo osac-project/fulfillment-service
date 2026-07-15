@@ -77,15 +77,15 @@ func (b *FunctionBuilder) SetUsersClient(value privatev1.UsersClient) *FunctionB
 func (b *FunctionBuilder) Build() (result *function, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.connection == nil {
 		err = errors.New("connection is mandatory")
-		return
+		return result, err
 	}
 	if b.projectGroupManager == nil {
 		err = errors.New("project group manager is mandatory")
-		return
+		return result, err
 	}
 
 	usersClient := b.usersClient
@@ -101,7 +101,7 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 		projectGroupManager: b.projectGroupManager,
 		maskCalculator:      masks.NewCalculator().Build(),
 	}
-	return
+	return result, err
 }
 
 // function is the implementation of the reconciler function.

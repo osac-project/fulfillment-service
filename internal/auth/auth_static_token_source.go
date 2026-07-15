@@ -53,11 +53,11 @@ func (b *StaticTokenSourceBuilder) Build() (result TokenSource, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.token == nil {
 		err = errors.New("token is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -65,7 +65,7 @@ func (b *StaticTokenSourceBuilder) Build() (result TokenSource, err error) {
 		logger: b.logger,
 		token:  b.token,
 	}
-	return
+	return result, err
 }
 
 // Token is the implementation of the TokenSource interface.

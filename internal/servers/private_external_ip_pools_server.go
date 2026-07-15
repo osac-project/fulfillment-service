@@ -76,11 +76,11 @@ func (b *PrivateExternalIPPoolsServerBuilder) SetMetricsRegisterer(value prometh
 func (b *PrivateExternalIPPoolsServerBuilder) Build() (result *PrivateExternalIPPoolsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.ExternalIPPool]().
@@ -92,14 +92,14 @@ func (b *PrivateExternalIPPoolsServerBuilder) Build() (result *PrivateExternalIP
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateExternalIPPoolsServer{
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateExternalIPPoolsServer) List(ctx context.Context,
@@ -120,7 +120,7 @@ func (s *PrivateExternalIPPoolsServer) Create(ctx context.Context,
 
 	err = s.validateCreate(ctx, pool)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	total := calculatePoolCapacity(pool.GetSpec().GetCidrs(), pool.GetSpec().GetIpFamily())
@@ -130,7 +130,7 @@ func (s *PrivateExternalIPPoolsServer) Create(ctx context.Context,
 	}.Build())
 
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPPoolsServer) Update(ctx context.Context,
@@ -138,7 +138,7 @@ func (s *PrivateExternalIPPoolsServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.ExternalIPPoolsGetRequest{}
@@ -146,16 +146,16 @@ func (s *PrivateExternalIPPoolsServer) Update(ctx context.Context,
 	var getResponse *privatev1.ExternalIPPoolsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = validateExternalIPPoolUpdate(request.GetObject(), getResponse.GetObject())
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPPoolsServer) validateCreate(ctx context.Context,
@@ -269,7 +269,7 @@ func (s *PrivateExternalIPPoolsServer) Delete(ctx context.Context,
 		Id: request.GetId(),
 	}.Build(), &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 	if allocated := getResponse.GetObject().GetStatus().GetAllocated(); allocated > 0 {
 		err = grpcstatus.Errorf(
@@ -277,10 +277,10 @@ func (s *PrivateExternalIPPoolsServer) Delete(ctx context.Context,
 			"cannot delete external IP pool '%s': %d external IP(s) are still allocated from it",
 			request.GetId(), allocated,
 		)
-		return
+		return response, err
 	}
 	err = s.generic.Delete(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPPoolsServer) Signal(ctx context.Context,

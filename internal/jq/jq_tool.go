@@ -63,7 +63,7 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -73,7 +73,7 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 		cache:         map[string]*Query{},
 		compileOption: b.compileOption,
 	}
-	return
+	return result, err
 }
 
 // Compile compiles the given query and saves it in a cache, so that evaluating the same query with the same variables
@@ -84,51 +84,51 @@ func (t *Tool) Compile(source string, variables ...string) (result *Query, err e
 	sort.Strings(variables)
 	query, err := t.lookup(source, variables)
 	if err != nil {
-		return
+		return result, err
 	}
 	if query == nil {
 		query, err = t.compile(source, variables)
 		if err != nil {
-			return
+			return result, err
 		}
 		t.cache[source] = query
 	}
 	result = query
-	return
+	return result, err
 }
 
 func (t *Tool) lookup(source string, variables []string) (result *Query, err error) {
 	query, ok := t.cache[source]
 	if !ok {
-		return
+		return result, err
 	}
 	if !slices.Equal(variables, query.variables) {
 		err = fmt.Errorf(
 			"query was compiled with variables %v but used with %v",
 			query.variables, variables,
 		)
-		return
+		return result, err
 	}
 	result = query
-	return
+	return result, err
 }
 
 func (t *Tool) compile(source string, variables []string) (query *Query, err error) {
 	parsed, err := gojq.Parse(source)
 	if err != nil {
-		return
+		return query, err
 	}
 
 	var code *gojq.Code
 	if t.compileOption != nil {
 		code, err = gojq.Compile(parsed, gojq.WithVariables(variables), *t.compileOption)
 		if err != nil {
-			return
+			return query, err
 		}
 	} else {
 		code, err = gojq.Compile(parsed, gojq.WithVariables(variables))
 		if err != nil {
-			return
+			return query, err
 		}
 	}
 	query = &Query{
@@ -137,7 +137,7 @@ func (t *Tool) compile(source string, variables []string) (query *Query, err err
 		variables: variables,
 		code:      code,
 	}
-	return
+	return query, err
 }
 
 // Evaluate compiles the query and then evaluates it. The input can be any kind of object that can be serialized to

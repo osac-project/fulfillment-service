@@ -105,11 +105,11 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 	// Check parameters:
 	if b.subsystem == "" {
 		err = errors.New("subsystem is mandatory")
-		return
+		return result, err
 	}
 	if b.registerer == nil {
 		err = errors.New("registerer is mandatory")
-		return
+		return result, err
 	}
 
 	// Register the request count metric:
@@ -127,7 +127,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		if errors.As(err, &registered) {
 			requestCount = registered.ExistingCollector.(*prometheus.CounterVec)
 		} else {
-			return
+			return result, err
 		}
 	}
 
@@ -147,7 +147,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		if errors.As(err, &registered) {
 			requestDuration = registered.ExistingCollector.(*prometheus.HistogramVec)
 		} else {
-			return
+			return result, err
 		}
 	}
 
@@ -166,7 +166,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		if errors.As(err, &registered) {
 			streamCount = registered.ExistingCollector.(*prometheus.CounterVec)
 		} else {
-			return
+			return result, err
 		}
 	}
 
@@ -186,7 +186,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		if errors.As(err, &registered) {
 			streamDuration = registered.ExistingCollector.(*prometheus.HistogramVec)
 		} else {
-			return
+			return result, err
 		}
 	}
 
@@ -205,7 +205,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		if errors.As(err, &registered) {
 			streamMessagesSent = registered.ExistingCollector.(*prometheus.CounterVec)
 		} else {
-			return
+			return result, err
 		}
 	}
 
@@ -225,7 +225,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 			streamMessagesReceived = registered.ExistingCollector.(*prometheus.CounterVec)
 			err = nil
 		} else {
-			return
+			return result, err
 		}
 	}
 
@@ -238,7 +238,7 @@ func (b *GrpcInterceptorBuilder) Build() (result *GrpcInterceptor, err error) {
 		streamMessagesSent:     streamMessagesSent,
 		streamMessagesReceived: streamMessagesReceived,
 	}
-	return
+	return result, err
 }
 
 // UnaryServer is the unary server interceptor function that records metrics.
@@ -256,7 +256,7 @@ func (i *GrpcInterceptor) UnaryServer(ctx context.Context, request any, info *gr
 	}
 	i.requestCount.With(labels).Inc()
 	i.requestDuration.With(labels).Observe(elapsed.Seconds())
-	return
+	return response, err
 }
 
 // StreamServer is the stream server interceptor function that records metrics.

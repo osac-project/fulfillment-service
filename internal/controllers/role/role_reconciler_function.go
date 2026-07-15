@@ -54,11 +54,11 @@ func (b *FunctionBuilder) SetConnection(value *grpc.ClientConn) *FunctionBuilder
 func (b *FunctionBuilder) Build() (result *function, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.connection == nil {
 		err = errors.New("connection is mandatory")
-		return
+		return result, err
 	}
 
 	result = &function{
@@ -67,7 +67,7 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 		maskCalculator: masks.NewCalculator().
 			Build(),
 	}
-	return
+	return result, err
 }
 
 // function is the implementation of the reconciler function.

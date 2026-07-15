@@ -99,23 +99,23 @@ func (b *ListenerBuilder) Build() (result *Listener, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.url == "" {
 		err = errors.New("database connection URL is mandatory")
-		return
+		return result, err
 	}
 	if b.channel == "" {
 		err = errors.New("channel is mandatory")
-		return
+		return result, err
 	}
 	if b.waitTimeout <= 0 {
 		err = fmt.Errorf("wait timeout should be positive, but it is %s", b.waitTimeout)
-		return
+		return result, err
 	}
 	if b.retryInterval <= 0 {
 		err = fmt.Errorf("retry interval should be positive, but it is %s", b.retryInterval)
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -129,7 +129,7 @@ func (b *ListenerBuilder) Build() (result *Listener, err error) {
 		waitTimeout:   b.waitTimeout,
 		retryInterval: b.retryInterval,
 	}
-	return
+	return result, err
 }
 
 // Ready returns true when the listener has successfully connected to the database and issued the PostgreSQL LISTEN

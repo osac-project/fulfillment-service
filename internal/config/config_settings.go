@@ -75,11 +75,11 @@ func (b *SettingsBuilder) Build() (result *Settings, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.dir == "" {
 		err = errors.New("directory is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the object:
@@ -88,7 +88,7 @@ func (b *SettingsBuilder) Build() (result *Settings, err error) {
 		dir:    b.dir,
 		lock:   &sync.RWMutex{},
 	}
-	return
+	return result, err
 }
 
 // generalSettings contains the non-secret fields of the configuration. These are persisted to a JSON file.
@@ -424,7 +424,7 @@ func (c *Settings) TokenSource(ctx context.Context) (result auth.TokenSource, er
 		caPool, err = c.CaPool(ctx)
 		if err != nil {
 			err = fmt.Errorf("failed to get CA pool: %w", err)
-			return
+			return result, err
 		}
 		result, err = oauth.NewTokenSource().
 			SetLogger(c.logger).
@@ -444,7 +444,7 @@ func (c *Settings) TokenSource(ctx context.Context) (result auth.TokenSource, er
 		if err != nil {
 			err = fmt.Errorf("failed to create OAuth token source: %w", err)
 		}
-		return
+		return result, err
 	}
 
 	// If a token script has been configured, then use it to create a script token source:
@@ -457,7 +457,7 @@ func (c *Settings) TokenSource(ctx context.Context) (result auth.TokenSource, er
 		if err != nil {
 			err = fmt.Errorf("failed to create script token source: %w", err)
 		}
-		return
+		return result, err
 	}
 
 	// Finally, if there is an access token try to use it:
@@ -471,12 +471,12 @@ func (c *Settings) TokenSource(ctx context.Context) (result auth.TokenSource, er
 		if err != nil {
 			err = fmt.Errorf("failed to create static token source: %w", err)
 		}
-		return
+		return result, err
 	}
 
 	// If we are here then there is no way to get tokens, so it will all be anonymous.
 	result = nil
-	return
+	return result, err
 }
 
 // Conect creates a gRPC connection from the configuration.
@@ -507,14 +507,14 @@ func (c *Settings) connect(ctx context.Context, flags *pflag.FlagSet, tokenSourc
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create version interceptor: %w", err)
-		return
+		return result, err
 	}
 
 	// Create the gRPC client:
 	caPool, err := c.CaPool(ctx)
 	if err != nil {
 		err = fmt.Errorf("failed to get CA pool: %w", err)
-		return
+		return result, err
 	}
 	result, err = network.NewGrpcClient().
 		SetLogger(c.logger).
@@ -530,10 +530,10 @@ func (c *Settings) connect(ctx context.Context, flags *pflag.FlagSet, tokenSourc
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create gRPC client: %w", err)
-		return
+		return result, err
 	}
 
-	return
+	return result, err
 }
 
 // Packages returns the list of packages that should be enabled according to the configuration. The public packages
@@ -572,11 +572,11 @@ func (c *Settings) CaPool(ctx context.Context) (result *x509.CertPool, err error
 	if c.caPool == nil {
 		err = c.createCaPool(ctx)
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 	result = c.caPool
-	return
+	return result, err
 }
 
 func (c *Settings) createCaPool(ctx context.Context) error {
@@ -656,14 +656,14 @@ func (s *settingsTokenStore) Load(ctx context.Context) (result *auth.Token, err 
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	if s.settings.secret.AccessToken == "" {
-		return
+		return result, err
 	}
 	result = &auth.Token{
 		Access:  s.settings.secret.AccessToken,
 		Refresh: s.settings.secret.RefreshToken,
 		Expiry:  s.settings.secret.TokenExpiry,
 	}
-	return
+	return result, err
 }
 
 func (s *settingsTokenStore) Save(ctx context.Context, token *auth.Token) error {

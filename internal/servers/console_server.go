@@ -82,25 +82,25 @@ func (s *consoleSessionsServer) Create(ctx context.Context,
 
 	if resourceID == "" {
 		err = status.Errorf(codes.InvalidArgument, "field 'resource_id' is mandatory")
-		return
+		return response, err
 	}
 
 	if resourceType != publicv1.ConsoleResourceType_CONSOLE_RESOURCE_TYPE_COMPUTE_INSTANCE {
 		err = status.Errorf(codes.Unimplemented, "unsupported resource type: %s", resourceType.String())
-		return
+		return response, err
 	}
 
 	consoleType := mapConsoleType(obj.GetType())
 	if consoleType == "" {
 		err = status.Errorf(codes.InvalidArgument, "unsupported console type: %s", obj.GetType().String())
-		return
+		return response, err
 	}
 
 	clientID := obj.GetClientId()
 	if clientID != "" {
 		if _, err = uuid.Parse(clientID); err != nil {
 			err = status.Errorf(codes.InvalidArgument, "client_id must be a valid UUID or empty")
-			return
+			return response, err
 		}
 	}
 
@@ -113,7 +113,7 @@ func (s *consoleSessionsServer) Create(ctx context.Context,
 		ClientID:    clientID,
 	})
 	if err != nil {
-		return
+		return response, err
 	}
 
 	response = publicv1.ConsoleSessionsCreateResponse_builder{
@@ -126,7 +126,7 @@ func (s *consoleSessionsServer) Create(ctx context.Context,
 			ExpiresAt:    timestamppb.New(result.ExpiresAt),
 		}.Build(),
 	}.Build()
-	return
+	return response, err
 }
 
 // mapConsoleType maps proto ConsoleType to internal console type string.

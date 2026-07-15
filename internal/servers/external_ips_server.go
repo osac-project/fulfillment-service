@@ -79,15 +79,15 @@ func (b *ExternalIPsServerBuilder) SetMetricsRegisterer(value prometheus.Registe
 func (b *ExternalIPsServerBuilder) Build() (result *ExternalIPsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.ExternalIP, *privatev1.ExternalIP]().
@@ -95,14 +95,14 @@ func (b *ExternalIPsServerBuilder) Build() (result *ExternalIPsServer, err error
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.ExternalIP, *publicv1.ExternalIP]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateExternalIPsServer().
@@ -113,7 +113,7 @@ func (b *ExternalIPsServerBuilder) Build() (result *ExternalIPsServer, err error
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &ExternalIPsServer{
@@ -122,7 +122,7 @@ func (b *ExternalIPsServerBuilder) Build() (result *ExternalIPsServer, err error
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *ExternalIPsServer) List(ctx context.Context,
@@ -158,7 +158,7 @@ func (s *ExternalIPsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ExternalIPsServer) Get(ctx context.Context,
@@ -185,7 +185,7 @@ func (s *ExternalIPsServer) Get(ctx context.Context,
 
 	response = &publicv1.ExternalIPsGetResponse{}
 	response.SetObject(publicExternalIP)
-	return
+	return response, err
 }
 
 func (s *ExternalIPsServer) Create(ctx context.Context,
@@ -193,7 +193,7 @@ func (s *ExternalIPsServer) Create(ctx context.Context,
 	publicExternalIP := request.GetObject()
 	if publicExternalIP == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateExternalIP := &privatev1.ExternalIP{}
 	err = s.inMapper.Copy(ctx, publicExternalIP, privateExternalIP)
@@ -204,7 +204,7 @@ func (s *ExternalIPsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process external IP")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.ExternalIPsCreateRequest{}
@@ -224,12 +224,12 @@ func (s *ExternalIPsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process external IP")
-		return
+		return response, err
 	}
 
 	response = &publicv1.ExternalIPsCreateResponse{}
 	response.SetObject(createdPublicExternalIP)
-	return
+	return response, err
 }
 
 func (s *ExternalIPsServer) Update(ctx context.Context,
@@ -237,7 +237,7 @@ func (s *ExternalIPsServer) Update(ctx context.Context,
 	publicExternalIP := request.GetObject()
 	if publicExternalIP == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateExternalIP := &privatev1.ExternalIP{}
 	err = s.inMapper.Copy(ctx, publicExternalIP, privateExternalIP)
@@ -248,7 +248,7 @@ func (s *ExternalIPsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process external IP")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.ExternalIPsUpdateRequest{}
@@ -270,12 +270,12 @@ func (s *ExternalIPsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process external IP")
-		return
+		return response, err
 	}
 
 	response = &publicv1.ExternalIPsUpdateResponse{}
 	response.SetObject(updatedPublicExternalIP)
-	return
+	return response, err
 }
 
 func (s *ExternalIPsServer) Delete(ctx context.Context,
@@ -289,5 +289,5 @@ func (s *ExternalIPsServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.ExternalIPsDeleteResponse{}
-	return
+	return response, err
 }

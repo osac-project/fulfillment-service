@@ -170,7 +170,7 @@ var _ = Describe("Events server visibility", func() {
 		// Return the collector and the context cancel function:
 		collector = watchCollector
 		cancel = watchCancel
-		return
+		return collector, cancel
 	}
 
 	It("Delivers events when tenant is visible", func() {

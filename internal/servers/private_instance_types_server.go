@@ -82,11 +82,11 @@ func (b *PrivateInstanceTypesServerBuilder) Build() (result *PrivateInstanceType
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -99,7 +99,7 @@ func (b *PrivateInstanceTypesServerBuilder) Build() (result *PrivateInstanceType
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -107,7 +107,7 @@ func (b *PrivateInstanceTypesServerBuilder) Build() (result *PrivateInstanceType
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateInstanceTypesServer) List(ctx context.Context,
@@ -126,23 +126,23 @@ func (s *PrivateInstanceTypesServer) Create(ctx context.Context,
 	request *privatev1.InstanceTypesCreateRequest) (response *privatev1.InstanceTypesCreateResponse, err error) {
 	if request.GetObject() == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 
 	spec := request.GetObject().GetSpec()
 	if spec == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object spec is mandatory")
-		return
+		return response, err
 	}
 
 	// Validate required spec fields:
 	if spec.GetCores() <= 0 {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.cores' must be greater than zero")
-		return
+		return response, err
 	}
 	if spec.GetMemoryGib() <= 0 {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.memory_gib' must be greater than zero")
-		return
+		return response, err
 	}
 
 	// Set id from metadata.name (name-as-primary-key per Phase 1 D-01):
@@ -154,7 +154,7 @@ func (s *PrivateInstanceTypesServer) Create(ctx context.Context,
 	}
 
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateInstanceTypesServer) Update(ctx context.Context,
@@ -163,7 +163,7 @@ func (s *PrivateInstanceTypesServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Fetch the existing object:
@@ -172,7 +172,7 @@ func (s *PrivateInstanceTypesServer) Update(ctx context.Context,
 	var getResponse *privatev1.InstanceTypesGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existing := getResponse.GetObject()
@@ -184,7 +184,7 @@ func (s *PrivateInstanceTypesServer) Update(ctx context.Context,
 	// Validate immutable fields:
 	err = validateInstanceTypeImmutability(merged, existing)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Handle state transitions with timestamp auto-population:
@@ -201,7 +201,7 @@ func (s *PrivateInstanceTypesServer) Update(ctx context.Context,
 	request.GetObject().SetSpec(merged.GetSpec())
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateInstanceTypesServer) Delete(ctx context.Context,

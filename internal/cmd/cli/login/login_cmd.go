@@ -491,7 +491,7 @@ func (c *runnerContext) selectTokenIssuer(ctx context.Context, capabilities *pub
 			slog.Any("selected", result),
 		)
 	}
-	return
+	return result, err
 }
 
 // createTokenSource creates a token source from the configuration. The token source will be nil if no token, token
@@ -508,7 +508,7 @@ func (c *runnerContext) createTokenSource(ctx context.Context, tokenIssuer strin
 		if err != nil {
 			err = fmt.Errorf("failed to create static token source: %w", err)
 		}
-		return
+		return result, err
 	}
 
 	// Use a token script if specified::
@@ -521,7 +521,7 @@ func (c *runnerContext) createTokenSource(ctx context.Context, tokenIssuer strin
 		if err != nil {
 			err = fmt.Errorf("failed to create script token source: %w", err)
 		}
-		return
+		return result, err
 	}
 
 	// If a token issuer has been selected, then use OAuth to create a token source:
@@ -547,12 +547,12 @@ func (c *runnerContext) createTokenSource(ctx context.Context, tokenIssuer strin
 		if err != nil {
 			err = fmt.Errorf("failed to create OAuth token source: %w", err)
 		}
-		return
+		return result, err
 	}
 
 	// Finally, if there is no token, toke script or token issuer, return nil:
 	result = nil
-	return
+	return result, err
 }
 
 // inferFlow infers the OAuth flow from other command line flags when the user hasn't explicitly set the '--flow' flag.

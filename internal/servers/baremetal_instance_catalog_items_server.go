@@ -87,11 +87,11 @@ func (b *BareMetalInstanceCatalogItemsServerBuilder) SetMetricsRegisterer(value 
 func (b *BareMetalInstanceCatalogItemsServerBuilder) Build() (result *BareMetalInstanceCatalogItemsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.BareMetalInstanceCatalogItem, *privatev1.BareMetalInstanceCatalogItem]().
@@ -99,14 +99,14 @@ func (b *BareMetalInstanceCatalogItemsServerBuilder) Build() (result *BareMetalI
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.BareMetalInstanceCatalogItem, *publicv1.BareMetalInstanceCatalogItem]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	bareMetalInstancesDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstance]().
@@ -115,7 +115,7 @@ func (b *BareMetalInstanceCatalogItemsServerBuilder) Build() (result *BareMetalI
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	referenceChecker := &daoReferenceChecker[*privatev1.BareMetalInstance]{resourceDao: bareMetalInstancesDao}
 
@@ -128,7 +128,7 @@ func (b *BareMetalInstanceCatalogItemsServerBuilder) Build() (result *BareMetalI
 		SetReferenceChecker(referenceChecker).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &BareMetalInstanceCatalogItemsServer{
@@ -138,7 +138,7 @@ func (b *BareMetalInstanceCatalogItemsServerBuilder) Build() (result *BareMetalI
 		inMapper:         inMapper,
 		outMapper:        outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *BareMetalInstanceCatalogItemsServer) List(ctx context.Context,
@@ -175,7 +175,7 @@ func (s *BareMetalInstanceCatalogItemsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstanceCatalogItemsServer) Get(ctx context.Context,
@@ -208,7 +208,7 @@ func (s *BareMetalInstanceCatalogItemsServer) Get(ctx context.Context,
 
 	response = &publicv1.BareMetalInstanceCatalogItemsGetResponse{}
 	response.SetObject(publicCatalogItem)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstanceCatalogItemsServer) Create(ctx context.Context,
@@ -216,7 +216,7 @@ func (s *BareMetalInstanceCatalogItemsServer) Create(ctx context.Context,
 	publicCatalogItem := request.GetObject()
 	if publicCatalogItem == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateCatalogItem := &privatev1.BareMetalInstanceCatalogItem{}
 	err = s.inMapper.Copy(ctx, publicCatalogItem, privateCatalogItem)
@@ -224,7 +224,7 @@ func (s *BareMetalInstanceCatalogItemsServer) Create(ctx context.Context,
 		s.logger.ErrorContext(ctx, "Failed to map public bare metal instance catalog item to private",
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process bare metal instance catalog item")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.BareMetalInstanceCatalogItemsCreateRequest{}
@@ -240,12 +240,12 @@ func (s *BareMetalInstanceCatalogItemsServer) Create(ctx context.Context,
 		s.logger.ErrorContext(ctx, "Failed to map private bare metal instance catalog item to public",
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process bare metal instance catalog item")
-		return
+		return response, err
 	}
 
 	response = &publicv1.BareMetalInstanceCatalogItemsCreateResponse{}
 	response.SetObject(createdPublicCatalogItem)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstanceCatalogItemsServer) Update(ctx context.Context,
@@ -253,12 +253,12 @@ func (s *BareMetalInstanceCatalogItemsServer) Update(ctx context.Context,
 	publicCatalogItem := request.GetObject()
 	if publicCatalogItem == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicCatalogItem.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.BareMetalInstanceCatalogItemsGetRequest{}
@@ -274,7 +274,7 @@ func (s *BareMetalInstanceCatalogItemsServer) Update(ctx context.Context,
 		s.logger.ErrorContext(ctx, "Failed to map public bare metal instance catalog item to private",
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process bare metal instance catalog item")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.BareMetalInstanceCatalogItemsUpdateRequest{}
@@ -291,12 +291,12 @@ func (s *BareMetalInstanceCatalogItemsServer) Update(ctx context.Context,
 		s.logger.ErrorContext(ctx, "Failed to map private bare metal instance catalog item to public",
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process bare metal instance catalog item")
-		return
+		return response, err
 	}
 
 	response = &publicv1.BareMetalInstanceCatalogItemsUpdateResponse{}
 	response.SetObject(updatedPublicCatalogItem)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstanceCatalogItemsServer) Delete(ctx context.Context,
@@ -310,7 +310,7 @@ func (s *BareMetalInstanceCatalogItemsServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.BareMetalInstanceCatalogItemsDeleteResponse{}
-	return
+	return response, err
 }
 
 func (s *BareMetalInstanceCatalogItemsServer) addPublishedFilter(filter string) (string, error) {

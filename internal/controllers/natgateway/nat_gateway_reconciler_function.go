@@ -87,15 +87,15 @@ func (b *FunctionBuilder) SetHubCache(value controllers.HubCache) *FunctionBuild
 func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privatev1.NATGateway], err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.connection == nil {
 		err = errors.New("client is mandatory")
-		return
+		return result, err
 	}
 	if b.hubCache == nil {
 		err = errors.New("hub cache is mandatory")
-		return
+		return result, err
 	}
 
 	object := &function{
@@ -106,7 +106,7 @@ func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privat
 		maskCalculator:        masks.NewCalculator().Build(),
 	}
 	result = object.run
-	return
+	return result, err
 }
 
 func (r *function) run(ctx context.Context, natGateway *privatev1.NATGateway) error {
@@ -231,12 +231,12 @@ func (t *task) delete(ctx context.Context) (err error) {
 			controllers.RemoveFinalizerOnDecommissionedHub(ctx, t.r.logger, t.hubId, "nat_gateway_id", t.natGateway.GetId(), t.removeFinalizer)
 			return nil
 		}
-		return
+		return err
 	}
 
 	object, err := t.getKubeObject(ctx)
 	if err != nil {
-		return
+		return err
 	}
 	if object == nil {
 		t.r.logger.DebugContext(
@@ -245,13 +245,13 @@ func (t *task) delete(ctx context.Context) (err error) {
 			slog.String("id", t.natGateway.GetId()),
 		)
 		t.removeFinalizer()
-		return
+		return err
 	}
 
 	if object.GetDeletionTimestamp() == nil {
 		err = t.hubClient.Delete(ctx, object)
 		if err != nil {
-			return
+			return err
 		}
 		t.r.logger.DebugContext(
 			ctx,
@@ -268,7 +268,7 @@ func (t *task) delete(ctx context.Context) (err error) {
 		)
 	}
 
-	return
+	return err
 }
 
 func (t *task) selectHub(ctx context.Context) error {
@@ -324,7 +324,7 @@ func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.NATGatew
 		},
 	)
 	if err != nil {
-		return
+		return result, err
 	}
 	items := list.Items
 	count := len(items)
@@ -333,12 +333,12 @@ func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.NATGatew
 			"expected at most one NAT gateway with identifier '%s' but found %d",
 			t.natGateway.GetId(), count,
 		)
-		return
+		return result, err
 	}
 	if count > 0 {
 		result = &items[0]
 	}
-	return
+	return result, err
 }
 
 func (t *task) addFinalizer() bool {

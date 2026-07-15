@@ -51,22 +51,22 @@ func (r *LockRequest[O]) AddIds(values ...string) *LockRequest[O] {
 func (r *LockRequest[O]) Do(ctx context.Context) (response *LockResponse[O], err error) {
 	err = r.init(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
-	return
+	return response, err
 }
 
 func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err error) {
 	// Add tenant visibility filter:
 	err = r.addTenancyFilter(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Calculate the filter:
@@ -110,7 +110,7 @@ func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err
 		return rows.Err()
 	}()
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// If the identifiers returned aren't exactly the ones requested then something failed. The only reasonable
@@ -126,12 +126,12 @@ func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err
 		err = &ErrNotFound{
 			IDs: notFoundIds,
 		}
-		return
+		return response, err
 	}
 
 	// Create and return the response:
 	response = &LockResponse[O]{}
-	return
+	return response, err
 }
 
 // LockResponse represents the result of a lock operation.

@@ -192,19 +192,19 @@ func (b *JwksCacheBuilder) Build() (result JwksCache, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.minTTL < 0 {
 		err = errors.New("minimum TTL must be zero or positive")
-		return
+		return result, err
 	}
 	if b.maxTTL < 0 {
 		err = errors.New("maximum TTL must be zero or positive")
-		return
+		return result, err
 	}
 	if b.minTTL > b.maxTTL {
 		err = errors.New("minimum TTL must be less than or equal to maximum TTL")
-		return
+		return result, err
 	}
 
 	// Check the list of issuers provided by the caller:
@@ -213,17 +213,17 @@ func (b *JwksCacheBuilder) Build() (result JwksCache, err error) {
 		issuerUrl = strings.TrimSpace(issuerUrl)
 		if issuerUrl == "" {
 			err = errors.New("invalid empty issuer URL")
-			return
+			return result, err
 		}
 		var parsed *url.URL
 		parsed, err = url.Parse(issuerUrl)
 		if err != nil {
 			err = fmt.Errorf("invalid issuer URL '%s': %w", issuerUrl, err)
-			return
+			return result, err
 		}
 		if parsed.Scheme != "https" {
 			err = fmt.Errorf("issuer URL '%s' must use the HTTPS scheme", issuerUrl)
-			return
+			return result, err
 		}
 		issuerUrl = parsed.String()
 		issuersInfo[issuerUrl] = &jwksCacheIssuerInfo{
@@ -237,7 +237,7 @@ func (b *JwksCacheBuilder) Build() (result JwksCache, err error) {
 		var tokenObject *jwt.Token
 		tokenObject, err = b.loadKubeToken(tokenFile)
 		if err != nil {
-			return
+			return result, err
 		}
 		if tokenObject != nil {
 			var issuerUrl string
@@ -247,7 +247,7 @@ func (b *JwksCacheBuilder) Build() (result JwksCache, err error) {
 					"failed to get the 'iss' claim from Kubernetes service account token: %w",
 					err,
 				)
-				return
+				return result, err
 			}
 			var issuerParsed *url.URL
 			issuerParsed, err = url.Parse(issuerUrl)
@@ -256,21 +256,21 @@ func (b *JwksCacheBuilder) Build() (result JwksCache, err error) {
 					"failed to parse the 'iss' claim '%s' from Kubernetes service account token: %w",
 					issuerUrl, err,
 				)
-				return
+				return result, err
 			}
 			if issuerParsed.Scheme != "https" {
 				err = fmt.Errorf(
 					"the 'iss' claim '%s' from Kubernetes service account token must use HTTPS",
 					issuerUrl,
 				)
-				return
+				return result, err
 			}
 			if issuerParsed.Host == "" {
 				err = fmt.Errorf(
 					"the 'iss' claim '%s' from Kubernetes service account token must have a host",
 					issuerUrl,
 				)
-				return
+				return result, err
 			}
 			issuerUrl = issuerParsed.String()
 			issuersInfo[issuerUrl] = &jwksCacheIssuerInfo{
@@ -284,7 +284,7 @@ func (b *JwksCacheBuilder) Build() (result JwksCache, err error) {
 	// authenticate any request.
 	if len(issuersInfo) == 0 {
 		err = errors.New("at least one issuer must be configured")
-		return
+		return result, err
 	}
 
 	// Create the HTTP client used to download JSON web key sets:
@@ -308,7 +308,7 @@ func (b *JwksCacheBuilder) Build() (result JwksCache, err error) {
 		minTTL:      b.minTTL,
 		cache:       map[jwksCacheTag]any{},
 	}
-	return
+	return result, err
 }
 
 // loadKubeToken loads the Kubernetes service account token file and parses it, but without verifying the signature.
@@ -318,14 +318,14 @@ func (b *JwksCacheBuilder) loadKubeToken(tokenFile string) (result *jwt.Token, e
 	tokenBytes, err := os.ReadFile(tokenFile) //nolint:gosec
 	if errors.Is(err, os.ErrNotExist) {
 		err = nil
-		return
+		return result, err
 	}
 	if err != nil {
 		err = fmt.Errorf(
 			"failed to read Kubernetes service account token file '%s': %w",
 			tokenFile, err,
 		)
-		return
+		return result, err
 	}
 	tokenText := strings.TrimSpace(string(tokenBytes))
 
@@ -339,12 +339,12 @@ func (b *JwksCacheBuilder) loadKubeToken(tokenFile string) (result *jwt.Token, e
 			"failed to parse Kubernetes service account token from file '%s': %w",
 			tokenFile, err,
 		)
-		return
+		return result, err
 	}
 
 	// Return the token:
 	result = tokenObject
-	return
+	return result, err
 }
 
 // resolvePath resolves a file path using the custom root directory if set. If no root is set, returns the original
@@ -364,7 +364,7 @@ func (c *jwksCache) Get(ctx context.Context, issuerUrl string, keyId string) (re
 	issuerInfo, ok := c.issuersInfo[issuerUrl]
 	if !ok {
 		err = ErrBadIssuer
-		return
+		return result, err
 	}
 
 	// Try to find the key in the cache. If found but expired according to the TTL, return it immediately (so the
@@ -389,25 +389,25 @@ func (c *jwksCache) Get(ctx context.Context, issuerUrl string, keyId string) (re
 			}()
 		}
 		result = keyObj
-		return
+		return result, err
 	}
 
 	// If the key is not in the cache, try to refresh synchronously:
 	err = c.refresh(ctx, issuerInfo)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Try again after refresh:
 	keyObj, ok = c.getEntry(issuerUrl, keyId)
 	if ok {
 		result = keyObj
-		return
+		return result, err
 	}
 
 	// Report that we do not have a matching key:
 	err = ErrBadKey
-	return
+	return result, err
 }
 
 // getEntry returns the key for the given issuer and key identifier. If the key is not found, the second return value
@@ -533,19 +533,19 @@ func (c *jwksCache) loadJwksUrl(ctx context.Context, issuerInfo *jwksCacheIssuer
 	err error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, issuerInfo.jwksUrl, nil)
 	if err != nil {
-		return
+		return result, err
 	}
 	if issuerInfo.tokenFile != "" {
 		var tokenText string
 		tokenText, err = c.loadTokenFile(issuerInfo.tokenFile)
 		if err != nil {
-			return
+			return result, err
 		}
 		request.Header.Set(Authorization, fmt.Sprintf("Bearer %s", tokenText))
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return
+		return result, err
 	}
 	defer func() {
 		err := response.Body.Close()
@@ -563,10 +563,10 @@ func (c *jwksCache) loadJwksUrl(ctx context.Context, issuerInfo *jwksCacheIssuer
 			"request to load keys from '%s' failed with status code %d",
 			issuerInfo.jwksUrl, response.StatusCode,
 		)
-		return
+		return result, err
 	}
 	result, err = c.readKeys(ctx, issuerInfo, response.Body)
-	return
+	return result, err
 }
 
 // loadTokenFile loads a token from a file.
@@ -586,16 +586,16 @@ func (c *jwksCache) readKeys(ctx context.Context, issuerInfo *jwksCacheIssuerInf
 	jsonReader := io.LimitReader(reader, jwksMaxSize+1)
 	jsonData, err := io.ReadAll(jsonReader)
 	if err != nil {
-		return
+		return result, err
 	}
 	if len(jsonData) > jwksMaxSize {
 		err = fmt.Errorf("JSON web key set is too large, maximum size is %d bytes", jwksMaxSize)
-		return
+		return result, err
 	}
 	var setData jwksCacheKeySetData
 	err = json.Unmarshal(jsonData, &setData)
 	if err != nil {
-		return
+		return result, err
 	}
 	keyMap := map[string]any{}
 	for _, keyData := range setData.Keys {
@@ -629,36 +629,36 @@ func (c *jwksCache) readKeys(ctx context.Context, issuerInfo *jwksCacheIssuerInf
 		)
 	}
 	result = keyMap
-	return
+	return result, err
 }
 
 // parseKey converts JWKS key data to an RSA public key.
 func (c *jwksCache) parseKey(data jwksCacheKeyData) (result any, err error) {
 	if data.Kty == "" {
 		err = errors.New("key type is missing")
-		return
+		return result, err
 	}
 	if !strings.EqualFold(data.Kty, "RSA") {
 		err = fmt.Errorf("key type '%s' is not supported", data.Kty)
-		return
+		return result, err
 	}
 	if data.N == "" || data.E == "" {
 		err = errors.New("RSA key is missing required 'n' or 'e' field")
-		return
+		return result, err
 	}
 	nb, err := base64.RawURLEncoding.DecodeString(data.N)
 	if err != nil {
-		return
+		return result, err
 	}
 	eb, err := base64.RawURLEncoding.DecodeString(data.E)
 	if err != nil {
-		return
+		return result, err
 	}
 	result = &rsa.PublicKey{
 		N: new(big.Int).SetBytes(nb),
 		E: int(new(big.Int).SetBytes(eb).Int64()),
 	}
-	return
+	return result, err
 }
 
 // jwksCacheKeySetData is the JSON representation of a key set.

@@ -80,11 +80,11 @@ func (b *PrivateTenantsServerBuilder) Build() (result *PrivateTenantsServer, err
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -98,7 +98,7 @@ func (b *PrivateTenantsServerBuilder) Build() (result *PrivateTenantsServer, err
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the DAO:
@@ -109,7 +109,7 @@ func (b *PrivateTenantsServerBuilder) Build() (result *PrivateTenantsServer, err
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -118,7 +118,7 @@ func (b *PrivateTenantsServerBuilder) Build() (result *PrivateTenantsServer, err
 		generic: generic,
 		dao:     dao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateTenantsServer) List(ctx context.Context,
@@ -144,7 +144,7 @@ func (s *PrivateTenantsServer) Create(ctx context.Context,
 			grpccodes.InvalidArgument,
 			"field 'metadata.name' is mandatory",
 		)
-		return
+		return response, err
 	}
 
 	// For tenants the identifier must be empty or equal to the name. If it is empty it will be set to the name.
@@ -154,7 +154,7 @@ func (s *PrivateTenantsServer) Create(ctx context.Context,
 			grpccodes.InvalidArgument,
 			"field 'id' must be empty or equal to field 'metadata.name'",
 		)
-		return
+		return response, err
 	}
 	if id == "" {
 		object.SetId(name)
@@ -168,7 +168,7 @@ func (s *PrivateTenantsServer) Create(ctx context.Context,
 			grpccodes.InvalidArgument,
 			"field 'metadata.tenant' must be empty or equal to field 'metadata.name'",
 		)
-		return
+		return response, err
 	}
 	if tenant == "" {
 		metadata.SetTenant(name)
@@ -177,7 +177,7 @@ func (s *PrivateTenantsServer) Create(ctx context.Context,
 	// Domain validation is now handled by protovalidate in the interceptor
 	// Delegate to the generic server:
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateTenantsServer) Update(ctx context.Context,

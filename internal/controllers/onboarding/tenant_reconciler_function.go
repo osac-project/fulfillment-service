@@ -83,15 +83,15 @@ func (b *FunctionBuilder) SetHubCache(value controllers.HubCache) *FunctionBuild
 func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privatev1.Tenant], err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.connection == nil {
 		err = errors.New("connection is mandatory")
-		return
+		return result, err
 	}
 	if b.hubCache == nil {
 		err = errors.New("hub cache is mandatory")
-		return
+		return result, err
 	}
 
 	object := &function{
@@ -103,7 +103,7 @@ func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privat
 		maskCalculator: masks.NewCalculator().Build(),
 	}
 	result = object.run
-	return
+	return result, err
 }
 
 func (r *function) run(ctx context.Context, tenant *privatev1.Tenant) error {
@@ -348,12 +348,12 @@ func (t *task) getKubeObject(ctx context.Context, hubEntry *controllers.HubEntry
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			err = nil
-			return
+			return result, err
 		}
-		return
+		return result, err
 	}
 	result = object
-	return
+	return result, err
 }
 
 func (t *task) listAllHubs(ctx context.Context) ([]*privatev1.Hub, error) {

@@ -300,15 +300,15 @@ func (r *request[O]) marshalMap(value map[string]string) (result []byte, err err
 
 func (r *request[O]) unmarshalMap(data []byte) (result map[string]string, err error) {
 	if len(data) == 0 {
-		return
+		return result, err
 	}
 	var value map[string]string
 	err = json.Unmarshal(data, &value)
 	if err != nil {
-		return
+		return result, err
 	}
 	result = value
-	return
+	return result, err
 }
 
 // queryRow executes a SQL query expected to return a single row. It logs the SQL statement before delegating to the
@@ -339,7 +339,7 @@ func (r *request[O]) query(ctx context.Context, op opType, sql string, args ...a
 		)
 	}
 	rows, err = r.tx.Query(ctx, sql, args...)
-	return
+	return rows, err
 }
 
 // exec executes a SQL statement that doesn't return rows. It logs the SQL statement before delegating to the

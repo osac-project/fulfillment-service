@@ -85,15 +85,15 @@ func (b *PrivateStorageTiersServerBuilder) SetStorageBackendsDAO(value *dao.Gene
 func (b *PrivateStorageTiersServerBuilder) Build() (result *PrivateStorageTiersServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.storageBackendsDAO == nil {
 		err = errors.New("storage backends DAO is mandatory")
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.StorageTier]().
@@ -105,7 +105,7 @@ func (b *PrivateStorageTiersServerBuilder) Build() (result *PrivateStorageTiersS
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateStorageTiersServer{
@@ -113,7 +113,7 @@ func (b *PrivateStorageTiersServerBuilder) Build() (result *PrivateStorageTiersS
 		generic:            generic,
 		storageBackendsDAO: b.storageBackendsDAO,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateStorageTiersServer) List(ctx context.Context,
@@ -132,7 +132,7 @@ func (s *PrivateStorageTiersServer) Create(ctx context.Context,
 	request *privatev1.StorageTiersCreateRequest) (response *privatev1.StorageTiersCreateResponse, err error) {
 	err = s.validateStorageTierCreate(ctx, request.GetObject())
 	if err != nil {
-		return
+		return response, err
 	}
 
 	st := request.GetObject()
@@ -149,7 +149,7 @@ func (s *PrivateStorageTiersServer) Create(ctx context.Context,
 	st.GetMetadata().SetTenant(auth.SharedTenant)
 
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateStorageTiersServer) Update(ctx context.Context,
@@ -157,7 +157,7 @@ func (s *PrivateStorageTiersServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.StorageTiersGetRequest{}
@@ -165,18 +165,18 @@ func (s *PrivateStorageTiersServer) Update(ctx context.Context,
 	var getResponse *privatev1.StorageTiersGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingST := getResponse.GetObject()
 
 	err = s.validateStorageTierUpdate(ctx, request.GetObject(), existingST, request.GetUpdateMask())
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateStorageTiersServer) Delete(ctx context.Context,

@@ -81,11 +81,11 @@ func (b *ClusterCatalogItemsServerBuilder) SetMetricsRegisterer(value prometheus
 func (b *ClusterCatalogItemsServerBuilder) Build() (result *ClusterCatalogItemsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.ClusterCatalogItem, *privatev1.ClusterCatalogItem]().
@@ -93,14 +93,14 @@ func (b *ClusterCatalogItemsServerBuilder) Build() (result *ClusterCatalogItemsS
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.ClusterCatalogItem, *publicv1.ClusterCatalogItem]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	clustersDao, err := dao.NewGenericDAO[*privatev1.Cluster]().
@@ -109,7 +109,7 @@ func (b *ClusterCatalogItemsServerBuilder) Build() (result *ClusterCatalogItemsS
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	referenceChecker := &daoReferenceChecker[*privatev1.Cluster]{resourceDao: clustersDao}
 
@@ -121,7 +121,7 @@ func (b *ClusterCatalogItemsServerBuilder) Build() (result *ClusterCatalogItemsS
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &ClusterCatalogItemsServer{
@@ -131,7 +131,7 @@ func (b *ClusterCatalogItemsServerBuilder) Build() (result *ClusterCatalogItemsS
 		inMapper:         inMapper,
 		outMapper:        outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *ClusterCatalogItemsServer) List(ctx context.Context,
@@ -167,7 +167,7 @@ func (s *ClusterCatalogItemsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ClusterCatalogItemsServer) Get(ctx context.Context,
@@ -199,7 +199,7 @@ func (s *ClusterCatalogItemsServer) Get(ctx context.Context,
 
 	response = &publicv1.ClusterCatalogItemsGetResponse{}
 	response.SetObject(publicCatalogItem)
-	return
+	return response, err
 }
 
 func (s *ClusterCatalogItemsServer) Create(ctx context.Context,
@@ -207,14 +207,14 @@ func (s *ClusterCatalogItemsServer) Create(ctx context.Context,
 	publicCatalogItem := request.GetObject()
 	if publicCatalogItem == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateCatalogItem := &privatev1.ClusterCatalogItem{}
 	err = s.inMapper.Copy(ctx, publicCatalogItem, privateCatalogItem)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to map public cluster catalog item to private", slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process cluster catalog item")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.ClusterCatalogItemsCreateRequest{}
@@ -229,12 +229,12 @@ func (s *ClusterCatalogItemsServer) Create(ctx context.Context,
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to map private cluster catalog item to public", slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process cluster catalog item")
-		return
+		return response, err
 	}
 
 	response = &publicv1.ClusterCatalogItemsCreateResponse{}
 	response.SetObject(createdPublicCatalogItem)
-	return
+	return response, err
 }
 
 func (s *ClusterCatalogItemsServer) Update(ctx context.Context,
@@ -242,12 +242,12 @@ func (s *ClusterCatalogItemsServer) Update(ctx context.Context,
 	publicCatalogItem := request.GetObject()
 	if publicCatalogItem == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicCatalogItem.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.ClusterCatalogItemsGetRequest{}
@@ -262,7 +262,7 @@ func (s *ClusterCatalogItemsServer) Update(ctx context.Context,
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to map public cluster catalog item to private", slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process cluster catalog item")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.ClusterCatalogItemsUpdateRequest{}
@@ -278,12 +278,12 @@ func (s *ClusterCatalogItemsServer) Update(ctx context.Context,
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to map private cluster catalog item to public", slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process cluster catalog item")
-		return
+		return response, err
 	}
 
 	response = &publicv1.ClusterCatalogItemsUpdateResponse{}
 	response.SetObject(updatedPublicCatalogItem)
-	return
+	return response, err
 }
 
 func (s *ClusterCatalogItemsServer) addPublishedFilter(filter string) (string, error) {
@@ -307,5 +307,5 @@ func (s *ClusterCatalogItemsServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.ClusterCatalogItemsDeleteResponse{}
-	return
+	return response, err
 }

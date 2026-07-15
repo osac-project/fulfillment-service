@@ -86,11 +86,11 @@ func (b *ComputeInstancesServerBuilder) Build() (result *ComputeInstancesServer,
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -99,14 +99,14 @@ func (b *ComputeInstancesServerBuilder) Build() (result *ComputeInstancesServer,
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.ComputeInstance, *publicv1.ComputeInstance]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -118,7 +118,7 @@ func (b *ComputeInstancesServerBuilder) Build() (result *ComputeInstancesServer,
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -128,7 +128,7 @@ func (b *ComputeInstancesServerBuilder) Build() (result *ComputeInstancesServer,
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *ComputeInstancesServer) List(ctx context.Context,
@@ -167,7 +167,7 @@ func (s *ComputeInstancesServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ComputeInstancesServer) Get(ctx context.Context,
@@ -198,7 +198,7 @@ func (s *ComputeInstancesServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ComputeInstancesGetResponse{}
 	response.SetObject(publicComputeInstance)
-	return
+	return response, err
 }
 
 func (s *ComputeInstancesServer) Create(ctx context.Context,
@@ -207,7 +207,7 @@ func (s *ComputeInstancesServer) Create(ctx context.Context,
 	publicComputeInstance := request.GetObject()
 	if publicComputeInstance == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateComputeInstance := &privatev1.ComputeInstance{}
 	err = s.inMapper.Copy(ctx, publicComputeInstance, privateComputeInstance)
@@ -218,7 +218,7 @@ func (s *ComputeInstancesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -240,7 +240,7 @@ func (s *ComputeInstancesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance")
-		return
+		return response, err
 	}
 
 	// Create the public response:
@@ -249,7 +249,7 @@ func (s *ComputeInstancesServer) Create(ctx context.Context,
 	// Propagate warnings from the private server response (deprecation notices
 	// for DEPRECATED instance types).
 	response.SetWarnings(privateResponse.GetWarnings())
-	return
+	return response, err
 }
 
 func (s *ComputeInstancesServer) Update(ctx context.Context,
@@ -258,12 +258,12 @@ func (s *ComputeInstancesServer) Update(ctx context.Context,
 	publicComputeInstance := request.GetObject()
 	if publicComputeInstance == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicComputeInstance.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Determine how to prepare the private compute instance based on whether there's a field mask.
@@ -291,7 +291,7 @@ func (s *ComputeInstancesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -315,13 +315,13 @@ func (s *ComputeInstancesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.ComputeInstancesUpdateResponse{}
 	response.SetObject(updatedPublicComputeInstance)
-	return
+	return response, err
 }
 
 func (s *ComputeInstancesServer) Delete(ctx context.Context,
@@ -338,5 +338,5 @@ func (s *ComputeInstancesServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.ComputeInstancesDeleteResponse{}
-	return
+	return response, err
 }

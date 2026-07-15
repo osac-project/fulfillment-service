@@ -130,7 +130,7 @@ func (b *CertPoolBuilder) Build() (result *x509.CertPool, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Start with an empty pool, or with a copy of the system pool if the system files are enabled:
@@ -138,7 +138,7 @@ func (b *CertPoolBuilder) Build() (result *x509.CertPool, err error) {
 	if b.systemFiles {
 		pool, err = x509.SystemCertPool()
 		if err != nil {
-			return
+			return result, err
 		}
 	} else {
 		pool = x509.NewCertPool()
@@ -151,14 +151,14 @@ func (b *CertPoolBuilder) Build() (result *x509.CertPool, err error) {
 	if b.kubernetesFiles {
 		err = b.loadKubernetesFiles(pool)
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 
 	// Load configured files:
 	err = b.loadConfiguredFiles(pool)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Load configured certificates:
@@ -168,13 +168,13 @@ func (b *CertPoolBuilder) Build() (result *x509.CertPool, err error) {
 			ok := pool.AppendCertsFromPEM([]byte(cert))
 			if !ok {
 				err = fmt.Errorf("failed to add certificate to pool: %w", err)
-				return
+				return result, err
 			}
 		case []byte:
 			ok := pool.AppendCertsFromPEM(cert)
 			if !ok {
 				err = fmt.Errorf("failed to add certificate to pool: %w", err)
-				return
+				return result, err
 			}
 		case *x509.Certificate:
 			pool.AddCert(cert)
@@ -183,12 +183,12 @@ func (b *CertPoolBuilder) Build() (result *x509.CertPool, err error) {
 				"invalid certificate type '%T', should be 'string', '[]byte' or '*x509.Certificate'",
 				cert,
 			)
-			return
+			return result, err
 		}
 	}
 
 	result = pool
-	return
+	return result, err
 }
 
 // resolvePath resolves a file path using the custom root directory if set. If no root is set, returns the original

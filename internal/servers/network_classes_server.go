@@ -87,11 +87,11 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Find OUTPUT_ONLY fields so that we can configure the inMapper to ignore them.
@@ -100,12 +100,12 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 	isDefaultField := ncDescriptor.Fields().ByName("is_default")
 	if isDefaultField == nil {
 		err = fmt.Errorf("failed to find the is_default field of type '%s'", ncDescriptor.FullName())
-		return
+		return result, err
 	}
 	specField := ncDescriptor.Fields().ByName("spec")
 	if specField == nil {
 		err = fmt.Errorf("failed to find the spec field of type '%s'", ncDescriptor.FullName())
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -115,14 +115,14 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 		AddIgnoredFields(isDefaultField.FullName(), specField.FullName()).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.NetworkClass, *publicv1.NetworkClass]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -134,7 +134,7 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -144,7 +144,7 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *NetworkClassesServer) List(ctx context.Context,
@@ -184,7 +184,7 @@ func (s *NetworkClassesServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *NetworkClassesServer) Get(ctx context.Context,
@@ -215,7 +215,7 @@ func (s *NetworkClassesServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.NetworkClassesGetResponse{}
 	response.SetObject(publicNetworkClass)
-	return
+	return response, err
 }
 
 func (s *NetworkClassesServer) Create(ctx context.Context,
@@ -224,7 +224,7 @@ func (s *NetworkClassesServer) Create(ctx context.Context,
 	publicNetworkClass := request.GetObject()
 	if publicNetworkClass == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateNetworkClass := &privatev1.NetworkClass{}
 	err = s.inMapper.Copy(ctx, publicNetworkClass, privateNetworkClass)
@@ -235,7 +235,7 @@ func (s *NetworkClassesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process network class")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -257,13 +257,13 @@ func (s *NetworkClassesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process network class")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.NetworkClassesCreateResponse{}
 	response.SetObject(createdPublicNetworkClass)
-	return
+	return response, err
 }
 
 func (s *NetworkClassesServer) Update(ctx context.Context,
@@ -272,12 +272,12 @@ func (s *NetworkClassesServer) Update(ctx context.Context,
 	publicNetworkClass := request.GetObject()
 	if publicNetworkClass == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicNetworkClass.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Get the existing object from the private server:
@@ -298,7 +298,7 @@ func (s *NetworkClassesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process network class")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server with the merged object:
@@ -321,13 +321,13 @@ func (s *NetworkClassesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process network class")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.NetworkClassesUpdateResponse{}
 	response.SetObject(updatedPublicNetworkClass)
-	return
+	return response, err
 }
 
 func (s *NetworkClassesServer) Delete(ctx context.Context,
@@ -344,5 +344,5 @@ func (s *NetworkClassesServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.NetworkClassesDeleteResponse{}
-	return
+	return response, err
 }

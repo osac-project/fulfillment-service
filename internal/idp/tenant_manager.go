@@ -57,18 +57,18 @@ func (b *TenantManagerBuilder) SetClient(value ClientInterface) *TenantManagerBu
 func (b *TenantManagerBuilder) Build() (result *TenantManager, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.client == nil {
 		err = errors.New("client is mandatory")
-		return
+		return result, err
 	}
 
 	result = &TenantManager{
 		logger: b.logger,
 		client: b.client,
 	}
-	return
+	return result, err
 }
 
 // TenantConfig contains configuration for creating a tenant in the identity provider.

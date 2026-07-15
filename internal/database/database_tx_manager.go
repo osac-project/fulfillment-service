@@ -83,11 +83,11 @@ func (b *TxManagerBuilder) Build() (result TxManager, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.pool == nil {
 		err = errors.New("database connection pool is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -95,7 +95,7 @@ func (b *TxManagerBuilder) Build() (result TxManager, err error) {
 		logger: b.logger,
 		pool:   b.pool,
 	}
-	return
+	return result, err
 }
 
 // Begin starts a new transaction. Note that the created transaction is lazy in the sense that it will not create a real
@@ -235,11 +235,11 @@ func runTxTask(ctx context.Context, tx Tx, task any, args []any) (taskErr error)
 	taskType := taskFunc.Type()
 	if taskType.Kind() != reflect.Func {
 		taskErr = fmt.Errorf("task must be a function, got '%T'", task)
-		return
+		return taskErr
 	}
 	if taskType.NumIn() == 0 {
 		taskErr = errors.New("task function must have at least one parameter, context or transaction")
-		return
+		return taskErr
 	}
 
 	// Check that the first parameter of the task is either a context or a transaction:
@@ -254,14 +254,14 @@ func runTxTask(ctx context.Context, tx Tx, task any, args []any) (taskErr error)
 		taskErr = fmt.Errorf(
 			"first parameter of task function must be context.Context or database.Tx, got %s", firstParam,
 		)
-		return
+		return taskErr
 	}
 
 	// Check that we got exactly the number of expected arguments:
 	expectedArgs := taskType.NumIn() - 1
 	if len(args) != expectedArgs {
 		taskErr = fmt.Errorf("task function expects %d additional argument(s), got %d", expectedArgs, len(args))
-		return
+		return taskErr
 	}
 
 	// Validate and build the argument list:
@@ -278,7 +278,7 @@ func runTxTask(ctx context.Context, tx Tx, task any, args []any) (taskErr error)
 					"argument %d is nil but parameter type %s is not nilable",
 					i+1, paramType,
 				)
-				return
+				return taskErr
 			}
 		} else {
 			argType := reflect.TypeOf(arg)
@@ -287,7 +287,7 @@ func runTxTask(ctx context.Context, tx Tx, task any, args []any) (taskErr error)
 					"argument %d has type %s which is not assignable to parameter type %s",
 					i+1, argType, paramType,
 				)
-				return
+				return taskErr
 			}
 			callArgs = append(callArgs, reflect.ValueOf(arg))
 		}
@@ -304,7 +304,7 @@ func runTxTask(ctx context.Context, tx Tx, task any, args []any) (taskErr error)
 			taskErr = lastResult.Interface().(error)
 		}
 	}
-	return
+	return taskErr
 }
 
 // Well-known reflection types:

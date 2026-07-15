@@ -350,7 +350,7 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Comp
 	// If there is exactly one match, use it:
 	if len(matches) == 1 {
 		result = matches[0]
-		return
+		return result, err
 	}
 
 	// If there are multiple matches, display them and advise to use the identifier:
@@ -361,7 +361,7 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Comp
 			"Total":   total,
 		})
 		err = exit.Error(1)
-		return
+		return result, err
 	}
 
 	// If we are here then no matches were found, we will show to the user some of the available templates:
@@ -377,7 +377,7 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Comp
 		"Ref":      c.args.template,
 	})
 	err = exit.Error(1)
-	return
+	return result, err
 }
 
 // parseTemplateParameters parses the '--template-parameter' and '--template-parameter-file' flags into a map of
@@ -554,7 +554,7 @@ func (c *runnerContext) parseTemplateParameters(ctx context.Context,
 		)
 	}
 
-	return
+	return result, issues
 }
 
 // convertTextToTemplateParameterValue converts a string value to the appropriate protobuf type based on the kind. It
@@ -579,7 +579,7 @@ func (c *runnerContext) convertTextToTemplateParameterValue(ctx context.Context,
 				"value '%s' isn't a valid boolean, valid values are 'true' and 'false'",
 				text,
 			)
-			return
+			return result, issue
 		}
 		wrapper = &wrapperspb.BoolValue{Value: value}
 	case "type.googleapis.com/google.protobuf.Int32Value":
@@ -594,7 +594,7 @@ func (c *runnerContext) convertTextToTemplateParameterValue(ctx context.Context,
 				slog.Any("error", err),
 			)
 			issue = fmt.Sprintf("value '%s' isn't a valid 32-bit integer", text)
-			return
+			return result, issue
 		}
 		wrapper = &wrapperspb.Int32Value{Value: int32(value)}
 	case "type.googleapis.com/google.protobuf.Int64Value":
@@ -609,7 +609,7 @@ func (c *runnerContext) convertTextToTemplateParameterValue(ctx context.Context,
 				slog.Any("error", err),
 			)
 			issue = fmt.Sprintf("value '%s' isn't a valid 64-bit integer", text)
-			return
+			return result, issue
 		}
 		wrapper = &wrapperspb.Int64Value{Value: value}
 	case "type.googleapis.com/google.protobuf.FloatValue":
@@ -624,7 +624,7 @@ func (c *runnerContext) convertTextToTemplateParameterValue(ctx context.Context,
 				slog.Any("error", err),
 			)
 			issue = fmt.Sprintf("value '%s' isn't a valid 32-bit floating point number", text)
-			return
+			return result, issue
 		}
 		wrapper = &wrapperspb.FloatValue{Value: float32(value)}
 	case "type.googleapis.com/google.protobuf.DoubleValue":
@@ -639,7 +639,7 @@ func (c *runnerContext) convertTextToTemplateParameterValue(ctx context.Context,
 				slog.Any("error", err),
 			)
 			issue = fmt.Sprintf("value '%s' isn't a valid 64-bit floating point numberw", text)
-			return
+			return result, issue
 		}
 		wrapper = &wrapperspb.DoubleValue{Value: value}
 	case "type.googleapis.com/google.protobuf.BytesValue":
@@ -656,7 +656,7 @@ func (c *runnerContext) convertTextToTemplateParameterValue(ctx context.Context,
 				slog.Any("error", err),
 			)
 			issue = fmt.Sprintf("value '%s' isn't a valid RFC3339 timestamp", text)
-			return
+			return result, issue
 		}
 		wrapper = timestamppb.New(value)
 	case "type.googleapis.com/google.protobuf.Duration":
@@ -670,15 +670,15 @@ func (c *runnerContext) convertTextToTemplateParameterValue(ctx context.Context,
 				slog.Any("error", err),
 			)
 			issue = fmt.Sprintf("value '%s' isn't a valid duration", text)
-			return
+			return result, issue
 		}
 		wrapper = durationpb.New(value)
 	default:
 		issue = fmt.Sprintf("flag has is of an unsupported type '%s'", kind)
-		return
+		return result, issue
 	}
 	if issue != "" {
-		return
+		return result, issue
 	}
 	result, err := anypb.New(wrapper)
 	if err != nil {
@@ -690,9 +690,9 @@ func (c *runnerContext) convertTextToTemplateParameterValue(ctx context.Context,
 			slog.Any("error", err),
 		)
 		issue = fmt.Sprintf("Failed to create protobuf value for template parameter: %v", err)
-		return
+		return result, issue
 	}
-	return
+	return result, issue
 }
 
 // buildSpec constructs the ComputeInstanceSpec from template info and CLI flags.

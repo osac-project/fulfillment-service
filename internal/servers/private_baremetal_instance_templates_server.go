@@ -73,11 +73,11 @@ func (b *PrivateBareMetalInstanceTemplatesServerBuilder) SetMetricsRegisterer(va
 func (b *PrivateBareMetalInstanceTemplatesServerBuilder) Build() (result *PrivateBareMetalInstanceTemplatesServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.BareMetalInstanceTemplate]().
@@ -89,14 +89,14 @@ func (b *PrivateBareMetalInstanceTemplatesServerBuilder) Build() (result *Privat
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateBareMetalInstanceTemplatesServer{
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateBareMetalInstanceTemplatesServer) List(ctx context.Context,

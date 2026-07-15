@@ -78,15 +78,15 @@ func (b *PrivateNATGatewaysServerBuilder) SetMetricsRegisterer(value prometheus.
 func (b *PrivateNATGatewaysServerBuilder) Build() (result *PrivateNATGatewaysServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	externalIPDao, err := dao.NewGenericDAO[*privatev1.ExternalIP]().
@@ -95,7 +95,7 @@ func (b *PrivateNATGatewaysServerBuilder) Build() (result *PrivateNATGatewaysSer
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.NATGateway]().
@@ -107,7 +107,7 @@ func (b *PrivateNATGatewaysServerBuilder) Build() (result *PrivateNATGatewaysSer
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateNATGatewaysServer{
@@ -115,7 +115,7 @@ func (b *PrivateNATGatewaysServerBuilder) Build() (result *PrivateNATGatewaysSer
 		generic:       generic,
 		externalIPDao: externalIPDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateNATGatewaysServer) List(ctx context.Context,
@@ -136,14 +136,14 @@ func (s *PrivateNATGatewaysServer) Create(ctx context.Context,
 
 	err = s.validateNATGateway(natGateway)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	externalIPID := natGateway.GetSpec().GetExternalIp()
 
 	err = s.validateExternalIPReference(ctx, externalIPID)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	if natGateway.GetStatus() == nil {
@@ -156,11 +156,11 @@ func (s *PrivateNATGatewaysServer) Create(ctx context.Context,
 
 	err = s.generic.Create(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.updateExternalIPAttachedFlag(ctx, externalIPID, true)
-	return
+	return response, err
 }
 
 func (s *PrivateNATGatewaysServer) Update(ctx context.Context,
@@ -168,7 +168,7 @@ func (s *PrivateNATGatewaysServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	mask := request.GetUpdateMask()
@@ -178,16 +178,16 @@ func (s *PrivateNATGatewaysServer) Update(ctx context.Context,
 		var getResponse *privatev1.NATGatewaysGetResponse
 		err = s.generic.Get(ctx, getRequest, &getResponse)
 		if err != nil {
-			return
+			return response, err
 		}
 		err = validateImmutableFieldsNATGateway(request.GetObject(), getResponse.GetObject())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateNATGatewaysServer) Delete(ctx context.Context,
@@ -195,7 +195,7 @@ func (s *PrivateNATGatewaysServer) Delete(ctx context.Context,
 	id := request.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.NATGatewaysGetRequest{}
@@ -203,20 +203,20 @@ func (s *PrivateNATGatewaysServer) Delete(ctx context.Context,
 	var getResponse *privatev1.NATGatewaysGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	externalIPID := getResponse.GetObject().GetSpec().GetExternalIp()
 
 	err = s.generic.Delete(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	if externalIPID != "" {
 		err = s.updateExternalIPAttachedFlag(ctx, externalIPID, false)
 	}
-	return
+	return response, err
 }
 
 func (s *PrivateNATGatewaysServer) Signal(ctx context.Context,

@@ -69,9 +69,9 @@ func (p *DefaultTenancyLogic) DetermineAssignableTenants(ctx context.Context) (r
 			slog.String("user", subject.User),
 		)
 		err = fmt.Errorf("subject must belong to at least one tenant to create objects")
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 // DetermineDefaultTenant extracts the subject from the auth context and returns the tenant that will be assigned
@@ -80,17 +80,17 @@ func (p *DefaultTenancyLogic) DetermineAssignableTenants(ctx context.Context) (r
 func (p *DefaultTenancyLogic) DetermineDefaultTenant(ctx context.Context) (result string, err error) {
 	assignable, err := p.DetermineAssignableTenants(ctx)
 	if err != nil {
-		return
+		return result, err
 	}
 	if !assignable.Finite() {
 		result = SharedTenant
-		return
+		return result, err
 	}
 	inclusions := assignable.Inclusions()
 	if len(inclusions) > 0 {
 		result = inclusions[0]
 	}
-	return
+	return result, err
 }
 
 // DetermineVisibleTenants extracts the subject from the auth context and returns the identifiers of the tenants

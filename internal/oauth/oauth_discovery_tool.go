@@ -138,7 +138,7 @@ func (b *DiscoveryToolBuilder) Build() (result *DiscoveryTool, err error) {
 		issuerUrl:  issuerUrl,
 		httpClient: httpClient,
 	}
-	return
+	return result, err
 }
 
 // Discover discovers endpoints from the configured issuer URL using the well-known configuration endpoints. This
@@ -150,7 +150,7 @@ func (t *DiscoveryTool) Discover(ctx context.Context) (result *ServerMetadata, e
 			ctx,
 			"Successfully discovered endpoints using OAuth endpoint",
 		)
-		return
+		return result, err
 	}
 	t.logger.InfoContext(
 		ctx,
@@ -163,7 +163,7 @@ func (t *DiscoveryTool) Discover(ctx context.Context) (result *ServerMetadata, e
 			ctx,
 			"Successfully discovered endpoints using OIDC",
 		)
-		return
+		return result, err
 	}
 	t.logger.InfoContext(
 		ctx,
@@ -171,7 +171,7 @@ func (t *DiscoveryTool) Discover(ctx context.Context) (result *ServerMetadata, e
 		slog.Any("error", err),
 	)
 	err = fmt.Errorf("failed to discover endpoints using OAuth or OIDC")
-	return
+	return result, err
 }
 
 func (t *DiscoveryTool) discover(ctx context.Context, endpoint string) (result *ServerMetadata, err error) {
@@ -193,7 +193,7 @@ func (t *DiscoveryTool) discover(ctx context.Context, endpoint string) (result *
 			slog.Any("error", err),
 		)
 		err = fmt.Errorf("failed to create metadata request: %w", err)
-		return
+		return result, err
 	}
 	response, err := t.httpClient.Do(request)
 	if err != nil {
@@ -204,12 +204,12 @@ func (t *DiscoveryTool) discover(ctx context.Context, endpoint string) (result *
 			slog.Any("error", err),
 		)
 		err = fmt.Errorf("failed to fetch metadata from '%s': %w", metadataUrl, err)
-		return
+		return result, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		err = fmt.Errorf("failed to fetch metadata from '%s': %s", metadataUrl, response.Status)
-		return
+		return result, err
 	}
 
 	// Parse the discovery document:
@@ -223,7 +223,7 @@ func (t *DiscoveryTool) discover(ctx context.Context, endpoint string) (result *
 			slog.Any("error", err),
 		)
 		err = fmt.Errorf("failed to parse metadata: %w", err)
-		return
+		return result, err
 	}
 
 	// Validate required fields:
@@ -233,7 +233,7 @@ func (t *DiscoveryTool) discover(ctx context.Context, endpoint string) (result *
 			"Discovery document missing required 'issuer' field",
 		)
 		err = fmt.Errorf("discovery document missing required 'issuer' field")
-		return
+		return result, err
 	}
 	if serverMetadata.TokenEndpoint == "" {
 		t.logger.ErrorContext(
@@ -241,7 +241,7 @@ func (t *DiscoveryTool) discover(ctx context.Context, endpoint string) (result *
 			"Discovery document missing required 'token_endpoint' field",
 		)
 		err = fmt.Errorf("discovery document missing required 'token_endpoint' field")
-		return
+		return result, err
 	}
 
 	// Return the result:
@@ -255,5 +255,5 @@ func (t *DiscoveryTool) discover(ctx context.Context, endpoint string) (result *
 		slog.Any("scopes_supported", serverMetadata.ScopesSupported),
 	)
 	result = &serverMetadata
-	return
+	return result, err
 }

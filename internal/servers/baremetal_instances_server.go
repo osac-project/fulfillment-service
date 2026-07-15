@@ -85,11 +85,11 @@ func (b *BareMetalInstancesServerBuilder) SetMetricsRegisterer(value prometheus.
 func (b *BareMetalInstancesServerBuilder) Build() (result *BareMetalInstancesServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.BareMetalInstance, *privatev1.BareMetalInstance]().
@@ -97,14 +97,14 @@ func (b *BareMetalInstancesServerBuilder) Build() (result *BareMetalInstancesSer
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.BareMetalInstance, *publicv1.BareMetalInstance]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateBareMetalInstancesServer().
@@ -115,7 +115,7 @@ func (b *BareMetalInstancesServerBuilder) Build() (result *BareMetalInstancesSer
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &BareMetalInstancesServer{
@@ -124,7 +124,7 @@ func (b *BareMetalInstancesServerBuilder) Build() (result *BareMetalInstancesSer
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *BareMetalInstancesServer) List(ctx context.Context,
@@ -156,7 +156,7 @@ func (s *BareMetalInstancesServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstancesServer) Get(ctx context.Context,
@@ -179,7 +179,7 @@ func (s *BareMetalInstancesServer) Get(ctx context.Context,
 
 	response = &publicv1.BareMetalInstancesGetResponse{}
 	response.SetObject(publicBMI)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstancesServer) Create(ctx context.Context,
@@ -187,7 +187,7 @@ func (s *BareMetalInstancesServer) Create(ctx context.Context,
 	publicBMI := request.GetObject()
 	if publicBMI == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateBMI := &privatev1.BareMetalInstance{}
 	err = s.inMapper.Copy(ctx, publicBMI, privateBMI)
@@ -195,7 +195,7 @@ func (s *BareMetalInstancesServer) Create(ctx context.Context,
 		s.logger.ErrorContext(ctx, "Failed to map public bare metal instance to private",
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process bare metal instance")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.BareMetalInstancesCreateRequest{}
@@ -211,12 +211,12 @@ func (s *BareMetalInstancesServer) Create(ctx context.Context,
 		s.logger.ErrorContext(ctx, "Failed to map private bare metal instance to public",
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process bare metal instance")
-		return
+		return response, err
 	}
 
 	response = &publicv1.BareMetalInstancesCreateResponse{}
 	response.SetObject(createdPublicBMI)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstancesServer) Update(ctx context.Context,
@@ -224,12 +224,12 @@ func (s *BareMetalInstancesServer) Update(ctx context.Context,
 	publicBMI := request.GetObject()
 	if publicBMI == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicBMI.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// When there's a field mask, copy to a new private object and let the generic server handle the
@@ -253,7 +253,7 @@ func (s *BareMetalInstancesServer) Update(ctx context.Context,
 		s.logger.ErrorContext(ctx, "Failed to map public bare metal instance to private",
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process bare metal instance")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.BareMetalInstancesUpdateRequest{}
@@ -271,12 +271,12 @@ func (s *BareMetalInstancesServer) Update(ctx context.Context,
 		s.logger.ErrorContext(ctx, "Failed to map private bare metal instance to public",
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process bare metal instance")
-		return
+		return response, err
 	}
 
 	response = &publicv1.BareMetalInstancesUpdateResponse{}
 	response.SetObject(updatedPublicBMI)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstancesServer) Delete(ctx context.Context,
@@ -290,5 +290,5 @@ func (s *BareMetalInstancesServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.BareMetalInstancesDeleteResponse{}
-	return
+	return response, err
 }

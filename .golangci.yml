@@ -27,8 +27,11 @@ linters:
     - gocyclo
     - gosec
     - misspell
+    - nakedret
     - nolintlint
   settings:
+    nakedret:
+      max-func-lines: 10
     gosec:
       excludes:
         # G104 (unhandled errors) is redundant with errcheck. The std-error-handling

@@ -80,11 +80,11 @@ func (b *GrpcAuthnInterceptorBuilder) Build() (result *GrpcAuthnInterceptor, err
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.jwtValidator == nil {
 		err = errors.New("JWT validator is mandatory")
-		return
+		return result, err
 	}
 
 	// Compile anonymous method regexes:
@@ -93,7 +93,7 @@ func (b *GrpcAuthnInterceptorBuilder) Build() (result *GrpcAuthnInterceptor, err
 		anonymousMethods[i], err = regexp.Compile(expr)
 		if err != nil {
 			err = fmt.Errorf("failed to compile anonymous method regex '%s': %w", expr, err)
-			return
+			return result, err
 		}
 	}
 
@@ -103,7 +103,7 @@ func (b *GrpcAuthnInterceptorBuilder) Build() (result *GrpcAuthnInterceptor, err
 		jwtValidator:     b.jwtValidator,
 		anonymousMethods: anonymousMethods,
 	}
-	return
+	return result, err
 }
 
 // UnaryServer is the unary server interceptor function.
@@ -168,7 +168,7 @@ func (s *grpcAuthnStream) SetTrailer(md metadata.MD) {
 func (i *GrpcAuthnInterceptor) authenticate(ctx context.Context, method string) (result context.Context, err error) {
 	if i.isAnonymous(method) {
 		result = ctx
-		return
+		return result, err
 	}
 	values := metadata.ValueFromIncomingContext(ctx, Authorization)
 	length := len(values)
@@ -185,21 +185,21 @@ func (i *GrpcAuthnInterceptor) authenticate(ctx context.Context, method string) 
 			length,
 		)
 	}
-	return
+	return result, err
 }
 
 func (i *GrpcAuthnInterceptor) withHeader(ctx context.Context, header string) (result context.Context, err error) {
 	bearer, err := i.extractBearer(header)
 	if err != nil {
-		return
+		return result, err
 	}
 	token, err := i.jwtValidator.Validate(ctx, bearer)
 	if err != nil {
 		err = grpcstatus.Errorf(grpccodes.Unauthenticated, "%s", err.Error())
-		return
+		return result, err
 	}
 	result = ContextWithToken(ctx, token)
-	return
+	return result, err
 }
 
 // extractBearer extracts the bearer token from the authorization header value.
@@ -210,7 +210,7 @@ func (i *GrpcAuthnInterceptor) extractBearer(auth string) (result string, err er
 			grpccodes.Unauthenticated,
 			"authorization header value should be 'Bearer TOKEN'",
 		)
-		return
+		return result, err
 	}
 	scheme := matches[1]
 	if !strings.EqualFold(scheme, "Bearer") {
@@ -219,10 +219,10 @@ func (i *GrpcAuthnInterceptor) extractBearer(auth string) (result string, err er
 			"authentication scheme '%s' is not supported",
 			scheme,
 		)
-		return
+		return result, err
 	}
 	result = matches[2]
-	return
+	return result, err
 }
 
 // isAnonymous checks if the given method is anonymous by matching it against the configured anonymous method

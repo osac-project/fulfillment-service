@@ -94,7 +94,7 @@ func (b *CorsMiddlewareBuilder) Build() (result func(http.Handler) http.Handler,
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// If no allowed origins are set, use the default value:
@@ -125,5 +125,5 @@ func (b *CorsMiddlewareBuilder) Build() (result func(http.Handler) http.Handler,
 			"Content-Type",
 		}),
 	)
-	return
+	return result, err
 }

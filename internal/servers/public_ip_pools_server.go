@@ -88,15 +88,15 @@ func (b *PublicIPPoolsServerBuilder) SetMetricsRegisterer(value prometheus.Regis
 func (b *PublicIPPoolsServerBuilder) Build() (result *PublicIPPoolsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// SetStrict(false): private type has extra fields (spec.cidrs, spec.implementation_strategy, status.*) not in public type.
@@ -105,7 +105,7 @@ func (b *PublicIPPoolsServerBuilder) Build() (result *PublicIPPoolsServer, err e
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivatePublicIPPoolsServer().
@@ -116,7 +116,7 @@ func (b *PublicIPPoolsServerBuilder) Build() (result *PublicIPPoolsServer, err e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PublicIPPoolsServer{
@@ -124,7 +124,7 @@ func (b *PublicIPPoolsServerBuilder) Build() (result *PublicIPPoolsServer, err e
 		delegate:  delegate,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 // isPoolPubliclyVisible returns true when a pool should be exposed via the public API.
@@ -186,7 +186,7 @@ func (s *PublicIPPoolsServer) List(ctx context.Context,
 	response.SetSize(int32(len(publicItems))) // #nosec G115 -- bounded by pool size
 	response.SetTotal(total)
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *PublicIPPoolsServer) Get(ctx context.Context,
@@ -216,5 +216,5 @@ func (s *PublicIPPoolsServer) Get(ctx context.Context,
 
 	response = &publicv1.PublicIPPoolsGetResponse{}
 	response.SetObject(publicPool)
-	return
+	return response, err
 }

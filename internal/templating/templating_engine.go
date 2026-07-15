@@ -104,7 +104,7 @@ func (b *EngineBuilder) Build() (result *Engine, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// We need to create the engine early because the some of the functions need the pointer:
@@ -141,18 +141,18 @@ func (b *EngineBuilder) Build() (result *Engine, err error) {
 		if b.dir != "" {
 			fsys, err = fs.Sub(filesystem, b.dir)
 			if err != nil {
-				return
+				return result, err
 			}
 		}
 		err = e.discoverTemplates(fsys)
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 
 	// Return the object:
 	result = e
-	return
+	return result, err
 }
 
 func (e *Engine) discoverTemplates(fsys fs.FS) error {
@@ -276,11 +276,11 @@ func (e *Engine) base64Func(value any) (result string, err error) {
 			value,
 		)
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 	result = base64.StdEncoding.EncodeToString(data)
-	return
+	return result, err
 }
 
 // evaluateFunc is a template function that parses and executes an arbitrary string as a template, returning the
@@ -292,19 +292,19 @@ func (e *Engine) base64Func(value any) (result string, err error) {
 func (e *Engine) evaluateFunc(text string, data any) (result string, err error) {
 	template, err := e.template.Clone()
 	if err != nil {
-		return
+		return result, err
 	}
 	template, err = template.New("").Parse(text)
 	if err != nil {
-		return
+		return result, err
 	}
 	buffer := &bytes.Buffer{}
 	err = template.Execute(buffer, data)
 	if err != nil {
-		return
+		return result, err
 	}
 	result = buffer.String()
-	return
+	return result, err
 }
 
 // executeFunc is a template function similar to template.ExecuteTemplate but it returns the result instead of writing
@@ -315,16 +315,16 @@ func (e *Engine) evaluateFunc(text string, data any) (result string, err error) 
 func (e *Engine) executeFunc(name string, data any) (result string, err error) {
 	err = e.ensureLoaded(name)
 	if err != nil {
-		return
+		return result, err
 	}
 	buffer := &bytes.Buffer{}
 	executed := e.template.Lookup(name)
 	err = executed.Execute(buffer, data)
 	if err != nil {
-		return
+		return result, err
 	}
 	result = buffer.String()
-	return
+	return result, err
 }
 
 // jsonFunc is a template function that encodes the given data as JSON. This can be used, for example, to encode as a
@@ -395,7 +395,7 @@ func (e *Engine) dataFunc(args ...any) (result map[string]any, err error) {
 			"number of arguments should be even, but it is %d",
 			len(args),
 		)
-		return
+		return result, err
 	}
 	result = map[string]any{}
 	for i := 0; i < len(args)/2; i++ {
@@ -406,10 +406,10 @@ func (e *Engine) dataFunc(args ...any) (result map[string]any, err error) {
 				"argument %d should be a string, but it is of type %T",
 				i, key,
 			)
-			return
+			return result, err
 		}
 		value := args[2*i+1]
 		result[name] = value
 	}
-	return
+	return result, err
 }

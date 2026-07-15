@@ -52,22 +52,22 @@ func (r *ListRequest[O]) SetOffset(value int32) *ListRequest[O] {
 func (r *ListRequest[O]) Do(ctx context.Context) (response *ListResponse[O], err error) {
 	err = r.init(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
-	return
+	return response, err
 }
 
 func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err error) {
 	// Add tenant visibility filter:
 	err = r.addTenancyFilter(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Calculate the requested filter:
@@ -75,7 +75,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 		var filter string
 		filter, err = r.dao.filterTranslator.Translate(ctx, r.filter)
 		if err != nil {
-			return
+			return response, err
 		}
 		if r.sql.filter.Len() > 0 {
 			r.sql.filter.WriteString(` and `)
@@ -104,7 +104,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 		return row.Scan(&total)
 	}()
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Fetch the results:
@@ -235,7 +235,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 		return rows.Err()
 	}()
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Create and return the response:
@@ -244,7 +244,7 @@ func (r *ListRequest[O]) do(ctx context.Context) (response *ListResponse[O], err
 		total: int32(total),      // #nosec G115 -- bounded by MaxLimit
 		items: items,
 	}
-	return
+	return response, err
 }
 
 // ListResponse represents the result of a list operation.

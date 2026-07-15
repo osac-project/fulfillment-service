@@ -95,7 +95,7 @@ func (b *ContainerBuilder) Build() (result *Container, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Select the container tool to use:
@@ -104,7 +104,7 @@ func (b *ContainerBuilder) Build() (result *Container, err error) {
 		tool, err = b.selectTool()
 		if err != nil {
 			err = fmt.Errorf("failed to select container tool: %w", err)
-			return
+			return result, err
 		}
 	}
 	b.logger.Info(
@@ -127,7 +127,7 @@ func (b *ContainerBuilder) Build() (result *Container, err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create writer for command output: %w", err)
-		return
+		return result, err
 	}
 	errLogger := b.logger.With(
 		slog.String("stream", "stderr"),
@@ -139,7 +139,7 @@ func (b *ContainerBuilder) Build() (result *Container, err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create writer for command errors: %w", err)
-		return
+		return result, err
 	}
 
 	// Create the server object:
@@ -151,7 +151,7 @@ func (b *ContainerBuilder) Build() (result *Container, err error) {
 		outWriter:      outWriter,
 		errWriter:      errWriter,
 	}
-	return
+	return result, err
 }
 
 // selectTool selects the tool to use to start the database server container.
@@ -168,10 +168,10 @@ func (b *ContainerBuilder) selectTool() (result string, err error) {
 			continue
 		}
 		result = toolPath
-		return
+		return result, err
 	}
 	err = errors.New("can't find any available container tool")
-	return
+	return result, err
 }
 
 // Start starts the database server inside a container and waits until it is ready to accept connections. Cleaning when
@@ -311,17 +311,17 @@ func (c *Container) createConfigFile(ctx context.Context) (err error) {
 	tmpFile, err = os.CreateTemp("", "*.conf")
 	if err != nil {
 		err = fmt.Errorf("failed to create configuration file: %w", err)
-		return
+		return err
 	}
 	_, err = tmpFile.WriteString(containerConfigText)
 	if err != nil {
 		err = fmt.Errorf("failed to write configuration file: %w", err)
-		return
+		return err
 	}
 	err = tmpFile.Close()
 	if err != nil {
 		err = fmt.Errorf("failed to close configuration file: %w", err)
-		return
+		return err
 	}
 
 	// The sclorg image runs PostgreSQL as UID 26, which in rootless podman maps to a different host UID. Since
@@ -330,7 +330,7 @@ func (c *Container) createConfigFile(ctx context.Context) (err error) {
 	err = os.Chmod(tmpFile.Name(), 0644)
 	if err != nil {
 		err = fmt.Errorf("failed to set permissions on configuration file: %w", err)
-		return
+		return err
 	}
 
 	// Store the file name so that it can be removed when the container is stopped.
@@ -636,15 +636,15 @@ func (i *Instance) Pool(ctx context.Context) (result *pgxpool.Pool, err error) {
 func (i *Instance) Connection(ctx context.Context) (result *pgx.Conn, err error) {
 	err = i.initIfNeeded(ctx)
 	if err != nil {
-		return
+		return result, err
 	}
 	conn, err := pgx.Connect(ctx, i.url)
 	if err != nil {
 		err = fmt.Errorf("failed to create database connection: %w", err)
-		return
+		return result, err
 	}
 	result = conn
-	return
+	return result, err
 }
 
 // Close deletes the database that was created for this instance.

@@ -175,7 +175,7 @@ func (s *PrivateExternalIPAttachmentsServer) Create(ctx context.Context,
 
 	err = s.validateExternalIPAttachment(attachment)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	spec := attachment.GetSpec()
@@ -183,18 +183,18 @@ func (s *PrivateExternalIPAttachmentsServer) Create(ctx context.Context,
 
 	err = s.validateExternalIPReference(ctx, externalIPID)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.validateTargetReference(ctx, spec)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	targetID := s.getTargetID(spec)
 	err = s.validateUniqueness(ctx, externalIPID, targetID)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	if attachment.GetStatus() == nil {
@@ -208,15 +208,15 @@ func (s *PrivateExternalIPAttachmentsServer) Create(ctx context.Context,
 
 	err = s.generic.Create(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.updateExternalIPAttachedFlag(ctx, externalIPID, true)
 	if err != nil {
-		return
+		return response, err
 	}
 
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPAttachmentsServer) Update(ctx context.Context,
@@ -224,7 +224,7 @@ func (s *PrivateExternalIPAttachmentsServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	mask := request.GetUpdateMask()
@@ -236,16 +236,16 @@ func (s *PrivateExternalIPAttachmentsServer) Update(ctx context.Context,
 		var getResponse *privatev1.ExternalIPAttachmentsGetResponse
 		err = s.generic.Get(ctx, getRequest, &getResponse)
 		if err != nil {
-			return
+			return response, err
 		}
 		err = validateImmutableFieldsExternalIPAttachment(request.GetObject(), getResponse.GetObject())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPAttachmentsServer) Delete(ctx context.Context,
@@ -253,7 +253,7 @@ func (s *PrivateExternalIPAttachmentsServer) Delete(ctx context.Context,
 	id := request.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.ExternalIPAttachmentsGetRequest{}
@@ -261,24 +261,24 @@ func (s *PrivateExternalIPAttachmentsServer) Delete(ctx context.Context,
 	var getResponse *privatev1.ExternalIPAttachmentsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	externalIPID := getResponse.GetObject().GetSpec().GetExternalIp()
 
 	err = s.generic.Delete(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	if externalIPID != "" {
 		err = s.updateExternalIPAttachedFlag(ctx, externalIPID, false)
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPAttachmentsServer) Signal(ctx context.Context,

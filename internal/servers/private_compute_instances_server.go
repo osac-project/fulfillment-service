@@ -96,11 +96,11 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the templates DAO:
@@ -110,7 +110,7 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the catalog items DAO:
@@ -120,7 +120,7 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the Subnets DAO for network validation:
@@ -130,7 +130,7 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the SecurityGroups DAO for network validation:
@@ -140,7 +140,7 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the InstanceTypes DAO for instance type validation:
@@ -150,7 +150,7 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -163,7 +163,7 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -176,7 +176,7 @@ func (b *PrivateComputeInstancesServerBuilder) Build() (result *PrivateComputeIn
 		securityGroupsDao: securityGroupsDao,
 		instanceTypesDao:  instanceTypesDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateComputeInstancesServer) List(ctx context.Context,
@@ -196,20 +196,20 @@ func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 	// Validate tenant isolation for network references:
 	err = s.validateNetworkReferencesTenancy(ctx, request.GetObject())
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Validate network references state (exists, READY):
 	err = s.validateNetworkReferencesState(ctx, request.GetObject())
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Require network_attachments for new VMs (no pod network for new VMs):
 	if len(request.GetObject().GetSpec().GetNetworkAttachments()) == 0 {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"spec.network_attachments: at least one network attachment is required for new compute instances")
-		return
+		return response, err
 	}
 
 	// Dispatch between catalog item and template paths:
@@ -219,22 +219,22 @@ func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 	if catalogItemRef != "" && templateRef != "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"catalog_item and template are mutually exclusive")
-		return
+		return response, err
 	}
 	if catalogItemRef != "" {
 		err = s.validateAndTransformCatalogItem(ctx, request.GetObject())
 		if err != nil {
-			return
+			return response, err
 		}
 	} else {
 		template, templateErr := s.fetchAndValidateTemplate(ctx, request.GetObject())
 		if templateErr != nil {
 			err = templateErr
-			return
+			return response, err
 		}
 		err = s.applySpecDefaults(request.GetObject().GetSpec(), template)
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
@@ -244,19 +244,19 @@ func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 	var warnings []string
 	warnings, err = s.validateInstanceType(ctx, request.GetObject())
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.generic.Create(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Attach warnings to the response (deprecation notices for DEPRECATED instance types).
 	if len(warnings) > 0 {
 		response.SetWarnings(warnings)
 	}
-	return
+	return response, err
 }
 
 func (s *PrivateComputeInstancesServer) Update(ctx context.Context,
@@ -271,7 +271,7 @@ func (s *PrivateComputeInstancesServer) Update(ctx context.Context,
 	if hasMaskPrefix(mask, "spec.network_attachments") {
 		err = s.validateNetworkReferencesTenancy(ctx, request.GetObject())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
@@ -280,22 +280,22 @@ func (s *PrivateComputeInstancesServer) Update(ctx context.Context,
 	if !isBeingDeleted && hasMaskPrefix(mask, "spec.network_attachments") {
 		err = s.validateNetworkReferencesState(ctx, request.GetObject())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
 	err = s.validateTemplateImmutability(ctx, request)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.validateNetworkAttachmentsImmutability(ctx, request)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateComputeInstancesServer) Delete(ctx context.Context,
@@ -817,7 +817,7 @@ func (s *PrivateComputeInstancesServer) validateAndTransformCatalogItem(ctx cont
 func (s *PrivateComputeInstancesServer) lookupCatalogItem(ctx context.Context,
 	key string) (result *privatev1.ComputeInstanceCatalogItem, err error) {
 	if key == "" {
-		return
+		return result, err
 	}
 	response, err := s.catalogItemsDao.List().
 		SetFilter(fmt.Sprintf("this.id == %[1]s || this.metadata.name == %[1]s", strconv.Quote(key))).
@@ -827,20 +827,20 @@ func (s *PrivateComputeInstancesServer) lookupCatalogItem(ctx context.Context,
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
 			err = grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
-			return
+			return result, err
 		}
 		s.logger.ErrorContext(ctx, "Failed to lookup catalog item",
 			slog.String("key", key),
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item")
-		return
+		return result, err
 	}
 	items := response.GetItems()
 	if len(items) == 0 {
 		err = grpcstatus.Errorf(grpccodes.NotFound,
 			"there is no catalog item with identifier or name '%s'", key)
-		return
+		return result, err
 	}
 	result = items[0]
-	return
+	return result, err
 }

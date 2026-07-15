@@ -228,10 +228,10 @@ func (c *runnerContext) list(ctx context.Context, keys []string) (results []prot
 
 	listResult, err := c.objectHelper.List(ctx, options)
 	if err != nil {
-		return
+		return results, err
 	}
 	results = listResult.Items
-	return
+	return results, err
 }
 
 func (c *runnerContext) renderTable(ctx context.Context, objects []proto.Message) error {
@@ -296,15 +296,15 @@ func (c *runnerContext) encodeObjects(objects []proto.Message) (result []any, er
 func (c *runnerContext) encodeObject(object proto.Message) (result any, err error) {
 	wrapper, err := anypb.New(object)
 	if err != nil {
-		return
+		return result, err
 	}
 	var data []byte
 	data, err = c.marshalOptions.Marshal(wrapper)
 	if err != nil {
-		return
+		return result, err
 	}
 	err = json.Unmarshal(data, &result)
-	return
+	return result, err
 }
 
 const shortHelp = `Get objects`

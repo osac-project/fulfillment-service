@@ -81,7 +81,7 @@ func (b *EncoderBuilder) Build() (result *Encoder, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Get descriptors of well known types:
@@ -122,7 +122,7 @@ func (b *EncoderBuilder) Build() (result *Encoder, err error) {
 					"of type '%T'",
 				i, ignoredField,
 			)
-			return
+			return result, err
 		}
 	}
 
@@ -138,26 +138,26 @@ func (b *EncoderBuilder) Build() (result *Encoder, err error) {
 		structDesc:            structDesc,
 		jsonApi:               jsonApi,
 	}
-	return
+	return result, err
 }
 
 func (e *Encoder) Marshal(object proto.Message) (result []byte, err error) {
 	if object == nil {
 		result = []byte("{}")
-		return
+		return result, err
 	}
 	stream := e.jsonApi.BorrowStream(nil)
 	defer e.jsonApi.ReturnStream(stream)
 	err = e.marshalMessage(stream, object.ProtoReflect())
 	if err != nil {
-		return
+		return result, err
 	}
 	err = stream.Flush()
 	if err != nil {
-		return
+		return result, err
 	}
 	result = bytes.Clone(stream.Buffer())
-	return
+	return result, err
 }
 
 func (e *Encoder) marshalMessage(stream *jsoniter.Stream, message protoreflect.Message) (err error) {
@@ -165,12 +165,12 @@ func (e *Encoder) marshalMessage(stream *jsoniter.Stream, message protoreflect.M
 	if descriptor == e.anyDesc || descriptor == e.durationDesc || descriptor == e.timestampDesc ||
 		descriptor == e.valueDesc || descriptor == e.structDesc {
 		err = e.marshalWellKnown(stream, message.Interface())
-		return
+		return err
 	}
 	stream.WriteObjectStart()
 	if stream.Error != nil {
 		err = stream.Error
-		return
+		return err
 	}
 	first := true
 	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
@@ -197,12 +197,12 @@ func (e *Encoder) marshalMessage(stream *jsoniter.Stream, message protoreflect.M
 		return true
 	})
 	if err != nil {
-		return
+		return err
 	}
 	stream.WriteObjectEnd()
 	err = stream.Error
 	if err != nil {
-		return
+		return err
 	}
 	return stream.Flush()
 }
@@ -298,7 +298,7 @@ func (e *Encoder) marshalMap(stream *jsoniter.Stream, m protoreflect.Map,
 	stream.WriteObjectStart()
 	if stream.Error != nil {
 		err = stream.Error
-		return
+		return err
 	}
 	first := true
 	m.Range(func(key protoreflect.MapKey, value protoreflect.Value) bool {
@@ -322,7 +322,7 @@ func (e *Encoder) marshalMap(stream *jsoniter.Stream, m protoreflect.Map,
 		return true
 	})
 	if err != nil {
-		return
+		return err
 	}
 	stream.WriteObjectEnd()
 	return stream.Error

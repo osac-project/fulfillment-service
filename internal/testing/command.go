@@ -108,11 +108,11 @@ func (b *CommandBuilder) Build() (result *Command, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = fmt.Errorf("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.name == "" {
 		err = fmt.Errorf("name is mandatory")
-		return
+		return result, err
 	}
 
 	// Use the current working directory if no directory is set
@@ -120,7 +120,7 @@ func (b *CommandBuilder) Build() (result *Command, err error) {
 	if dir == "" {
 		dir, err = os.Getwd()
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 
@@ -148,7 +148,7 @@ func (b *CommandBuilder) Build() (result *Command, err error) {
 		dir:    dir,
 		quiet:  b.quiet,
 	}
-	return
+	return result, err
 }
 
 // Execute executes the commands. It returns an error if the command fails.
@@ -202,7 +202,7 @@ func (c *Command) Evaluate(ctx context.Context) (stdoutBytes, stderrBytes []byte
 	if !c.quiet {
 		err = c.setupLogging(ctx, cmd)
 		if err != nil {
-			return
+			return stdoutBytes, stderrBytes, err
 		}
 	}
 	logger.DebugContext(ctx, "Evaluating command")
@@ -221,7 +221,7 @@ func (c *Command) Evaluate(ctx context.Context) (stdoutBytes, stderrBytes []byte
 	} else if logger.Enabled(ctx, slog.LevelDebug) {
 		logger.LogAttrs(ctx, slog.LevelDebug, "Command succeeded", attrs...)
 	}
-	return
+	return stdoutBytes, stderrBytes, err
 }
 
 func (c *Command) setupLogging(ctx context.Context, cmd *exec.Cmd) error {

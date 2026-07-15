@@ -86,11 +86,11 @@ func (b *ComputeInstanceTemplatesServerBuilder) Build() (result *ComputeInstance
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -99,14 +99,14 @@ func (b *ComputeInstanceTemplatesServerBuilder) Build() (result *ComputeInstance
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.ComputeInstanceTemplate, *publicv1.ComputeInstanceTemplate]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -118,7 +118,7 @@ func (b *ComputeInstanceTemplatesServerBuilder) Build() (result *ComputeInstance
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -128,7 +128,7 @@ func (b *ComputeInstanceTemplatesServerBuilder) Build() (result *ComputeInstance
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *ComputeInstanceTemplatesServer) List(ctx context.Context,
@@ -167,7 +167,7 @@ func (s *ComputeInstanceTemplatesServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ComputeInstanceTemplatesServer) Get(ctx context.Context,
@@ -198,7 +198,7 @@ func (s *ComputeInstanceTemplatesServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ComputeInstanceTemplatesGetResponse{}
 	response.SetObject(publicComputeInstanceTemplate)
-	return
+	return response, err
 }
 
 func (s *ComputeInstanceTemplatesServer) Create(ctx context.Context,
@@ -207,7 +207,7 @@ func (s *ComputeInstanceTemplatesServer) Create(ctx context.Context,
 	publicComputeInstanceTemplate := request.GetObject()
 	if publicComputeInstanceTemplate == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateComputeInstanceTemplate := &privatev1.ComputeInstanceTemplate{}
 	err = s.inMapper.Copy(ctx, publicComputeInstanceTemplate, privateComputeInstanceTemplate)
@@ -218,7 +218,7 @@ func (s *ComputeInstanceTemplatesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance template")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -240,14 +240,14 @@ func (s *ComputeInstanceTemplatesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance template")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.ComputeInstanceTemplatesCreateResponse{}
 	response.SetObject(createdPublicComputeInstanceTemplate)
 	response.SetWarnings(privateResponse.GetWarnings())
-	return
+	return response, err
 }
 
 func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
@@ -256,12 +256,12 @@ func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
 	publicComputeInstanceTemplate := request.GetObject()
 	if publicComputeInstanceTemplate == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicComputeInstanceTemplate.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Get the existing object from the private server:
@@ -282,7 +282,7 @@ func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance template")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server with the merged object:
@@ -305,14 +305,14 @@ func (s *ComputeInstanceTemplatesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance template")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.ComputeInstanceTemplatesUpdateResponse{}
 	response.SetObject(updatedPublicComputeInstanceTemplate)
 	response.SetWarnings(privateResponse.GetWarnings())
-	return
+	return response, err
 }
 
 func (s *ComputeInstanceTemplatesServer) Delete(ctx context.Context,
@@ -329,5 +329,5 @@ func (s *ComputeInstanceTemplatesServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.ComputeInstanceTemplatesDeleteResponse{}
-	return
+	return response, err
 }

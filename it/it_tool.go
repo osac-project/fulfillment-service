@@ -198,11 +198,11 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if (b.caKeyFile == "") != (b.caCrtFile == "") {
 		err = errors.New("key file and certificate file must both be provided or both be omitted")
-		return
+		return result, err
 	}
 
 	// Find the project directory if not specified:
@@ -210,7 +210,7 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 	if projectDir == "" {
 		projectDir, err = b.findProjectDir()
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 
@@ -220,7 +220,7 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create JQ tool: %w", err)
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -236,7 +236,7 @@ func (b *ToolBuilder) Build() (result *Tool, err error) {
 		secret:      b.secret,
 		jqTool:      jqTool,
 	}
-	return
+	return result, err
 }
 
 // findProjectDir finds the project directory by searching for the go.mod file starting from the current directory.
@@ -244,23 +244,23 @@ func (b *ToolBuilder) findProjectDir() (result string, err error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		err = fmt.Errorf("failed to get current directory: %w", err)
-		return
+		return result, err
 	}
 	for {
 		modFile := filepath.Join(currentDir, "go.mod")
 		_, statErr := os.Stat(modFile)
 		if statErr == nil {
 			result = currentDir
-			return
+			return result, err
 		}
 		if !errors.Is(statErr, os.ErrNotExist) {
 			err = fmt.Errorf("failed to stat '%s': %w", modFile, statErr)
-			return
+			return result, err
 		}
 		parentDir := filepath.Dir(currentDir)
 		if parentDir == currentDir {
 			err = fmt.Errorf("failed to find 'go.mod' file starting from '%s'", currentDir)
-			return
+			return result, err
 		}
 		currentDir = parentDir
 	}
@@ -501,15 +501,15 @@ func (t *Tool) buildImage(ctx context.Context) (result string, err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create command to build image: %w", err)
-		return
+		return result, err
 	}
 	err = buildCmd.Execute(ctx)
 	if err != nil {
 		err = fmt.Errorf("failed to build image: %w", err)
-		return
+		return result, err
 	}
 	result = imageRef
-	return
+	return result, err
 }
 
 // saveImage saves the given container image to a tar file and returns the path to that tar file.
@@ -529,15 +529,15 @@ func (t *Tool) saveImage(ctx context.Context, imageRef string) (result string, e
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create command to save image: %w", err)
-		return
+		return result, err
 	}
 	err = saveCmd.Execute(ctx)
 	if err != nil {
 		err = fmt.Errorf("failed to save container image: %w", err)
-		return
+		return result, err
 	}
 	result = imageTar
-	return
+	return result, err
 }
 
 func (t *Tool) startCluster(ctx context.Context) error {
@@ -1166,7 +1166,7 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 			data, err = json.Marshal(input)
 			if err != nil {
 				err = fmt.Errorf("failed to marshal request body: %w", err)
-				return
+				return code, output, err
 			}
 			body = bytes.NewReader(data)
 		}
@@ -1174,7 +1174,7 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 		request, err := http.NewRequestWithContext(ctx, method, url, body)
 		if err != nil {
 			err = fmt.Errorf("failed to create request: %w", err)
-			return
+			return code, output, err
 		}
 		if input != nil {
 			request.Header.Set("Content-Type", "application/json")
@@ -1183,22 +1183,22 @@ func (t *Tool) deployKeycloak(ctx context.Context) error {
 		token, err = tokenSource.Token(ctx)
 		if err != nil {
 			err = fmt.Errorf("failed to get token: %w", err)
-			return
+			return code, output, err
 		}
 		request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.Access))
 		response, err := httpClient.Do(request)
 		if err != nil {
 			err = fmt.Errorf("failed to send request: %w", err)
-			return
+			return code, output, err
 		}
 		defer response.Body.Close()
 		output, err = io.ReadAll(response.Body)
 		if err != nil {
 			err = fmt.Errorf("failed to read response body: %w", err)
-			return
+			return code, output, err
 		}
 		code = response.StatusCode
-		return
+		return code, output, err
 	}
 
 	// Create the 'admin' client in the master realm:
@@ -1904,7 +1904,7 @@ func (t *Tool) makeKubernetesTokenSource(ctx context.Context, sa, namespace stri
 	)
 	if err != nil {
 		err = fmt.Errorf("failed to create token for service account '%s': %w", sa, err)
-		return
+		return result, err
 	}
 	token := &auth.Token{
 		Access: response.Status.Token,
@@ -1913,7 +1913,7 @@ func (t *Tool) makeKubernetesTokenSource(ctx context.Context, sa, namespace stri
 		SetLogger(t.logger).
 		SetToken(token).
 		Build()
-	return
+	return result, err
 }
 
 func (t *Tool) makeKeycloakTokenSource(ctx context.Context, username, password string) (result auth.TokenSource, err error) {
@@ -1921,7 +1921,7 @@ func (t *Tool) makeKeycloakTokenSource(ctx context.Context, username, password s
 		SetLogger(t.logger).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	result, err = oauth.NewTokenSource().
 		SetLogger(t.logger).
@@ -1934,7 +1934,7 @@ func (t *Tool) makeKeycloakTokenSource(ctx context.Context, username, password s
 		SetPassword(password).
 		SetScopes("openid", "organization").
 		Build()
-	return
+	return result, err
 }
 
 // KeycloakAdminRequest makes an authenticated request to the Keycloak admin API for the 'osac' realm.
@@ -1947,7 +1947,7 @@ func (t *Tool) KeycloakAdminRequest(ctx context.Context, method, path string, in
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create Keycloak admin token store: %w", err)
-		return
+		return code, output, err
 	}
 	tokenSource, err := oauth.NewTokenSource().
 		SetLogger(t.logger).
@@ -1962,7 +1962,7 @@ func (t *Tool) KeycloakAdminRequest(ctx context.Context, method, path string, in
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create Keycloak admin token source: %w", err)
-		return
+		return code, output, err
 	}
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -1978,7 +1978,7 @@ func (t *Tool) KeycloakAdminRequest(ctx context.Context, method, path string, in
 		data, err = json.Marshal(input)
 		if err != nil {
 			err = fmt.Errorf("failed to marshal request body: %w", err)
-			return
+			return code, output, err
 		}
 		body = bytes.NewReader(data)
 	}
@@ -1986,7 +1986,7 @@ func (t *Tool) KeycloakAdminRequest(ctx context.Context, method, path string, in
 	request, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		err = fmt.Errorf("failed to create request: %w", err)
-		return
+		return code, output, err
 	}
 	if input != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -1994,22 +1994,22 @@ func (t *Tool) KeycloakAdminRequest(ctx context.Context, method, path string, in
 	token, err := tokenSource.Token(ctx)
 	if err != nil {
 		err = fmt.Errorf("failed to get token: %w", err)
-		return
+		return code, output, err
 	}
 	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.Access))
 	response, err := httpClient.Do(request)
 	if err != nil {
 		err = fmt.Errorf("failed to send request: %w", err)
-		return
+		return code, output, err
 	}
 	defer response.Body.Close()
 	output, err = io.ReadAll(response.Body)
 	if err != nil {
 		err = fmt.Errorf("failed to read response body: %w", err)
-		return
+		return code, output, err
 	}
 	code = response.StatusCode
-	return
+	return code, output, err
 }
 
 // makeGrpcConn creates a gRPC connection that automatically adds the token to the request.
@@ -2053,7 +2053,7 @@ func (t *Tool) makeHttpClient(addr string, tokenSource auth.TokenSource) *http.C
 
 			// Forward the request:
 			response, err = transport.RoundTrip(request)
-			return
+			return response, err
 		},
 	)
 	return &http.Client{

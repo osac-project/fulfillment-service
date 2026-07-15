@@ -89,11 +89,11 @@ func (b *ProjectMembershipsServerBuilder) SetMetricsRegisterer(value prometheus.
 func (b *ProjectMembershipsServerBuilder) Build() (result *ProjectMembershipsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.ProjectMembership, *privatev1.ProjectMembership]().
@@ -101,14 +101,14 @@ func (b *ProjectMembershipsServerBuilder) Build() (result *ProjectMembershipsSer
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.ProjectMembership, *publicv1.ProjectMembership]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateProjectMembershipsServer().
@@ -119,7 +119,7 @@ func (b *ProjectMembershipsServerBuilder) Build() (result *ProjectMembershipsSer
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &ProjectMembershipsServer{
@@ -128,7 +128,7 @@ func (b *ProjectMembershipsServerBuilder) Build() (result *ProjectMembershipsSer
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *ProjectMembershipsServer) List(ctx context.Context,
@@ -164,7 +164,7 @@ func (s *ProjectMembershipsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ProjectMembershipsServer) Get(ctx context.Context,
@@ -191,7 +191,7 @@ func (s *ProjectMembershipsServer) Get(ctx context.Context,
 
 	response = &publicv1.ProjectMembershipsGetResponse{}
 	response.SetObject(publicProjectMembership)
-	return
+	return response, err
 }
 
 func (s *ProjectMembershipsServer) Create(ctx context.Context,
@@ -199,7 +199,7 @@ func (s *ProjectMembershipsServer) Create(ctx context.Context,
 	publicProjectMembership := request.GetObject()
 	if publicProjectMembership == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateProjectMembership := &privatev1.ProjectMembership{}
 	err = s.inMapper.Copy(ctx, publicProjectMembership, privateProjectMembership)
@@ -210,7 +210,7 @@ func (s *ProjectMembershipsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process project membership")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.ProjectMembershipsCreateRequest{}
@@ -230,12 +230,12 @@ func (s *ProjectMembershipsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process project membership")
-		return
+		return response, err
 	}
 
 	response = &publicv1.ProjectMembershipsCreateResponse{}
 	response.SetObject(createdPublicProjectMembership)
-	return
+	return response, err
 }
 
 func (s *ProjectMembershipsServer) Update(ctx context.Context,
@@ -243,11 +243,11 @@ func (s *ProjectMembershipsServer) Update(ctx context.Context,
 	publicProjectMembership := request.GetObject()
 	if publicProjectMembership == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	if publicProjectMembership.GetId() == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	privateProjectMembership := &privatev1.ProjectMembership{}
@@ -259,7 +259,7 @@ func (s *ProjectMembershipsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process project membership")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.ProjectMembershipsUpdateRequest{}
@@ -281,12 +281,12 @@ func (s *ProjectMembershipsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process project membership")
-		return
+		return response, err
 	}
 
 	response = &publicv1.ProjectMembershipsUpdateResponse{}
 	response.SetObject(updatedPublicProjectMembership)
-	return
+	return response, err
 }
 
 func (s *ProjectMembershipsServer) Delete(ctx context.Context,
@@ -300,5 +300,5 @@ func (s *ProjectMembershipsServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.ProjectMembershipsDeleteResponse{}
-	return
+	return response, err
 }

@@ -77,11 +77,11 @@ func (b *PrivateStorageBackendsServerBuilder) Build() (result *PrivateStorageBac
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the server early so that we can use its functions to set up other objects:
@@ -100,12 +100,12 @@ func (b *PrivateStorageBackendsServerBuilder) Build() (result *PrivateStorageBac
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Return the server:
 	result = s
-	return
+	return result, err
 }
 
 // redact clears sensitive fields from the storage backend before it is included in event notification payloads.
@@ -138,7 +138,7 @@ func (s *PrivateStorageBackendsServer) Create(ctx context.Context,
 	request *privatev1.StorageBackendsCreateRequest) (response *privatev1.StorageBackendsCreateResponse, err error) {
 	err = s.validateStorageBackendCreate(ctx, request.GetObject())
 	if err != nil {
-		return
+		return response, err
 	}
 
 	sb := request.GetObject()
@@ -156,7 +156,7 @@ func (s *PrivateStorageBackendsServer) Create(ctx context.Context,
 	sb.GetMetadata().SetTenant(auth.SharedTenant)
 
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateStorageBackendsServer) Update(ctx context.Context,
@@ -164,7 +164,7 @@ func (s *PrivateStorageBackendsServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.StorageBackendsGetRequest{}
@@ -172,18 +172,18 @@ func (s *PrivateStorageBackendsServer) Update(ctx context.Context,
 	var getResponse *privatev1.StorageBackendsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingSB := getResponse.GetObject()
 
 	err = s.validateStorageBackendUpdate(ctx, request.GetObject(), existingSB)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateStorageBackendsServer) Delete(ctx context.Context,

@@ -61,11 +61,11 @@ func (b *AggregatorBuilder) Build() (result *Aggregator, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.server == nil {
 		err = errors.New("server is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -78,7 +78,7 @@ func (b *AggregatorBuilder) Build() (result *Aggregator, err error) {
 	// Initially set the health server to 'NOT_SERVING' until all components report healthy:
 	b.server.SetServingStatus("", healthv1.HealthCheckResponse_NOT_SERVING)
 
-	return
+	return result, err
 }
 
 // Report reports the health status for the given component. The aggregated status will be 'SERVING' only when all

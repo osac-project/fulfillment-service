@@ -34,12 +34,12 @@ func (f *credentialsFlow) run(ctx context.Context) (result *auth.Token, err erro
 	}
 	tokenResponse, err := f.source.sendTokenForm(ctx, tokenRequest)
 	if err != nil {
-		return
+		return result, err
 	}
 	result = &auth.Token{
 		Access:  tokenResponse.AccessToken,
 		Refresh: tokenResponse.RefreshToken,
 		Expiry:  f.source.secondsToTime(tokenResponse.ExpiresIn),
 	}
-	return
+	return result, err
 }

@@ -61,7 +61,7 @@ func MakeTCPTLSServer() (server *ghttp.Server, ca string) {
 	Expect(err).ToNot(HaveOccurred())
 	ca = fetchCACertificate("tcp", address.Host)
 
-	return
+	return server, ca
 }
 
 // fetchCACertificates connects to the given network address and extracts the CA certificate from the TLS handshake. It
@@ -227,7 +227,7 @@ func LocalhostCertificateFiles() (certFile, keyFile, caFile string) {
 	Expect(err).ToNot(HaveOccurred())
 	caFile = caTmp.Name()
 
-	return
+	return certFile, keyFile, caFile
 }
 
 // localhostCertificate contains the TLS certificate returned by the LocalhostCertificate function.

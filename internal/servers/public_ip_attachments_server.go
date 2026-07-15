@@ -85,15 +85,15 @@ func (b *PublicIPAttachmentsServerBuilder) SetMetricsRegisterer(value prometheus
 func (b *PublicIPAttachmentsServerBuilder) Build() (result *PublicIPAttachmentsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.PublicIPAttachment, *privatev1.PublicIPAttachment]().
@@ -101,14 +101,14 @@ func (b *PublicIPAttachmentsServerBuilder) Build() (result *PublicIPAttachmentsS
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.PublicIPAttachment, *publicv1.PublicIPAttachment]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivatePublicIPAttachmentsServer().
@@ -119,7 +119,7 @@ func (b *PublicIPAttachmentsServerBuilder) Build() (result *PublicIPAttachmentsS
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PublicIPAttachmentsServer{
@@ -128,7 +128,7 @@ func (b *PublicIPAttachmentsServerBuilder) Build() (result *PublicIPAttachmentsS
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *PublicIPAttachmentsServer) List(ctx context.Context,

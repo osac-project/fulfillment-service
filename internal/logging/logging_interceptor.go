@@ -108,7 +108,7 @@ func (b *InterceptorBuilder) Build() (result *Interceptor, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -118,7 +118,7 @@ func (b *InterceptorBuilder) Build() (result *Interceptor, err error) {
 		bodies:  b.bodies,
 		redact:  b.redact,
 	}
-	return
+	return result, err
 }
 
 // UnaryServer is the unary server interceptor function.
@@ -127,13 +127,13 @@ func (i *Interceptor) UnaryServer(ctx context.Context, request any, info *grpc.U
 	// Ignore reflection and health check calls:
 	if i.isIgnoredMethod(info.FullMethod) {
 		response, err = handler(ctx, request)
-		return
+		return response, err
 	}
 
 	// The processing here is expensive, so better if we avoid it completely when debug is disabled:
 	if !i.logger.Enabled(ctx, slog.LevelDebug) {
 		response, err = handler(ctx, request)
-		return
+		return response, err
 	}
 
 	// Get the time before calling the handler so that we can later compute the duration of the call:
@@ -194,7 +194,7 @@ func (i *Interceptor) UnaryServer(ctx context.Context, request any, info *grpc.U
 	}
 	i.logger.DebugContext(ctx, "Sent unary response", responseFields...)
 
-	return
+	return response, err
 }
 
 // StreamServer is the stream server interceptor function.
@@ -360,14 +360,14 @@ func (i *Interceptor) StreamClient(ctx context.Context, desc *grpc.StreamDesc, c
 	// Wrap the stream so that we can log the details of the messages exchanged:
 	stream, err = streamer(ctx, desc, conn, method, opts...)
 	if err != nil {
-		return
+		return stream, err
 	}
 	stream = &interceptorClientStream{
 		parent: i,
 		logger: i.logger,
 		stream: stream,
 	}
-	return
+	return stream, err
 }
 
 func (i *Interceptor) isIgnoredMethod(method string) bool {
@@ -436,7 +436,7 @@ func (i *Interceptor) dumpMessage(ctx context.Context, key string, value any) (f
 				"Failed to marshal protocol buffers message",
 				slog.Any("error", err),
 			)
-			return
+			return field, ok
 		}
 		var data any
 		err = json.Unmarshal(bytes, &data)
@@ -446,7 +446,7 @@ func (i *Interceptor) dumpMessage(ctx context.Context, key string, value any) (f
 				"Failed to unmarshal protocol buffers message",
 				slog.Any("error", err),
 			)
-			return
+			return field, ok
 		}
 		ok = true
 		field = slog.Any(key, data)
@@ -457,7 +457,7 @@ func (i *Interceptor) dumpMessage(ctx context.Context, key string, value any) (f
 			slog.String("type", fmt.Sprintf("%T", value)),
 		)
 	}
-	return
+	return field, ok
 }
 
 type interceptorServerStream struct {

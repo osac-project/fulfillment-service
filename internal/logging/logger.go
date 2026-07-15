@@ -207,7 +207,7 @@ func (b *LoggerBuilder) parseFieldItem(item string) (name string, value any) {
 		}
 		name = strings.TrimSpace(name)
 	}
-	return
+	return name, value
 }
 
 // Build uses the data stored in the buider to create a new logger.
@@ -217,7 +217,7 @@ func (b *LoggerBuilder) Build() (result *slog.Logger, err error) {
 	if writer == nil {
 		writer, err = b.openWriter()
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 
@@ -226,7 +226,7 @@ func (b *LoggerBuilder) Build() (result *slog.Logger, err error) {
 	if b.level != "" {
 		err = level.UnmarshalText([]byte(b.level))
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 
@@ -263,13 +263,13 @@ func (b *LoggerBuilder) Build() (result *slog.Logger, err error) {
 	// Caculate the custom fields:
 	fields, err := b.customFields()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the logger:
 	result = slog.New(handler).With(fields...)
 
-	return
+	return result, err
 }
 
 func (b *LoggerBuilder) openWriter() (result io.Writer, err error) {
@@ -289,7 +289,7 @@ func (b *LoggerBuilder) openWriter() (result io.Writer, err error) {
 	default:
 		result, err = b.openFile(b.file)
 	}
-	return
+	return result, err
 }
 
 func (b *LoggerBuilder) openFile(file string) (result io.Writer, err error) {
@@ -311,11 +311,11 @@ func (b *LoggerBuilder) customFields() (result []any, err error) {
 		fields[2*i] = name
 		fields[2*i+1], err = b.customField(name, value)
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 	result = fields
-	return
+	return result, err
 }
 
 func (b *LoggerBuilder) customField(name string, value any) (result any, err error) {

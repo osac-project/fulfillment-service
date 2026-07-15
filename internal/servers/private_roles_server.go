@@ -84,11 +84,11 @@ func (b *PrivateRolesServerBuilder) SetMetricsRegisterer(value prometheus.Regist
 func (b *PrivateRolesServerBuilder) Build() (result *PrivateRolesServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.Role]().
@@ -100,14 +100,14 @@ func (b *PrivateRolesServerBuilder) Build() (result *PrivateRolesServer, err err
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateRolesServer{
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateRolesServer) List(ctx context.Context,

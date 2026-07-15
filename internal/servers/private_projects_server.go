@@ -87,11 +87,11 @@ func (b *PrivateProjectsServerBuilder) Build() (result *PrivateProjectsServer, e
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the server early, so that we can use its methods:
@@ -109,12 +109,12 @@ func (b *PrivateProjectsServerBuilder) Build() (result *PrivateProjectsServer, e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Return the server:
 	result = s
-	return
+	return result, err
 }
 
 func (s *PrivateProjectsServer) List(ctx context.Context,
@@ -141,7 +141,7 @@ func (s *PrivateProjectsServer) Create(ctx context.Context,
 			grpccodes.InvalidArgument,
 			"field 'metadata' is mandatory",
 		)
-		return
+		return response, err
 	}
 	name := metadata.GetName()
 	path := strings.Split(name, ".")
@@ -152,7 +152,7 @@ func (s *PrivateProjectsServer) Create(ctx context.Context,
 			"field 'metadata.name' must have at most %d segments, but it has %d",
 			max, count,
 		)
-		return
+		return response, err
 	}
 
 	// When a project is created, the 'metadata.name' field must be the full name of the project, and the
@@ -170,13 +170,13 @@ func (s *PrivateProjectsServer) Create(ctx context.Context,
 				"'metadata.name', or set to '%s' to match the parent prefix, but it is '%s'",
 			project, input,
 		)
-		return
+		return response, err
 	}
 	metadata.SetProject(project)
 
 	// Call the generic server to create the project:
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateProjectsServer) Update(ctx context.Context,

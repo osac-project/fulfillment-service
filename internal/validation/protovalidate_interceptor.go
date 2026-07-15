@@ -57,13 +57,13 @@ func (b *ProtovalidateInterceptorBuilder) Build() (result *ProtovalidateIntercep
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the protovalidate validator:
 	validator, err := protovalidate.New()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the interceptor:
@@ -71,7 +71,7 @@ func (b *ProtovalidateInterceptorBuilder) Build() (result *ProtovalidateIntercep
 		logger:    b.logger,
 		validator: validator,
 	}
-	return
+	return result, err
 }
 
 // UnaryServer is the unary server interceptor function.

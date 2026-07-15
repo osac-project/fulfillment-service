@@ -203,7 +203,7 @@ func (c *runnerContext) findMatches(ctx context.Context, refs []string) (result 
 	})
 	if err != nil {
 		err = fmt.Errorf("failed to find objects of type '%s': %w", c.helper, err)
-		return
+		return result, err
 	}
 
 	// Build a map where the key is the reference and the value is the list of matching objects:
@@ -219,7 +219,7 @@ func (c *runnerContext) findMatches(ctx context.Context, refs []string) (result 
 		}
 	}
 
-	return
+	return result, err
 }
 
 const shortHelp = `Delete objects`

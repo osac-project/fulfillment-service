@@ -315,22 +315,22 @@ func (c *runnerContext) renderJson(object proto.Message) (result []byte, err err
 func (c *runnerContext) renderYaml(object proto.Message) (result []byte, err error) {
 	data, err := c.renderJson(object)
 	if err != nil {
-		return
+		return result, err
 	}
 	var value any
 	err = json.Unmarshal(data, &value)
 	if err != nil {
-		return
+		return result, err
 	}
 	buffer := &bytes.Buffer{}
 	encoder := yaml.NewEncoder(buffer)
 	encoder.SetIndent(2)
 	err = encoder.Encode(value)
 	if err != nil {
-		return
+		return result, err
 	}
 	result = buffer.Bytes()
-	return
+	return result, err
 }
 
 func (c *runnerContext) parseJson(data []byte) (result proto.Message, err error) {
@@ -347,14 +347,14 @@ func (c *runnerContext) parseYaml(data []byte) (result proto.Message, err error)
 	var value any
 	err = yaml.Unmarshal(data, &value)
 	if err != nil {
-		return
+		return result, err
 	}
 	data, err = json.Marshal(value)
 	if err != nil {
-		return
+		return result, err
 	}
 	result, err = c.parseJson(data)
-	return
+	return result, err
 }
 
 // editorEnvVars is the list of environment variables that will be used to obtain the name of the editor command.

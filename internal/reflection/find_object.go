@@ -46,7 +46,7 @@ func (h *objectHelper) FindObject(ctx context.Context, ref string, console Rende
 			"failed to find object of type '%s' with identifier or name '%s': %w",
 			h, ref, err,
 		)
-		return
+		return result, err
 	}
 	items := response.Items
 	total := response.Total
@@ -68,5 +68,5 @@ func (h *objectHelper) FindObject(ctx context.Context, ref string, console Rende
 		})
 		err = exit.Error(1)
 	}
-	return
+	return result, err
 }

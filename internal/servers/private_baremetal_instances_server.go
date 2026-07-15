@@ -86,15 +86,15 @@ func (b *PrivateBareMetalInstancesServerBuilder) SetMetricsRegisterer(value prom
 func (b *PrivateBareMetalInstancesServerBuilder) Build() (result *PrivateBareMetalInstancesServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	catalogItemsDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceCatalogItem]().
@@ -103,7 +103,7 @@ func (b *PrivateBareMetalInstancesServerBuilder) Build() (result *PrivateBareMet
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	templatesDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceTemplate]().
@@ -112,7 +112,7 @@ func (b *PrivateBareMetalInstancesServerBuilder) Build() (result *PrivateBareMet
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.BareMetalInstance]().
@@ -124,7 +124,7 @@ func (b *PrivateBareMetalInstancesServerBuilder) Build() (result *PrivateBareMet
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateBareMetalInstancesServer{
@@ -133,7 +133,7 @@ func (b *PrivateBareMetalInstancesServerBuilder) Build() (result *PrivateBareMet
 		catalogItemsDao: catalogItemsDao,
 		templatesDao:    templatesDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateBareMetalInstancesServer) List(ctx context.Context,

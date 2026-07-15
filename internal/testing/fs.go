@@ -69,5 +69,5 @@ func TmpFS(args ...any) (dir string, fsys fs.FS) {
 		Expect(err).ToNot(HaveOccurred())
 	}
 	fsys = os.DirFS(dir)
-	return
+	return dir, fsys
 }

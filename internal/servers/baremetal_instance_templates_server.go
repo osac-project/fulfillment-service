@@ -84,11 +84,11 @@ func (b *BareMetalInstanceTemplatesServerBuilder) SetMetricsRegisterer(value pro
 func (b *BareMetalInstanceTemplatesServerBuilder) Build() (result *BareMetalInstanceTemplatesServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	outMapper, err := NewGenericMapper[*privatev1.BareMetalInstanceTemplate, *publicv1.BareMetalInstanceTemplate]().
@@ -96,7 +96,7 @@ func (b *BareMetalInstanceTemplatesServerBuilder) Build() (result *BareMetalInst
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateBareMetalInstanceTemplatesServer().
@@ -107,7 +107,7 @@ func (b *BareMetalInstanceTemplatesServerBuilder) Build() (result *BareMetalInst
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &BareMetalInstanceTemplatesServer{
@@ -115,7 +115,7 @@ func (b *BareMetalInstanceTemplatesServerBuilder) Build() (result *BareMetalInst
 		delegate:  delegate,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *BareMetalInstanceTemplatesServer) List(ctx context.Context,
@@ -147,7 +147,7 @@ func (s *BareMetalInstanceTemplatesServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *BareMetalInstanceTemplatesServer) Get(ctx context.Context,
@@ -170,5 +170,5 @@ func (s *BareMetalInstanceTemplatesServer) Get(ctx context.Context,
 
 	response = &publicv1.BareMetalInstanceTemplatesGetResponse{}
 	response.SetObject(publicTemplate)
-	return
+	return response, err
 }

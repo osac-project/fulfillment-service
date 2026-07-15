@@ -91,15 +91,15 @@ func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privat
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.connection == nil {
 		err = errors.New("client is mandatory")
-		return
+		return result, err
 	}
 	if b.hubCache == nil {
 		err = errors.New("hub cache is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -112,7 +112,7 @@ func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privat
 		maskCalculator:        masks.NewCalculator().Build(),
 	}
 	result = object.run
-	return
+	return result, err
 }
 
 func (r *function) run(ctx context.Context, securityGroup *privatev1.SecurityGroup) error {
@@ -290,7 +290,7 @@ func (t *task) delete(ctx context.Context) (err error) {
 			return nil
 		}
 		// For transient errors (network, timeout, etc.), continue retrying
-		return
+		return err
 	}
 	t.hubNamespace = hubEntry.Namespace
 	t.hubClient = hubEntry.Client
@@ -298,7 +298,7 @@ func (t *task) delete(ctx context.Context) (err error) {
 	// Check if the K8S object still exists:
 	object, err := t.getKubeObject(ctx)
 	if err != nil {
-		return
+		return err
 	}
 	if object == nil {
 		// K8s object is fully gone (all K8s finalizers processed).
@@ -309,14 +309,14 @@ func (t *task) delete(ctx context.Context) (err error) {
 			slog.String("id", t.securityGroup.GetId()),
 		)
 		t.removeFinalizer()
-		return
+		return err
 	}
 
 	// Initiate K8s deletion if not already in progress:
 	if object.GetDeletionTimestamp() == nil {
 		err = t.hubClient.Delete(ctx, object)
 		if err != nil {
-			return
+			return err
 		}
 		t.r.logger.DebugContext(
 			ctx,
@@ -334,7 +334,7 @@ func (t *task) delete(ctx context.Context) (err error) {
 	}
 
 	// Don't remove finalizer — K8s object still exists with finalizers being processed.
-	return
+	return err
 }
 
 func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.SecurityGroup, err error) {
@@ -347,7 +347,7 @@ func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.Security
 		},
 	)
 	if err != nil {
-		return
+		return result, err
 	}
 	items := list.Items
 	count := len(items)
@@ -356,12 +356,12 @@ func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.Security
 			"expected at most one security group with identifier '%s' but found %d",
 			t.securityGroup.GetId(), count,
 		)
-		return
+		return result, err
 	}
 	if count > 0 {
 		result = &items[0]
 	}
-	return
+	return result, err
 }
 
 // addFinalizer adds the controller finalizer if it is not already present. Returns true if the finalizer was added,

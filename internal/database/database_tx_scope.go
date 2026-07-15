@@ -27,12 +27,12 @@ func WithNewTx[T any](ctx context.Context, fn func(context.Context) (T, error)) 
 	manager, err := TxManagerFromContext(ctx)
 	if err != nil {
 		err = fmt.Errorf("get transaction manager from context: %w", err)
-		return
+		return result, err
 	}
 	tx, err := manager.Begin(ctx)
 	if err != nil {
 		err = fmt.Errorf("begin transaction: %w", err)
-		return
+		return result, err
 	}
 	defer func() {
 		// If fn panicked, ensure the transaction is rolled back before re-panicking.
@@ -49,5 +49,5 @@ func WithNewTx[T any](ctx context.Context, fn func(context.Context) (T, error)) 
 	}()
 	result, err = fn(TxIntoContext(ctx, tx))
 	tx.ReportError(&err)
-	return
+	return result, err
 }

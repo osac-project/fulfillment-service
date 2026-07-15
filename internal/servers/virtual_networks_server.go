@@ -87,11 +87,11 @@ func (b *VirtualNetworksServerBuilder) Build() (result *VirtualNetworksServer, e
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Find the network_class field in VirtualNetworkSpec so that we can configure the inMapper to ignore it.
@@ -100,7 +100,7 @@ func (b *VirtualNetworksServerBuilder) Build() (result *VirtualNetworksServer, e
 	ncField := new(publicv1.VirtualNetworkSpec).ProtoReflect().Descriptor().Fields().ByName("network_class")
 	if ncField == nil {
 		err = fmt.Errorf("failed to find the network_class field of type '%s'", new(publicv1.VirtualNetworkSpec).ProtoReflect().Descriptor().FullName())
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -110,14 +110,14 @@ func (b *VirtualNetworksServerBuilder) Build() (result *VirtualNetworksServer, e
 		AddIgnoredFields(ncField.FullName()).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.VirtualNetwork, *publicv1.VirtualNetwork]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -129,7 +129,7 @@ func (b *VirtualNetworksServerBuilder) Build() (result *VirtualNetworksServer, e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -139,7 +139,7 @@ func (b *VirtualNetworksServerBuilder) Build() (result *VirtualNetworksServer, e
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *VirtualNetworksServer) List(ctx context.Context,
@@ -179,7 +179,7 @@ func (s *VirtualNetworksServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *VirtualNetworksServer) Get(ctx context.Context,
@@ -210,7 +210,7 @@ func (s *VirtualNetworksServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.VirtualNetworksGetResponse{}
 	response.SetObject(publicVirtualNetwork)
-	return
+	return response, err
 }
 
 func (s *VirtualNetworksServer) Create(ctx context.Context,
@@ -219,7 +219,7 @@ func (s *VirtualNetworksServer) Create(ctx context.Context,
 	publicVirtualNetwork := request.GetObject()
 	if publicVirtualNetwork == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateVirtualNetwork := &privatev1.VirtualNetwork{}
 	err = s.inMapper.Copy(ctx, publicVirtualNetwork, privateVirtualNetwork)
@@ -230,7 +230,7 @@ func (s *VirtualNetworksServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process virtual network")
-		return
+		return response, err
 	}
 
 	// Restore network_class from the public request. AddIgnoredFields drops it during Copy
@@ -264,13 +264,13 @@ func (s *VirtualNetworksServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process virtual network")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.VirtualNetworksCreateResponse{}
 	response.SetObject(createdPublicVirtualNetwork)
-	return
+	return response, err
 }
 
 func (s *VirtualNetworksServer) Update(ctx context.Context,
@@ -279,12 +279,12 @@ func (s *VirtualNetworksServer) Update(ctx context.Context,
 	publicVirtualNetwork := request.GetObject()
 	if publicVirtualNetwork == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicVirtualNetwork.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Get the existing object from the private server:
@@ -316,7 +316,7 @@ func (s *VirtualNetworksServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process virtual network")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server with the merged object:
@@ -339,13 +339,13 @@ func (s *VirtualNetworksServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process virtual network")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.VirtualNetworksUpdateResponse{}
 	response.SetObject(updatedPublicVirtualNetwork)
-	return
+	return response, err
 }
 
 func (s *VirtualNetworksServer) Delete(ctx context.Context,
@@ -362,5 +362,5 @@ func (s *VirtualNetworksServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.VirtualNetworksDeleteResponse{}
-	return
+	return response, err
 }

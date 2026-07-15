@@ -83,11 +83,11 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the VirtualNetwork DAO for parent validation:
@@ -97,7 +97,7 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -110,7 +110,7 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -119,7 +119,7 @@ func (b *PrivateSubnetsServerBuilder) Build() (result *PrivateSubnetsServer, err
 		generic:           generic,
 		virtualNetworkDao: virtualNetworkDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateSubnetsServer) List(ctx context.Context,
@@ -142,7 +142,7 @@ func (s *PrivateSubnetsServer) Create(ctx context.Context,
 	// Validate before creating:
 	err = s.validateSubnet(ctx, subnet, nil)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// SUB-VAL-10: Set owner reference annotation automatically
@@ -155,7 +155,7 @@ func (s *PrivateSubnetsServer) Create(ctx context.Context,
 	subnet.Metadata.Annotations["osac.openshift.io/owner-reference"] = subnet.GetSpec().GetVirtualNetwork()
 
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 // SUB-SVC-04: Update updates an existing Subnet with validation
@@ -165,7 +165,7 @@ func (s *PrivateSubnetsServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.SubnetsGetRequest{}
@@ -173,7 +173,7 @@ func (s *PrivateSubnetsServer) Update(ctx context.Context,
 	var getResponse *privatev1.SubnetsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingSubnet := getResponse.GetObject()
@@ -181,11 +181,11 @@ func (s *PrivateSubnetsServer) Update(ctx context.Context,
 	// Validate with existing object context:
 	err = s.validateSubnet(ctx, request.GetObject(), existingSubnet)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateSubnetsServer) Delete(ctx context.Context,

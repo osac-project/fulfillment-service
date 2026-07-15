@@ -188,7 +188,7 @@ func (b *FilterTranslatorBuilder[O]) Build() (result *FilterTranslator[O], err e
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Get the descriptors of well known types:
@@ -206,7 +206,7 @@ func (b *FilterTranslatorBuilder[O]) Build() (result *FilterTranslator[O], err e
 	celEnv, err := b.createCelEnv()
 	if err != nil {
 		err = fmt.Errorf("failed to create CEL environment")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -217,7 +217,7 @@ func (b *FilterTranslatorBuilder[O]) Build() (result *FilterTranslator[O], err e
 		projectDesc: projectDesc,
 		celEnv:      celEnv,
 	}
-	return
+	return result, err
 }
 
 func (b *FilterTranslatorBuilder[O]) createCelEnv() (result *cel.Env, err error) {
@@ -237,7 +237,7 @@ func (b *FilterTranslatorBuilder[O]) createCelEnv() (result *cel.Env, err error)
 
 	// Create the CEL environment:
 	result, err = cel.NewEnv(options...)
-	return
+	return result, err
 }
 
 // Translate translate the given filter expression into a SQL where statement.
@@ -246,15 +246,15 @@ func (t *FilterTranslator[O]) Translate(ctx context.Context, filter string) (sql
 	if issues != nil {
 		err = issues.Err()
 		if err != nil {
-			return
+			return sql, err
 		}
 	}
 	result, err := t.translate(ast.NativeRep().Expr())
 	if err != nil {
-		return
+		return sql, err
 	}
 	sql = result.sql
-	return
+	return sql, err
 }
 
 func (t *FilterTranslator[O]) translate(expr ast.Expr) (result filterTranslatorResult, err error) {
@@ -269,9 +269,9 @@ func (t *FilterTranslator[O]) translate(expr ast.Expr) (result filterTranslatorR
 		result, err = t.translateSelectField(expr.AsSelect())
 	default:
 		err = fmt.Errorf("unsupported expression kind %d", expr.Kind())
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateCall(expr ast.CallExpr) (result filterTranslatorResult, err error) {
@@ -296,7 +296,7 @@ func (t *FilterTranslator[O]) translateCall(expr ast.CallExpr) (result filterTra
 				"expected exactly two arguments for operator '%s' but got %d",
 				funcName, len(funcArgs),
 			)
-			return
+			return result, err
 		}
 		result, err = t.translateBinary(funcName, funcArgs[0], funcArgs[1])
 	case operators.LogicalNot:
@@ -311,7 +311,7 @@ func (t *FilterTranslator[O]) translateCall(expr ast.CallExpr) (result filterTra
 				"expected exactly one argument for function '%s' but got %d",
 				funcName, len(funcArgs),
 			)
-			return
+			return result, err
 		}
 		result, err = t.translateToLike(funcName, expr.Target(), funcArgs[0], "%", "%")
 	case "startsWith":
@@ -320,7 +320,7 @@ func (t *FilterTranslator[O]) translateCall(expr ast.CallExpr) (result filterTra
 				"expected exactly one argument for function '%s' but got %d",
 				funcName, len(funcArgs),
 			)
-			return
+			return result, err
 		}
 		result, err = t.translateToLike(funcName, expr.Target(), funcArgs[0], "", "%")
 	case "endsWith":
@@ -329,24 +329,24 @@ func (t *FilterTranslator[O]) translateCall(expr ast.CallExpr) (result filterTra
 				"expected exactly one argument for function '%s' but got %d",
 				funcName, len(funcArgs),
 			)
-			return
+			return result, err
 		}
 		result, err = t.translateToLike(funcName, expr.Target(), funcArgs[0], "%", "")
 	default:
 		err = fmt.Errorf("function '%s' isn't supported", funcName)
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateBinary(name string, left, right ast.Expr) (result filterTranslatorResult, err error) {
 	leftTr, err := t.translate(left)
 	if err != nil {
-		return
+		return result, err
 	}
 	rightTr, err := t.translate(right)
 	if err != nil {
-		return
+		return result, err
 	}
 	switch name {
 	case operators.Equals:
@@ -357,7 +357,7 @@ func (t *FilterTranslator[O]) translateBinary(name string, left, right ast.Expr)
 		op, ok := binaryOps[name]
 		if !ok {
 			err = fmt.Errorf("unsupported operator '%s'", name)
-			return
+			return result, err
 		}
 		resultKind := filterTranslatorBooleanKind
 		if op.inheritKind {
@@ -380,24 +380,24 @@ func (t *FilterTranslator[O]) translateEquals(leftTr, rightTr filterTranslatorRe
 	if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
 		result.sql, err = t.translateMapEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
 		if err != nil {
-			return
+			return result, err
 		}
 		result.precedence = filterTranslatorComparisonPrecedence
 		result.kind = filterTranslatorBooleanKind
-		return
+		return result, err
 	}
 	if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
 		result.sql, err = t.translateMapEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
 		if err != nil {
-			return
+			return result, err
 		}
 		result.precedence = filterTranslatorComparisonPrecedence
 		result.kind = filterTranslatorBooleanKind
-		return
+		return result, err
 	}
 	result, err = t.translateEnumEquals(leftTr, rightTr)
 	if err != nil || result.sql != "" {
-		return
+		return result, err
 	}
 	return assembleBinarySQL(leftTr, rightTr, "=", filterTranslatorComparisonPrecedence, filterTranslatorBooleanKind), nil
 }
@@ -415,24 +415,24 @@ func (t *FilterTranslator[O]) translateNotEquals(leftTr, rightTr filterTranslato
 	if leftTr.mapIndexOperand != "" && rightTr.hasStringValue {
 		result.sql, err = t.translateMapNotEquals(leftTr.mapIndexOperand, leftTr.mapIndexKey, rightTr.stringValue)
 		if err != nil {
-			return
+			return result, err
 		}
 		result.precedence = filterTranslatorComparisonPrecedence
 		result.kind = filterTranslatorBooleanKind
-		return
+		return result, err
 	}
 	if rightTr.mapIndexOperand != "" && leftTr.hasStringValue {
 		result.sql, err = t.translateMapNotEquals(rightTr.mapIndexOperand, rightTr.mapIndexKey, leftTr.stringValue)
 		if err != nil {
-			return
+			return result, err
 		}
 		result.precedence = filterTranslatorComparisonPrecedence
 		result.kind = filterTranslatorBooleanKind
-		return
+		return result, err
 	}
 	result, err = t.translateEnumNotEquals(leftTr, rightTr)
 	if err != nil || result.sql != "" {
-		return
+		return result, err
 	}
 	return assembleBinarySQL(leftTr, rightTr, "!=", filterTranslatorComparisonPrecedence, filterTranslatorBooleanKind), nil
 }
@@ -468,7 +468,7 @@ func assembleBinarySQL(leftTr, rightTr filterTranslatorResult, operatorSQL strin
 func (t *FilterTranslator[O]) translateNot(value ast.Expr) (result filterTranslatorResult, err error) {
 	valueTr, err := t.translate(value)
 	if err != nil {
-		return
+		return result, err
 	}
 	var buffer bytes.Buffer
 	buffer.WriteString("not ")
@@ -482,7 +482,7 @@ func (t *FilterTranslator[O]) translateNot(value ast.Expr) (result filterTransla
 	result.sql = buffer.String()
 	result.precedence = filterTranslatorNotPrecedence
 	result.kind = filterTranslatorBooleanKind
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateIdent(name string) (result filterTranslatorResult, err error) {
@@ -495,10 +495,10 @@ func (t *FilterTranslator[O]) translateIdent(name string) (result filterTranslat
 		result.kind = filterTranslatorTimeKind
 	default:
 		err = fmt.Errorf("unknown identifier '%s'", name)
-		return
+		return result, err
 	}
 	result.precedence = filterTranslatorMaxPrecedence
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateLiteral(value ref.Val) (result filterTranslatorResult, err error) {
@@ -528,7 +528,7 @@ func (t *FilterTranslator[O]) translateLiteral(value ref.Val) (result filterTran
 		err = fmt.Errorf("unknown literal type '%T'", value)
 	}
 	result.precedence = filterTranslatorMaxPrecedence
-	return
+	return result, err
 }
 
 // translateString translates the given string. If special is not empty then it is interpreted as an addition set of
@@ -562,7 +562,7 @@ func (t *FilterTranslator[O]) translateString(value, special string) (text strin
 		}
 	}
 	text = buffer.String()
-	return
+	return text, escaped
 }
 
 func (t *FilterTranslator[O]) translateIn(args []ast.Expr) (result filterTranslatorResult, err error) {
@@ -575,29 +575,29 @@ func (t *FilterTranslator[O]) translateIn(args []ast.Expr) (result filterTransla
 		result, err = t.translateInField(key, values.AsSelect())
 	default:
 		err = fmt.Errorf("second argument of the 'in' operator must be a list or a select expression")
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateIndex(args []ast.Expr) (result filterTranslatorResult, err error) {
 	if len(args) != 2 {
 		err = fmt.Errorf("expected exactly two arguments for index but got %d", len(args))
-		return
+		return result, err
 	}
 	targetTr, err := t.translate(args[0])
 	if err != nil {
-		return
+		return result, err
 	}
 	if args[1].Kind() != ast.LiteralKind {
 		err = fmt.Errorf("index must be a literal string")
-		return
+		return result, err
 	}
 	keyLiteral := args[1].AsLiteral()
 	keyValue, ok := keyLiteral.Value().(string)
 	if !ok {
 		err = fmt.Errorf("index must be a literal string")
-		return
+		return result, err
 	}
 	keyText, keyEscaped := t.translateString(keyValue, "")
 	var keySql string
@@ -616,7 +616,7 @@ func (t *FilterTranslator[O]) translateIndex(args []ast.Expr) (result filterTran
 	default:
 		err = fmt.Errorf("index of kind '%s' isn't supported", targetTr.kind)
 	}
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateMapEquals(operand, key, value string) (string, error) {
@@ -656,12 +656,12 @@ func (t *FilterTranslator[O]) translateEnumEquals(leftTr, rightTr filterTranslat
 	enumDesc, intVal, fieldSql, ok := t.extractEnumComparison(leftTr, rightTr)
 	if !ok {
 		err = t.checkUnsupportedEnumComparison(leftTr, rightTr)
-		return
+		return result, err
 	}
 	name, found := t.resolveEnumName(enumDesc, intVal)
 	if !found {
 		err = fmt.Errorf("unknown enum value %d for %s", intVal, enumDesc.FullName())
-		return
+		return result, err
 	}
 	text, escaped := t.translateString(name, "")
 	if escaped {
@@ -671,19 +671,19 @@ func (t *FilterTranslator[O]) translateEnumEquals(leftTr, rightTr filterTranslat
 	}
 	result.precedence = filterTranslatorComparisonPrecedence
 	result.kind = filterTranslatorBooleanKind
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateEnumNotEquals(leftTr, rightTr filterTranslatorResult) (result filterTranslatorResult, err error) {
 	enumDesc, intVal, fieldSql, ok := t.extractEnumComparison(leftTr, rightTr)
 	if !ok {
 		err = t.checkUnsupportedEnumComparison(leftTr, rightTr)
-		return
+		return result, err
 	}
 	name, found := t.resolveEnumName(enumDesc, intVal)
 	if !found {
 		err = fmt.Errorf("unknown enum value %d for %s", intVal, enumDesc.FullName())
-		return
+		return result, err
 	}
 	text, escaped := t.translateString(name, "")
 	if escaped {
@@ -693,7 +693,7 @@ func (t *FilterTranslator[O]) translateEnumNotEquals(leftTr, rightTr filterTrans
 	}
 	result.precedence = filterTranslatorComparisonPrecedence
 	result.kind = filterTranslatorBooleanKind
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) checkUnsupportedEnumComparison(leftTr, rightTr filterTranslatorResult) error {
@@ -730,21 +730,21 @@ func (t *FilterTranslator[O]) translateInList(key ast.Expr, list ast.ListExpr) (
 		result.sql = "false"
 		result.kind = filterTranslatorBooleanKind
 		result.precedence = filterTranslatorMaxPrecedence
-		return
+		return result, err
 	}
 	keyTr, err := t.translate(key)
 	if err != nil {
-		return
+		return result, err
 	}
 	valueTrs := make([]filterTranslatorResult, len(values))
 	for i, value := range values {
 		if value.Kind() != ast.LiteralKind {
 			err = fmt.Errorf("value %d isn't a literal", i)
-			return
+			return result, err
 		}
 		valueTrs[i], err = t.translate(value)
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 	var buffer bytes.Buffer
@@ -763,17 +763,17 @@ func (t *FilterTranslator[O]) translateInList(key ast.Expr, list ast.ListExpr) (
 	buffer.WriteString(")")
 	result.sql = buffer.String()
 	result.precedence = filterTranslatorInPrecedence
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateInField(key ast.Expr, value ast.SelectExpr) (result filterTranslatorResult, err error) {
 	keyTr, err := t.translate(key)
 	if err != nil {
-		return
+		return result, err
 	}
 	valueTr, err := t.translateSelectField(value)
 	if err != nil {
-		return
+		return result, err
 	}
 	var buffer bytes.Buffer
 	switch valueTr.kind {
@@ -790,7 +790,7 @@ func (t *FilterTranslator[O]) translateInField(key ast.Expr, value ast.SelectExp
 		result.precedence = filterTranslatorInPrecedence
 	}
 	result.sql = buffer.String()
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateToLike(funcName string, target ast.Expr, pattern ast.Expr,
@@ -799,11 +799,11 @@ func (t *FilterTranslator[O]) translateToLike(funcName string, target ast.Expr, 
 	var buffer bytes.Buffer
 	targetTr, err := t.translate(target)
 	if err != nil {
-		return
+		return result, err
 	}
 	targetTr, err = t.castToString(targetTr)
 	if err != nil {
-		return
+		return result, err
 	}
 	if targetTr.precedence < filterTranslatorInPrecedence {
 		buffer.WriteString("(")
@@ -815,13 +815,13 @@ func (t *FilterTranslator[O]) translateToLike(funcName string, target ast.Expr, 
 	buffer.WriteString(" like ")
 	if pattern.Kind() != ast.LiteralKind {
 		err = fmt.Errorf("argument of the '%s' function must be a string literal", funcName)
-		return
+		return result, err
 	}
 	patternLiteral := pattern.AsLiteral()
 	patternValue, ok := patternLiteral.Value().(string)
 	if !ok {
 		err = fmt.Errorf("argument of the '%s' function must be a string literal", funcName)
-		return
+		return result, err
 	}
 	patternText, patternEscaped := t.translateString(patternValue, "%_")
 	if patternEscaped {
@@ -835,13 +835,13 @@ func (t *FilterTranslator[O]) translateToLike(funcName string, target ast.Expr, 
 	result.sql = buffer.String()
 	result.kind = filterTranslatorBooleanKind
 	result.precedence = filterTranslatorInPrecedence
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateSelectField(expr ast.SelectExpr) (result filterTranslatorResult, err error) {
 	operandTr, err := t.translate(expr.Operand())
 	if err != nil {
-		return
+		return result, err
 	}
 	fieldName := expr.FieldName()
 	testOnly := expr.IsTestOnly()
@@ -854,10 +854,10 @@ func (t *FilterTranslator[O]) translateSelectField(expr ast.SelectExpr) (result 
 		result, err = t.translateSelectJsonField(operandTr.sql, operandTr.desc, fieldName, testOnly)
 	default:
 		err = fmt.Errorf("select of field '%s' of kind '%s' isn't supported", fieldName, operandTr.kind)
-		return
+		return result, err
 	}
 	result.precedence = filterTranslatorMaxPrecedence
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateSelectThisField(fieldName string, testOnly bool) (result filterTranslatorResult,
@@ -886,7 +886,7 @@ func (t *FilterTranslator[O]) translateSelectThisField(fieldName string, testOnl
 	default:
 		result, err = t.translateSelectJsonField("data", t.thisDesc, fieldName, testOnly)
 	}
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateSelectThisMdField(fieldName string,
@@ -976,7 +976,7 @@ func (t *FilterTranslator[O]) translateSelectThisMdField(fieldName string,
 	default:
 		err = fmt.Errorf("metadata doesn't have a '%s' field", fieldName)
 	}
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDesc protoreflect.MessageDescriptor,
@@ -985,7 +985,7 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 		result.sql = fmt.Sprintf("%s ? '%s'", operandSql, fieldName)
 		result.kind = filterTranslatorBooleanKind
 		result.precedence = filterTranslatorOtherPrecedence
-		return
+		return result, err
 	}
 	fieldDesc := msgDesc.Fields().ByName(protoreflect.Name(fieldName))
 	fieldKind := fieldDesc.Kind()
@@ -1028,10 +1028,10 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 			"select of JSON field '%s' of operand '%s' of type '%s' of kind '%s' isn't supported",
 			fieldName, operandSql, msgDesc.FullName(), fieldKind,
 		)
-		return
+		return result, err
 	}
 	result.precedence = filterTranslatorMaxPrecedence
-	return
+	return result, err
 }
 
 func (t *FilterTranslator[O]) castToString(input filterTranslatorResult) (result filterTranslatorResult, err error) {

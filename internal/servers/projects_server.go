@@ -88,15 +88,15 @@ func (b *ProjectsServerBuilder) SetMetricsRegisterer(value prometheus.Registerer
 func (b *ProjectsServerBuilder) Build() (result *ProjectsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.Project, *privatev1.Project]().
@@ -104,14 +104,14 @@ func (b *ProjectsServerBuilder) Build() (result *ProjectsServer, err error) {
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.Project, *publicv1.Project]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateProjectsServer().
@@ -122,7 +122,7 @@ func (b *ProjectsServerBuilder) Build() (result *ProjectsServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &ProjectsServer{
@@ -131,7 +131,7 @@ func (b *ProjectsServerBuilder) Build() (result *ProjectsServer, err error) {
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *ProjectsServer) List(ctx context.Context,
@@ -162,7 +162,7 @@ func (s *ProjectsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ProjectsServer) Get(ctx context.Context,
@@ -184,7 +184,7 @@ func (s *ProjectsServer) Get(ctx context.Context,
 
 	response = &publicv1.ProjectsGetResponse{}
 	response.SetObject(publicObject)
-	return
+	return response, err
 }
 
 func (s *ProjectsServer) Create(ctx context.Context,
@@ -213,7 +213,7 @@ func (s *ProjectsServer) Create(ctx context.Context,
 
 	response = &publicv1.ProjectsCreateResponse{}
 	response.SetObject(publicObject)
-	return
+	return response, err
 }
 
 func (s *ProjectsServer) Update(ctx context.Context,
@@ -243,7 +243,7 @@ func (s *ProjectsServer) Update(ctx context.Context,
 
 	response = &publicv1.ProjectsUpdateResponse{}
 	response.SetObject(publicObject)
-	return
+	return response, err
 }
 
 func (s *ProjectsServer) Delete(ctx context.Context,
@@ -257,5 +257,5 @@ func (s *ProjectsServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.ProjectsDeleteResponse{}
-	return
+	return response, err
 }

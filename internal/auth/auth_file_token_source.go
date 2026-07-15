@@ -59,17 +59,17 @@ func (b *FileTokenSourceBuilder) Build() (result TokenSource, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.file == "" {
 		err = errors.New("file is mandatory")
-		return
+		return result, err
 	}
 
 	// Check that the file exists:
 	_, err = os.Stat(b.file)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Add the file name to the logger:
@@ -82,7 +82,7 @@ func (b *FileTokenSourceBuilder) Build() (result TokenSource, err error) {
 		logger: logger,
 		file:   b.file,
 	}
-	return
+	return result, err
 }
 
 // Token is the implementation of the TokenSource interface.
@@ -95,7 +95,7 @@ func (s *fileTokenSource) Token(ctx context.Context) (result *Token, err error) 
 			"Failed to get file info for token file",
 			slog.Any("error", err),
 		)
-		return
+		return result, err
 	}
 	timestamp := info.ModTime()
 
@@ -120,7 +120,7 @@ func (s *fileTokenSource) Token(ctx context.Context) (result *Token, err error) 
 		token := strings.TrimSpace(string(data))
 		if token == "" {
 			err = errors.New("token file is empty")
-			return
+			return result, err
 		}
 		s.token = &Token{
 			Access: token,
@@ -130,7 +130,7 @@ func (s *fileTokenSource) Token(ctx context.Context) (result *Token, err error) 
 
 	// Return the token:
 	result = s.token
-	return
+	return result, err
 }
 
 // Invalidate clears the cached token, forcing the file to be re-read on the next Token() call.

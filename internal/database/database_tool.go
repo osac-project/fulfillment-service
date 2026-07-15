@@ -165,7 +165,7 @@ func (b *ToolBuilder) Build() (result Tool, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Check that the URL and URL file are not both specified:
@@ -173,7 +173,7 @@ func (b *ToolBuilder) Build() (result Tool, err error) {
 		err = errors.New(
 			"database connection URL and URL file are incompatible, use one or the other but not both",
 		)
-		return
+		return result, err
 	}
 
 	// Resolve the URL and collect parameters. If the value points to a directory, the tool scans the directory
@@ -188,19 +188,19 @@ func (b *ToolBuilder) Build() (result Tool, err error) {
 		info, err = os.Stat(b.urlFile)
 		if err != nil {
 			err = fmt.Errorf("failed to stat database URL path '%s': %w", b.urlFile, err)
-			return
+			return result, err
 		}
 		if info.IsDir() {
 			url, parameters, err = b.readURLDirectory(b.urlFile)
 			if err != nil {
-				return
+				return result, err
 			}
 		} else {
 			var data []byte
 			data, err = os.ReadFile(b.urlFile)
 			if err != nil {
 				err = fmt.Errorf("failed to read database URL file '%s': %w", b.urlFile, err)
-				return
+				return result, err
 			}
 			url = strings.TrimSpace(string(data))
 		}
@@ -208,7 +208,7 @@ func (b *ToolBuilder) Build() (result Tool, err error) {
 
 	if url == "" {
 		err = errors.New("connection URL is mandatory")
-		return
+		return result, err
 	}
 
 	// Apply URL parameters. Some parameter names are special and modify the URL structure instead of
@@ -218,7 +218,7 @@ func (b *ToolBuilder) Build() (result Tool, err error) {
 		parsed, err = neturl.Parse(url)
 		if err != nil {
 			err = fmt.Errorf("failed to parse database URL: %w", err)
-			return
+			return result, err
 		}
 		query := parsed.Query()
 		for parameter, value := range parameters {
@@ -264,7 +264,7 @@ func (b *ToolBuilder) Build() (result Tool, err error) {
 		logger: b.logger,
 		url:    url,
 	}
-	return
+	return result, err
 }
 
 // readURLDirectory reads a directory containing database connection settings. Each file in the directory is treated
@@ -275,7 +275,7 @@ func (b *ToolBuilder) readURLDirectory(dir string) (url string, parameters map[s
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		err = fmt.Errorf("failed to read database URL directory '%s': %w", dir, err)
-		return
+		return url, parameters, err
 	}
 	for _, entry := range entries {
 		name := entry.Name()
@@ -287,7 +287,7 @@ func (b *ToolBuilder) readURLDirectory(dir string) (url string, parameters map[s
 			data, readErr := os.ReadFile(filepath.Clean(path))
 			if readErr != nil {
 				err = fmt.Errorf("failed to read 'url' from file '%s': %w", path, readErr)
-				return
+				return url, parameters, err
 			}
 			url = strings.TrimSpace(string(data))
 		} else if slices.Contains(toolFilePathParameters, name) {
@@ -298,7 +298,7 @@ func (b *ToolBuilder) readURLDirectory(dir string) (url string, parameters map[s
 				err = fmt.Errorf(
 					"failed to read parameter '%s' from file '%s': %w", name, path, readErr,
 				)
-				return
+				return url, parameters, err
 			}
 			parameters[name] = strings.TrimSpace(string(data))
 		}
@@ -309,7 +309,7 @@ func (b *ToolBuilder) readURLDirectory(dir string) (url string, parameters map[s
 	if url == "" {
 		url = "postgres://localhost:5432"
 	}
-	return
+	return url, parameters, err
 }
 
 // Wait waits for the database to be available.
@@ -516,7 +516,7 @@ func (t *tool) listObjectTables(ctx context.Context, pool *pgxpool.Pool) (result
 	)
 	if err != nil {
 		err = fmt.Errorf("failed to get list of object tables: %w", err)
-		return
+		return result, err
 	}
 	defer rows.Close()
 	var tables []string
@@ -525,17 +525,17 @@ func (t *tool) listObjectTables(ctx context.Context, pool *pgxpool.Pool) (result
 		err = rows.Scan(&name)
 		if err != nil {
 			err = fmt.Errorf("failed to scan table name: %w", err)
-			return
+			return result, err
 		}
 		tables = append(tables, name)
 	}
 	err = rows.Err()
 	if err != nil {
 		err = fmt.Errorf("failed to get list of object tables: %w", err)
-		return
+		return result, err
 	}
 	result = tables
-	return
+	return result, err
 }
 
 // listArchiveTables returns the sorted list of archive table names from the public schema.
@@ -559,7 +559,7 @@ func (t *tool) listArchiveTables(ctx context.Context, pool *pgxpool.Pool) (resul
 	)
 	if err != nil {
 		err = fmt.Errorf("failed to get list of archive tables: %w", err)
-		return
+		return result, err
 	}
 	defer rows.Close()
 	var tables []string
@@ -568,17 +568,17 @@ func (t *tool) listArchiveTables(ctx context.Context, pool *pgxpool.Pool) (resul
 		err = rows.Scan(&name)
 		if err != nil {
 			err = fmt.Errorf("failed to scan archive table name: %w", err)
-			return
+			return result, err
 		}
 		tables = append(tables, name)
 	}
 	err = rows.Err()
 	if err != nil {
 		err = fmt.Errorf("failed to get list of archive tables: %w", err)
-		return
+		return result, err
 	}
 	result = tables
-	return
+	return result, err
 }
 
 // checkObjectTable performs all consistency checks for a single object table: verifies that it has the expected columns
@@ -858,7 +858,7 @@ func (t *tool) fetchColumns(ctx context.Context, pool *pgxpool.Pool, table strin
 	)
 	if err != nil {
 		err = fmt.Errorf("failed to get columns for table '%s': %w", table, err)
-		return
+		return result, err
 	}
 	defer rows.Close()
 	columns := map[string]string{}
@@ -867,17 +867,17 @@ func (t *tool) fetchColumns(ctx context.Context, pool *pgxpool.Pool, table strin
 		err = rows.Scan(&name, &kind)
 		if err != nil {
 			err = fmt.Errorf("failed to scan column for table '%s': %w", table, err)
-			return
+			return result, err
 		}
 		columns[name] = kind
 	}
 	err = rows.Err()
 	if err != nil {
 		err = fmt.Errorf("failed to get columns for table '%s': %w", table, err)
-		return
+		return result, err
 	}
 	result = columns
-	return
+	return result, err
 }
 
 // migrationsLogger is an adapter to implement the logging interface of the underlying migrations library using our

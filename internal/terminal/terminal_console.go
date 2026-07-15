@@ -93,7 +93,7 @@ func (b *ConsoleBuilder) Build() (result *Console, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Set the default writers if needed:
@@ -122,12 +122,12 @@ func (b *ConsoleBuilder) Build() (result *Console, err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create templating engine: %w", err)
-		return
+		return result, err
 	}
 
 	// Return the console object:
 	result = console
-	return
+	return result, err
 }
 
 // AddTemplates adds one temlate file system containing templates, including only the templates that are in the given
@@ -335,7 +335,7 @@ func (c *Console) Write(p []byte) (n int, err error) {
 func (c *Console) tableFunc(objects any) (result string, err error) {
 	if c.helper == nil {
 		err = fmt.Errorf("the 'table' function requires the reflection helper, but it isn't set")
-		return
+		return result, err
 	}
 	var buffer bytes.Buffer
 	renderer, err := rendering.NewTableRenderer().
@@ -345,15 +345,15 @@ func (c *Console) tableFunc(objects any) (result string, err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create table renderer: %w", err)
-		return
+		return result, err
 	}
 	err = renderer.Render(context.Background(), objects)
 	if err != nil {
 		err = fmt.Errorf("failed to render table: %w", err)
-		return
+		return result, err
 	}
 	result = buffer.String()
-	return
+	return result, err
 }
 
 // binaryFunc is a template function that returns the name of the binary.

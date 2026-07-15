@@ -89,11 +89,11 @@ func (b *RoleBindingsServerBuilder) SetMetricsRegisterer(value prometheus.Regist
 func (b *RoleBindingsServerBuilder) Build() (result *RoleBindingsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.RoleBinding, *privatev1.RoleBinding]().
@@ -101,14 +101,14 @@ func (b *RoleBindingsServerBuilder) Build() (result *RoleBindingsServer, err err
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.RoleBinding, *publicv1.RoleBinding]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateRoleBindingsServer().
@@ -119,7 +119,7 @@ func (b *RoleBindingsServerBuilder) Build() (result *RoleBindingsServer, err err
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &RoleBindingsServer{
@@ -128,7 +128,7 @@ func (b *RoleBindingsServerBuilder) Build() (result *RoleBindingsServer, err err
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *RoleBindingsServer) List(ctx context.Context,
@@ -164,7 +164,7 @@ func (s *RoleBindingsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *RoleBindingsServer) Get(ctx context.Context,
@@ -191,7 +191,7 @@ func (s *RoleBindingsServer) Get(ctx context.Context,
 
 	response = &publicv1.RoleBindingsGetResponse{}
 	response.SetObject(publicRoleBinding)
-	return
+	return response, err
 }
 
 func (s *RoleBindingsServer) Create(ctx context.Context,
@@ -199,7 +199,7 @@ func (s *RoleBindingsServer) Create(ctx context.Context,
 	publicRoleBinding := request.GetObject()
 	if publicRoleBinding == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateRoleBinding := &privatev1.RoleBinding{}
 	err = s.inMapper.Copy(ctx, publicRoleBinding, privateRoleBinding)
@@ -210,7 +210,7 @@ func (s *RoleBindingsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process role binding")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.RoleBindingsCreateRequest{}
@@ -230,12 +230,12 @@ func (s *RoleBindingsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process role binding")
-		return
+		return response, err
 	}
 
 	response = &publicv1.RoleBindingsCreateResponse{}
 	response.SetObject(createdPublicRoleBinding)
-	return
+	return response, err
 }
 
 func (s *RoleBindingsServer) Update(ctx context.Context,
@@ -243,11 +243,11 @@ func (s *RoleBindingsServer) Update(ctx context.Context,
 	publicRoleBinding := request.GetObject()
 	if publicRoleBinding == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	if publicRoleBinding.GetId() == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	privateRoleBinding := &privatev1.RoleBinding{}
@@ -259,7 +259,7 @@ func (s *RoleBindingsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process role binding")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.RoleBindingsUpdateRequest{}
@@ -281,12 +281,12 @@ func (s *RoleBindingsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process role binding")
-		return
+		return response, err
 	}
 
 	response = &publicv1.RoleBindingsUpdateResponse{}
 	response.SetObject(updatedPublicRoleBinding)
-	return
+	return response, err
 }
 
 func (s *RoleBindingsServer) Delete(ctx context.Context,
@@ -300,5 +300,5 @@ func (s *RoleBindingsServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.RoleBindingsDeleteResponse{}
-	return
+	return response, err
 }

@@ -133,19 +133,19 @@ func (b *JwtValidatorBuilder) Build() (result JwtValidator, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.jwksCache == nil {
 		err = errors.New("JWKS cache is mandatory")
-		return
+		return result, err
 	}
 	if b.tokenLeeway < 0 {
 		err = errors.New("leeway must be zero or positive")
-		return
+		return result, err
 	}
 	if b.cleanupInterval < 0 {
 		err = errors.New("cleanup interval must be zero or positive")
-		return
+		return result, err
 	}
 
 	// Apply defaults:
@@ -184,7 +184,7 @@ func (b *JwtValidatorBuilder) Build() (result JwtValidator, err error) {
 		cacheMap:        cacheMap,
 		cleanupInterval: cleanupInterval,
 	}
-	return
+	return result, err
 }
 
 // Validate parses and validates the bearer token.
@@ -198,7 +198,7 @@ func (v *jwtValidator) Validate(ctx context.Context, bearer string) (result *jwt
 				v.cacheMap.Delete(bearer)
 			} else {
 				result = entry.tokenObject
-				return
+				return result, err
 			}
 		}
 	}
@@ -210,7 +210,7 @@ func (v *jwtValidator) Validate(ctx context.Context, bearer string) (result *jwt
 	)
 	if err != nil {
 		err = v.translateError(ctx, token, err)
-		return
+		return result, err
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
@@ -220,11 +220,11 @@ func (v *jwtValidator) Validate(ctx context.Context, bearer string) (result *jwt
 			slog.String("type", fmt.Sprintf("%T", token.Claims)),
 		)
 		err = errors.New("token is not valid")
-		return
+		return result, err
 	}
 	err = v.validateClaims(claims)
 	if err != nil {
-		return
+		return result, err
 	}
 	if v.cacheMap != nil {
 		exp, _ := claims.GetExpirationTime()
@@ -236,7 +236,7 @@ func (v *jwtValidator) Validate(ctx context.Context, bearer string) (result *jwt
 		}
 	}
 	result = token
-	return
+	return result, err
 }
 
 // maybeCleanup checks whether enough time has elapsed since the last cache cleanup, and if so launches a background
@@ -380,15 +380,15 @@ func (v *jwtValidator) selectKey(ctx context.Context, token *jwt.Token) (result 
 	issuerUrl, err := token.Claims.GetIssuer()
 	if err != nil {
 		err = errors.New("token does not contain the 'iss' claim")
-		return
+		return result, err
 	}
 	keyId, ok := token.Header["kid"].(string)
 	if !ok || keyId == "" {
 		err = errors.New("token does not contain the 'kid' claim")
-		return
+		return result, err
 	}
 	result, err = v.jwksCache.Get(ctx, issuerUrl, keyId)
-	return
+	return result, err
 }
 
 // validateClaims validates the application-level claims.

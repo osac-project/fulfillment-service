@@ -61,7 +61,7 @@ func (b *DefaultAttributionLogicBuilder) Build() (result *DefaultAttributionLogi
 	// Check that the logger has been set:
 	if b.logger == nil {
 		err = fmt.Errorf("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the attribution logic:
@@ -69,7 +69,7 @@ func (b *DefaultAttributionLogicBuilder) Build() (result *DefaultAttributionLogi
 		logger:         b.logger,
 		userIDResolver: b.userIDResolver,
 	}
-	return
+	return result, err
 }
 
 // DetermineAssignedCreator looks up the authenticated user and returns their ID as the creator.
@@ -84,7 +84,7 @@ func (l *DefaultAttributionLogic) DetermineAssignedCreator(ctx context.Context) 
 			slog.String("!username", username),
 		)
 		result = username
-		return
+		return result, err
 	}
 
 	// Try to resolve the username to a user ID
@@ -98,7 +98,7 @@ func (l *DefaultAttributionLogic) DetermineAssignedCreator(ctx context.Context) 
 			slog.Any("error", resolveErr),
 		)
 		result = username
-		return
+		return result, err
 	}
 
 	if userID == "" {
@@ -108,10 +108,10 @@ func (l *DefaultAttributionLogic) DetermineAssignedCreator(ctx context.Context) 
 			slog.String("!username", username),
 		)
 		result = username
-		return
+		return result, err
 	}
 
 	// Found the user - return their ID
 	result = userID
-	return
+	return result, err
 }

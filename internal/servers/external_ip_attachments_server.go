@@ -79,15 +79,15 @@ func (b *ExternalIPAttachmentsServerBuilder) SetMetricsRegisterer(value promethe
 func (b *ExternalIPAttachmentsServerBuilder) Build() (result *ExternalIPAttachmentsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.ExternalIPAttachment, *privatev1.ExternalIPAttachment]().
@@ -95,14 +95,14 @@ func (b *ExternalIPAttachmentsServerBuilder) Build() (result *ExternalIPAttachme
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.ExternalIPAttachment, *publicv1.ExternalIPAttachment]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateExternalIPAttachmentsServer().
@@ -113,7 +113,7 @@ func (b *ExternalIPAttachmentsServerBuilder) Build() (result *ExternalIPAttachme
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &ExternalIPAttachmentsServer{
@@ -122,7 +122,7 @@ func (b *ExternalIPAttachmentsServerBuilder) Build() (result *ExternalIPAttachme
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *ExternalIPAttachmentsServer) List(ctx context.Context,

@@ -78,11 +78,11 @@ func (b *PrivateComputeInstanceTemplatesServerBuilder) Build() (result *PrivateC
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the InstanceTypes DAO for spec_defaults instance type validation:
@@ -92,7 +92,7 @@ func (b *PrivateComputeInstanceTemplatesServerBuilder) Build() (result *PrivateC
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -105,7 +105,7 @@ func (b *PrivateComputeInstanceTemplatesServerBuilder) Build() (result *PrivateC
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -114,7 +114,7 @@ func (b *PrivateComputeInstanceTemplatesServerBuilder) Build() (result *PrivateC
 		generic:          generic,
 		instanceTypesDao: instanceTypesDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateComputeInstanceTemplatesServer) List(ctx context.Context,
@@ -136,17 +136,17 @@ func (s *PrivateComputeInstanceTemplatesServer) Create(ctx context.Context,
 	if request.GetObject() != nil {
 		warnings, err = s.validateSpecDefaultsInstanceType(ctx, request.GetObject().GetSpecDefaults())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 	err = s.generic.Create(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 	if len(warnings) > 0 && response != nil {
 		response.SetWarnings(warnings)
 	}
-	return
+	return response, err
 }
 
 func (s *PrivateComputeInstanceTemplatesServer) Update(ctx context.Context,
@@ -156,17 +156,17 @@ func (s *PrivateComputeInstanceTemplatesServer) Update(ctx context.Context,
 	if request.GetObject() != nil {
 		warnings, err = s.validateSpecDefaultsInstanceType(ctx, request.GetObject().GetSpecDefaults())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 	err = s.generic.Update(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 	if len(warnings) > 0 && response != nil {
 		response.SetWarnings(warnings)
 	}
-	return
+	return response, err
 }
 
 func (s *PrivateComputeInstanceTemplatesServer) Delete(ctx context.Context,

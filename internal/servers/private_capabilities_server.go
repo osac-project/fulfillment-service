@@ -62,7 +62,7 @@ func (b *PrivateCapabilitiesServerBuilder) AddAuthnTrustedTokenIssuers(
 func (b *PrivateCapabilitiesServerBuilder) Build() (result *PrivateCapabilitiesServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	authnTrustedTokenIssuers := slices.Clone(b.authnTrustedTokenIssuers)
@@ -73,7 +73,7 @@ func (b *PrivateCapabilitiesServerBuilder) Build() (result *PrivateCapabilitiesS
 		logger:                   b.logger,
 		authnTrustedTokenIssuers: authnTrustedTokenIssuers,
 	}
-	return
+	return result, err
 }
 
 // Get is the implementation of the method that returns the capabilities of the server.

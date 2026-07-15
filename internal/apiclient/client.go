@@ -96,15 +96,15 @@ func (b *ClientBuilder) SetHTTPClient(value *http.Client) *ClientBuilder {
 func (b *ClientBuilder) Build() (result *Client, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.baseURL == "" {
 		err = errors.New("base URL is mandatory")
-		return
+		return result, err
 	}
 	if b.tokenSource == nil {
 		err = errors.New("token source is mandatory")
-		return
+		return result, err
 	}
 
 	httpClient := b.httpClient
@@ -126,7 +126,7 @@ func (b *ClientBuilder) Build() (result *Client, err error) {
 		tokenSource: b.tokenSource,
 		logger:      b.logger,
 	}
-	return
+	return result, err
 }
 
 // DoRequest performs an authenticated HTTP request with JSON handling.
@@ -148,7 +148,7 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body any) (
 	token, err := c.tokenSource.Token(ctx)
 	if err != nil {
 		err = fmt.Errorf("failed to get authentication token: %w", err)
-		return
+		return response, err
 	}
 
 	var bodyReader io.Reader
@@ -156,7 +156,7 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body any) (
 		bodyBytes, marshalErr := json.Marshal(body)
 		if marshalErr != nil {
 			err = fmt.Errorf("failed to marshal request body: %w", marshalErr)
-			return
+			return response, err
 		}
 		bodyReader = bytes.NewReader(bodyBytes)
 	}
@@ -165,7 +165,7 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body any) (
 	request, err := http.NewRequestWithContext(ctx, method, requestURL, bodyReader)
 	if err != nil {
 		err = fmt.Errorf("failed to create HTTP request: %w", err)
-		return
+		return response, err
 	}
 
 	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.Access))
@@ -181,7 +181,7 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body any) (
 	response, err = c.httpClient.Do(request)
 	if err != nil {
 		err = fmt.Errorf("failed to send HTTP request: %w", err)
-		return
+		return response, err
 	}
 
 	if response.StatusCode >= 400 {
@@ -197,10 +197,10 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body any) (
 		// Set response to nil so callers can't accidentally access a closed response.
 		// This enforces checking err before using response.
 		response = nil
-		return
+		return response, err
 	}
 
-	return
+	return response, err
 }
 
 // RefreshToken invalidates the cached token, forcing a fresh token to be generated on the next request.

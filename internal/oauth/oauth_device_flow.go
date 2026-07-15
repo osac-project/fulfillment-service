@@ -63,7 +63,7 @@ func (f *deviceFlow) run(ctx context.Context) (result *auth.Token, err error) {
 		Scope:               f.source.scopes,
 	})
 	if err != nil {
-		return
+		return result, err
 	}
 	f.logger.DebugContext(
 		ctx,
@@ -115,7 +115,7 @@ func (f *deviceFlow) run(ctx context.Context) (result *auth.Token, err error) {
 			slog.Any("error", err),
 		)
 		err = fmt.Errorf("failed to prompt user for device code: %w", err)
-		return
+		return result, err
 	}
 
 	// If the user has specified a pool interval, then use that ignoring whatever the server suggests, or five
@@ -160,7 +160,7 @@ func (f *deviceFlow) run(ctx context.Context) (result *auth.Token, err error) {
 			if listenerErr != nil {
 				err = listenerErr
 			}
-			return
+			return result, err
 		}
 		var endpointErr *endpointError
 		if !errors.As(err, &endpointErr) {
@@ -205,7 +205,7 @@ func (f *deviceFlow) run(ctx context.Context) (result *auth.Token, err error) {
 				)
 			}
 			err = listenerErr
-			return
+			return result, err
 		}
 	}
 
@@ -214,7 +214,7 @@ func (f *deviceFlow) run(ctx context.Context) (result *auth.Token, err error) {
 		Outcome: true,
 	})
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Return the token:
@@ -223,7 +223,7 @@ func (f *deviceFlow) run(ctx context.Context) (result *auth.Token, err error) {
 		Refresh: tokenResponse.RefreshToken,
 		Expiry:  f.source.secondsToTime(tokenResponse.ExpiresIn),
 	}
-	return
+	return result, err
 }
 
 func (f *deviceFlow) sendAuthForm(ctx context.Context,

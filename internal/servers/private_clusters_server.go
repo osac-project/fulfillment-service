@@ -93,11 +93,11 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the templates DAO:
@@ -107,7 +107,7 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the catalog items DAO:
@@ -117,7 +117,7 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the host types DAO:
@@ -127,7 +127,7 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -140,7 +140,7 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -151,7 +151,7 @@ func (b *PrivateClustersServerBuilder) Build() (result *PrivateClustersServer, e
 		hostTypesDao:    hostTypesDao,
 		generic:         generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateClustersServer) List(ctx context.Context,
@@ -180,7 +180,7 @@ func (s *PrivateClustersServer) Create(ctx context.Context,
 		var hostType *privatev1.HostType
 		hostType, err = s.lookupHostType(ctx, nodeSet.GetHostType())
 		if err != nil {
-			return
+			return response, err
 		}
 		nodeSet.SetHostType(hostType.GetId())
 	}
@@ -188,7 +188,7 @@ func (s *PrivateClustersServer) Create(ctx context.Context,
 	// Validate duplicate conditions first:
 	err = s.validateNoDuplicateConditions(request.GetObject())
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Dispatch between catalog item and template paths:
@@ -197,47 +197,47 @@ func (s *PrivateClustersServer) Create(ctx context.Context,
 	if catalogItemRef != "" && templateRef != "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"catalog_item and template are mutually exclusive")
-		return
+		return response, err
 	}
 	if catalogItemRef != "" {
 		err = s.validateAndTransformCatalogItem(ctx, request.GetObject())
 		if err != nil {
-			return
+			return response, err
 		}
 	} else {
 		err = s.validateAndTransformCluster(ctx, request.GetObject())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateClustersServer) Update(ctx context.Context,
 	request *privatev1.ClustersUpdateRequest) (response *privatev1.ClustersUpdateResponse, err error) {
 	err = s.validateNoDuplicateConditions(request.GetObject())
 	if err != nil {
-		return
+		return response, err
 	}
 	err = s.validateTemplateImmutability(ctx, request)
 	if err != nil {
-		return
+		return response, err
 	}
 	err = s.validateNodeSetsUpdate(ctx, request)
 	if err != nil {
-		return
+		return response, err
 	}
 	err = s.validateNetworkAttachmentImmutability(ctx, request)
 	if err != nil {
-		return
+		return response, err
 	}
 	if err = utils.ValidateClusterSpecFields(request.GetObject().GetSpec()); err != nil {
-		return
+		return response, err
 	}
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateClustersServer) Delete(ctx context.Context,
@@ -264,7 +264,7 @@ func (s *PrivateClustersServer) setDefaults(cluster *privatev1.Cluster) {
 func (s *PrivateClustersServer) lookupTemplate(ctx context.Context,
 	key string) (result *privatev1.ClusterTemplate, err error) {
 	if key == "" {
-		return
+		return result, err
 	}
 	response, err := s.templatesDao.List().
 		SetFilter(fmt.Sprintf("this.id == %[1]s || this.metadata.name == %[1]s", strconv.Quote(key))).
@@ -275,7 +275,7 @@ func (s *PrivateClustersServer) lookupTemplate(ctx context.Context,
 		if errors.As(err, &deniedErr) {
 			err = grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
 		}
-		return
+		return result, err
 	}
 	switch response.GetSize() {
 	case 0:
@@ -293,13 +293,13 @@ func (s *PrivateClustersServer) lookupTemplate(ctx context.Context,
 			key,
 		)
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateClustersServer) lookupHostType(ctx context.Context,
 	key string) (result *privatev1.HostType, err error) {
 	if key == "" {
-		return
+		return result, err
 	}
 	response, err := s.hostTypesDao.List().
 		SetFilter(fmt.Sprintf("this.id == %[1]s || this.metadata.name == %[1]s", strconv.Quote(key))).
@@ -310,7 +310,7 @@ func (s *PrivateClustersServer) lookupHostType(ctx context.Context,
 		if errors.As(err, &deniedErr) {
 			err = grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
 		}
-		return
+		return result, err
 	}
 	switch response.GetSize() {
 	case 0:
@@ -328,7 +328,7 @@ func (s *PrivateClustersServer) lookupHostType(ctx context.Context,
 			key,
 		)
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateClustersServer) validateNoDuplicateConditions(object *privatev1.Cluster) error {
@@ -821,7 +821,7 @@ func (s *PrivateClustersServer) validateAndTransformCatalogItem(ctx context.Cont
 func (s *PrivateClustersServer) lookupCatalogItem(ctx context.Context,
 	key string) (result *privatev1.ClusterCatalogItem, err error) {
 	if key == "" {
-		return
+		return result, err
 	}
 	response, err := s.catalogItemsDao.List().
 		SetFilter(fmt.Sprintf("this.id == %[1]s || this.metadata.name == %[1]s", strconv.Quote(key))).
@@ -831,20 +831,20 @@ func (s *PrivateClustersServer) lookupCatalogItem(ctx context.Context,
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
 			err = grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
-			return
+			return result, err
 		}
 		s.logger.ErrorContext(ctx, "Failed to lookup catalog item",
 			slog.String("key", key),
 			slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item")
-		return
+		return result, err
 	}
 	items := response.GetItems()
 	if len(items) == 0 {
 		err = grpcstatus.Errorf(grpccodes.NotFound,
 			"there is no catalog item with identifier or name '%s'", key)
-		return
+		return result, err
 	}
 	result = items[0]
-	return
+	return result, err
 }

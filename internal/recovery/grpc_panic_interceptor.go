@@ -50,14 +50,14 @@ func (b *GrpcPanicInterceptorBuilder) Build() (result *GrpcPanicInterceptor, err
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
 	result = &GrpcPanicInterceptor{
 		logger: b.logger,
 	}
-	return
+	return result, err
 }
 
 // UnaryServer is the unary server interceptor function that recovers from panics.
@@ -77,7 +77,7 @@ func (i *GrpcPanicInterceptor) UnaryServer(ctx context.Context, request any, inf
 		}
 	}()
 	response, err = handler(ctx, request)
-	return
+	return response, err
 }
 
 // StreamServer is the stream server interceptor function that recovers from panics.
@@ -96,5 +96,5 @@ func (i *GrpcPanicInterceptor) StreamServer(server any, stream grpc.ServerStream
 		}
 	}()
 	err = handler(server, stream)
-	return
+	return err
 }

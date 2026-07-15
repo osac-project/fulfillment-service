@@ -74,11 +74,11 @@ func (b *PrivateClusterCatalogItemsServerBuilder) SetMetricsRegisterer(value pro
 func (b *PrivateClusterCatalogItemsServerBuilder) Build() (result *PrivateClusterCatalogItemsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	generic, err := NewGenericServer[*privatev1.ClusterCatalogItem]().
 		SetLogger(b.logger).
@@ -89,14 +89,14 @@ func (b *PrivateClusterCatalogItemsServerBuilder) Build() (result *PrivateCluste
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateClusterCatalogItemsServer{
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateClusterCatalogItemsServer) List(ctx context.Context,

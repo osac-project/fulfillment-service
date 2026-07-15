@@ -172,28 +172,28 @@ func (c *runnerContext) parseAnnotationOperation(text string) (operation annotat
 	if ok {
 		if key == "" {
 			err = fmt.Errorf("annotation name can't be empty in %q", text)
-			return
+			return operation, err
 		}
 		operation = annotationOperation{
 			key:   key,
 			value: &value,
 		}
-		return
+		return operation, err
 	}
 	if strings.HasSuffix(text, "-") {
 		key := strings.TrimSuffix(text, "-")
 		if key == "" {
 			err = fmt.Errorf("annotation name can't be empty in %q", text)
-			return
+			return operation, err
 		}
 		operation = annotationOperation{
 			key:    key,
 			remove: true,
 		}
-		return
+		return operation, err
 	}
 	err = fmt.Errorf("invalid annotation specification %q, expected 'annotation=value' or 'annotation-'", text)
-	return
+	return operation, err
 }
 
 func (c *runnerContext) applyAnnotationOperations(metadata reflection.Metadata, operations []annotationOperation) {

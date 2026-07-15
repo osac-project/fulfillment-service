@@ -84,15 +84,15 @@ func (b *PrivateBareMetalInstanceCatalogItemsServerBuilder) SetReferenceChecker(
 func (b *PrivateBareMetalInstanceCatalogItemsServerBuilder) Build() (result *PrivateBareMetalInstanceCatalogItemsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.BareMetalInstanceCatalogItem]().
@@ -104,7 +104,7 @@ func (b *PrivateBareMetalInstanceCatalogItemsServerBuilder) Build() (result *Pri
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	refChecker := b.referenceChecker
@@ -116,7 +116,7 @@ func (b *PrivateBareMetalInstanceCatalogItemsServerBuilder) Build() (result *Pri
 			Build()
 		if daoErr != nil {
 			err = daoErr
-			return
+			return result, err
 		}
 		refChecker = &daoReferenceChecker[*privatev1.BareMetalInstance]{resourceDao: bmiDao}
 	}
@@ -126,7 +126,7 @@ func (b *PrivateBareMetalInstanceCatalogItemsServerBuilder) Build() (result *Pri
 		generic:          generic,
 		referenceChecker: refChecker,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateBareMetalInstanceCatalogItemsServer) List(ctx context.Context,
@@ -167,7 +167,7 @@ func (s *PrivateBareMetalInstanceCatalogItemsServer) Delete(ctx context.Context,
 	request *privatev1.BareMetalInstanceCatalogItemsDeleteRequest) (response *privatev1.BareMetalInstanceCatalogItemsDeleteResponse, err error) {
 	hasRef, err := s.referenceChecker.hasReference(ctx, request.GetId())
 	if err != nil {
-		return
+		return response, err
 	}
 	if hasRef {
 		err = grpcstatus.Errorf(
@@ -175,10 +175,10 @@ func (s *PrivateBareMetalInstanceCatalogItemsServer) Delete(ctx context.Context,
 			"cannot delete catalog item '%s': it is still referenced by one or more bare metal instances",
 			request.GetId(),
 		)
-		return
+		return response, err
 	}
 	err = s.generic.Delete(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateBareMetalInstanceCatalogItemsServer) Signal(ctx context.Context,

@@ -76,11 +76,11 @@ func (b *PrivateHostTypesServerBuilder) Build() (result *PrivateHostTypesServer,
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -93,7 +93,7 @@ func (b *PrivateHostTypesServerBuilder) Build() (result *PrivateHostTypesServer,
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -101,7 +101,7 @@ func (b *PrivateHostTypesServerBuilder) Build() (result *PrivateHostTypesServer,
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateHostTypesServer) List(ctx context.Context,

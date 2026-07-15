@@ -83,15 +83,15 @@ func (b *PrivateSecurityGroupsServerBuilder) Build() (result *PrivateSecurityGro
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the VirtualNetwork DAO for parent validation:
@@ -101,7 +101,7 @@ func (b *PrivateSecurityGroupsServerBuilder) Build() (result *PrivateSecurityGro
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -114,7 +114,7 @@ func (b *PrivateSecurityGroupsServerBuilder) Build() (result *PrivateSecurityGro
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -123,7 +123,7 @@ func (b *PrivateSecurityGroupsServerBuilder) Build() (result *PrivateSecurityGro
 		generic:           generic,
 		virtualNetworkDao: virtualNetworkDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateSecurityGroupsServer) List(ctx context.Context,
@@ -145,7 +145,7 @@ func (s *PrivateSecurityGroupsServer) Create(ctx context.Context,
 	// Validate before creating:
 	err = s.validateSecurityGroup(ctx, securityGroup, nil)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Set owner reference annotation automatically
@@ -161,7 +161,7 @@ func (s *PrivateSecurityGroupsServer) Create(ctx context.Context,
 	securityGroup.GetSpec().SetImplementationStrategy(securityGroupImplementationStrategy)
 
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateSecurityGroupsServer) Update(ctx context.Context,
@@ -170,7 +170,7 @@ func (s *PrivateSecurityGroupsServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.SecurityGroupsGetRequest{}
@@ -178,7 +178,7 @@ func (s *PrivateSecurityGroupsServer) Update(ctx context.Context,
 	var getResponse *privatev1.SecurityGroupsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingSecurityGroup := getResponse.GetObject()
@@ -186,7 +186,7 @@ func (s *PrivateSecurityGroupsServer) Update(ctx context.Context,
 	// Validate with existing object context:
 	err = s.validateSecurityGroup(ctx, request.GetObject(), existingSecurityGroup)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Preserve immutable implementation_strategy from existing object. Validation that the
@@ -196,7 +196,7 @@ func (s *PrivateSecurityGroupsServer) Update(ctx context.Context,
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateSecurityGroupsServer) Delete(ctx context.Context,

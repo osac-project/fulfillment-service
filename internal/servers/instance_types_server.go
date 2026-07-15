@@ -97,15 +97,15 @@ func (b *InstanceTypesServerBuilder) Build() (result *InstanceTypesServer, err e
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -114,14 +114,14 @@ func (b *InstanceTypesServerBuilder) Build() (result *InstanceTypesServer, err e
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.InstanceType, *publicv1.InstanceType]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -133,7 +133,7 @@ func (b *InstanceTypesServerBuilder) Build() (result *InstanceTypesServer, err e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -143,7 +143,7 @@ func (b *InstanceTypesServerBuilder) Build() (result *InstanceTypesServer, err e
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *InstanceTypesServer) List(ctx context.Context,
@@ -187,7 +187,7 @@ func (s *InstanceTypesServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 // addDefaultStateFilter composes the default state filter with the user-provided filter.
@@ -235,7 +235,7 @@ func (s *InstanceTypesServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.InstanceTypesGetResponse{}
 	response.SetObject(publicInstanceType)
-	return
+	return response, err
 }
 
 func (s *InstanceTypesServer) Create(ctx context.Context,
@@ -244,7 +244,7 @@ func (s *InstanceTypesServer) Create(ctx context.Context,
 	publicInstanceType := request.GetObject()
 	if publicInstanceType == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateInstanceType := &privatev1.InstanceType{}
 	err = s.inMapper.Copy(ctx, publicInstanceType, privateInstanceType)
@@ -255,7 +255,7 @@ func (s *InstanceTypesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process instance type")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -277,13 +277,13 @@ func (s *InstanceTypesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process instance type")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.InstanceTypesCreateResponse{}
 	response.SetObject(createdPublicInstanceType)
-	return
+	return response, err
 }
 
 func (s *InstanceTypesServer) Update(ctx context.Context,
@@ -292,12 +292,12 @@ func (s *InstanceTypesServer) Update(ctx context.Context,
 	publicInstanceType := request.GetObject()
 	if publicInstanceType == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicInstanceType.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Get the existing object from the private server:
@@ -318,7 +318,7 @@ func (s *InstanceTypesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process instance type")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server with the merged object:
@@ -341,13 +341,13 @@ func (s *InstanceTypesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process instance type")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.InstanceTypesUpdateResponse{}
 	response.SetObject(updatedPublicInstanceType)
-	return
+	return response, err
 }
 
 func (s *InstanceTypesServer) Delete(ctx context.Context,
@@ -364,5 +364,5 @@ func (s *InstanceTypesServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.InstanceTypesDeleteResponse{}
-	return
+	return response, err
 }

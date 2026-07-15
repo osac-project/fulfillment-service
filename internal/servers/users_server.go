@@ -80,15 +80,15 @@ func (b *UsersServerBuilder) Build() (result *UsersServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -97,14 +97,14 @@ func (b *UsersServerBuilder) Build() (result *UsersServer, err error) {
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.User, *publicv1.User]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -116,7 +116,7 @@ func (b *UsersServerBuilder) Build() (result *UsersServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -126,7 +126,7 @@ func (b *UsersServerBuilder) Build() (result *UsersServer, err error) {
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *UsersServer) List(ctx context.Context,
@@ -168,7 +168,7 @@ func (s *UsersServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *UsersServer) Get(ctx context.Context,
@@ -199,7 +199,7 @@ func (s *UsersServer) Get(ctx context.Context,
 	s.pruneCredentials(publicObject)
 	response = &publicv1.UsersGetResponse{}
 	response.SetObject(publicObject)
-	return
+	return response, err
 }
 
 func (s *UsersServer) Create(ctx context.Context,
@@ -242,7 +242,7 @@ func (s *UsersServer) Create(ctx context.Context,
 	s.pruneCredentials(publicObject)
 	response = &publicv1.UsersCreateResponse{}
 	response.SetObject(publicObject)
-	return
+	return response, err
 }
 
 func (s *UsersServer) Update(ctx context.Context,
@@ -286,7 +286,7 @@ func (s *UsersServer) Update(ctx context.Context,
 	s.pruneCredentials(publicObject)
 	response = &publicv1.UsersUpdateResponse{}
 	response.SetObject(publicObject)
-	return
+	return response, err
 }
 
 func (s *UsersServer) Delete(ctx context.Context,
@@ -303,7 +303,7 @@ func (s *UsersServer) Delete(ctx context.Context,
 
 	// Build and return the response:
 	response = &publicv1.UsersDeleteResponse{}
-	return
+	return response, err
 }
 
 // pruneCredentials removes credential data from a user object so that sensitive information like passwords is never

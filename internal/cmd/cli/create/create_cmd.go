@@ -213,7 +213,7 @@ func (c *runnerContext) decodeObjects(input io.Reader) (result []proto.Message, 
 			break
 		}
 		if err != nil {
-			return
+			return result, err
 		}
 		items = append(items, item)
 	}
@@ -238,7 +238,7 @@ func (c *runnerContext) decodeObjects(input io.Reader) (result []proto.Message, 
 		data, err = json.Marshal(item)
 		if err != nil {
 			err = fmt.Errorf("failed to convert item at index %d to JSON: %w", i, err)
-			return
+			return result, err
 		}
 		value := &anypb.Any{}
 		err = protojson.Unmarshal(data, value)
@@ -247,7 +247,7 @@ func (c *runnerContext) decodeObjects(input io.Reader) (result []proto.Message, 
 				"failed to unmarshal item at index %d to a protocol buffers any: %w",
 				i, err,
 			)
-			return
+			return result, err
 		}
 		var object proto.Message
 		object, err = value.UnmarshalNew()
@@ -256,13 +256,13 @@ func (c *runnerContext) decodeObjects(input io.Reader) (result []proto.Message, 
 				"failed to unmarshal object at index %d to a protocol buffers object: %w",
 				i, err,
 			)
-			return
+			return result, err
 		}
 		objects[i] = object
 	}
 
 	result = objects
-	return
+	return result, err
 }
 
 const shortHelp = `Create objects`

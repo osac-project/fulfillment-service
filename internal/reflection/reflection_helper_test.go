@@ -319,7 +319,7 @@ var _ = Describe("Reflection helper", func() {
 							}.Build(),
 						}.Build(),
 					}.Build()
-					return
+					return response, err
 				},
 			})
 
@@ -356,7 +356,7 @@ var _ = Describe("Reflection helper", func() {
 							}.Build(),
 						},
 					}.Build()
-					return
+					return response, err
 				},
 			})
 
@@ -416,7 +416,7 @@ var _ = Describe("Reflection helper", func() {
 							}.Build(),
 						}.Build(),
 					}.Build()
-					return
+					return response, err
 				},
 			})
 
@@ -485,7 +485,7 @@ var _ = Describe("Reflection helper", func() {
 							}.Build(),
 						}.Build(),
 					}.Build()
-					return
+					return response, err
 				},
 			})
 
@@ -558,7 +558,7 @@ var _ = Describe("Reflection helper", func() {
 							}.Build(),
 						}.Build(),
 					}.Build()
-					return
+					return response, err
 				},
 			})
 

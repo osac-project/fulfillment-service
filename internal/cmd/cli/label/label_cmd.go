@@ -172,22 +172,22 @@ func (c *runnerContext) parseLabelOperation(text string) (operation labelOperati
 			label: label,
 			value: &value,
 		}
-		return
+		return operation, err
 	}
 	if strings.HasSuffix(text, "-") {
 		label := strings.TrimSuffix(text, "-")
 		if label == "" {
 			err = fmt.Errorf("label name can't be empty in %q", text)
-			return
+			return operation, err
 		}
 		operation = labelOperation{
 			label:  label,
 			remove: true,
 		}
-		return
+		return operation, err
 	}
 	err = fmt.Errorf("invalid label specification %q, expected 'label=value' or 'label-'", text)
-	return
+	return operation, err
 }
 
 func (c *runnerContext) applyLabelOperations(metadata reflection.Metadata, operations []labelOperation) {

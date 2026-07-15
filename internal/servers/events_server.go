@@ -94,22 +94,22 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.listener == nil {
 		err = errors.New("listener is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create  the CEL environment:
 	celEnv, err := b.createCelEnv()
 	if err != nil {
 		err = fmt.Errorf("failed to create CEL environment: %w", err)
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -118,13 +118,13 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create mapper: %w", err)
-		return
+		return result, err
 	}
 
 	// Look up the payload oneof and metadata field descriptors:
 	payloadOneof, err := b.findPayloadOneof()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the object early so that we can use its methods as callback functions:
@@ -138,7 +138,7 @@ func (b *EventsServerBuilder) Build() (result *EventsServer, err error) {
 		tenancyLogic: b.tenancyLogic,
 		payloadOneof: payloadOneof,
 	}
-	return
+	return result, err
 }
 
 // findPayloadOneof returns the descriptor of the payload oneof field in the event message. Returns an error if the
@@ -152,10 +152,10 @@ func (b *EventsServerBuilder) findPayloadOneof() (result protoreflect.OneofDescr
 			"event message '%s' has no '%s' oneof",
 			eventDesc.FullName(), eventsServerPayloadOneofField,
 		)
-		return
+		return result, err
 	}
 	result = payloadDesc
-	return
+	return result, err
 }
 
 func (b *EventsServerBuilder) createCelEnv() (result *cel.Env, err error) {
@@ -195,7 +195,7 @@ func (b *EventsServerBuilder) createCelEnv() (result *cel.Env, err error) {
 
 	// Create the CEL environment:
 	result, err = cel.NewEnv(options...)
-	return
+	return result, err
 }
 
 // Starts starts the background components of the server, in particular the notification listener. This is a blocking
@@ -314,18 +314,18 @@ func (s *EventsServer) evalFilter(ctx context.Context, filterPrg cel.Program, ev
 		"event": event,
 	})
 	if err != nil {
-		return
+		return result, err
 	}
 	value, _, err := filterPrg.ContextEval(ctx, activation)
 	if err != nil {
-		return
+		return result, err
 	}
 	result, ok := value.Value().(bool)
 	if !ok {
 		err = fmt.Errorf("result of filter should be a boolean, but it is of type '%T'", result)
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 func (s *EventsServer) processPayload(ctx context.Context, payload proto.Message) error {
@@ -391,12 +391,12 @@ func (s *EventsServer) extractPayload(ctx context.Context, event *privatev1.Even
 			ctx,
 			"Event has no payload field",
 		)
-		return
+		return result, err
 	}
 	payloadValue := eventReflect.Get(payloadDesc)
 	payloadReflect := payloadValue.Message()
 	result = payloadReflect.Interface()
-	return
+	return result, err
 }
 
 func (s *EventsServer) processEvent(ctx context.Context, public *publicv1.Event, private *privatev1.Event) error {

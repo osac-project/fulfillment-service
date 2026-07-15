@@ -57,11 +57,11 @@ func (b *TokenCredentialsBuilder) Build() (result credentials.PerRPCCredentials,
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.source == nil {
 		err = errors.New("source is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -69,7 +69,7 @@ func (b *TokenCredentialsBuilder) Build() (result credentials.PerRPCCredentials,
 		logger: b.logger,
 		source: b.source,
 	}
-	return
+	return result, err
 }
 
 // GetRequestMetadata is the implementation of the gRPC PerRPCCredentials interface. It retrieves the current request

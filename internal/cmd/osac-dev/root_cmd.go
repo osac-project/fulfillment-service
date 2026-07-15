@@ -47,7 +47,7 @@ func Root() (result *cobra.Command, err error) {
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
 		err = fmt.Errorf("failed to determine user cache directory: %w", err)
-		return
+		return result, err
 	}
 	defaultCacheDir := filepath.Join(userCacheDir, runner.binaryName)
 
@@ -67,7 +67,7 @@ func Root() (result *cobra.Command, err error) {
 	// Configure the root command, and therefore all its subcommands, to use Markdown for their help output:
 	help.Setup(result)
 
-	return
+	return result, err
 }
 
 type runnerContext struct {

@@ -78,7 +78,7 @@ func (b *GenericMapperBuilder[From, To]) Build() (result *GenericMapper[From, To
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the sets of ignored fields:
@@ -102,7 +102,7 @@ func (b *GenericMapperBuilder[From, To]) Build() (result *GenericMapper[From, To
 					"of type '%T'",
 				i, ignoredField,
 			)
-			return
+			return result, err
 		}
 	}
 
@@ -113,7 +113,7 @@ func (b *GenericMapperBuilder[From, To]) Build() (result *GenericMapper[From, To
 		ignoredFieldFullNames: ignoredFieldFullNames,
 		strict:                b.strict,
 	}
-	return
+	return result, err
 }
 
 // Copy copies the data from the `from` object into the `to` object.
@@ -222,7 +222,7 @@ func (m *GenericMapper[From, To]) copyMap(from, to protoreflect.Map, field proto
 		}
 		return true
 	})
-	return
+	return err
 }
 
 // Merge merges the data from the `from` object into the `to` object.
@@ -338,7 +338,7 @@ func (m *GenericMapper[From, To]) mergeMap(from, to protoreflect.Map, field prot
 		}
 		return true
 	})
-	return
+	return err
 }
 
 func (m *GenericMapper[From, To]) shouldIgnore(field protoreflect.FieldDescriptor) bool {

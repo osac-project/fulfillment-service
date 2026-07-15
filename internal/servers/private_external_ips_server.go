@@ -85,15 +85,15 @@ func (b *PrivateExternalIPsServerBuilder) SetMetricsRegisterer(value prometheus.
 func (b *PrivateExternalIPsServerBuilder) Build() (result *PrivateExternalIPsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	externalIPPoolDao, err := dao.NewGenericDAO[*privatev1.ExternalIPPool]().
@@ -102,7 +102,7 @@ func (b *PrivateExternalIPsServerBuilder) Build() (result *PrivateExternalIPsSer
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.ExternalIP]().
@@ -114,7 +114,7 @@ func (b *PrivateExternalIPsServerBuilder) Build() (result *PrivateExternalIPsSer
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateExternalIPsServer{
@@ -122,7 +122,7 @@ func (b *PrivateExternalIPsServerBuilder) Build() (result *PrivateExternalIPsSer
 		generic:           generic,
 		externalIPPoolDao: externalIPPoolDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateExternalIPsServer) List(ctx context.Context,
@@ -143,13 +143,13 @@ func (s *PrivateExternalIPsServer) Create(ctx context.Context,
 
 	err = s.validateExternalIP(ctx, externalIP)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	poolID := externalIP.GetSpec().GetPool()
 	err = s.validatePoolReference(ctx, poolID)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	if externalIP.GetStatus() == nil {
@@ -162,15 +162,15 @@ func (s *PrivateExternalIPsServer) Create(ctx context.Context,
 
 	err = s.generic.Create(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	err = s.updatePoolCapacity(ctx, poolID, 1)
 	if err != nil {
-		return
+		return response, err
 	}
 
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPsServer) Update(ctx context.Context,
@@ -178,7 +178,7 @@ func (s *PrivateExternalIPsServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.ExternalIPsGetRequest{}
@@ -186,7 +186,7 @@ func (s *PrivateExternalIPsServer) Update(ctx context.Context,
 	var getResponse *privatev1.ExternalIPsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingExternalIP := getResponse.GetObject()
@@ -194,7 +194,7 @@ func (s *PrivateExternalIPsServer) Update(ctx context.Context,
 
 	if updateIncludesField(mask, "spec.pool") {
 		if err = validateImmutableFieldsExternalIP(request.GetObject(), existingExternalIP); err != nil {
-			return
+			return response, err
 		}
 	}
 
@@ -203,13 +203,13 @@ func (s *PrivateExternalIPsServer) Update(ctx context.Context,
 		existingState := existingExternalIP.GetStatus().GetState()
 		if newState != existingState {
 			if err = validateExternalIPStateTransition(existingState, newState); err != nil {
-				return
+				return response, err
 			}
 		}
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPsServer) Delete(ctx context.Context,
@@ -217,7 +217,7 @@ func (s *PrivateExternalIPsServer) Delete(ctx context.Context,
 	id := request.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.ExternalIPsGetRequest{}
@@ -225,7 +225,7 @@ func (s *PrivateExternalIPsServer) Delete(ctx context.Context,
 	var getResponse *privatev1.ExternalIPsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingExternalIP := getResponse.GetObject()
@@ -234,23 +234,23 @@ func (s *PrivateExternalIPsServer) Delete(ctx context.Context,
 	if state != privatev1.ExternalIPState_EXTERNAL_IP_STATE_ALLOCATED {
 		err = grpcstatus.Errorf(grpccodes.FailedPrecondition,
 			"cannot delete ExternalIP in state %s: must be in ALLOCATED state", state)
-		return
+		return response, err
 	}
 
 	err = s.generic.Delete(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	poolID := existingExternalIP.GetSpec().GetPool()
 	if poolID != "" {
 		err = s.updatePoolCapacity(ctx, poolID, -1)
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
-	return
+	return response, err
 }
 
 func (s *PrivateExternalIPsServer) Signal(ctx context.Context,

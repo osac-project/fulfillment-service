@@ -1241,7 +1241,7 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 			err = fmt.Errorf(
 				"failed to read issuer URL from file '%s': %w", r.args.authIssuerUrlFile, err,
 			)
-			return
+			return result, err
 		}
 	}
 	clientId := r.args.authClientId
@@ -1252,7 +1252,7 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 				"failed to read client identifier from file '%s': %w",
 				r.args.authClientIdFile, err,
 			)
-			return
+			return result, err
 		}
 	}
 	clientSecret := r.args.authClientSecret
@@ -1263,7 +1263,7 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 				"failed to read client secret from file '%s': %w",
 				r.args.authClientSecretFile, err,
 			)
-			return
+			return result, err
 		}
 	}
 	r.logger.DebugContext(
@@ -1298,7 +1298,7 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 
 	// Return the token source:
 	result = tokenSource
-	return
+	return result, err
 }
 
 // createIDPClient creates the IDP client. The IDP URL and credentials are mandatory.

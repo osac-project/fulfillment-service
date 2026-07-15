@@ -134,7 +134,7 @@ func openTestStream(proxySrv publicv1.ConsoleProxyServer) (
 		conn.Close()
 		grpcCleanup()
 	}
-	return
+	return stream, ctx, cancel, cleanup
 }
 
 // drainHandler is a StreamHandler that reads from the stream until

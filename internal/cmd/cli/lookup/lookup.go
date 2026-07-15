@@ -47,12 +47,12 @@ func (e *ErrAmbiguous) Error() string {
 func Find[T any](ref, kind string, list ListFunc[T]) (result T, err error) {
 	if ref == "" {
 		err = fmt.Errorf("%s name or ID must not be empty", kind)
-		return
+		return result, err
 	}
 	filter := fmt.Sprintf(`this.id == %[1]q || this.metadata.name == %[1]q`, ref)
 	items, err := list(filter, 2)
 	if err != nil {
-		return
+		return result, err
 	}
 	switch len(items) {
 	case 0:
@@ -62,5 +62,5 @@ func Find[T any](ref, kind string, list ListFunc[T]) (result T, err error) {
 	default:
 		err = &ErrAmbiguous{Ref: ref, Kind: kind}
 	}
-	return
+	return result, err
 }

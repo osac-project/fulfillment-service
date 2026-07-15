@@ -80,11 +80,11 @@ func (b *TenantsServerBuilder) Build() (result *TenantsServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -93,14 +93,14 @@ func (b *TenantsServerBuilder) Build() (result *TenantsServer, err error) {
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.Tenant, *publicv1.Tenant]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -112,7 +112,7 @@ func (b *TenantsServerBuilder) Build() (result *TenantsServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -122,7 +122,7 @@ func (b *TenantsServerBuilder) Build() (result *TenantsServer, err error) {
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *TenantsServer) List(ctx context.Context,
@@ -162,7 +162,7 @@ func (s *TenantsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *TenantsServer) Get(ctx context.Context,
@@ -192,5 +192,5 @@ func (s *TenantsServer) Get(ctx context.Context,
 	// Build and return the response:
 	response = &publicv1.TenantsGetResponse{}
 	response.SetObject(publicObject)
-	return
+	return response, err
 }

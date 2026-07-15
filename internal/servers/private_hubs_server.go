@@ -77,11 +77,11 @@ func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the server early so that we can use its functions to set up other objects:
@@ -100,12 +100,12 @@ func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Return the server:
 	result = s
-	return
+	return result, err
 }
 
 // redact clears sensitive fields from the hub before it is included in event notification payloads.

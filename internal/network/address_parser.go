@@ -48,7 +48,7 @@ func (b *AddressParserBuilder) Build() (result *AddressParser, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = fmt.Errorf("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -56,7 +56,7 @@ func (b *AddressParserBuilder) Build() (result *AddressParser, err error) {
 		logger: b.logger,
 	}
 
-	return
+	return result, err
 }
 
 // Parse parses the server address and handles both traditional host:port format and URL format (with http://
@@ -70,7 +70,7 @@ func (p *AddressParser) Parse(address string) (parsedAddress string, plaintext b
 		var url *neturl.URL
 		url, err = neturl.Parse(address)
 		if err != nil {
-			return
+			return parsedAddress, plaintext, err
 		}
 		return p.parseUrl(url)
 	}
@@ -101,7 +101,7 @@ func (p *AddressParser) parseUrl(url *neturl.URL) (address string, plaintext boo
 		}
 		address = fmt.Sprintf("%s:%s", host, port)
 		plaintext = true
-		return
+		return address, plaintext, err
 	case "https":
 		host := url.Hostname()
 		port := url.Port()
@@ -116,7 +116,7 @@ func (p *AddressParser) parseUrl(url *neturl.URL) (address string, plaintext boo
 			url.Scheme, url.String(),
 		)
 	}
-	return
+	return address, plaintext, err
 }
 
 func (p *AddressParser) parseHost(host string) (address string, plaintext bool, err error) {

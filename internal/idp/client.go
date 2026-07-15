@@ -102,15 +102,15 @@ func (b *ClientBuilder) SetHTTPClient(value *http.Client) *ClientBuilder {
 func (b *ClientBuilder) Build() (result *Client, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.baseURL == "" {
 		err = errors.New("base URL is mandatory")
-		return
+		return result, err
 	}
 	if b.tokenSource == nil {
 		err = errors.New("token source is mandatory")
-		return
+		return result, err
 	}
 	if b.realmName == "" {
 		b.realmName = "osac"
@@ -139,7 +139,7 @@ func (b *ClientBuilder) Build() (result *Client, err error) {
 		httpClient: httpClient,
 		realmName:  b.realmName,
 	}
-	return
+	return result, err
 }
 
 func isConflictError(err error) bool {

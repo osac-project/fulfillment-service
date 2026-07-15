@@ -31,12 +31,12 @@ func NormalizeFunc[T any](fn any) (result func(context.Context) (T, error), err 
 	fnType := reflect.TypeOf(fn)
 	if fnType == nil || fnType.Kind() != reflect.Func {
 		err = fmt.Errorf("expected a function, got %T", fn)
-		return
+		return result, err
 	}
 	fnValue := reflect.ValueOf(fn)
 	if fnValue.IsNil() {
 		err = fmt.Errorf("expected a non-nil function, got nil %s", fnType)
-		return
+		return result, err
 	}
 	resultType := reflect.TypeFor[T]()
 
@@ -51,7 +51,7 @@ func NormalizeFunc[T any](fn any) (result func(context.Context) (T, error), err 
 				"function must have a context.Context parameter, but has %s",
 				fnType.In(0),
 			)
-			return
+			return result, err
 		}
 		hasCtx = true
 	default:
@@ -59,7 +59,7 @@ func NormalizeFunc[T any](fn any) (result func(context.Context) (T, error), err 
 			"function must have at most one input parameter, but has %d",
 			fnType.NumIn(),
 		)
-		return
+		return result, err
 	}
 
 	// Check if the function has a error return value:
@@ -70,7 +70,7 @@ func NormalizeFunc[T any](fn any) (result func(context.Context) (T, error), err 
 				"function must return %s, but returns %s",
 				resultType, fnType.Out(0),
 			)
-			return
+			return result, err
 		}
 		hasErr = false
 	case 2:
@@ -79,7 +79,7 @@ func NormalizeFunc[T any](fn any) (result func(context.Context) (T, error), err 
 				"function must return %s and error, but returns %s and %s",
 				resultType, fnType.Out(0), fnType.Out(1),
 			)
-			return
+			return result, err
 		}
 		hasErr = true
 	default:
@@ -87,7 +87,7 @@ func NormalizeFunc[T any](fn any) (result func(context.Context) (T, error), err 
 			"function must return at most two values, but returns %d",
 			fnType.NumOut(),
 		)
-		return
+		return result, err
 	}
 
 	// Create a new function that calls the original function with the context parameter:
@@ -101,15 +101,15 @@ func NormalizeFunc[T any](fn any) (result func(context.Context) (T, error), err 
 		fnResults := fnValue.Call(fnArgs)
 		if hasErr && !fnResults[1].IsNil() {
 			err = fnResults[1].Interface().(error)
-			return
+			return result, err
 		}
 		fnResult := fnResults[0].Interface()
 		if fnResult != nil {
 			result = fnResult.(T)
 		}
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 // Well-known reflection types:

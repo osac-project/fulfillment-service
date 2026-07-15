@@ -45,15 +45,15 @@ func (r *CreateRequest[O]) SetObject(value O) *CreateRequest[O] {
 func (r *CreateRequest[O]) Do(ctx context.Context) (response *CreateResponse[O], err error) {
 	err = r.init(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
-	return
+	return response, err
 }
 
 func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O], err error) {
@@ -91,21 +91,21 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 	// Validate that tenant is not empty:
 	if tenant == "" {
 		err = errors.New("cannot create object with empty tenant")
-		return
+		return response, err
 	}
 
 	// Save the object:
 	data, err := r.marshalData(r.object)
 	if err != nil {
-		return
+		return response, err
 	}
 	labelsData, err := r.marshalMap(labels)
 	if err != nil {
-		return
+		return response, err
 	}
 	annotationsData, err := r.marshalMap(annotations)
 	if err != nil {
-		return
+		return response, err
 	}
 	sql := fmt.Sprintf(
 		`
@@ -169,7 +169,7 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 	}()
 	if err != nil {
 		err = r.translateError(ctx, id, tenant, project, name, err)
-		return
+		return response, err
 	}
 	created := r.cloneObject(r.object)
 	metadata = r.makeMetadata(makeMetadataArgs{
@@ -193,14 +193,14 @@ func (r *CreateRequest[O]) do(ctx context.Context) (response *CreateResponse[O],
 		Object: created,
 	})
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Create the response:
 	response = &CreateResponse[O]{
 		object: created,
 	}
-	return
+	return response, err
 }
 
 // translateError translates raw PostgreSQL errors into domain-specific error types.

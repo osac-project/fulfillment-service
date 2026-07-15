@@ -114,15 +114,15 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.scheme == nil {
 		err = errors.New("scheme is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the JQ tool:
@@ -130,7 +130,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 		SetLogger(b.logger).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the DAOs:
@@ -140,7 +140,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Find the full name of the 'status' field so that we can configure the generic server to ignore it. This is
@@ -151,7 +151,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 	statusField := objectDesc.Fields().ByName("status")
 	if statusField == nil {
 		err = fmt.Errorf("failed to find the status field of type '%s'", objectDesc.FullName())
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -161,14 +161,14 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 		AddIgnoredFields(statusField.FullName()).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.Cluster, *publicv1.Cluster]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -180,7 +180,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -195,7 +195,7 @@ func (b *ClustersServerBuilder) Build() (result *ClustersServer, err error) {
 		outMapper:       outMapper,
 		scheme:          b.scheme,
 	}
-	return
+	return result, err
 }
 
 func (s *ClustersServer) List(ctx context.Context,
@@ -235,7 +235,7 @@ func (s *ClustersServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ClustersServer) Get(ctx context.Context,
@@ -268,7 +268,7 @@ func (s *ClustersServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ClustersGetResponse{}
 	response.SetObject(publicCluster)
-	return
+	return response, err
 }
 
 func (s *ClustersServer) Create(ctx context.Context,
@@ -277,7 +277,7 @@ func (s *ClustersServer) Create(ctx context.Context,
 	publicCluster := request.GetObject()
 	if publicCluster == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateCluster := &privatev1.Cluster{}
 	err = s.inMapper.Copy(ctx, publicCluster, privateCluster)
@@ -288,7 +288,7 @@ func (s *ClustersServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process cluster")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -310,7 +310,7 @@ func (s *ClustersServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process cluster")
-		return
+		return response, err
 	}
 
 	redactClusterSecrets(createdPublicCluster)
@@ -318,7 +318,7 @@ func (s *ClustersServer) Create(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ClustersCreateResponse{}
 	response.SetObject(createdPublicCluster)
-	return
+	return response, err
 }
 
 func (s *ClustersServer) Update(ctx context.Context,
@@ -327,12 +327,12 @@ func (s *ClustersServer) Update(ctx context.Context,
 	publicCluster := request.GetObject()
 	if publicCluster == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicCluster.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Check if the client sent back the redacted pull_secret sentinel ("***").
@@ -376,7 +376,7 @@ func (s *ClustersServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process cluster")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -400,7 +400,7 @@ func (s *ClustersServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process cluster")
-		return
+		return response, err
 	}
 
 	redactClusterSecrets(updatedPublicCluster)
@@ -408,7 +408,7 @@ func (s *ClustersServer) Update(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.ClustersUpdateResponse{}
 	response.SetObject(updatedPublicCluster)
-	return
+	return response, err
 }
 
 func (s *ClustersServer) Delete(ctx context.Context,
@@ -425,7 +425,7 @@ func (s *ClustersServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.ClustersDeleteResponse{}
-	return
+	return response, err
 }
 
 func (s *ClustersServer) GetKubeconfig(ctx context.Context,
@@ -444,20 +444,20 @@ func (s *ClustersServer) GetKubeconfigViaHttp(ctx context.Context,
 	request *publicv1.ClustersGetKubeconfigViaHttpRequest) (response *httpbody.HttpBody, err error) {
 	kubeconfig, err := s.getKubeconfig(ctx, request.Id)
 	if err != nil {
-		return
+		return response, err
 	}
 	response = &httpbody.HttpBody{
 		ContentType: "application/yaml",
 		Data:        kubeconfig,
 	}
-	return
+	return response, err
 }
 
 func (s *ClustersServer) getKubeconfig(ctx context.Context, clusterId string) (result []byte, err error) {
 	// Validate the request:
 	if clusterId == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "cluster identifier is mandatory")
-		return
+		return result, err
 	}
 
 	// Prepare a logger with additional information about the cluster:
@@ -481,7 +481,7 @@ func (s *ClustersServer) getKubeconfig(ctx context.Context, clusterId string) (r
 			slog.Any("error", err),
 		)
 		err = internalErr
-		return
+		return result, err
 	}
 	if secret == nil {
 		err = grpcstatus.Errorf(
@@ -489,7 +489,7 @@ func (s *ClustersServer) getKubeconfig(ctx context.Context, clusterId string) (r
 			"kubeconfig for cluster with identifier '%s' isn't yet available",
 			clusterId,
 		)
-		return
+		return result, err
 	}
 
 	// Check that the secret has the expected entry, and that it isn't empty:
@@ -497,12 +497,12 @@ func (s *ClustersServer) getKubeconfig(ctx context.Context, clusterId string) (r
 	if !ok {
 		logger.ErrorContext(ctx, "Kubeconfig secret entry doesn't exist")
 		err = internalErr
-		return
+		return result, err
 	}
 	if len(kcBytes) == 0 {
 		logger.ErrorContext(ctx, "Kubeconfig secret entry is empty")
 		err = internalErr
-		return
+		return result, err
 	}
 
 	// Done:
@@ -512,7 +512,7 @@ func (s *ClustersServer) getKubeconfig(ctx context.Context, clusterId string) (r
 		slog.Int("kc_bytes", len(kcBytes)),
 	)
 	result = kcBytes
-	return
+	return result, err
 }
 
 func (s *ClustersServer) GetPassword(ctx context.Context,
@@ -531,20 +531,20 @@ func (s *ClustersServer) GetPasswordViaHttp(ctx context.Context,
 	request *publicv1.ClustersGetPasswordViaHttpRequest) (response *httpbody.HttpBody, err error) {
 	password, err := s.getPassword(ctx, request.Id)
 	if err != nil {
-		return
+		return response, err
 	}
 	response = &httpbody.HttpBody{
 		ContentType: "text/plain",
 		Data:        []byte(password),
 	}
-	return
+	return response, err
 }
 
 func (s *ClustersServer) getPassword(ctx context.Context, clusterId string) (result string, err error) {
 	// Validate the request:
 	if clusterId == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "cluster identifier is mandatory")
-		return
+		return result, err
 	}
 
 	// Prepare a logger with additional information about the cluster:
@@ -568,7 +568,7 @@ func (s *ClustersServer) getPassword(ctx context.Context, clusterId string) (res
 			slog.Any("error", err),
 		)
 		err = internalErr
-		return
+		return result, err
 	}
 	if secret == nil {
 		err = grpcstatus.Errorf(
@@ -576,7 +576,7 @@ func (s *ClustersServer) getPassword(ctx context.Context, clusterId string) (res
 			"password for cluster with identifier '%s' isn't available yet",
 			clusterId,
 		)
-		return
+		return result, err
 	}
 
 	// Check that the secret has the expected entry, and that it isn't empty:
@@ -584,12 +584,12 @@ func (s *ClustersServer) getPassword(ctx context.Context, clusterId string) (res
 	if !ok {
 		logger.ErrorContext(ctx, "Password secret entry doesn't exist")
 		err = internalErr
-		return
+		return result, err
 	}
 	if len(passwordBytes) == 0 {
 		logger.ErrorContext(ctx, "Password secret entry is empty")
 		err = internalErr
-		return
+		return result, err
 	}
 
 	// Done:
@@ -599,7 +599,7 @@ func (s *ClustersServer) getPassword(ctx context.Context, clusterId string) (res
 		slog.Int("password_bytes", len(passwordBytes)),
 	)
 	result = string(passwordBytes)
-	return
+	return result, err
 }
 
 func (s *ClustersServer) getHostedClusterSecret(ctx context.Context, clusterId string,
@@ -609,11 +609,11 @@ func (s *ClustersServer) getHostedClusterSecret(ctx context.Context, clusterId s
 	getRequest.SetId(clusterId)
 	getResponse, err := s.private.Get(ctx, getRequest)
 	if err != nil {
-		return
+		return result, err
 	}
 	cluster := getResponse.GetObject()
 	if cluster == nil || cluster.GetStatus().GetHub() == "" {
-		return
+		return result, err
 	}
 
 	// Get the data of the hub:
@@ -621,30 +621,30 @@ func (s *ClustersServer) getHostedClusterSecret(ctx context.Context, clusterId s
 		SetId(cluster.GetStatus().GetHub()).
 		Do(ctx)
 	if err != nil {
-		return
+		return result, err
 	}
 	hub := getHubResponse.GetObject()
 	if hub == nil {
-		return
+		return result, err
 	}
 
 	// Create a client for the hub:
 	hubClient, err := s.getKubeClient(ctx, hub)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Get the cluster order from the hub:
 	order, err := s.getKubeClusterOrder(ctx, hubClient, hub.GetSpec().GetNamespace(), cluster.GetId())
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Extract the location of the hosted cluster:
 	clusterRef := order.Status.ClusterReference
 	if clusterRef == nil {
 		err = fmt.Errorf("cluster order for '%s' has no cluster reference", cluster.GetId())
-		return
+		return result, err
 	}
 	hcKey := clnt.ObjectKey{
 		Namespace: clusterRef.Namespace,
@@ -654,7 +654,7 @@ func (s *ClustersServer) getHostedClusterSecret(ctx context.Context, clusterId s
 	// Get the hosted cluster from the hub:
 	hc, err := s.getKubeHostedCluster(ctx, hubClient, hcKey)
 	if err != nil || hc == nil {
-		return
+		return result, err
 	}
 
 	// Extract the name of the secret from the hosted cluster:
@@ -663,12 +663,12 @@ func (s *ClustersServer) getHostedClusterSecret(ctx context.Context, clusterId s
 	}
 	err = s.jqTool.Evaluate(secretField, hc.Object, &secretKey.Name)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Get the secret from the hub:
 	result, err = s.getKubeSecret(ctx, hubClient, secretKey)
-	return
+	return result, err
 }
 
 func (s *ClustersServer) getKubeClient(ctx context.Context, hub *privatev1.Hub) (result clnt.Client, err error) {
@@ -676,14 +676,14 @@ func (s *ClustersServer) getKubeClient(ctx context.Context, hub *privatev1.Hub) 
 	defer s.kubeClientsLock.Unlock()
 	result, ok := s.kubeClients[hub.Id]
 	if ok {
-		return
+		return result, err
 	}
 	result, err = s.createKubeClient(ctx, hub)
 	if err != nil {
-		return
+		return result, err
 	}
 	s.kubeClients[hub.Id] = result
-	return
+	return result, err
 }
 
 func (s *ClustersServer) createKubeClient(ctx context.Context, hub *privatev1.Hub) (result clnt.Client, err error) {
@@ -706,7 +706,7 @@ func (s *ClustersServer) getKubeClusterOrder(ctx context.Context, client clnt.Cl
 		},
 	)
 	if err != nil {
-		return
+		return result, err
 	}
 	items := list.Items
 	if len(items) != 1 {
@@ -714,10 +714,10 @@ func (s *ClustersServer) getKubeClusterOrder(ctx context.Context, client clnt.Cl
 			"expected exactly one cluster order with identifier '%s' but found %d",
 			id, len(items),
 		)
-		return
+		return result, err
 	}
 	result = &items[0]
-	return
+	return result, err
 }
 
 func (s *ClustersServer) getKubeHostedCluster(ctx context.Context, client clnt.Client,
@@ -727,13 +727,13 @@ func (s *ClustersServer) getKubeHostedCluster(ctx context.Context, client clnt.C
 	err = client.Get(ctx, key, object)
 	if apierrors.IsNotFound(err) {
 		err = nil
-		return
+		return result, err
 	}
 	if err != nil {
-		return
+		return result, err
 	}
 	result = object
-	return
+	return result, err
 }
 
 func (s *ClustersServer) getKubeSecret(ctx context.Context, client clnt.Client,
@@ -742,13 +742,13 @@ func (s *ClustersServer) getKubeSecret(ctx context.Context, client clnt.Client,
 	err = client.Get(ctx, key, object)
 	if apierrors.IsNotFound(err) {
 		err = nil
-		return
+		return result, err
 	}
 	if err != nil {
-		return
+		return result, err
 	}
 	result = object
-	return
+	return result, err
 }
 
 // redactClusterSecrets clears sensitive fields from a public cluster before returning it to the client.

@@ -123,15 +123,15 @@ func (b *TableRendererBuilder) Build() (result *TableRenderer, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = fmt.Errorf("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.helper == nil {
 		err = fmt.Errorf("helper is mandatory")
-		return
+		return result, err
 	}
 	if b.writer == nil {
 		err = fmt.Errorf("writer is mandatory")
-		return
+		return result, err
 	}
 
 	// Create a tab writer for proper column alignment of output:
@@ -147,7 +147,7 @@ func (b *TableRendererBuilder) Build() (result *TableRenderer, err error) {
 		writer: writer,
 		cache:  cache,
 	}
-	return
+	return result, err
 }
 
 // Render renders the given objects as a table to stdout. The objects parameter must be a slice of objects that
@@ -290,10 +290,10 @@ func (r *TableRenderer) loadTable(helper reflection.ObjectHelper) (result *table
 			"failed to unmarshal table definition file %q: %w",
 			file, err,
 		)
-		return
+		return result, err
 	}
 	result = &table
-	return
+	return result, err
 }
 
 // defaultTable returns a default table definition with ID and NAME columns.
@@ -468,7 +468,7 @@ func (r *TableRenderer) lookupName(ctx context.Context, messageFullName protoref
 			slog.String("type", string(messageFullName)),
 		)
 		result = key
-		return
+		return result
 	}
 
 	// Find the objects whose identifier or name matches the key:
@@ -489,13 +489,13 @@ func (r *TableRenderer) lookupName(ctx context.Context, messageFullName protoref
 			slog.Any("error", err),
 		)
 		result = key
-		return
+		return result
 	}
 
 	// If there is no match, or multiple matches, return the original key:
 	if len(listResult.Items) == 0 {
 		result = key
-		return
+		return result
 	}
 
 	// Return the name of the first object, falling back to the key if the name is empty:
@@ -505,7 +505,7 @@ func (r *TableRenderer) lookupName(ctx context.Context, messageFullName protoref
 	if result == "" {
 		result = key
 	}
-	return
+	return result
 }
 
 // renderCellAny renders any value type as a string.

@@ -78,11 +78,11 @@ func (b *PrivateIdentityProvidersServerBuilder) Build() (result *PrivateIdentity
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the server early so that we can use its functions to set up other objects:
@@ -101,7 +101,7 @@ func (b *PrivateIdentityProvidersServerBuilder) Build() (result *PrivateIdentity
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the DAO:
@@ -111,12 +111,12 @@ func (b *PrivateIdentityProvidersServerBuilder) Build() (result *PrivateIdentity
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Return the server:
 	result = s
-	return
+	return result, err
 }
 
 // redact clears sensitive fields from the identity provider before it is included in event notification payloads.
@@ -145,14 +145,14 @@ func (s *PrivateIdentityProvidersServer) Create(ctx context.Context,
 				"identity provider cannot belong to '%s' tenant - must be scoped to a specific tenant",
 				tenant,
 			)
-			return
+			return response, err
 		}
 	}
 
 	// Perform the create operation:
 	err = s.generic.Create(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Check if the assigned tenant is 'shared' or 'system' and reject if so.
@@ -169,11 +169,11 @@ func (s *PrivateIdentityProvidersServer) Create(ctx context.Context,
 				grpccodes.InvalidArgument,
 				"identity provider must be assigned to a specific tenant - please specify metadata.tenant in the request",
 			)
-			return
+			return response, err
 		}
 	}
 
-	return
+	return response, err
 }
 
 func (s *PrivateIdentityProvidersServer) List(ctx context.Context,

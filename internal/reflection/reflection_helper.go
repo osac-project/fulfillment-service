@@ -158,15 +158,15 @@ func (b *HelperBuilder) Build() (result Helper, err error) {
 	// Check the parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.connection == nil {
 		err = errors.New("gRPC connection is mandatory")
-		return
+		return result, err
 	}
 	if len(b.packages) == 0 {
 		err = errors.New("at least one package is mandatory")
-		return
+		return result, err
 	}
 
 	// Normalize the tenant function to a canonical signature:
@@ -174,7 +174,7 @@ func (b *HelperBuilder) Build() (result Helper, err error) {
 	if b.tenantFunc != nil {
 		tenantFunc, err = NormalizeFunc[string](b.tenantFunc)
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 
@@ -193,7 +193,7 @@ func (b *HelperBuilder) Build() (result Helper, err error) {
 		helpers:    []objectHelper{},
 		tenantFunc: tenantFunc,
 	}
-	return
+	return result, err
 }
 
 func (h *helper) scanIfNeeded() {
@@ -663,7 +663,7 @@ func (h *objectHelper) List(ctx context.Context, options ListOptions) (result Li
 		var tenant string
 		tenant, err = h.parent.tenantFunc(ctx)
 		if err != nil {
-			return
+			return result, err
 		}
 		if tenant != "" {
 			tenantFilter := fmt.Sprintf("this.metadata.tenant == %q", tenant)
@@ -685,7 +685,7 @@ func (h *objectHelper) List(ctx context.Context, options ListOptions) (result Li
 	response := proto.Clone(h.list.response)
 	err = h.parent.connection.Invoke(ctx, h.list.path, request, response)
 	if err != nil {
-		return
+		return result, err
 	}
 	list := response.ProtoReflect().Get(h.list.items).List()
 	result.Items = make([]proto.Message, list.Len())
@@ -697,7 +697,7 @@ func (h *objectHelper) List(ctx context.Context, options ListOptions) (result Li
 	} else {
 		result.Total = int32(len(result.Items)) // #nosec G115 -- bounded by MaxLimit
 	}
-	return
+	return result, err
 }
 
 func (h *objectHelper) Get(ctx context.Context, id string) (result proto.Message, err error) {

@@ -82,19 +82,19 @@ func (b *NotifierBuilder) Build() (result *Notifier, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.channel == "" {
 		err = errors.New("channel is mandatory")
-		return
+		return result, err
 	}
 	if b.pool == nil {
 		err = errors.New("database connection pool is mandatory")
-		return
+		return result, err
 	}
 	if b.cleanupInterval <= 0 {
 		err = fmt.Errorf("cleanup interval should be positive, but it is %s", b.cleanupInterval)
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -107,7 +107,7 @@ func (b *NotifierBuilder) Build() (result *Notifier, err error) {
 		pool:            b.pool,
 		cleanupInterval: b.cleanupInterval,
 	}
-	return
+	return result, err
 }
 
 // Notify sends a notification with the given payload using the configured channel. The payload is placed into an
@@ -118,7 +118,7 @@ func (n *Notifier) Notify(ctx context.Context, payload proto.Message) (err error
 	// Get the transaction fron the context:
 	tx, err := TxFromContext(ctx)
 	if err != nil {
-		return
+		return err
 	}
 	defer tx.ReportError(&err)
 

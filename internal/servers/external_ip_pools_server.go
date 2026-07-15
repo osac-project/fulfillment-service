@@ -78,15 +78,15 @@ func (b *ExternalIPPoolsServerBuilder) SetMetricsRegisterer(value prometheus.Reg
 func (b *ExternalIPPoolsServerBuilder) Build() (result *ExternalIPPoolsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	outMapper, err := NewGenericMapper[*privatev1.ExternalIPPool, *publicv1.ExternalIPPool]().
@@ -94,7 +94,7 @@ func (b *ExternalIPPoolsServerBuilder) Build() (result *ExternalIPPoolsServer, e
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateExternalIPPoolsServer().
@@ -105,7 +105,7 @@ func (b *ExternalIPPoolsServerBuilder) Build() (result *ExternalIPPoolsServer, e
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &ExternalIPPoolsServer{
@@ -113,7 +113,7 @@ func (b *ExternalIPPoolsServerBuilder) Build() (result *ExternalIPPoolsServer, e
 		delegate:  delegate,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func isExternalIPPoolPubliclyVisible(p *privatev1.ExternalIPPool) bool {
@@ -167,7 +167,7 @@ func (s *ExternalIPPoolsServer) List(ctx context.Context,
 	response.SetSize(int32(len(publicItems))) // #nosec G115 -- bounded by pool size
 	response.SetTotal(total)
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ExternalIPPoolsServer) Get(ctx context.Context,
@@ -197,5 +197,5 @@ func (s *ExternalIPPoolsServer) Get(ctx context.Context,
 
 	response = &publicv1.ExternalIPPoolsGetResponse{}
 	response.SetObject(publicPool)
-	return
+	return response, err
 }

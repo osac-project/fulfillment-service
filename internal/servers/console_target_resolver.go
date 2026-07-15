@@ -240,7 +240,7 @@ func (r *ConsoleTargetResolver) findCROnHub(ctx context.Context, config *rest.Co
 	hubClient, err := r.hubClientFactory(config)
 	if err != nil {
 		err = status.Errorf(codes.Internal, "failed to create client for hub %q: %v", hubID, err)
-		return
+		return namespace, crName, err
 	}
 
 	// Query for the ComputeInstance CR by UUID label.
@@ -254,7 +254,7 @@ func (r *ConsoleTargetResolver) findCROnHub(ctx context.Context, config *rest.Co
 	)
 	if err != nil {
 		err = status.Errorf(codes.Internal, "failed to list compute instances on hub %q: %v", hubID, err)
-		return
+		return namespace, crName, err
 	}
 
 	items := list.Items
@@ -265,12 +265,12 @@ func (r *ConsoleTargetResolver) findCROnHub(ctx context.Context, config *rest.Co
 		)
 		err = status.Errorf(codes.FailedPrecondition,
 			"compute instance %q not found on hub %q; it may still be provisioning", instanceID, hubID)
-		return
+		return namespace, crName, err
 	}
 	if len(items) > 1 {
 		err = status.Errorf(codes.Internal,
 			"expected one compute instance with ID %q on hub %q but found %d", instanceID, hubID, len(items))
-		return
+		return namespace, crName, err
 	}
 
 	obj := items[0]
@@ -289,7 +289,7 @@ func (r *ConsoleTargetResolver) findCROnHub(ctx context.Context, config *rest.Co
 			msg += "; it may still be provisioning"
 		}
 		err = status.Errorf(codes.FailedPrecondition, "%s", msg)
-		return
+		return namespace, crName, err
 	}
 	return obj.GetNamespace(), obj.GetName(), nil
 }

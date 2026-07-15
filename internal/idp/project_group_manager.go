@@ -55,18 +55,18 @@ func (b *ProjectGroupManagerBuilder) SetClient(value ClientInterface) *ProjectGr
 func (b *ProjectGroupManagerBuilder) Build() (result *ProjectGroupManager, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.client == nil {
 		err = errors.New("client is mandatory")
-		return
+		return result, err
 	}
 
 	result = &ProjectGroupManager{
 		logger: b.logger,
 		client: b.client,
 	}
-	return
+	return result, err
 }
 
 // DeleteProjectGroups deletes tenant authorization groups for a project.

@@ -99,20 +99,20 @@ func (p *Path[M]) Steps() []pathStep {
 // Get returns the value of the field and a boolean flag indicating if the field is present.
 func (p *Path[M]) Get(message M) (result protoreflect.Value, ok bool) {
 	if p.isNil(message) {
-		return
+		return result, ok
 	}
 	currentValue := protoreflect.ValueOfMessage(message.ProtoReflect())
 	for _, currentStep := range p.steps {
 		currentMessage := currentValue.Message()
 		if !currentMessage.Has(currentStep.field) {
-			return
+			return result, ok
 		}
 		currentValue = currentMessage.Get(currentStep.field)
 		switch currentStep.kind {
 		case pathStepKindListIndex:
 			listItems := currentValue.List()
 			if listItems.Len() < currentStep.index {
-				return
+				return result, ok
 			}
 			currentValue = listItems.Get(currentStep.index)
 		case pathStepKindMapKey:
@@ -120,13 +120,13 @@ func (p *Path[M]) Get(message M) (result protoreflect.Value, ok bool) {
 			mapKey := protoreflect.ValueOf(currentStep.key).MapKey()
 			currentValue = mapItems.Get(mapKey)
 			if !currentValue.IsValid() {
-				return
+				return result, ok
 			}
 		}
 	}
 	result = currentValue
 	ok = true
-	return
+	return result, ok
 }
 
 // Set sets the the field to the given value.

@@ -177,19 +177,19 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.service == "" {
 		err = errors.New("service name is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the path compiler:
@@ -198,14 +198,14 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create path compiler: %w", err)
-		return
+		return result, err
 	}
 
 	// Create the protovalidate validator:
 	validator, err := protovalidate.New()
 	if err != nil {
 		err = fmt.Errorf("failed to create protovalidate validator: %w", err)
-		return
+		return result, err
 	}
 
 	// Create the object early so that we can use its methods as callbacks:
@@ -240,13 +240,13 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 	s.dao, err = daoBuilder.Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create DAO: %w", err)
-		return
+		return result, err
 	}
 
 	// Find the descriptor:
 	service, err := b.findService()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Prepare the template for the object:
@@ -260,44 +260,44 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 	s.metadataField = fields.ByName("metadata")
 	if s.metadataField == nil {
 		err = fmt.Errorf("object of type '%s' doesn't have a 'metadata' field", descriptor.FullName())
-		return
+		return result, err
 	}
 
 	// Prepare templates for the request and response types. These are empty messages that will be cloned when
 	// it is necessary to create new instances.
 	s.listRequest, s.listResponse, err = b.findRequestAndResponse(service, listMethod)
 	if err != nil {
-		return
+		return result, err
 	}
 	s.getRequest, s.getResponse, err = b.findRequestAndResponse(service, getMethod)
 	if err != nil {
-		return
+		return result, err
 	}
 	s.createRequest, s.createResponse, err = b.findRequestAndResponse(service, createMethod)
 	if err != nil {
-		return
+		return result, err
 	}
 	s.deleteRequest, s.deleteResponse, err = b.findRequestAndResponse(service, deleteMethod)
 	if err != nil {
-		return
+		return result, err
 	}
 	s.updateRequest, s.updateResponse, err = b.findRequestAndResponse(service, updateMethod)
 	if err != nil {
-		return
+		return result, err
 	}
 	s.signalRequest, s.signalResponse, err = b.findRequestAndResponse(service, signalMethod)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Find the payload field in the event message:
 	s.payloadField, err = b.findPayloadField()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = s
-	return
+	return result, err
 }
 
 // findService finds the service descriptor using the service name given to the builder.
@@ -315,9 +315,9 @@ func (b *GenericServerBuilder[O]) findService() (result protoreflect.ServiceDesc
 	})
 	if result == nil {
 		err = fmt.Errorf("failed to find service '%s'", b.service)
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 // findRequestAndResponse finds the request and response message types for the given method.
@@ -346,7 +346,7 @@ func (b *GenericServerBuilder[O]) findRequestAndResponse(service protoreflect.Se
 		}
 	}
 	err = fmt.Errorf("failed to find method '%s' in service '%s'", methodName, service.FullName())
-	return
+	return request, response, err
 }
 
 // findPayloadField finds the field in the event message that corresponds to this object type. This is used later to
@@ -360,7 +360,7 @@ func (b *GenericServerBuilder[O]) findPayloadField() (result protoreflect.FieldD
 	oneofDesc := eventDesc.Oneofs().ByName(eventPayloadField)
 	if oneofDesc == nil {
 		err = fmt.Errorf("failed to find the 'payload' field of the event type '%s'", eventDesc.FullName())
-		return
+		return result, err
 	}
 	oneofFields := oneofDesc.Fields()
 	for i := range oneofFields.Len() {
@@ -370,7 +370,7 @@ func (b *GenericServerBuilder[O]) findPayloadField() (result protoreflect.FieldD
 			break
 		}
 	}
-	return
+	return result, err
 }
 
 func (s *GenericServer[O]) List(ctx context.Context, request any, response any) error {
@@ -741,14 +741,14 @@ func (s *GenericServer[O]) compilePath(path string) (result *masks.Path[O], err 
 	defer s.pathCacheLock.Unlock()
 	result, ok := s.pathCache[path]
 	if ok {
-		return
+		return result, err
 	}
 	result, err = s.pathCompiler.Compile(path)
 	if err != nil {
-		return
+		return result, err
 	}
 	s.pathCache[path] = result
-	return
+	return result, err
 }
 
 func (s *GenericServer[O]) Delete(ctx context.Context, request any, response any) error {
@@ -1129,9 +1129,9 @@ func (s *GenericServer[O]) determineAssignedCreator(ctx context.Context) (result
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assigned creator")
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 // setCreator sets the creator in the object's metadata, creating the metadata if necessary. In case of error it
@@ -1159,11 +1159,11 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine visible tenants")
-		return
+		return result, err
 	}
 	if visibleTenants.Empty() {
 		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no visible tenants")
-		return
+		return result, err
 	}
 
 	// Determine the tenants that can be assigned to the object:
@@ -1175,11 +1175,11 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine assignable tenants")
-		return
+		return result, err
 	}
 	if assignableTenants.Empty() {
 		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there are no assignable tenants")
-		return
+		return result, err
 	}
 
 	// Determine the default tenant:
@@ -1191,11 +1191,11 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to determine default tenant")
-		return
+		return result, err
 	}
 	if defaultTenant == "" {
 		err = grpcstatus.Errorf(grpccodes.PermissionDenied, "there is no default tenant")
-		return
+		return result, err
 	}
 
 	// Get the tenant from the request and current object:
@@ -1215,7 +1215,7 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 				"tenant '%s' doesn't exist",
 				requestTenant,
 			)
-			return
+			return result, err
 		}
 		if !assignableTenants.Contains(requestTenant) {
 			s.logger.WarnContext(
@@ -1228,10 +1228,10 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 				"tenant '%s' can't be assigned",
 				requestTenant,
 			)
-			return
+			return result, err
 		}
 		result = requestTenant
-		return
+		return result, err
 	}
 
 	// Fall back to the current tenant or the default:
@@ -1240,7 +1240,7 @@ func (s *GenericServer[O]) determineAssignedTenant(ctx context.Context,
 	} else {
 		result = defaultTenant
 	}
-	return
+	return result, err
 }
 
 // getTenant extracts the tenant from an object's metadata.

@@ -46,28 +46,28 @@ func (r *DeleteRequest[O]) SetId(value string) *DeleteRequest[O] {
 func (r *DeleteRequest[O]) Do(ctx context.Context) (response *DeleteResponse, err error) {
 	err = r.init(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
-	return
+	return response, err
 }
 
 func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, err error) {
 	// Add the tenancy filter:
 	err = r.addTenancyFilter(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Add the id parameter:
 	if r.args.id == "" {
 		err = errors.New("object identifier is mandatory")
-		return
+		return response, err
 	}
 	if r.sql.filter.Len() > 0 {
 		r.sql.filter.WriteString(` and`)
@@ -141,24 +141,24 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 		err = &ErrNotFound{
 			IDs: []string{r.args.id},
 		}
-		return
+		return response, err
 	}
 	if err != nil {
 		err = r.translateError(ctx, tenant, err)
-		return
+		return response, err
 	}
 	object := r.newObject()
 	err = r.unmarshalData(data, object)
 	if err != nil {
-		return
+		return response, err
 	}
 	labels, err := r.unmarshalMap(labelsData)
 	if err != nil {
-		return
+		return response, err
 	}
 	annotations, err := r.unmarshalMap(annotationsData)
 	if err != nil {
-		return
+		return response, err
 	}
 	metadata := r.makeMetadata(makeMetadataArgs{
 		creationTs:  creationTs,
@@ -181,7 +181,7 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 			Type:   EventTypeUpdated,
 			Object: object,
 		})
-		return
+		return response, err
 	}
 
 	// If there are no finalizers we can now archive the object and fire the delete event:
@@ -200,19 +200,19 @@ func (r *DeleteRequest[O]) do(ctx context.Context) (response *DeleteResponse, er
 	})
 	if err != nil {
 		err = r.translateError(ctx, tenant, err)
-		return
+		return response, err
 	}
 	err = r.fireEvent(ctx, Event{
 		Type:   EventTypeDeleted,
 		Object: object,
 	})
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Create and return the response:
 	response = &DeleteResponse{}
-	return
+	return response, err
 }
 
 // translateError translates raw PostgreSQL errors into domain-specific error types.

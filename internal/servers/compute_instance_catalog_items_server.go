@@ -81,11 +81,11 @@ func (b *ComputeInstanceCatalogItemsServerBuilder) SetMetricsRegisterer(value pr
 func (b *ComputeInstanceCatalogItemsServerBuilder) Build() (result *ComputeInstanceCatalogItemsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.ComputeInstanceCatalogItem, *privatev1.ComputeInstanceCatalogItem]().
@@ -93,14 +93,14 @@ func (b *ComputeInstanceCatalogItemsServerBuilder) Build() (result *ComputeInsta
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.ComputeInstanceCatalogItem, *publicv1.ComputeInstanceCatalogItem]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	computeInstancesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstance]().
@@ -109,7 +109,7 @@ func (b *ComputeInstanceCatalogItemsServerBuilder) Build() (result *ComputeInsta
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	referenceChecker := &daoReferenceChecker[*privatev1.ComputeInstance]{resourceDao: computeInstancesDao}
 
@@ -121,7 +121,7 @@ func (b *ComputeInstanceCatalogItemsServerBuilder) Build() (result *ComputeInsta
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &ComputeInstanceCatalogItemsServer{
@@ -131,7 +131,7 @@ func (b *ComputeInstanceCatalogItemsServerBuilder) Build() (result *ComputeInsta
 		inMapper:         inMapper,
 		outMapper:        outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *ComputeInstanceCatalogItemsServer) List(ctx context.Context,
@@ -167,7 +167,7 @@ func (s *ComputeInstanceCatalogItemsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *ComputeInstanceCatalogItemsServer) Get(ctx context.Context,
@@ -199,7 +199,7 @@ func (s *ComputeInstanceCatalogItemsServer) Get(ctx context.Context,
 
 	response = &publicv1.ComputeInstanceCatalogItemsGetResponse{}
 	response.SetObject(publicCatalogItem)
-	return
+	return response, err
 }
 
 func (s *ComputeInstanceCatalogItemsServer) Create(ctx context.Context,
@@ -207,14 +207,14 @@ func (s *ComputeInstanceCatalogItemsServer) Create(ctx context.Context,
 	publicCatalogItem := request.GetObject()
 	if publicCatalogItem == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateCatalogItem := &privatev1.ComputeInstanceCatalogItem{}
 	err = s.inMapper.Copy(ctx, publicCatalogItem, privateCatalogItem)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to map public compute instance catalog item to private", slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance catalog item")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.ComputeInstanceCatalogItemsCreateRequest{}
@@ -229,13 +229,13 @@ func (s *ComputeInstanceCatalogItemsServer) Create(ctx context.Context,
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to map private compute instance catalog item to public", slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance catalog item")
-		return
+		return response, err
 	}
 
 	response = &publicv1.ComputeInstanceCatalogItemsCreateResponse{}
 	response.SetObject(createdPublicCatalogItem)
 	response.SetWarnings(privateResponse.GetWarnings())
-	return
+	return response, err
 }
 
 func (s *ComputeInstanceCatalogItemsServer) Update(ctx context.Context,
@@ -243,12 +243,12 @@ func (s *ComputeInstanceCatalogItemsServer) Update(ctx context.Context,
 	publicCatalogItem := request.GetObject()
 	if publicCatalogItem == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicCatalogItem.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.ComputeInstanceCatalogItemsGetRequest{}
@@ -263,7 +263,7 @@ func (s *ComputeInstanceCatalogItemsServer) Update(ctx context.Context,
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to map public compute instance catalog item to private", slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance catalog item")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.ComputeInstanceCatalogItemsUpdateRequest{}
@@ -279,13 +279,13 @@ func (s *ComputeInstanceCatalogItemsServer) Update(ctx context.Context,
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to map private compute instance catalog item to public", slog.Any("error", err))
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process compute instance catalog item")
-		return
+		return response, err
 	}
 
 	response = &publicv1.ComputeInstanceCatalogItemsUpdateResponse{}
 	response.SetObject(updatedPublicCatalogItem)
 	response.SetWarnings(privateResponse.GetWarnings())
-	return
+	return response, err
 }
 
 func (s *ComputeInstanceCatalogItemsServer) addPublishedFilter(filter string) (string, error) {
@@ -309,5 +309,5 @@ func (s *ComputeInstanceCatalogItemsServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.ComputeInstanceCatalogItemsDeleteResponse{}
-	return
+	return response, err
 }

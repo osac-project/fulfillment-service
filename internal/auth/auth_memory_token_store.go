@@ -47,14 +47,14 @@ func (b *MemoryTokenStoreBuilder) Build() (result TokenStore, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
 	result = &memoryTokenStore{
 		logger: b.logger,
 	}
-	return
+	return result, err
 }
 
 // Load loads the tokens from memory. Returns a clone of the stored token to prevent side effects.
@@ -62,14 +62,14 @@ func (s *memoryTokenStore) Load(ctx context.Context) (result *Token, err error) 
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	if s.token == nil {
-		return
+		return result, err
 	}
 	result = &Token{
 		Access:  s.token.Access,
 		Refresh: s.token.Refresh,
 		Expiry:  s.token.Expiry,
 	}
-	return
+	return result, err
 }
 
 // Save saves the tokens to memory. Clones the provided token to prevent side effects.

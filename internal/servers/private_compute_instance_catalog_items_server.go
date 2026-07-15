@@ -76,11 +76,11 @@ func (b *PrivateComputeInstanceCatalogItemsServerBuilder) SetMetricsRegisterer(v
 func (b *PrivateComputeInstanceCatalogItemsServerBuilder) Build() (result *PrivateComputeInstanceCatalogItemsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	// Create the InstanceTypes DAO for field_definitions instance type validation:
 	instanceTypesDao, err := dao.NewGenericDAO[*privatev1.InstanceType]().
@@ -89,7 +89,7 @@ func (b *PrivateComputeInstanceCatalogItemsServerBuilder) Build() (result *Priva
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.ComputeInstanceCatalogItem]().
@@ -101,7 +101,7 @@ func (b *PrivateComputeInstanceCatalogItemsServerBuilder) Build() (result *Priva
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivateComputeInstanceCatalogItemsServer{
@@ -109,7 +109,7 @@ func (b *PrivateComputeInstanceCatalogItemsServerBuilder) Build() (result *Priva
 		generic:          generic,
 		instanceTypesDao: instanceTypesDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateComputeInstanceCatalogItemsServer) List(ctx context.Context,
@@ -129,21 +129,21 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Create(ctx context.Context,
 	var warnings []string
 	if request.GetObject() != nil {
 		if err = validateFieldDefinitions(request.GetObject().GetFieldDefinitions()); err != nil {
-			return
+			return response, err
 		}
 		warnings, err = s.validateFieldDefinitionsInstanceType(ctx, request.GetObject().GetFieldDefinitions())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 	err = s.generic.Create(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 	if len(warnings) > 0 && response != nil {
 		response.SetWarnings(warnings)
 	}
-	return
+	return response, err
 }
 
 func (s *PrivateComputeInstanceCatalogItemsServer) Update(ctx context.Context,
@@ -151,21 +151,21 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Update(ctx context.Context,
 	var warnings []string
 	if request.GetObject() != nil {
 		if err = validateFieldDefinitions(request.GetObject().GetFieldDefinitions()); err != nil {
-			return
+			return response, err
 		}
 		warnings, err = s.validateFieldDefinitionsInstanceType(ctx, request.GetObject().GetFieldDefinitions())
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 	err = s.generic.Update(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 	if len(warnings) > 0 && response != nil {
 		response.SetWarnings(warnings)
 	}
-	return
+	return response, err
 }
 
 func (s *PrivateComputeInstanceCatalogItemsServer) Delete(ctx context.Context,

@@ -152,15 +152,15 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = fmt.Errorf("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.name == "" {
 		err = fmt.Errorf("name is mandatory")
-		return
+		return result, err
 	}
 	if (b.caKeyFile == "") != (b.caCrtFile == "") {
 		err = fmt.Errorf("key file and certificate file must both be provided or both be omitted")
-		return
+		return result, err
 	}
 
 	// If a custom CA key pair is provided, verify that it is valid:
@@ -169,17 +169,17 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 		caKeyData, err = os.ReadFile(b.caKeyFile)
 		if err != nil {
 			err = fmt.Errorf("failed to load key file '%s': %w", b.caKeyFile, err)
-			return
+			return result, err
 		}
 		caCrtData, err = os.ReadFile(b.caCrtFile)
 		if err != nil {
 			err = fmt.Errorf("failed to load certificate file '%s': %w", b.caCrtFile, err)
-			return
+			return result, err
 		}
 		_, err = tls.X509KeyPair(caCrtData, caKeyData)
 		if err != nil {
 			err = fmt.Errorf("key and certificate files don't contain a valid key pair: %w", err)
-			return
+			return result, err
 		}
 	}
 
@@ -193,17 +193,17 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 	_, err = exec.LookPath(helmCmd)
 	if err != nil {
 		err = fmt.Errorf("command line tool '%s' isn't available: %w", helmCmd, err)
-		return
+		return result, err
 	}
 	_, err = exec.LookPath(kindCmd)
 	if err != nil {
 		err = fmt.Errorf("command line tool '%s' isn't available: %w", kindCmd, err)
-		return
+		return result, err
 	}
 	_, err = exec.LookPath(kubectlCmd)
 	if err != nil {
 		err = fmt.Errorf("command line tool '%s' isn't available: %w", kubectlCmd, err)
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -217,7 +217,7 @@ func (b *KindBuilder) Build() (result *Kind, err error) {
 		crdFiles:     slices.Clone(b.crdFiles),
 		portMappings: slices.Clone(b.portMappings),
 	}
-	return
+	return result, err
 }
 
 // Exists checks whether the cluster already exists.
@@ -486,7 +486,7 @@ func (k *Kind) getClusters(ctx context.Context) (result []string, err error) {
 			"failed to create command to get existing kind clusters: %w",
 			err,
 		)
-		return
+		return result, err
 	}
 	getOut, _, err := getCmd.Evaluate(ctx)
 	if err != nil {
@@ -494,14 +494,14 @@ func (k *Kind) getClusters(ctx context.Context) (result []string, err error) {
 			"failed to get existing kind clusters: %w",
 			err,
 		)
-		return
+		return result, err
 	}
 	names := strings.Split(string(getOut), "\n")
 	for len(names) > 0 && names[len(names)-1] == "" {
 		names = names[:len(names)-1]
 	}
 	result = names
-	return
+	return result, err
 }
 
 func (k *Kind) createCluster(ctx context.Context) error {

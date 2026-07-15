@@ -274,7 +274,7 @@ func (c *Client) getGroupIDByPathWithOrgID(ctx context.Context, orgID, groupPath
 	normalizedPath := strings.Trim(groupPath, "/")
 	if normalizedPath == "" {
 		err = fmt.Errorf("empty group path")
-		return
+		return result, err
 	}
 	segments := strings.Split(normalizedPath, "/")
 
@@ -285,7 +285,7 @@ func (c *Client) getGroupIDByPathWithOrgID(ctx context.Context, orgID, groupPath
 		groupID, lookupErr := c.getGroupIDByName(ctx, orgID, currentParentID, segment)
 		if lookupErr != nil {
 			err = fmt.Errorf("failed to find group segment %d '%s' (parent: %s): %w", i, segment, currentParentID, lookupErr)
-			return
+			return result, err
 		}
 
 		// This segment becomes the parent for the next iteration
@@ -294,7 +294,7 @@ func (c *Client) getGroupIDByPathWithOrgID(ctx context.Context, orgID, groupPath
 
 	// The last segment's ID is the final group ID
 	result = currentParentID
-	return
+	return result, err
 }
 
 // GetGroupIDByPath gets a Keycloak organization group ID by its path.

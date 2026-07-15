@@ -318,25 +318,25 @@ func (b *SequenceBuilder) Build() (result *Sequence, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.delay < 0 {
 		err = fmt.Errorf(
 			"delay must be greater than or equal to zero, but it is %s",
 			b.delay,
 		)
-		return
+		return result, err
 	}
 	if b.timeout < 0 {
 		err = fmt.Errorf(
 			"timeout must be greater than or equal to zero, but it is %s",
 			b.timeout,
 		)
-		return
+		return result, err
 	}
 	if b.exit == nil {
 		err = errors.New("exit function is mandatory")
-		return
+		return result, err
 	}
 
 	// Set the default delay if needed:
@@ -391,7 +391,7 @@ func (b *SequenceBuilder) Build() (result *Sequence, err error) {
 		result.Start(0)
 	}()
 
-	return
+	return result, err
 }
 
 // AddFunction adds a function that will be executed as a shutdown action. The is used to identify the function in the

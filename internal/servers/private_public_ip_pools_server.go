@@ -90,11 +90,11 @@ func (b *PrivatePublicIPPoolsServerBuilder) SetMetricsRegisterer(value prometheu
 func (b *PrivatePublicIPPoolsServerBuilder) Build() (result *PrivatePublicIPPoolsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	generic, err := NewGenericServer[*privatev1.PublicIPPool]().
@@ -106,14 +106,14 @@ func (b *PrivatePublicIPPoolsServerBuilder) Build() (result *PrivatePublicIPPool
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &PrivatePublicIPPoolsServer{
 		logger:  b.logger,
 		generic: generic,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivatePublicIPPoolsServer) List(ctx context.Context,
@@ -134,7 +134,7 @@ func (s *PrivatePublicIPPoolsServer) Create(ctx context.Context,
 
 	err = s.validateCreate(ctx, pool)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// At creation time nothing is allocated, so available == total.
@@ -145,7 +145,7 @@ func (s *PrivatePublicIPPoolsServer) Create(ctx context.Context,
 	}.Build())
 
 	err = s.generic.Create(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivatePublicIPPoolsServer) Update(ctx context.Context,
@@ -153,7 +153,7 @@ func (s *PrivatePublicIPPoolsServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.PublicIPPoolsGetRequest{}
@@ -161,14 +161,14 @@ func (s *PrivatePublicIPPoolsServer) Update(ctx context.Context,
 	var getResponse *privatev1.PublicIPPoolsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existing := getResponse.GetObject()
 
 	err = validateUpdate(request.GetObject(), existing)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Preserve immutable implementation_strategy from existing object.
@@ -177,7 +177,7 @@ func (s *PrivatePublicIPPoolsServer) Update(ctx context.Context,
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 // validateCreate validates a PublicIPPool creation request.
@@ -405,7 +405,7 @@ func (s *PrivatePublicIPPoolsServer) Delete(ctx context.Context,
 		Id: request.GetId(),
 	}.Build(), &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 	if allocated := getResponse.GetObject().GetStatus().GetAllocated(); allocated > 0 {
 		err = grpcstatus.Errorf(
@@ -413,10 +413,10 @@ func (s *PrivatePublicIPPoolsServer) Delete(ctx context.Context,
 			"cannot delete public IP pool '%s': %d public IP(s) are still allocated from it",
 			request.GetId(), allocated,
 		)
-		return
+		return response, err
 	}
 	err = s.generic.Delete(ctx, request, &response)
-	return
+	return response, err
 }
 
 func (s *PrivatePublicIPPoolsServer) Signal(ctx context.Context,

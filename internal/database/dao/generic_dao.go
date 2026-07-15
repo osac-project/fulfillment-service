@@ -194,15 +194,15 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.defaultLimit <= 0 {
 		err = fmt.Errorf("default limit must be a possitive integer, but it is %d", b.defaultLimit)
-		return
+		return result, err
 	}
 	if b.maxLimit <= 0 {
 		err = fmt.Errorf("max limit must be a possitive integer, but it is %d", b.maxLimit)
-		return
+		return result, err
 	}
 	if b.maxLimit < b.defaultLimit {
 		err = fmt.Errorf(
@@ -210,11 +210,11 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 				"is %d",
 			b.maxLimit, b.defaultLimit,
 		)
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Get descriptors of well known types:
@@ -234,7 +234,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 			"object of type '%s' doesn't have a '%s' field",
 			objectDesc.FullName(), idFieldName,
 		)
-		return
+		return result, err
 	}
 	metadataField := objectFields.ByName(metadataFieldName)
 	if metadataField == nil {
@@ -242,7 +242,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 			"object of type '%s' doesn't have a '%s' field",
 			objectDesc.FullName(), metadataFieldName,
 		)
-		return
+		return result, err
 	}
 
 	// Create the template that we will clone when we need to create a new metadata object:
@@ -260,7 +260,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create JSON encoder: %w", err)
-		return
+		return result, err
 	}
 
 	// Prepare the JSON marshalling options:
@@ -277,7 +277,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create filter translator: %w", err)
-		return
+		return result, err
 	}
 
 	// Register metrics:
@@ -285,7 +285,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 	if b.metricsRegisterer != nil {
 		opDurationMetric, err = b.registerOpDurationMetric()
 		if err != nil {
-			return
+			return result, err
 		}
 	}
 
@@ -307,7 +307,7 @@ func (b *GenericDAOBuilder[O]) Build() (result *GenericDAO[O], err error) {
 		tenancyLogic:     b.tenancyLogic,
 		opDurationMetric: opDurationMetric,
 	}
-	return
+	return result, err
 }
 
 // resolveTableName returns the explicit table name if one was set via SetTableName, otherwise it
@@ -362,7 +362,7 @@ func (b *GenericDAOBuilder[O]) registerOpDurationMetric() (result *prometheus.Hi
 	if err != nil {
 		var alreadyRegisteredErr prometheus.AlreadyRegisteredError
 		if !errors.As(err, &alreadyRegisteredErr) {
-			return
+			return result, err
 		}
 		registered, ok := alreadyRegisteredErr.ExistingCollector.(*prometheus.HistogramVec)
 		if !ok {
@@ -370,14 +370,14 @@ func (b *GenericDAOBuilder[O]) registerOpDurationMetric() (result *prometheus.Hi
 				"metric '%s' can't be registered as an histogram vector because it is already registered as a '%T'",
 				name, alreadyRegisteredErr.ExistingCollector,
 			)
-			return
+			return result, err
 		}
 		result = registered
 		err = nil
-		return
+		return result, err
 	}
 	result = metric
-	return
+	return result, err
 }
 
 // Names of well known fields:

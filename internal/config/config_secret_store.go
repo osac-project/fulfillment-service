@@ -71,7 +71,7 @@ func (b *SecretStoreBuilder) Build() (result SecretStore, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Select the store based on the availability of the keyring:
@@ -88,7 +88,7 @@ func (b *SecretStoreBuilder) Build() (result SecretStore, err error) {
 			Build()
 	}
 
-	return
+	return result, err
 }
 
 // KeyringSecretStoreBuilder contains the data and logic needed to build a secret store backed by the operating system
@@ -121,11 +121,11 @@ func (b *KeyringSecretStoreBuilder) Build() (result SecretStore, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.dir == "" {
 		err = errors.New("directory is mandatory")
-		return
+		return result, err
 	}
 
 	// The keyring key is always 'secrets:<dir>' where 'dir' is the absolute path of the configuration directory.
@@ -136,7 +136,7 @@ func (b *KeyringSecretStoreBuilder) Build() (result SecretStore, err error) {
 		logger: b.logger,
 		key:    key,
 	}
-	return
+	return result, err
 }
 
 // keyringSecretStore stores secret data as a single entry in the operating system keyring. The key field is
@@ -233,7 +233,7 @@ func (b *FileSecretStoreBuilder) Build() (result SecretStore, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Use the default directory if not set:
@@ -242,7 +242,7 @@ func (b *FileSecretStoreBuilder) Build() (result SecretStore, err error) {
 		var configDir string
 		configDir, err = os.UserConfigDir()
 		if err != nil {
-			return
+			return result, err
 		}
 		dir = filepath.Join(configDir, "osac")
 	}
@@ -253,7 +253,7 @@ func (b *FileSecretStoreBuilder) Build() (result SecretStore, err error) {
 		logger: b.logger,
 		file:   file,
 	}
-	return
+	return result, err
 }
 
 // fileSecretStore stores secret data as a file named secrets.json in the same directory as the main configuration

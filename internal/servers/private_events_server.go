@@ -80,18 +80,18 @@ func (b *PrivateEventsServerBuilder) Build() (result *PrivateEventsServer, err e
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.listener == nil {
 		err = errors.New("listener is mandatory")
-		return
+		return result, err
 	}
 
 	// Create  the CEL environment:
 	celEnv, err := b.createCelEnv()
 	if err != nil {
 		err = fmt.Errorf("failed to create CEL environment: %w", err)
-		return
+		return result, err
 	}
 
 	// Create the object:
@@ -102,7 +102,7 @@ func (b *PrivateEventsServerBuilder) Build() (result *PrivateEventsServer, err e
 		subsLock: &sync.RWMutex{},
 		celEnv:   celEnv,
 	}
-	return
+	return result, err
 }
 
 func (b *PrivateEventsServerBuilder) createCelEnv() (result *cel.Env, err error) {
@@ -142,7 +142,7 @@ func (b *PrivateEventsServerBuilder) createCelEnv() (result *cel.Env, err error)
 
 	// Create the CEL environment:
 	result, err = cel.NewEnv(options...)
-	return
+	return result, err
 }
 
 // Starts starts the background components of the server, in particular the notification listener. This is a blocking
@@ -241,18 +241,18 @@ func (s *PrivateEventsServer) evalFilter(ctx context.Context, filterPrg cel.Prog
 		"event": event,
 	})
 	if err != nil {
-		return
+		return result, err
 	}
 	value, _, err := filterPrg.ContextEval(ctx, activation)
 	if err != nil {
-		return
+		return result, err
 	}
 	result, ok := value.Value().(bool)
 	if !ok {
 		err = fmt.Errorf("result of filter should be a boolean, but it is of type '%T'", result)
-		return
+		return result, err
 	}
-	return
+	return result, err
 }
 
 func (s *PrivateEventsServer) processPayload(ctx context.Context, payload proto.Message) error {

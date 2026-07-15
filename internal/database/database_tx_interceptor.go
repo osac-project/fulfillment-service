@@ -58,11 +58,11 @@ func (b *TxInterceptorBuilder) Build() (result *TxInterceptor, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.manager == nil {
 		err = errors.New("transaction manager is mandatory")
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -70,7 +70,7 @@ func (b *TxInterceptorBuilder) Build() (result *TxInterceptor, err error) {
 		logger:  b.logger,
 		manager: b.manager,
 	}
-	return
+	return result, err
 }
 
 // UnaryServer is the unary server interceptor function.
@@ -86,7 +86,7 @@ func (i *TxInterceptor) UnaryServer(ctx context.Context, request any, info *grpc
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to begin transaction")
-		return
+		return response, err
 	}
 
 	// After calling the method we will try to end the transaction. If the method returns an error then we will
@@ -122,5 +122,5 @@ func (i *TxInterceptor) UnaryServer(ctx context.Context, request any, info *grpc
 
 	// Call the method:
 	response, err = handler(handlerCtx, request)
-	return
+	return response, err
 }

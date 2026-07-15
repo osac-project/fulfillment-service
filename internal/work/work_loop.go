@@ -110,19 +110,19 @@ func (b *LoopBuilder) Build() (result *Loop, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.workFunc == nil {
 		err = errors.New("function is mandatory")
-		return
+		return result, err
 	}
 	if b.interval <= 0 {
 		err = fmt.Errorf("interval should be positive, but it is %s", b.interval)
-		return
+		return result, err
 	}
 	if b.name == "" {
 		err = errors.New("name is mandatory")
-		return
+		return result, err
 	}
 
 	// Create a logger with the name of the loop:
@@ -137,7 +137,7 @@ func (b *LoopBuilder) Build() (result *Loop, err error) {
 		interval: b.interval,
 		kick:     make(chan struct{}, 1),
 	}
-	return
+	return result, err
 }
 
 // Run runs the loop until the context is cancelled.

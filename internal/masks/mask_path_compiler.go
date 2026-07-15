@@ -63,7 +63,7 @@ func (b *PathCompilerBuilder[M]) Build() (result *PathCompiler[M], err error) {
 		logger: b.logger,
 		desc:   desc,
 	}
-	return
+	return result, err
 }
 
 // Compile compiles the field path from the given string.
@@ -76,7 +76,7 @@ func (c *PathCompiler[M]) Compile(path string) (result *Path[M], err error) {
 		field := desc.Fields().ByName(protoreflect.Name(segments[0]))
 		if field == nil {
 			err = fmt.Errorf("field '%s' not found", segments[0])
-			return
+			return result, err
 		}
 		step := pathStep{
 			kind:  pathStepKindField,
@@ -89,7 +89,7 @@ func (c *PathCompiler[M]) Compile(path string) (result *Path[M], err error) {
 				index, err = strconv.Atoi(segments[1])
 				if err != nil {
 					err = fmt.Errorf("invalid index '%s': %w", segments[1], err)
-					return
+					return result, err
 				}
 				step.kind = pathStepKindListIndex
 				step.index = index
@@ -129,7 +129,7 @@ func (c *PathCompiler[M]) Compile(path string) (result *Path[M], err error) {
 		text:  path,
 		steps: steps,
 	}
-	return
+	return result, err
 }
 
 func (c *PathCompiler[M]) split(path string) []string {

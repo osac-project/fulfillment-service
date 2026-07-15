@@ -76,7 +76,7 @@ func (f *codeFlow) run(ctx context.Context) (result *auth.Token, err error) {
 			"Failed to start redirect server",
 			slog.Any("error", err),
 		)
-		return
+		return result, err
 	}
 	defer func() {
 		err := server.Close()
@@ -101,7 +101,7 @@ func (f *codeFlow) run(ctx context.Context) (result *auth.Token, err error) {
 	}
 	authQuery, err := query.Values(authRequest)
 	if err != nil {
-		return
+		return result, err
 	}
 	authUri := fmt.Sprintf("%s?%s", f.source.authEndpoint, authQuery.Encode())
 	f.logger.DebugContext(
@@ -119,7 +119,7 @@ func (f *codeFlow) run(ctx context.Context) (result *auth.Token, err error) {
 			"Failed to start code flow",
 			slog.Any("error", err),
 		)
-		return
+		return result, err
 	}
 	f.logger.DebugContext(
 		ctx,
@@ -134,7 +134,7 @@ func (f *codeFlow) run(ctx context.Context) (result *auth.Token, err error) {
 			slog.String("!url", authUri),
 			slog.Any("error", err),
 		)
-		return
+		return result, err
 	}
 
 	// Wait till the redirect server receives the authorization code, or an error occurs:
@@ -175,7 +175,7 @@ func (f *codeFlow) run(ctx context.Context) (result *auth.Token, err error) {
 			)
 			err = listenerErr
 		}
-		return
+		return result, err
 	}
 
 	// Exchange the authorization code for the access token::
@@ -198,7 +198,7 @@ func (f *codeFlow) run(ctx context.Context) (result *auth.Token, err error) {
 			)
 			err = listenerErr
 		}
-		return
+		return result, err
 	}
 
 	// Notify user of authentication success:
@@ -206,7 +206,7 @@ func (f *codeFlow) run(ctx context.Context) (result *auth.Token, err error) {
 		Outcome: true,
 	})
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Return the token:
@@ -222,7 +222,7 @@ func (f *codeFlow) run(ctx context.Context) (result *auth.Token, err error) {
 		slog.Any("!refresh", result.Refresh),
 		slog.Time("expiry", result.Expiry),
 	)
-	return
+	return result, err
 }
 
 func (f *codeFlow) startServer(ctx context.Context) (server *http.Server, redirectUri string, err error) {
@@ -230,7 +230,7 @@ func (f *codeFlow) startServer(ctx context.Context) (server *http.Server, redire
 	parsedUri, err := url.Parse(f.source.redirectUri)
 	if err != nil {
 		err = fmt.Errorf("failed to parse redirect URI '%s': %w", f.source.redirectUri, err)
-		return
+		return server, redirectUri, err
 	}
 	address := parsedUri.Host
 
@@ -242,7 +242,7 @@ func (f *codeFlow) startServer(ctx context.Context) (server *http.Server, redire
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create listener: %w", err)
-		return
+		return server, redirectUri, err
 	}
 
 	// The port number may have been allocated dynamically if it was initially zero, so we need to get the actual
@@ -284,7 +284,7 @@ func (f *codeFlow) startServer(ctx context.Context) (server *http.Server, redire
 	}()
 	logger.DebugContext(ctx, "Started redirect server")
 
-	return
+	return server, redirectUri, err
 }
 
 func (f *codeFlow) serve(w http.ResponseWriter, r *http.Request) {

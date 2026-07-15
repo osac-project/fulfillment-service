@@ -110,7 +110,7 @@ func (b *InterceptorBuilder) Build() (result *Interceptor, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Use provided values or defaults:
@@ -129,7 +129,7 @@ func (b *InterceptorBuilder) Build() (result *Interceptor, err error) {
 		product: product,
 		version: version,
 	}
-	return
+	return result, err
 }
 
 // userAgent calculates the value for the `User-Agent` header.

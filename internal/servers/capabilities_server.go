@@ -61,7 +61,7 @@ func (b *CapabilitiesServerBuilder) Build() (result *CapabilitiesServer, err err
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// Make sure that the list of issuers doens't have duplicates, and that it is sorted in a predictable way:
@@ -74,7 +74,7 @@ func (b *CapabilitiesServerBuilder) Build() (result *CapabilitiesServer, err err
 		logger:                   b.logger,
 		authnTrustedTokenIssuers: authnTrustedTokenIssuers,
 	}
-	return
+	return result, err
 }
 
 // Get is the implementation of the method that returns the capabilities of the server.

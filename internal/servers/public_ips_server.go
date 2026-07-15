@@ -86,15 +86,15 @@ func (b *PublicIPsServerBuilder) Build() (result *PublicIPsServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -103,14 +103,14 @@ func (b *PublicIPsServerBuilder) Build() (result *PublicIPsServer, err error) {
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.PublicIP, *publicv1.PublicIP]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -122,7 +122,7 @@ func (b *PublicIPsServerBuilder) Build() (result *PublicIPsServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -132,7 +132,7 @@ func (b *PublicIPsServerBuilder) Build() (result *PublicIPsServer, err error) {
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *PublicIPsServer) List(ctx context.Context,
@@ -172,7 +172,7 @@ func (s *PublicIPsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *PublicIPsServer) Get(ctx context.Context,
@@ -203,7 +203,7 @@ func (s *PublicIPsServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.PublicIPsGetResponse{}
 	response.SetObject(publicPublicIP)
-	return
+	return response, err
 }
 
 func (s *PublicIPsServer) Create(ctx context.Context,
@@ -212,7 +212,7 @@ func (s *PublicIPsServer) Create(ctx context.Context,
 	publicPublicIP := request.GetObject()
 	if publicPublicIP == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privatePublicIP := &privatev1.PublicIP{}
 	err = s.inMapper.Copy(ctx, publicPublicIP, privatePublicIP)
@@ -223,7 +223,7 @@ func (s *PublicIPsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process public IP")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -245,13 +245,13 @@ func (s *PublicIPsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process public IP")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.PublicIPsCreateResponse{}
 	response.SetObject(createdPublicPublicIP)
-	return
+	return response, err
 }
 
 func (s *PublicIPsServer) Update(ctx context.Context,
@@ -260,7 +260,7 @@ func (s *PublicIPsServer) Update(ctx context.Context,
 	publicPublicIP := request.GetObject()
 	if publicPublicIP == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privatePublicIP := &privatev1.PublicIP{}
 	err = s.inMapper.Copy(ctx, publicPublicIP, privatePublicIP)
@@ -271,7 +271,7 @@ func (s *PublicIPsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process public IP")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -295,13 +295,13 @@ func (s *PublicIPsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process public IP")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.PublicIPsUpdateResponse{}
 	response.SetObject(updatedPublicPublicIP)
-	return
+	return response, err
 }
 
 func (s *PublicIPsServer) Delete(ctx context.Context,
@@ -318,5 +318,5 @@ func (s *PublicIPsServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.PublicIPsDeleteResponse{}
-	return
+	return response, err
 }

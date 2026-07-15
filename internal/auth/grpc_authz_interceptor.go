@@ -119,7 +119,7 @@ func (b *GrpcAuthzInterceptorBuilder) AddEmergencyServiceAccounts(
 func (b *GrpcAuthzInterceptorBuilder) Build() (result *GrpcAuthzInterceptor, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 
 	// If we are running in a Kubernetes pod we want to add a 'nsName' to the external data, so that it can be
@@ -139,7 +139,7 @@ func (b *GrpcAuthzInterceptorBuilder) Build() (result *GrpcAuthzInterceptor, err
 				"failed to read Kubernetes namespace file '%s': %w",
 				k8sfiles.ServiceAccountNamespace, err,
 			)
-			return
+			return result, err
 		}
 	} else {
 		nsName = strings.TrimSpace(string(nsBytes))
@@ -162,7 +162,7 @@ func (b *GrpcAuthzInterceptorBuilder) Build() (result *GrpcAuthzInterceptor, err
 				"emergency service account name '%s' is not a valid Kubernetes service account name",
 				emergencyServiceAccount,
 			)
-			return
+			return result, err
 		}
 
 		emergencyServiceAccountName := fmt.Sprintf(
@@ -187,7 +187,7 @@ func (b *GrpcAuthzInterceptorBuilder) Build() (result *GrpcAuthzInterceptor, err
 	).PrepareForEval(context.Background())
 	if err != nil {
 		err = fmt.Errorf("failed to compile authorization policy: %w", err)
-		return
+		return result, err
 	}
 
 	// Compile anonymous method regexes:
@@ -196,7 +196,7 @@ func (b *GrpcAuthzInterceptorBuilder) Build() (result *GrpcAuthzInterceptor, err
 		anonymousMethods[i], err = regexp.Compile(expr)
 		if err != nil {
 			err = fmt.Errorf("failed to compile public method regex '%s': %w", expr, err)
-			return
+			return result, err
 		}
 	}
 
@@ -208,7 +208,7 @@ func (b *GrpcAuthzInterceptorBuilder) Build() (result *GrpcAuthzInterceptor, err
 		inputCallback:    b.inputCallback,
 		query:            query,
 	}
-	return
+	return result, err
 }
 
 // UnaryServer is the unary server interceptor function.
@@ -299,7 +299,7 @@ func (i *GrpcAuthzInterceptor) authorizeWithToken(ctx context.Context, method st
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Error(grpccodes.Internal, "failed to process authorization")
-		return
+		return result, err
 	}
 
 	// If there is an input callback, call it:
@@ -312,7 +312,7 @@ func (i *GrpcAuthzInterceptor) authorizeWithToken(ctx context.Context, method st
 				slog.Any("error", err),
 			)
 			err = grpcstatus.Error(grpccodes.Internal, "internal error")
-			return
+			return result, err
 		}
 	}
 
@@ -326,12 +326,12 @@ func (i *GrpcAuthzInterceptor) authorizeWithToken(ctx context.Context, method st
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Error(grpccodes.Internal, "failed to evaluate authorization policy")
-		return
+		return result, err
 	}
 	if len(results) == 0 {
 		logger.DebugContext(ctx, "Authorization policy returned no results")
 		err = grpcstatus.Error(grpccodes.PermissionDenied, "permission denied")
-		return
+		return result, err
 	}
 
 	// The query is 'data.authz' so 'results[0].Expressions[0].Value' is a map of all exported variables:
@@ -339,7 +339,7 @@ func (i *GrpcAuthzInterceptor) authorizeWithToken(ctx context.Context, method st
 	if !ok {
 		logger.ErrorContext(ctx, "Authorization policy returned unexpected result type")
 		err = grpcstatus.Error(grpccodes.Internal, "failed to evaluate authorization policy")
-		return
+		return result, err
 	}
 
 	// Check if the request is allowed:
@@ -347,7 +347,7 @@ func (i *GrpcAuthzInterceptor) authorizeWithToken(ctx context.Context, method st
 	if !allow {
 		logger.DebugContext(ctx, "Permission denied by authorization policy")
 		err = grpcstatus.Error(grpccodes.PermissionDenied, "permission denied")
-		return
+		return result, err
 	}
 
 	// Build the subject from the policy output:
@@ -359,7 +359,7 @@ func (i *GrpcAuthzInterceptor) authorizeWithToken(ctx context.Context, method st
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Error(grpccodes.Internal, "failed to process authorization")
-		return
+		return result, err
 	}
 
 	// Store subject in context
@@ -370,7 +370,7 @@ func (i *GrpcAuthzInterceptor) authorizeWithToken(ctx context.Context, method st
 		"Permission granted by authorization policy",
 		slog.String("user", subject.User),
 	)
-	return
+	return result, err
 }
 
 // extractId tries to extract the identifier of the object from the incoming request message. For get and delete
@@ -427,7 +427,7 @@ func (i *GrpcAuthzInterceptor) buildInput(ctx context.Context, method string, re
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		err = fmt.Errorf("unexpected claims type")
-		return
+		return result, err
 	}
 
 	// Check if this the token corresponds to a Kubernetes service account:
@@ -507,7 +507,7 @@ func (i *GrpcAuthzInterceptor) buildInput(ctx context.Context, method string, re
 			"identity": identity,
 		},
 	}
-	return
+	return result, err
 }
 
 // shouldFetchProjectMetadata determines if we should fetch project metadata from the database for authorization.
@@ -549,7 +549,7 @@ func (i *GrpcAuthzInterceptor) buildSubject(authzData map[string]any) (result *S
 	user, _ := authzData["subject_user"].(string)
 	if user == "" {
 		err = fmt.Errorf("policy did not produce a subject_user")
-		return
+		return result, err
 	}
 
 	tenantValues, _ := authzData["subject_tenant_result"].([]any)
@@ -561,7 +561,7 @@ func (i *GrpcAuthzInterceptor) buildSubject(authzData map[string]any) (result *S
 					User:    user,
 					Tenants: AllTenants,
 				}
-				return
+				return result, err
 			}
 			tenantNames = append(tenantNames, s)
 		}
@@ -571,7 +571,7 @@ func (i *GrpcAuthzInterceptor) buildSubject(authzData map[string]any) (result *S
 		User:    user,
 		Tenants: collections.NewSet(tenantNames...),
 	}
-	return
+	return result, err
 }
 
 // k8sTokenFile is the value of the 'namespace' external data item passed to the Rego policy when we aren't running

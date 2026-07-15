@@ -86,11 +86,11 @@ func (b *SubnetsServerBuilder) Build() (result *SubnetsServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -99,14 +99,14 @@ func (b *SubnetsServerBuilder) Build() (result *SubnetsServer, err error) {
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.Subnet, *publicv1.Subnet]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -118,7 +118,7 @@ func (b *SubnetsServerBuilder) Build() (result *SubnetsServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -128,7 +128,7 @@ func (b *SubnetsServerBuilder) Build() (result *SubnetsServer, err error) {
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *SubnetsServer) List(ctx context.Context,
@@ -168,7 +168,7 @@ func (s *SubnetsServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *SubnetsServer) Get(ctx context.Context,
@@ -199,7 +199,7 @@ func (s *SubnetsServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.SubnetsGetResponse{}
 	response.SetObject(publicSubnet)
-	return
+	return response, err
 }
 
 func (s *SubnetsServer) Create(ctx context.Context,
@@ -208,7 +208,7 @@ func (s *SubnetsServer) Create(ctx context.Context,
 	publicSubnet := request.GetObject()
 	if publicSubnet == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateSubnet := &privatev1.Subnet{}
 	err = s.inMapper.Copy(ctx, publicSubnet, privateSubnet)
@@ -219,7 +219,7 @@ func (s *SubnetsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process subnet")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -241,13 +241,13 @@ func (s *SubnetsServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process subnet")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.SubnetsCreateResponse{}
 	response.SetObject(createdPublicSubnet)
-	return
+	return response, err
 }
 
 func (s *SubnetsServer) Update(ctx context.Context,
@@ -256,12 +256,12 @@ func (s *SubnetsServer) Update(ctx context.Context,
 	publicSubnet := request.GetObject()
 	if publicSubnet == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicSubnet.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Get the existing object from the private server:
@@ -282,7 +282,7 @@ func (s *SubnetsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process subnet")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server with the merged object:
@@ -305,13 +305,13 @@ func (s *SubnetsServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process subnet")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.SubnetsUpdateResponse{}
 	response.SetObject(updatedPublicSubnet)
-	return
+	return response, err
 }
 
 func (s *SubnetsServer) Delete(ctx context.Context,
@@ -328,5 +328,5 @@ func (s *SubnetsServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.SubnetsDeleteResponse{}
-	return
+	return response, err
 }

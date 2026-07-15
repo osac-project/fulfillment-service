@@ -145,23 +145,23 @@ func (b *ListenerBuilder) Build() (result net.Listener, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.network == "" {
 		err = errors.New("network is mandatory")
-		return
+		return result, err
 	}
 	if b.address == "" {
 		err = errors.New("address is mandatory")
-		return
+		return result, err
 	}
 	if b.tlsCrt != "" && b.tlsKey == "" {
 		err = errors.New("TLS key is mandatory when certificate is specified")
-		return
+		return result, err
 	}
 	if b.tlsKey != "" && b.tlsCrt == "" {
 		err = errors.New("TLS certificate is mandatory when key is specified")
-		return
+		return result, err
 	}
 
 	// Try to load the certificates
@@ -169,7 +169,7 @@ func (b *ListenerBuilder) Build() (result net.Listener, err error) {
 	if b.tlsCrt != "" && b.tlsKey != "" {
 		tlsCrt, err = tls.LoadX509KeyPair(b.tlsCrt, b.tlsKey)
 		if err != nil {
-			return
+			return result, err
 		}
 		b.logger.Info(
 			"Loaded TLS key and certificate",
@@ -186,7 +186,7 @@ func (b *ListenerBuilder) Build() (result net.Listener, err error) {
 			err = nil
 		}
 		if err != nil {
-			return
+			return result, err
 		}
 		b.logger.Info(
 			"Removed existing unix socket",
@@ -197,7 +197,7 @@ func (b *ListenerBuilder) Build() (result net.Listener, err error) {
 	// Create the listener:
 	listener, err := net.Listen(b.network, b.address)
 	if err != nil {
-		return
+		return result, err
 	}
 	if tlsCrt.Certificate != nil {
 		listener = tls.NewListener(listener, &tls.Config{
@@ -211,7 +211,7 @@ func (b *ListenerBuilder) Build() (result net.Listener, err error) {
 	// Return the listener:
 	result = listener
 
-	return
+	return result, err
 }
 
 // Common listener names:

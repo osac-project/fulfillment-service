@@ -442,15 +442,15 @@ func (r *runnerContext) downloadFile(ctx context.Context, args downloadFileArgs)
 	// Check parameters:
 	if args.Url == "" {
 		err = fmt.Errorf("URL is required")
-		return
+		return result, err
 	}
 	if args.Name == "" {
 		err = fmt.Errorf("name for URL '%s' is required", args.Url)
-		return
+		return result, err
 	}
 	if args.Sum == "" {
 		err = fmt.Errorf("checksum for URL '%s' is required", args.Url)
-		return
+		return result, err
 	}
 
 	// Create the cache directory:
@@ -458,14 +458,14 @@ func (r *runnerContext) downloadFile(ctx context.Context, args downloadFileArgs)
 	err = os.MkdirAll(cacheDir, 0700)
 	if err != nil {
 		err = fmt.Errorf("failed to create cache directory '%s': %w", cacheDir, err)
-		return
+		return result, err
 	}
 
 	// Calculate the absolute path of the cacheFile in the cache:
 	cacheFile := filepath.Join(cacheDir, args.Name)
 	cacheFile, err = filepath.Abs(cacheFile)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// If the file already exists then we can use it directly, but first we need to verify its checksum. If that
@@ -474,16 +474,16 @@ func (r *runnerContext) downloadFile(ctx context.Context, args downloadFileArgs)
 	if err == nil {
 		if r.verifyChecksum(ctx, cacheFile, args.Sum) == nil {
 			result = cacheFile
-			return
+			return result, err
 		}
 		err = os.Remove(cacheFile)
 		if err != nil {
 			err = fmt.Errorf("failed to remove cached file '%s': %w", cacheFile, err)
-			return
+			return result, err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		err = fmt.Errorf("failed to check cached file '%s': %w", cacheFile, err)
-		return
+		return result, err
 	}
 
 	// We use 'curl' to download files because it supports redirection and other details that we do not wish to
@@ -505,14 +505,14 @@ func (r *runnerContext) downloadFile(ctx context.Context, args downloadFileArgs)
 	err = curlCmd.Run()
 	if err != nil {
 		err = fmt.Errorf("failed to download file from '%s': %w", args.Url, err)
-		return
+		return result, err
 	}
 
 	// Verify the checksum of the file:
 	err = r.verifyChecksum(ctx, cacheFile, args.Sum)
 	if err != nil {
 		err = fmt.Errorf("failed to verify checksum of file '%s': %w", cacheFile, err)
-		return
+		return result, err
 	}
 
 	// Make the file executable:
@@ -520,13 +520,13 @@ func (r *runnerContext) downloadFile(ctx context.Context, args downloadFileArgs)
 		err = os.Chmod(cacheFile, 0700) // #nosec G302 -- making downloaded tool executable
 		if err != nil {
 			err = fmt.Errorf("failed to set executable permission on file '%s': %w", cacheFile, err)
-			return
+			return result, err
 		}
 	}
 
 	// Return the resulting cache file:
 	result = cacheFile
-	return
+	return result, err
 }
 
 // verifyChecksum verifies the checksum of a file using the 'sha256sum' tool.

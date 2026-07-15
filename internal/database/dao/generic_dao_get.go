@@ -47,28 +47,28 @@ func (r *GetRequest[O]) SetLock(value bool) *GetRequest[O] {
 func (r *GetRequest[O]) Do(ctx context.Context) (response *GetResponse[O], err error) {
 	err = r.init(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
-	return
+	return response, err
 }
 
 func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err error) {
 	// Add the where clause to filter by tenant:
 	err = r.addTenancyFilter(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Add the where clause to filter by identifier:
 	if r.id == "" {
 		err = errors.New("object identifier is mandatory")
-		return
+		return response, err
 	}
 	r.sql.params = append(r.sql.params, r.id)
 	if r.sql.filter.Len() > 0 {
@@ -144,25 +144,25 @@ func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err e
 		err = &ErrNotFound{
 			IDs: []string{r.id},
 		}
-		return
+		return response, err
 	}
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Prepare the object:
 	object := r.cloneObject(r.newObject())
 	err = r.unmarshalData(data, object)
 	if err != nil {
-		return
+		return response, err
 	}
 	labels, err := r.unmarshalMap(labelsData)
 	if err != nil {
-		return
+		return response, err
 	}
 	annotations, err := r.unmarshalMap(annotationsData)
 	if err != nil {
-		return
+		return response, err
 	}
 	metadata := r.makeMetadata(makeMetadataArgs{
 		creationTs:  creationTs,
@@ -183,7 +183,7 @@ func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err e
 	response = &GetResponse[O]{
 		object: object,
 	}
-	return
+	return response, err
 }
 
 // GetResponse represents the result of a get operation.

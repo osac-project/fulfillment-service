@@ -281,32 +281,32 @@ func (b *TokenSourceBuilder) Build() (result *TokenSource, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.issuer == "" {
 		err = errors.New("issuer is mandatory")
-		return
+		return result, err
 	}
 	if b.clientId == "" {
 		err = errors.New("client identifier is mandatory")
-		return
+		return result, err
 	}
 	if err = b.validateFlowParameters(); err != nil {
-		return
+		return result, err
 	}
 	if b.store == nil {
 		err = errors.New("token store is mandatory")
-		return
+		return result, err
 	}
 	if b.timeout < 0 {
 		err = fmt.Errorf("timeout must be greater than zero, but it is %s", b.timeout)
-		return
+		return result, err
 	}
 
 	// Resolve defaults into a local config without mutating the builder:
 	resolved, err := b.resolveDefaults()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the object early, as we need its reference for the underlying flow:
@@ -334,7 +334,7 @@ func (b *TokenSourceBuilder) Build() (result *TokenSource, err error) {
 
 	// Return the source:
 	result = source
-	return
+	return result, err
 }
 
 // resolvedConfig holds the defaults computed during Build() without mutating the builder.
@@ -397,7 +397,7 @@ func (b *TokenSourceBuilder) resolveDefaults() (cfg resolvedConfig, err error) {
 		SetDir("templates").
 		Build()
 	if err != nil {
-		return
+		return cfg, err
 	}
 
 	// Set the default timeout:
@@ -416,7 +416,7 @@ func (b *TokenSourceBuilder) resolveDefaults() (cfg resolvedConfig, err error) {
 			Build()
 		if err != nil {
 			err = fmt.Errorf("failed to build CA pool: %w", err)
-			return
+			return cfg, err
 		}
 	}
 
@@ -451,14 +451,14 @@ func (b *TokenSourceBuilder) resolveDefaults() (cfg resolvedConfig, err error) {
 	parsedRedirectUri, parseErr := url.Parse(cfg.redirectUri)
 	if parseErr != nil {
 		err = fmt.Errorf("failed to parse redirect URI '%s': %w", cfg.redirectUri, parseErr)
-		return
+		return cfg, err
 	}
 	if parsedRedirectUri.Host == "" {
 		err = fmt.Errorf("redirect URI '%s' must include a host", cfg.redirectUri)
-		return
+		return cfg, err
 	}
 
-	return
+	return cfg, err
 }
 
 // createFlowRunner creates the appropriate flow runner for the configured OAuth flow.
@@ -498,7 +498,7 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 	loaded, err := s.store.Load(ctx)
 	if err != nil {
 		err = fmt.Errorf("failed to load token: %w", err)
-		return
+		return result, err
 	}
 	defer func() {
 		if result != nil && !s.sameTokens(loaded, result) {
@@ -516,7 +516,7 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 	// If the loaded token doesn't expire soon, then we can use it directly, there is no need to request a new one:
 	if loaded != nil && s.isFresh(loaded) {
 		result = loaded
-		return
+		return result, err
 	}
 
 	// If we have a refresh token, then we can try to use it to renew the access token. If this fails we will
@@ -524,7 +524,7 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 	if loaded != nil && loaded.Refresh != "" {
 		result, err = s.runRefresh(ctx, loaded.Refresh)
 		if err == nil {
-			return
+			return result, err
 		}
 		s.logger.DebugContext(
 			ctx,
@@ -542,7 +542,7 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 	}
 	if !flowInteractive || s.interactive {
 		result, err = s.runFlow(ctx)
-		return
+		return result, err
 	}
 
 	// If we are here then either there wasn't a token in the store, or it was about to expire, and we/ can't
@@ -555,13 +555,13 @@ func (s *TokenSource) Token(ctx context.Context) (result *auth.Token, err error)
 			slog.Time("expiry", loaded.Expiry),
 		)
 		result = loaded
-		return
+		return result, err
 	}
 
 	// If we are here there wasn't a token in the store, or it was already expired, all we can do is return
 	// an error.
 	err = errors.New("no token available")
-	return
+	return result, err
 }
 
 func (s *TokenSource) sameTokens(a, b *auth.Token) bool {
@@ -652,7 +652,7 @@ func (s *TokenSource) runRefresh(ctx context.Context, refreshToken string) (resu
 	})
 	if err != nil {
 		err = fmt.Errorf("failed to discover metadata: %w", err)
-		return
+		return result, err
 	}
 
 	// Send the request to get the new tokens:
@@ -662,7 +662,7 @@ func (s *TokenSource) runRefresh(ctx context.Context, refreshToken string) (resu
 		RefreshToken: refreshToken,
 	})
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Prepare the new token:
@@ -684,7 +684,7 @@ func (s *TokenSource) runRefresh(ctx context.Context, refreshToken string) (resu
 
 	// Return the new token:
 	result = token
-	return
+	return result, err
 }
 
 func (s *TokenSource) runFlow(ctx context.Context) (result *auth.Token, err error) {
@@ -694,18 +694,18 @@ func (s *TokenSource) runFlow(ctx context.Context) (result *auth.Token, err erro
 	})
 	if err != nil {
 		err = fmt.Errorf("failed to discover metadata: %w", err)
-		return
+		return result, err
 	}
 
 	// Run the flow:
 	token, err := s.flowRunner.run(ctx)
 	if err != nil {
 		err = fmt.Errorf("failed to obtain token: %w", err)
-		return
+		return result, err
 	}
 	if token == nil {
 		err = errors.New("flow ended without a token")
-		return
+		return result, err
 	}
 	s.logger.DebugContext(
 		ctx,
@@ -719,7 +719,7 @@ func (s *TokenSource) runFlow(ctx context.Context) (result *auth.Token, err erro
 	err = s.store.Save(ctx, token)
 	if err != nil {
 		err = fmt.Errorf("failed to save token: %w", err)
-		return
+		return result, err
 	}
 	s.logger.DebugContext(
 		ctx,
@@ -731,7 +731,7 @@ func (s *TokenSource) runFlow(ctx context.Context) (result *auth.Token, err erro
 
 	// Return the token:
 	result = token
-	return
+	return result, err
 }
 
 // sendForm sends a request containing a set of fields and returns the response. The request should be a struct with
@@ -827,9 +827,9 @@ func (s *TokenSource) sendTokenForm(ctx context.Context,
 			slog.Any("!request", request),
 			slog.Any("error", err),
 		)
-		return
+		return response, err
 	}
-	return
+	return response, err
 }
 
 func (s *TokenSource) secondsToDuration(seconds int) time.Duration {

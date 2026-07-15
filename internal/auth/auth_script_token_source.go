@@ -71,15 +71,15 @@ func (b *ScriptTokenSourceBuilder) Build() (result TokenSource, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.script == "" {
 		err = errors.New("token generation script is mandatory")
-		return
+		return result, err
 	}
 	if b.store == nil {
 		err = errors.New("token store is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the token parser:
@@ -97,7 +97,7 @@ func (b *ScriptTokenSourceBuilder) Build() (result TokenSource, err error) {
 		store:       b.store,
 		tokenParser: parser,
 	}
-	return
+	return result, err
 }
 
 // Token is the implementation of the TokenSource interface.
@@ -105,7 +105,7 @@ func (s *scriptTokenSource) Token(ctx context.Context) (result *Token, err error
 	// Try to load an existing token first:
 	existingToken, err := s.store.Load(ctx)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// If we have a token and it's still fresh, use it:
@@ -115,14 +115,14 @@ func (s *scriptTokenSource) Token(ctx context.Context) (result *Token, err error
 		parsedToken, parseErr := s.parseToken(existingToken.Access)
 		if parseErr == nil && !parsedToken.Expiry.Before(time.Now()) {
 			result = parsedToken
-			return
+			return result, err
 		}
 	}
 
 	// Generate a new token:
 	rawToken, err := s.generateToken()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Try to parse the token to get expiry information:
@@ -132,17 +132,17 @@ func (s *scriptTokenSource) Token(ctx context.Context) (result *Token, err error
 		result = &Token{
 			Access: rawToken,
 		}
-		return
+		return result, err
 	}
 
 	// Save the parsed token to storage:
 	err = s.store.Save(ctx, parsedToken)
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = parsedToken
-	return
+	return result, err
 }
 
 func (s *scriptTokenSource) generateToken() (result string, err error) {
@@ -163,27 +163,27 @@ func (s *scriptTokenSource) generateToken() (result string, err error) {
 	err = cmd.Run()
 	if err != nil {
 		err = fmt.Errorf("failed to execute token generation script '%s': %w", s.script, err)
-		return
+		return result, err
 	}
 	result = strings.TrimSpace(out.String())
-	return
+	return result, err
 }
 
 func (s *scriptTokenSource) parseToken(tokenText string) (result *Token, err error) {
 	tokenClaims := jwt.MapClaims{}
 	_, _, err = s.tokenParser.ParseUnverified(tokenText, tokenClaims)
 	if err != nil {
-		return
+		return result, err
 	}
 	tokenEpirationTime, err := tokenClaims.GetExpirationTime()
 	if err != nil {
-		return
+		return result, err
 	}
 	result = &Token{
 		Access: tokenText,
 		Expiry: tokenEpirationTime.Time,
 	}
-	return
+	return result, err
 }
 
 // Invalidate clears the cached token, forcing a new token to be generated on the next Token() call.

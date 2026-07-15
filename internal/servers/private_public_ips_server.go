@@ -101,15 +101,15 @@ func (b *PrivatePublicIPsServerBuilder) Build() (result *PrivatePublicIPsServer,
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the PublicIPPool DAO for pool validation and capacity tracking:
@@ -119,7 +119,7 @@ func (b *PrivatePublicIPsServerBuilder) Build() (result *PrivatePublicIPsServer,
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the generic server:
@@ -132,7 +132,7 @@ func (b *PrivatePublicIPsServerBuilder) Build() (result *PrivatePublicIPsServer,
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -141,7 +141,7 @@ func (b *PrivatePublicIPsServerBuilder) Build() (result *PrivatePublicIPsServer,
 		generic:         generic,
 		publicIPPoolDao: publicIPPoolDao,
 	}
-	return
+	return result, err
 }
 
 func (s *PrivatePublicIPsServer) List(ctx context.Context,
@@ -166,14 +166,14 @@ func (s *PrivatePublicIPsServer) Create(ctx context.Context,
 	// Validate before creating:
 	err = s.validatePublicIP(ctx, publicIP)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Auto-select pool when not explicitly provided:
 	if publicIP.GetSpec().GetPool() == "" {
 		err = s.selectPool(ctx, publicIP)
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
@@ -181,7 +181,7 @@ func (s *PrivatePublicIPsServer) Create(ctx context.Context,
 	poolID := publicIP.GetSpec().GetPool()
 	err = s.validatePoolReference(ctx, poolID)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Set initial state to PENDING
@@ -196,7 +196,7 @@ func (s *PrivatePublicIPsServer) Create(ctx context.Context,
 	// Create the PublicIP:
 	err = s.generic.Create(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Update pool capacity: decrement available, increment allocated.
@@ -204,10 +204,10 @@ func (s *PrivatePublicIPsServer) Create(ctx context.Context,
 	// (optimistic locking). A version conflict returns Aborted for client retry.
 	err = s.updatePoolCapacity(ctx, poolID, 1)
 	if err != nil {
-		return
+		return response, err
 	}
 
-	return
+	return response, err
 }
 
 // Update validates pool immutability and state machine transitions before persisting.
@@ -219,7 +219,7 @@ func (s *PrivatePublicIPsServer) Update(ctx context.Context,
 	id := request.GetObject().GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.PublicIPsGetRequest{}
@@ -227,7 +227,7 @@ func (s *PrivatePublicIPsServer) Update(ctx context.Context,
 	var getResponse *privatev1.PublicIPsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingPublicIP := getResponse.GetObject()
@@ -240,7 +240,7 @@ func (s *PrivatePublicIPsServer) Update(ctx context.Context,
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"field 'spec.pool' is immutable and cannot be changed from '%s' to '%s'",
 				existingPool, newPool)
-			return
+			return response, err
 		}
 	}
 
@@ -251,7 +251,7 @@ func (s *PrivatePublicIPsServer) Update(ctx context.Context,
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"field 'spec.ip_family' is immutable and cannot be changed from '%s' to '%s'",
 				existingIPFamily.String(), newIPFamily.String())
-			return
+			return response, err
 		}
 	}
 
@@ -260,13 +260,13 @@ func (s *PrivatePublicIPsServer) Update(ctx context.Context,
 		existingState := existingPublicIP.GetStatus().GetState()
 		if newState != existingState {
 			if err = validatePublicIPStateTransition(existingState, newState); err != nil {
-				return
+				return response, err
 			}
 		}
 	}
 
 	err = s.generic.Update(ctx, request, &response)
-	return
+	return response, err
 }
 
 // Delete rejects deletion of ATTACHED PublicIPs and restores pool capacity on success.
@@ -277,7 +277,7 @@ func (s *PrivatePublicIPsServer) Delete(ctx context.Context,
 	id := request.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	getRequest := &privatev1.PublicIPsGetRequest{}
@@ -285,7 +285,7 @@ func (s *PrivatePublicIPsServer) Delete(ctx context.Context,
 	var getResponse *privatev1.PublicIPsGetResponse
 	err = s.generic.Get(ctx, getRequest, &getResponse)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	existingPublicIP := getResponse.GetObject()
@@ -294,13 +294,13 @@ func (s *PrivatePublicIPsServer) Delete(ctx context.Context,
 	if state != privatev1.PublicIPState_PUBLIC_IP_STATE_ALLOCATED {
 		err = grpcstatus.Errorf(grpccodes.FailedPrecondition,
 			"cannot delete PublicIP in state %s: must be in ALLOCATED state", state)
-		return
+		return response, err
 	}
 
 	// Delete the PublicIP:
 	err = s.generic.Delete(ctx, request, &response)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Update pool capacity: increment available, decrement allocated:
@@ -308,11 +308,11 @@ func (s *PrivatePublicIPsServer) Delete(ctx context.Context,
 	if poolID != "" {
 		err = s.updatePoolCapacity(ctx, poolID, -1)
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
-	return
+	return response, err
 }
 
 func (s *PrivatePublicIPsServer) Signal(ctx context.Context,

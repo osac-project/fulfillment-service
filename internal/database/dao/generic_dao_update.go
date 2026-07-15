@@ -45,29 +45,29 @@ func (r *UpdateRequest[O]) SetObject(value O) *UpdateRequest[O] {
 func (r *UpdateRequest[O]) Do(ctx context.Context) (response *UpdateResponse[O], err error) {
 	err = r.init(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
-	return
+	return response, err
 }
 
 func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O], err error) {
 	// Add the where clause to filter by tenant:
 	err = r.addTenancyFilter(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Add the where clause to filter by identifier:
 	id := r.object.GetId()
 	if id == "" {
 		err = errors.New("object identifier is mandatory")
-		return
+		return response, err
 	}
 	r.sql.params = append(r.sql.params, id)
 	if r.sql.filter.Len() > 0 {
@@ -96,21 +96,21 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	// Validate that tenant is not empty:
 	if tenant == "" {
 		err = errors.New("cannot update object with empty tenant")
-		return
+		return response, err
 	}
 
 	// Marshal the data, labels and annotations:
 	data, err := r.marshalData(r.object)
 	if err != nil {
-		return
+		return response, err
 	}
 	labelsData, err := r.marshalMap(labels)
 	if err != nil {
-		return
+		return response, err
 	}
 	annotationsData, err := r.marshalMap(annotations)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Build the SQL statement. When optimistic locking is enabled add a version condition to the where clause
@@ -153,17 +153,17 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 			&project,
 			&version,
 		)
-		return
+		return err
 	}()
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = &ErrNotFound{
 			IDs: []string{id},
 		}
-		return
+		return response, err
 	}
 	if err != nil {
 		err = r.translateError(ctx, id, name, tenant, err)
-		return
+		return response, err
 	}
 
 	// Prepare the result:
@@ -189,7 +189,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 		Object: object,
 	})
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// If the object has been deleted and there are no finalizers we can now archive the object and fire the
@@ -209,14 +209,14 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 			data:            data,
 		})
 		if err != nil {
-			return
+			return response, err
 		}
 		err = r.fireEvent(ctx, Event{
 			Type:   EventTypeDeleted,
 			Object: object,
 		})
 		if err != nil {
-			return
+			return response, err
 		}
 	}
 
@@ -224,7 +224,7 @@ func (r *UpdateRequest[O]) do(ctx context.Context) (response *UpdateResponse[O],
 	response = &UpdateResponse[O]{
 		object: object,
 	}
-	return
+	return response, err
 }
 
 // translateError translates raw PostgreSQL errors into domain-specific error types.

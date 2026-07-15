@@ -86,11 +86,11 @@ func (b *HostTypesServerBuilder) Build() (result *HostTypesServer, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 
 	// Create the mappers:
@@ -99,14 +99,14 @@ func (b *HostTypesServerBuilder) Build() (result *HostTypesServer, err error) {
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.HostType, *publicv1.HostType]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create the private server to delegate to:
@@ -118,7 +118,7 @@ func (b *HostTypesServerBuilder) Build() (result *HostTypesServer, err error) {
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	// Create and populate the object:
@@ -128,7 +128,7 @@ func (b *HostTypesServerBuilder) Build() (result *HostTypesServer, err error) {
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *HostTypesServer) List(ctx context.Context,
@@ -168,7 +168,7 @@ func (s *HostTypesServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *HostTypesServer) Get(ctx context.Context,
@@ -199,7 +199,7 @@ func (s *HostTypesServer) Get(ctx context.Context,
 	// Create the public response:
 	response = &publicv1.HostTypesGetResponse{}
 	response.SetObject(publicHostType)
-	return
+	return response, err
 }
 
 func (s *HostTypesServer) Create(ctx context.Context,
@@ -208,7 +208,7 @@ func (s *HostTypesServer) Create(ctx context.Context,
 	publicHostType := request.GetObject()
 	if publicHostType == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateHostType := &privatev1.HostType{}
 	err = s.inMapper.Copy(ctx, publicHostType, privateHostType)
@@ -219,7 +219,7 @@ func (s *HostTypesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process host type")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server:
@@ -241,13 +241,13 @@ func (s *HostTypesServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process host type")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.HostTypesCreateResponse{}
 	response.SetObject(createdPublicHostType)
-	return
+	return response, err
 }
 
 func (s *HostTypesServer) Update(ctx context.Context,
@@ -256,12 +256,12 @@ func (s *HostTypesServer) Update(ctx context.Context,
 	publicHostType := request.GetObject()
 	if publicHostType == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	id := publicHostType.GetId()
 	if id == "" {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object identifier is mandatory")
-		return
+		return response, err
 	}
 
 	// Get the existing object from the private server:
@@ -282,7 +282,7 @@ func (s *HostTypesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process host type")
-		return
+		return response, err
 	}
 
 	// Delegate to the private server with the merged object:
@@ -305,13 +305,13 @@ func (s *HostTypesServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process host type")
-		return
+		return response, err
 	}
 
 	// Create the public response:
 	response = &publicv1.HostTypesUpdateResponse{}
 	response.SetObject(updatedPublicHostType)
-	return
+	return response, err
 }
 
 func (s *HostTypesServer) Delete(ctx context.Context,
@@ -328,5 +328,5 @@ func (s *HostTypesServer) Delete(ctx context.Context,
 
 	// Create the public response:
 	response = &publicv1.HostTypesDeleteResponse{}
-	return
+	return response, err
 }

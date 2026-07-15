@@ -39,28 +39,28 @@ func (r *ExistsRequest[O]) SetId(value string) *ExistsRequest[O] {
 func (r *ExistsRequest[O]) Do(ctx context.Context) (response *ExistsResponse, err error) {
 	err = r.init(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	r.tx, err = database.TxFromContext(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 	defer r.tx.ReportError(&err)
 	response, err = r.do(ctx)
-	return
+	return response, err
 }
 
 func (r *ExistsRequest[O]) do(ctx context.Context) (response *ExistsResponse, err error) {
 	// Add the tenancy filter:
 	err = r.addTenancyFilter(ctx)
 	if err != nil {
-		return
+		return response, err
 	}
 
 	// Add the id parameter:
 	if r.id == "" {
 		err = errors.New("object identifier is mandatory")
-		return
+		return response, err
 	}
 	r.sql.params = append(r.sql.params, r.id)
 	if r.sql.filter.Len() > 0 {
@@ -91,12 +91,12 @@ func (r *ExistsRequest[O]) do(ctx context.Context) (response *ExistsResponse, er
 		return row.Scan(&count)
 	}()
 	if err != nil {
-		return
+		return response, err
 	}
 	response = &ExistsResponse{
 		exists: count > 0,
 	}
-	return
+	return response, err
 }
 
 // ExistsResponse represents the result of an exists operation.

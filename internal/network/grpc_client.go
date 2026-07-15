@@ -252,15 +252,15 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 	// Check parameters:
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.address == "" {
 		err = errors.New("server address is mandatory")
-		return
+		return result, err
 	}
 	if b.keepAlive < 0 {
 		err = fmt.Errorf("keep alive interval should be positive, but it is %s", b.keepAlive)
-		return
+		return result, err
 	}
 
 	// Set the default network:
@@ -282,7 +282,7 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 		}
 	default:
 		err = fmt.Errorf("unknown network '%s'", b.network)
-		return
+		return result, err
 	}
 
 	// Set the default CA pool:
@@ -295,7 +295,7 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 			Build()
 		if err != nil {
 			err = fmt.Errorf("failed to build CA pool: %w", err)
-			return
+			return result, err
 		}
 	}
 
@@ -342,7 +342,7 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 			Build()
 		if err != nil {
 			err = fmt.Errorf("failed to create token credentials: %w", err)
-			return
+			return result, err
 		}
 		options = append(options, grpc.WithPerRPCCredentials(tokenCredentials))
 	}
@@ -394,7 +394,7 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 		Build()
 	if err != nil {
 		err = fmt.Errorf("failed to create logging interceptor: %w", err)
-		return
+		return result, err
 	}
 	unaryInterceptors = append(unaryInterceptors, loggingInterceptor.UnaryClient)
 	streamInterceptors = append(streamInterceptors, loggingInterceptor.StreamClient)
@@ -408,7 +408,7 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 			Build()
 		if err != nil {
 			err = fmt.Errorf("failed to create metrics interceptor: %w", err)
-			return
+			return result, err
 		}
 		unaryInterceptors = append(unaryInterceptors, metricsInterceptor.UnaryClient)
 		streamInterceptors = append(streamInterceptors, metricsInterceptor.StreamClient)
@@ -424,7 +424,7 @@ func (b *GrpcClientBuilder) Build() (result *grpc.ClientConn, err error) {
 
 	// Create the client:
 	result, err = grpc.NewClient(endpoint, options...)
-	return
+	return result, err
 }
 
 // unauthRetryInterceptor retries a gRPC call once when the server returns the unauthenticated status code. It

@@ -79,15 +79,15 @@ func (b *NATGatewaysServerBuilder) SetMetricsRegisterer(value prometheus.Registe
 func (b *NATGatewaysServerBuilder) Build() (result *NATGatewaysServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
-		return
+		return result, err
 	}
 	if b.tenancyLogic == nil {
 		err = errors.New("tenancy logic is mandatory")
-		return
+		return result, err
 	}
 	if b.attributionLogic == nil {
 		err = errors.New("attribution logic is mandatory")
-		return
+		return result, err
 	}
 
 	inMapper, err := NewGenericMapper[*publicv1.NATGateway, *privatev1.NATGateway]().
@@ -95,14 +95,14 @@ func (b *NATGatewaysServerBuilder) Build() (result *NATGatewaysServer, err error
 		SetStrict(true).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 	outMapper, err := NewGenericMapper[*privatev1.NATGateway, *publicv1.NATGateway]().
 		SetLogger(b.logger).
 		SetStrict(false).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	delegate, err := NewPrivateNATGatewaysServer().
@@ -113,7 +113,7 @@ func (b *NATGatewaysServerBuilder) Build() (result *NATGatewaysServer, err error
 		SetMetricsRegisterer(b.metricsRegisterer).
 		Build()
 	if err != nil {
-		return
+		return result, err
 	}
 
 	result = &NATGatewaysServer{
@@ -122,7 +122,7 @@ func (b *NATGatewaysServerBuilder) Build() (result *NATGatewaysServer, err error
 		inMapper:  inMapper,
 		outMapper: outMapper,
 	}
-	return
+	return result, err
 }
 
 func (s *NATGatewaysServer) List(ctx context.Context,
@@ -158,7 +158,7 @@ func (s *NATGatewaysServer) List(ctx context.Context,
 	response.SetSize(privateResponse.GetSize())
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
-	return
+	return response, err
 }
 
 func (s *NATGatewaysServer) Get(ctx context.Context,
@@ -185,7 +185,7 @@ func (s *NATGatewaysServer) Get(ctx context.Context,
 
 	response = &publicv1.NATGatewaysGetResponse{}
 	response.SetObject(publicNATGateway)
-	return
+	return response, err
 }
 
 func (s *NATGatewaysServer) Create(ctx context.Context,
@@ -193,7 +193,7 @@ func (s *NATGatewaysServer) Create(ctx context.Context,
 	publicNATGateway := request.GetObject()
 	if publicNATGateway == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateNATGateway := &privatev1.NATGateway{}
 	err = s.inMapper.Copy(ctx, publicNATGateway, privateNATGateway)
@@ -204,7 +204,7 @@ func (s *NATGatewaysServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process NAT gateway")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.NATGatewaysCreateRequest{}
@@ -224,12 +224,12 @@ func (s *NATGatewaysServer) Create(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process NAT gateway")
-		return
+		return response, err
 	}
 
 	response = &publicv1.NATGatewaysCreateResponse{}
 	response.SetObject(createdPublicNATGateway)
-	return
+	return response, err
 }
 
 func (s *NATGatewaysServer) Update(ctx context.Context,
@@ -237,7 +237,7 @@ func (s *NATGatewaysServer) Update(ctx context.Context,
 	publicNATGateway := request.GetObject()
 	if publicNATGateway == nil {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
-		return
+		return response, err
 	}
 	privateNATGateway := &privatev1.NATGateway{}
 	err = s.inMapper.Copy(ctx, publicNATGateway, privateNATGateway)
@@ -248,7 +248,7 @@ func (s *NATGatewaysServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process NAT gateway")
-		return
+		return response, err
 	}
 
 	privateRequest := &privatev1.NATGatewaysUpdateRequest{}
@@ -270,12 +270,12 @@ func (s *NATGatewaysServer) Update(ctx context.Context,
 			slog.Any("error", err),
 		)
 		err = grpcstatus.Errorf(grpccodes.Internal, "failed to process NAT gateway")
-		return
+		return response, err
 	}
 
 	response = &publicv1.NATGatewaysUpdateResponse{}
 	response.SetObject(updatedPublicNATGateway)
-	return
+	return response, err
 }
 
 func (s *NATGatewaysServer) Delete(ctx context.Context,
@@ -289,5 +289,5 @@ func (s *NATGatewaysServer) Delete(ctx context.Context,
 	}
 
 	response = &publicv1.NATGatewaysDeleteResponse{}
-	return
+	return response, err
 }
