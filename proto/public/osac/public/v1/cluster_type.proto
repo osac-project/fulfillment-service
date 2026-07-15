@@ -244,6 +244,22 @@ message ClusterStatus {
   //
   // The key of the map is the unique identifier of the node set for this cluster.
   map<string, ClusterNodeSet> node_sets = 5;
+
+  // Internal API server VIP allocated by MetalLB for the cluster.
+  //
+  // This is the cluster-internal address used as the DNAT target for external access. It differs from `api_url`, which
+  // is the external URL used by clients to reach the API server.
+  //
+  // This will be empty until the CaaS template discovers the MetalLB-allocated VIP during cluster provisioning.
+  string api_endpoint = 6;
+
+  // Internal ingress VIP allocated by MetalLB for the cluster.
+  //
+  // This is the cluster-internal address used as the DNAT target for external access. It differs from `console_url`,
+  // which is the external URL for the cluster console.
+  //
+  // This will be empty until the CaaS template discovers the MetalLB-allocated VIP during cluster provisioning.
+  string ingress_endpoint = 7;
 }
 
 // Represents the overall state of a cluster.
