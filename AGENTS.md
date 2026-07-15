@@ -231,9 +231,9 @@ The following automated checks are configured and should be run at the appropria
 - **After proto changes**: When a `.proto` file is edited, run `buf lint && buf generate` to keep generated Go code in sync.
 - **After Go module changes**: When `go.mod` is edited, run `go mod tidy`.
 - **Before committing**: `buf lint` (via `uv run dev.py lint proto`) and the Go linter (via `uv run dev.py lint go`) run automatically as pre-commit hooks — see `.pre-commit-config.yaml` — so there is no need to remember to run them manually, though you still can with `uv run dev.py lint`.
-- **Before creating a PR**: Run `gofmt -s -w .` (auto-formats, then fails if any files changed — commit the fixes first), `buf lint`, and `ginkgo run -r internal`.
+- **Before creating a PR**: Run `gofmt -s -w .` (auto-formats, then fails if any files changed — commit the fixes first), `uv run dev.py lint proto`, and `ginkgo run -r internal`.
 
-`buf lint` includes a custom plugin rule, `OSAC_OBJECT_SHAPE` (implemented in `cmd/buf-plugin-osac-lint/`), which checks that the base message of every resource — the message returned by `Get` and accepted by `Create` — has the standard `id`/`metadata`/`spec`/`status` shape described above. Messages that intentionally deviate from this shape (the static configuration/catalog exception) must be marked with a `// buf:lint:ignore OSAC_OBJECT_SHAPE` comment directly above the message declaration.
+`buf lint` includes a custom plugin rule, `OSAC_OBJECT_SHAPE` (implemented in `cmd/buf-plugin-osac-lint/`), which checks that the base message of every resource — the message returned by `Get` and accepted by `Create` — has the standard `id`/`metadata`/`spec`/`status` shape described above. Messages that intentionally deviate from this shape must be marked with a `// buf:lint:ignore OSAC_OBJECT_SHAPE` comment directly above the message declaration.
 
 ## CLI Command Help Text
 
