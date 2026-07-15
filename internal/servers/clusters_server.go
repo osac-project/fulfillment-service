@@ -294,6 +294,7 @@ func (s *ClustersServer) Create(ctx context.Context,
 	// Delegate to the private server:
 	privateRequest := &privatev1.ClustersCreateRequest{}
 	privateRequest.SetObject(privateCluster)
+	privateRequest.SetDryRun(request.GetDryRun())
 	privateResponse, err := s.private.Create(ctx, privateRequest)
 	if err != nil {
 		return nil, err
