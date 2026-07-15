@@ -42,5 +42,5 @@ columns:
 - header: INTERNAL IP ADDRESS
   value: this.status.internal_ip_address
 
-- header: PUBLIC IP ADDRESS
-  value: this.status.public_ip_address
+- header: EXTERNAL IP ADDRESS
+  value: this.status.external_ip_address

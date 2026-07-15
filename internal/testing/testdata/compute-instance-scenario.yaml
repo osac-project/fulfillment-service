@@ -15,4 +15,4 @@ instances:
     template: tpl-small-001
     state: COMPUTE_INSTANCE_STATE_RUNNING
     internalIpAddress: "192.168.1.100"
-    publicIpAddress: "136.47.228.207"
+    externalIpAddress: "136.47.228.207"

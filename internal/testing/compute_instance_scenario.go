@@ -44,7 +44,7 @@ type InstanceData struct {
 	Template          string
 	State             publicv1.ComputeInstanceState
 	InternalIPAddress string
-	PublicIPAddress   string
+	ExternalIPAddress string
 }
 
 // YAML parsing structures
@@ -68,7 +68,7 @@ type instanceFile struct {
 	Template          string `yaml:"template"`
 	State             string `yaml:"state"`
 	InternalIPAddress string `yaml:"internalIpAddress"`
-	PublicIPAddress   string `yaml:"publicIpAddress"`
+	ExternalIPAddress string `yaml:"externalIpAddress"`
 }
 
 // LoadComputeInstanceScenarioFromFile loads a compute instance scenario from a YAML file
@@ -115,7 +115,7 @@ func (f *computeInstanceScenarioFile) toScenario() (*ComputeInstanceScenario, er
 			Template:          inst.Template,
 			State:             publicv1.ComputeInstanceState(rawState),
 			InternalIPAddress: inst.InternalIPAddress,
-			PublicIPAddress:   inst.PublicIPAddress,
+			ExternalIPAddress: inst.ExternalIPAddress,
 		}
 	}
 
@@ -147,7 +147,7 @@ func (i *InstanceData) ToProtoInstance() *publicv1.ComputeInstance {
 		Status: &publicv1.ComputeInstanceStatus{
 			State:             i.State,
 			InternalIpAddress: i.InternalIPAddress,
-			PublicIpAddress:   i.PublicIPAddress,
+			ExternalIpAddress: i.ExternalIPAddress,
 		},
 	}
 }
