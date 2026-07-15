@@ -94,6 +94,10 @@ message ProjectMembershipsGetResponse {
 message ProjectMembershipsCreateRequest {
   // The project membership object to create.
   ProjectMembership object = 1;
+
+  // When true, the server validates the request and returns the fully resolved object
+  // without persisting it or triggering any side effects.
+  bool dry_run = 2;
 }
 
 // Response message for creating a new project membership.

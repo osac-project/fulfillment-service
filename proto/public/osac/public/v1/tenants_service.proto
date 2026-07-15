@@ -67,6 +67,10 @@ message TenantsGetResponse {
 
 message TenantsCreateRequest {
   Tenant object = 1;
+
+  // When true, the server validates the request and returns the fully resolved object
+  // without persisting it or triggering any side effects.
+  bool dry_run = 2;
 }
 
 message TenantsCreateResponse {

@@ -23,6 +23,10 @@ import "osac/public/v1/identity_provider_type.proto";
 message IdentityProvidersCreateRequest {
   // The identity provider to create.
   IdentityProvider object = 1;
+
+  // When true, the server validates the request and returns the fully resolved object
+  // without persisting it or triggering any side effects.
+  bool dry_run = 2;
 }
 
 // Response containing the created identity provider.

@@ -41,6 +41,10 @@ message ClusterTemplatesGetResponse {
 
 message ClusterTemplatesCreateRequest {
   ClusterTemplate object = 1;
+
+  // When true, the server validates the request and returns the fully resolved object
+  // without persisting it or triggering any side effects.
+  bool dry_run = 2;
 }
 
 message ClusterTemplatesCreateResponse {

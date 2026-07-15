@@ -103,12 +103,20 @@ func local_request_ExternalIPs_Get_0(ctx context.Context, marshaler runtime.Mars
 	return msg, metadata, err
 }
 
+var filter_ExternalIPs_Create_0 = &utilities.DoubleArray{Encoding: map[string]int{"object": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+
 func request_ExternalIPs_Create_0(ctx context.Context, marshaler runtime.Marshaler, client ExternalIPsClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ExternalIPsCreateRequest
 		metadata runtime.ServerMetadata
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq.Object); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_ExternalIPs_Create_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := client.Create(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -121,6 +129,12 @@ func local_request_ExternalIPs_Create_0(ctx context.Context, marshaler runtime.M
 		metadata runtime.ServerMetadata
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq.Object); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_ExternalIPs_Create_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := server.Create(ctx, &protoReq)
