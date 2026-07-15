@@ -527,4 +527,89 @@ var _ = Describe("BareMetalInstance lifecycle", func() {
 		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 		Expect(status.Message()).To(ContainSubstring("image is immutable"))
 	})
+
+	It("Propagates restart_trigger to BMFO CR spec", func(ctx context.Context) {
+		createResp, err := bareMetalInstancesClient.Create(ctx, publicv1.BareMetalInstancesCreateRequest_builder{
+			Object: publicv1.BareMetalInstance_builder{
+				Spec: publicv1.BareMetalInstanceSpec_builder{
+					CatalogItem: catalogItemId,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		bareMetalInstanceId := createResp.GetObject().GetId()
+		DeferCleanup(func(ctx context.Context) {
+			_, err := privateBareMetalInstancesClient.Delete(ctx, privatev1.BareMetalInstancesDeleteRequest_builder{
+				Id: bareMetalInstanceId,
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Eventually(func(g Gomega) {
+				_, err := privateBareMetalInstancesClient.Get(ctx, privatev1.BareMetalInstancesGetRequest_builder{
+					Id: bareMetalInstanceId,
+				}.Build())
+				g.Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				g.Expect(ok).To(BeTrue())
+				g.Expect(status.Code()).To(Equal(grpccodes.NotFound))
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		})
+
+		// Wait for the controller to reconcile (state moves from UNSPECIFIED)
+		Eventually(func(g Gomega) {
+			resp, err := privateBareMetalInstancesClient.Get(ctx, privatev1.BareMetalInstancesGetRequest_builder{
+				Id: bareMetalInstanceId,
+			}.Build())
+			g.Expect(err).ToNot(HaveOccurred())
+			state := resp.GetObject().GetStatus().GetState()
+			fmt.Fprintf(GinkgoWriter, "[DEBUG] BMI id=%s state=%s\n", bareMetalInstanceId, state)
+			g.Expect(state).ToNot(
+				Equal(privatev1.BareMetalInstanceState_BARE_METAL_INSTANCE_STATE_UNSPECIFIED),
+				"controller should reconcile the BMI and set state")
+		}, time.Minute, time.Second).Should(Succeed())
+
+		// Verify the BMFO CR was created with restart_trigger=0
+		kubeClient := tool.KubeClient()
+		var kubeObject *bmfov1alpha1.BareMetalInstance
+		Eventually(func(g Gomega) {
+			bmiList := &bmfov1alpha1.BareMetalInstanceList{}
+			err := kubeClient.List(ctx, bmiList, crclient.MatchingLabels{
+				labels.BareMetalInstanceUuid: bareMetalInstanceId,
+			})
+			g.Expect(err).ToNot(HaveOccurred())
+			fmt.Fprintf(GinkgoWriter, "[DEBUG] BMFO CR count=%d\n", len(bmiList.Items))
+			g.Expect(bmiList.Items).To(HaveLen(1))
+			kubeObject = &bmiList.Items[0]
+		}, time.Minute, time.Second).Should(Succeed())
+
+		Expect(kubeObject.Spec.RestartTrigger).To(Equal(int64(0)),
+			"newly created BareMetalInstance CR should have RestartTrigger=0")
+
+		// Update restart_trigger via public API
+		_, err = bareMetalInstancesClient.Update(ctx, publicv1.BareMetalInstancesUpdateRequest_builder{
+			Object: publicv1.BareMetalInstance_builder{
+				Id: bareMetalInstanceId,
+				Spec: publicv1.BareMetalInstanceSpec_builder{
+					RestartTrigger: 1,
+				}.Build(),
+			}.Build(),
+			UpdateMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"spec.restart_trigger"},
+			},
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+
+		// Wait for the controller to propagate restart_trigger=1 onto the CR
+		Eventually(func(g Gomega) {
+			bmiList := &bmfov1alpha1.BareMetalInstanceList{}
+			err := kubeClient.List(ctx, bmiList, crclient.MatchingLabels{
+				labels.BareMetalInstanceUuid: bareMetalInstanceId,
+			})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(bmiList.Items).To(HaveLen(1))
+			trigger := bmiList.Items[0].Spec.RestartTrigger
+			fmt.Fprintf(GinkgoWriter, "[DEBUG] BMFO CR RestartTrigger=%d\n", trigger)
+			g.Expect(trigger).To(Equal(int64(1)),
+				"controller should propagate restart_trigger=1 to CR spec")
+		}, time.Minute, time.Second).Should(Succeed())
+	})
 })

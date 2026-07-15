@@ -101,6 +101,13 @@ spec:
                 description: NetworkClass is the network class for this host (e.g.
                   openstack).
                 type: string
+              restartTrigger:
+                description: |-
+                  RestartTrigger is used to trigger a restart of the physical machine.
+                  Change it to any value to trigger the restart.
+                  The value itself is not important; only the change matters.
+                format: int64
+                type: integer
               runStrategy:
                 allOf:
                 - enum:
@@ -278,6 +285,11 @@ spec:
                 - Failed
                 - Deleting
                 type: string
+              restartTrigger:
+                description: RestartTrigger is the observed restart version of the
+                  instance
+                format: int64
+                type: integer
               runStrategy:
                 allOf:
                 - enum:

@@ -1044,6 +1044,167 @@ var _ = Describe("Private clusters server", func() {
 			Expect(status.Message()).To(Equal("cannot change spec.template_parameters: template parameters are immutable"))
 		})
 
+		Describe("Network attachment immutability", func() {
+			createClusterWithNetworkAttachment := func(subnet string, securityGroups []string) *privatev1.Cluster {
+				createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-id",
+							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
+								Subnet:         subnet,
+								SecurityGroups: securityGroups,
+							}.Build(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				return createResponse.GetObject()
+			}
+
+			It("Rejects changing subnet via whole attachment replacement", func() {
+				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+
+				_, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ClusterSpec_builder{
+							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
+								Subnet:         "subnet-2",
+								SecurityGroups: []string{"sg-1"},
+							}.Build(),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachment"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"cannot change spec.network_attachment.subnet from 'subnet-1' to 'subnet-2': subnet is immutable",
+				))
+			})
+
+			It("Rejects removing network_attachment when one exists", func() {
+				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+
+				_, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Id:   object.GetId(),
+						Spec: privatev1.ClusterSpec_builder{}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachment"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"cannot change spec.network_attachment.subnet from 'subnet-1' to '': subnet is immutable",
+				))
+			})
+
+			It("Rejects adding network_attachment when none existed", func() {
+				createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := createResponse.GetObject()
+
+				_, err = server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ClusterSpec_builder{
+							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
+								Subnet: "subnet-1",
+							}.Build(),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachment"},
+					},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"cannot change spec.network_attachment.subnet from '' to 'subnet-1': subnet is immutable",
+				))
+			})
+
+			It("Allows changing security_groups with same subnet", func() {
+				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+
+				updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ClusterSpec_builder{
+							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
+								Subnet:         "subnet-1",
+								SecurityGroups: []string{"sg-1", "sg-2"},
+							}.Build(),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachment"},
+					},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				updated := updateResponse.GetObject()
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSubnet()).To(Equal("subnet-1"))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()).To(Equal([]string{"sg-1", "sg-2"}))
+			})
+
+			It("Allows updating security_groups via sub-field mask", func() {
+				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+
+				updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ClusterSpec_builder{
+							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
+								SecurityGroups: []string{"sg-2", "sg-3"},
+							}.Build(),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"spec.network_attachment.security_groups"},
+					},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				updated := updateResponse.GetObject()
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()).To(Equal([]string{"sg-2", "sg-3"}))
+			})
+
+			It("Passes through when mask does not include network_attachment", func() {
+				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+
+				updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Id: object.GetId(),
+						Status: privatev1.ClusterStatus_builder{
+							State: privatev1.ClusterState_CLUSTER_STATE_READY,
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{
+						Paths: []string{"status.state"},
+					},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				updated := updateResponse.GetObject()
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSubnet()).To(Equal("subnet-1"))
+			})
+		})
+
 		Describe("Catalog item", func() {
 			var catalogItemsDao *dao.GenericDAO[*privatev1.ClusterCatalogItem]
 

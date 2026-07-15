@@ -229,6 +229,10 @@ func (s *PrivateClustersServer) Update(ctx context.Context,
 	if err != nil {
 		return
 	}
+	err = s.validateNetworkAttachmentImmutability(ctx, request)
+	if err != nil {
+		return
+	}
 	if err = utils.ValidateClusterSpecFields(request.GetObject().GetSpec()); err != nil {
 		return
 	}
@@ -536,6 +540,47 @@ func (s *PrivateClustersServer) validateTemplateImmutability(ctx context.Context
 			"cannot change spec.catalog_item from '%s' to '%s': catalog item is immutable",
 			existingSpec.GetCatalogItem(),
 			newSpec.GetCatalogItem(),
+		)
+	}
+
+	return nil
+}
+
+// validateNetworkAttachmentImmutability ensures that the subnet field within
+// network_attachment cannot be changed after cluster creation.
+func (s *PrivateClustersServer) validateNetworkAttachmentImmutability(ctx context.Context,
+	request *privatev1.ClustersUpdateRequest) error {
+	updateMask := request.GetUpdateMask()
+
+	subnetMayChange := false
+	if updateMask != nil {
+		for _, path := range updateMask.GetPaths() {
+			if path == "spec.network_attachment" || path == "spec.network_attachment.subnet" {
+				subnetMayChange = true
+				break
+			}
+		}
+	}
+	if !subnetMayChange {
+		return nil
+	}
+
+	existingCluster, found, err := s.getExistingCluster(ctx, request)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
+	existingSubnet := existingCluster.GetSpec().GetNetworkAttachment().GetSubnet()
+	newSubnet := request.GetObject().GetSpec().GetNetworkAttachment().GetSubnet()
+
+	if existingSubnet != newSubnet {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"cannot change spec.network_attachment.subnet from '%s' to '%s': subnet is immutable",
+			existingSubnet, newSubnet,
 		)
 	}
 

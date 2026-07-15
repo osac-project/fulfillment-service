@@ -16,6 +16,7 @@ package servers
 import (
 	"strings"
 
+	"buf.build/go/protovalidate"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -1222,6 +1223,144 @@ var _ = Describe("Private bare metal instances server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(ContainSubstring("no template"))
+		})
+	})
+
+	Describe("Network attachment primary validation", func() {
+		var validator protovalidate.Validator
+
+		BeforeEach(func() {
+			var err error
+			validator, err = protovalidate.New()
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		boolPtr := func(v bool) *bool { return &v }
+
+		It("Accepts no network attachments", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Accepts single attachment without primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-1",
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Accepts single attachment with primary true", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-1",
+						Primary: boolPtr(true),
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Accepts multiple attachments with exactly one primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-1",
+						Primary: boolPtr(true),
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-2",
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Rejects multiple attachments with no primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-1",
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-2",
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("primary"))
+		})
+
+		It("Rejects multiple attachments with more than one primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-1",
+						Primary: boolPtr(true),
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-2",
+						Primary: boolPtr(true),
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("primary"))
+		})
+
+		It("Rejects three attachments with zero primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-1",
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-2",
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-3",
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("primary"))
+		})
+
+		It("Accepts multiple attachments with primary false on non-primary NICs", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-1",
+						Primary: boolPtr(true),
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-2",
+						Primary: boolPtr(false),
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 })
