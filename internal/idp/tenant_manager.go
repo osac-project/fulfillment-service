@@ -93,8 +93,8 @@ type TenantConfig struct {
 	// If empty, defaults to "break-glass@{tenant-name}.osac.local"
 	BreakGlassEmail string
 
-	// BreakGlassPassword is the temporary password for the break-glass account
-	// This is mandatory and must be changed on first login
+	// BreakGlassPassword is the temporary password for the break-glass account.
+	// The caller must generate and provide this; the IDP manager will not auto-generate one.
 	BreakGlassPassword string
 }
 
@@ -278,22 +278,11 @@ func (m *TenantManager) createBreakGlassAccount(ctx context.Context, config *Ten
 	}
 	password := config.BreakGlassPassword
 	if password == "" {
-		// Generate a secure random password using crypto/rand
-		const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%"
-		const passwordLength = 24
-		b := make([]byte, passwordLength)
-		for i := range b {
-			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
-			if err != nil {
-				return nil, fmt.Errorf("failed to generate random password: %w", err)
-			}
-			b[i] = charset[n.Int64()]
+		var err error
+		password, err = generatePassword()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate break-glass password: %w", err)
 		}
-		password = string(b)
-		m.logger.DebugContext(ctx, "Generated temporary break-glass password because it was not provided",
-			slog.String("tenant", config.Name),
-			slog.String("username", username),
-		)
 	}
 
 	user := &User{
@@ -367,4 +356,18 @@ func (m *TenantManager) DeleteTenant(ctx context.Context, tenantName string) err
 		slog.String("tenant", tenantName),
 	)
 	return nil
+}
+
+func generatePassword() (string, error) {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%"
+	const length = 24
+	b := make([]byte, length)
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = charset[n.Int64()]
+	}
+	return string(b), nil
 }

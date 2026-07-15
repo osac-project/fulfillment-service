@@ -174,9 +174,10 @@ func (t *task) syncToIDP(ctx context.Context) error {
 
 	tenantName := t.tenant.GetMetadata().GetName()
 	config := &idp.TenantConfig{
-		Name:    tenantName,
-		Enabled: new(!t.isBuiltin()),
-		Domains: t.tenant.GetSpec().GetDomains(),
+		Name:               tenantName,
+		Enabled:            new(!t.isBuiltin()),
+		Domains:            t.tenant.GetSpec().GetDomains(),
+		BreakGlassPassword: t.tenant.GetStatus().GetBreakGlassCredentials().GetPassword(),
 	}
 
 	credentials, err := t.r.idpManager.CreateTenant(ctx, config)
@@ -189,12 +190,7 @@ func (t *task) syncToIDP(ctx context.Context) error {
 	t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_SYNCED)
 	t.tenant.GetStatus().SetIdpTenantName(config.Name)
 	t.tenant.GetStatus().SetBreakGlassUserId(credentials.UserID)
-
-	breakGlassCredentials := privatev1.BreakGlassCredentials_builder{
-		Username: credentials.Username,
-		Password: credentials.Password,
-	}.Build()
-	t.tenant.GetStatus().SetBreakGlassCredentials(breakGlassCredentials)
+	t.tenant.GetStatus().ClearBreakGlassCredentials()
 
 	t.r.logger.DebugContext(ctx, "Tenant synced to IDP",
 		slog.String("tenant_id", t.tenant.GetId()),

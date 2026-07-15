@@ -203,6 +203,12 @@ var _ = Describe("IDP Sync", func() {
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
 			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: "test-org-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
+			}.Build(),
 		}.Build()
 
 		mockClient.EXPECT().
@@ -222,6 +228,8 @@ var _ = Describe("IDP Sync", func() {
 			DoAndReturn(func(ctx context.Context, orgName string, user *idp.User) (*idp.User, error) {
 				Expect(user.Username).To(Equal("test-org-osac-break-glass"))
 				Expect(user.Email).To(Equal("break-glass@test-org.osac.local"))
+				Expect(user.Credentials).To(HaveLen(1))
+				Expect(user.Credentials[0].Value).To(Equal("pre-generated-password"))
 				user.ID = "user-123"
 				return user, nil
 			}).
@@ -243,8 +251,7 @@ var _ = Describe("IDP Sync", func() {
 		Expect(tenant.GetStatus().GetState()).To(Equal(privatev1.TenantState_TENANT_STATE_SYNCED))
 		Expect(tenant.GetStatus().GetIdpTenantName()).To(Equal("test-org"))
 		Expect(tenant.GetStatus().GetBreakGlassUserId()).To(Equal("user-123"))
-		Expect(tenant.GetStatus().HasBreakGlassCredentials()).To(BeTrue())
-		Expect(tenant.GetStatus().GetBreakGlassCredentials().GetUsername()).To(Equal("test-org-osac-break-glass"))
+		Expect(tenant.GetStatus().HasBreakGlassCredentials()).To(BeFalse())
 	})
 
 	It("should set state to PENDING before sync", func() {
@@ -253,6 +260,12 @@ var _ = Describe("IDP Sync", func() {
 				Name:       "test-org",
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: "test-org-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
 			}.Build(),
 		}.Build()
 
@@ -343,6 +356,12 @@ var _ = Describe("IDP Sync", func() {
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
 			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: auth.SharedTenant + "-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
+			}.Build(),
 		}.Build()
 
 		mockClient.EXPECT().
@@ -384,6 +403,12 @@ var _ = Describe("IDP Sync", func() {
 				Name:       auth.SystemTenant,
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: auth.SystemTenant + "-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
 			}.Build(),
 		}.Build()
 
@@ -464,6 +489,12 @@ var _ = Describe("IDP Sync", func() {
 					"example.com",
 					"corp.example.org",
 				},
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: "domain-org-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
 			}.Build(),
 		}.Build()
 
