@@ -19,9 +19,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
@@ -132,5 +135,112 @@ var _ = Describe("Generic server", func() {
 
 		// Verify that the original object has not been modified:
 		Expect(object.GetDescription()).To(Equal("My description."))
+	})
+})
+
+var _ = Describe("Generic server CreateDryRun", func() {
+	var server *GenericServer[*privatev1.HostType]
+
+	BeforeEach(func() {
+		var err error
+		notifier := events.NewMockNotifier(gomock.NewController(GinkgoT()))
+		server, err = NewGenericServer[*privatev1.HostType]().
+			SetLogger(logger).
+			SetService(privatev1.HostTypes_ServiceDesc.ServiceName).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetNotifier(notifier).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("assigns creator and tenant to the object", func() {
+		response := &privatev1.HostTypesCreateResponse{}
+		err := server.CreateDryRun(
+			ctx,
+			privatev1.HostTypesCreateRequest_builder{
+				Object: privatev1.HostType_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "my-dry-run-object",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+			&response,
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response.GetObject()).ToNot(BeNil())
+		Expect(response.GetObject().GetMetadata().GetName()).To(Equal("my-dry-run-object"))
+		Expect(response.GetObject().GetMetadata().GetCreator()).To(Equal("system"))
+		Expect(response.GetObject().GetMetadata().GetTenant()).To(Equal(auth.SystemTenant))
+	})
+
+	It("validates metadata and rejects invalid labels", func() {
+		response := &privatev1.HostTypesCreateResponse{}
+		err := server.CreateDryRun(
+			ctx,
+			privatev1.HostTypesCreateRequest_builder{
+				Object: privatev1.HostType_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name:   "valid-name",
+						Labels: map[string]string{"!!!invalid": "value"},
+					}.Build(),
+				}.Build(),
+			}.Build(),
+			&response,
+		)
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+	})
+
+	It("does not persist the object", func() {
+		response := &privatev1.HostTypesCreateResponse{}
+		err := server.CreateDryRun(
+			ctx,
+			privatev1.HostTypesCreateRequest_builder{
+				Object: privatev1.HostType_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "dry-run-no-persist",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+			&response,
+		)
+		Expect(err).ToNot(HaveOccurred())
+
+		listResponse := &privatev1.HostTypesListResponse{}
+		err = server.List(ctx,
+			privatev1.HostTypesListRequest_builder{}.Build(),
+			&listResponse,
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(listResponse.GetTotal()).To(Equal(int32(0)))
+	})
+
+	It("does not emit events", func() {
+		ctrl := gomock.NewController(GinkgoT())
+		notifier := events.NewMockNotifier(ctrl)
+		// No EXPECT on notifier - any call would fail the test
+		srv, err := NewGenericServer[*privatev1.HostType]().
+			SetLogger(logger).
+			SetService(privatev1.HostTypes_ServiceDesc.ServiceName).
+			SetAttributionLogic(attribution).
+			SetTenancyLogic(tenancy).
+			SetNotifier(notifier).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+
+		response := &privatev1.HostTypesCreateResponse{}
+		err = srv.CreateDryRun(
+			ctx,
+			privatev1.HostTypesCreateRequest_builder{
+				Object: privatev1.HostType_builder{
+					Metadata: privatev1.Metadata_builder{
+						Name: "dry-run-no-events",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+			&response,
+		)
+		Expect(err).ToNot(HaveOccurred())
 	})
 })

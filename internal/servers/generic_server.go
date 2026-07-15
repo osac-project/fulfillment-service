@@ -541,6 +541,55 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	return nil
 }
 
+// CreateDryRun runs the same validation and transformation as Create (metadata validation, creator
+// assignment, tenant assignment) but does not persist the object or emit events. Returns the
+// prepared object in the response message.
+func (s *GenericServer[O]) CreateDryRun(ctx context.Context, request any, response any) error {
+	type requestIface interface {
+		GetObject() O
+	}
+	requestMsg := request.(requestIface)
+	requestObject := requestMsg.GetObject()
+	if s.isNil(requestObject) {
+		requestObject = proto.Clone(s.template).(O)
+	} else {
+		requestMetadata := s.getMetadata(requestObject)
+		if requestMetadata != nil {
+			err := s.validateMetadata(ctx, requestMetadata)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	assignedCreator, err := s.determineAssignedCreator(ctx)
+	if err != nil {
+		return err
+	}
+	err = s.setCreator(ctx, requestObject, assignedCreator)
+	if err != nil {
+		return err
+	}
+
+	assignedTenant, err := s.determineAssignedTenant(ctx, requestObject, requestObject)
+	if err != nil {
+		return err
+	}
+	err = s.setTenant(ctx, requestObject, assignedTenant)
+	if err != nil {
+		return err
+	}
+
+	type responseIface interface {
+		SetObject(O)
+	}
+	responseMsg := proto.Clone(s.createResponse).(responseIface)
+	responseMsg.SetObject(requestObject)
+	s.setPointer(response, responseMsg)
+
+	return nil
+}
+
 func (s *GenericServer[O]) Update(ctx context.Context, request any, response any) error {
 	// Extract the object from the request message:
 	type requestIface interface {
