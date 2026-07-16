@@ -138,7 +138,7 @@ var _ = Describe("Generic server", func() {
 	})
 })
 
-var _ = Describe("Generic server CreateDryRun", func() {
+var _ = Describe("Generic server dry run", func() {
 	var server *GenericServer[*privatev1.HostType]
 
 	BeforeEach(func() {
@@ -156,9 +156,10 @@ var _ = Describe("Generic server CreateDryRun", func() {
 
 	It("Assigns creator and tenant to the object", func() {
 		response := &privatev1.HostTypesCreateResponse{}
-		err := server.CreateDryRun(
+		err := server.Create(
 			ctx,
 			privatev1.HostTypesCreateRequest_builder{
+				DryRun: true,
 				Object: privatev1.HostType_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name: "my-dry-run-object",
@@ -176,9 +177,10 @@ var _ = Describe("Generic server CreateDryRun", func() {
 
 	It("Validates metadata and rejects invalid labels", func() {
 		response := &privatev1.HostTypesCreateResponse{}
-		err := server.CreateDryRun(
+		err := server.Create(
 			ctx,
 			privatev1.HostTypesCreateRequest_builder{
+				DryRun: true,
 				Object: privatev1.HostType_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name:   "valid-name",
@@ -194,9 +196,10 @@ var _ = Describe("Generic server CreateDryRun", func() {
 
 	It("Does not persist the object", func() {
 		response := &privatev1.HostTypesCreateResponse{}
-		err := server.CreateDryRun(
+		err := server.Create(
 			ctx,
 			privatev1.HostTypesCreateRequest_builder{
+				DryRun: true,
 				Object: privatev1.HostType_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name: "dry-run-no-persist",
@@ -218,9 +221,10 @@ var _ = Describe("Generic server CreateDryRun", func() {
 
 	It("Does not emit events", func() {
 		response := &privatev1.HostTypesCreateResponse{}
-		err := server.CreateDryRun(
+		err := server.Create(
 			ctx,
 			privatev1.HostTypesCreateRequest_builder{
+				DryRun: true,
 				Object: privatev1.HostType_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name: "dry-run-no-events",
