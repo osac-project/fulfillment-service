@@ -7,6 +7,12 @@ permissions:
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'OWNERS'
+      - 'LICENSE'
+      - '*.md'
+      - 'docs/**'
+      - 'examples/**'
   merge_group:
   schedule:
     - cron: "0 */12 * * *"

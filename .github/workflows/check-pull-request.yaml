@@ -18,6 +18,12 @@ on:
   pull_request:
     branches:
     - main
+    paths-ignore:
+    - 'OWNERS'
+    - 'LICENSE'
+    - '*.md'
+    - 'docs/**'
+    - 'examples/**'
 
 permissions:
   contents: read

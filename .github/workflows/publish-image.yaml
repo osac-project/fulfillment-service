@@ -2,6 +2,12 @@ name: Container image
 
 on:
   pull_request:
+    paths-ignore:
+      - 'OWNERS'
+      - 'LICENSE'
+      - '*.md'
+      - 'docs/**'
+      - 'examples/**'
   push:
     branches:
       - main
