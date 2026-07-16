@@ -439,10 +439,12 @@ var _ = Describe("Synchronization", func() {
 			}.Build()
 
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("user-id"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "project-id",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					User: new("user-id"),
+					Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
@@ -505,10 +507,12 @@ var _ = Describe("Synchronization", func() {
 			}.Build()
 
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("user-id"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "child-project-id",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					User: new("user-id"),
+					Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
@@ -550,10 +554,12 @@ var _ = Describe("Synchronization", func() {
 	Context("Error handling", func() {
 		It("should fail when user does not exist", func() {
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("nonexistent-user"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "project-id",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					User: new("nonexistent-user"),
+					Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
@@ -586,10 +592,12 @@ var _ = Describe("Synchronization", func() {
 			}.Build()
 
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("user-id"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "nonexistent-project",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					User: new("user-id"),
+					Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
@@ -639,10 +647,12 @@ var _ = Describe("Synchronization", func() {
 			}.Build()
 
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("user-id"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "project-id",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					User: new("user-id"),
+					Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
@@ -727,11 +737,11 @@ var _ = Describe("Deletion Cleanup", func() {
 		membership := privatev1.ProjectMembership_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "project-id",
 			}.Build(),
 			Spec: privatev1.ProjectMembershipSpec_builder{
-				User:    new("user-id"),
-				Project: "project-id",
-				Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				User: new("user-id"),
+				Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 			}.Build(),
 		}.Build()
 
@@ -790,11 +800,11 @@ var _ = Describe("Deletion Cleanup", func() {
 		membership := privatev1.ProjectMembership_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "child-project-id",
 			}.Build(),
 			Spec: privatev1.ProjectMembershipSpec_builder{
-				User:    new("user-id"),
-				Project: "child-project-id",
-				Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
+				User: new("user-id"),
+				Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
 			}.Build(),
 		}.Build()
 
@@ -833,11 +843,11 @@ var _ = Describe("Deletion Cleanup", func() {
 		membership := privatev1.ProjectMembership_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "project-id",
 			}.Build(),
 			Spec: privatev1.ProjectMembershipSpec_builder{
-				User:    new("user-id"),
-				Project: "project-id",
-				Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				User: new("user-id"),
+				Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 			}.Build(),
 		}.Build()
 
@@ -876,11 +886,11 @@ var _ = Describe("Deletion Cleanup", func() {
 		membership := privatev1.ProjectMembership_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "project-id",
 			}.Build(),
 			Spec: privatev1.ProjectMembershipSpec_builder{
-				User:    new("user-id"),
-				Project: "project-id",
-				Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				User: new("user-id"),
+				Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 			}.Build(),
 		}.Build()
 
@@ -927,11 +937,11 @@ var _ = Describe("Deletion Cleanup", func() {
 		membership := privatev1.ProjectMembership_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "project-id",
 			}.Build(),
 			Spec: privatev1.ProjectMembershipSpec_builder{
-				User:    new("user-id"),
-				Project: "project-id",
-				Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
+				User: new("user-id"),
+				Role: privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
 			}.Build(),
 		}.Build()
 

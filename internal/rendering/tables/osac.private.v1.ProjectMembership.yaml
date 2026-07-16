@@ -24,9 +24,7 @@ columns:
   type: osac.private.v1.ProjectMembershipState
 
 - header: PROJECT
-  value: this.spec.project
-  type: osac.private.v1.Project
-  lookup: true
+  value: "has(this.metadata.project)? this.metadata.project: '-'"
 
 - header: USER
   value: this.spec.user

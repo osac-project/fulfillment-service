@@ -34,10 +34,6 @@ message ProjectMembership {
 
 // Describes a member of a project.
 message ProjectMembershipSpec {
-  // Reference to the project that this membership applies to. This is the unique identifier (ID) of the Project object,
-  // not the project name.
-  string project = 1;
-
   // Role of the member in the project. This indicates whether the member is a viewer, manager, etc.
   ProjectMembershipRole role = 2;
 

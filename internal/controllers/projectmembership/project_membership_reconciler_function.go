@@ -152,7 +152,7 @@ func (t *task) update(ctx context.Context) error {
 		return nil
 	}
 
-	// For READY memberships, spec fields (user, project, role) are immutable.
+	// For READY memberships, spec fields (user, role) and metadata.project are immutable.
 	// The controller doesn't support changing these fields after initial sync.
 	// If spec changes are needed, users must delete and recreate the membership.
 	if state == privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY {
@@ -247,7 +247,7 @@ func (t *task) syncProjectMembership(ctx context.Context) error {
 	user := userResponse.GetObject()
 
 	// Get the project
-	projectNameOrID := t.membership.GetSpec().GetProject()
+	projectNameOrID := t.membership.GetMetadata().GetProject()
 	if projectNameOrID == "" {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
 		t.membership.GetStatus().SetMessage("Project is required")
@@ -432,7 +432,7 @@ func (t *task) cleanupProjectMembership(ctx context.Context) error {
 	user := userResponse.GetObject()
 
 	// Get the project
-	projectNameOrID := t.membership.GetSpec().GetProject()
+	projectNameOrID := t.membership.GetMetadata().GetProject()
 	if projectNameOrID == "" {
 		return nil
 	}
