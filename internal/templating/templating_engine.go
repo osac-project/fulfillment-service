@@ -232,7 +232,7 @@ func (e *Engine) Execute(writer io.Writer, name string, data any) error {
 
 // Names returns the names of the templates.
 func (e *Engine) Names() []string {
-	return slices.Clone(e.names)
+	return slices.Clone(e.names) //nolint:govet // inline: Go compiler doesn't support type param inference for inlining yet
 }
 
 // AddFS adds one or more filesystems to the engine and discovers templates from them. The templates

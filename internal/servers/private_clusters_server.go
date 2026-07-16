@@ -526,7 +526,7 @@ func (s *PrivateClustersServer) validateTemplateImmutability(ctx context.Context
 		templateParamsEqual := func(first, second *anypb.Any) bool {
 			return proto.Equal(first, second)
 		}
-		if !maps.EqualFunc(existingSpec.GetTemplateParameters(), newSpec.GetTemplateParameters(), templateParamsEqual) {
+		if !maps.EqualFunc(existingSpec.GetTemplateParameters(), newSpec.GetTemplateParameters(), templateParamsEqual) { //nolint:govet // inline: Go compiler doesn't support type param inference for inlining yet
 			return grpcstatus.Errorf(
 				grpccodes.InvalidArgument,
 				"cannot change spec.template_parameters: template parameters are immutable",
