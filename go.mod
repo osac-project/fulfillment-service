@@ -3,7 +3,7 @@ module github.com/osac-project/fulfillment-service
 go 1.26.3
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260709200747-435963d16310.1
 	buf.build/go/bufplugin v0.10.0
 	buf.build/go/protovalidate v1.2.0
 	charm.land/glamour/v2 v2.0.1
@@ -24,10 +24,10 @@ require (
 	github.com/lestrrat-go/httprc/v3 v3.0.6
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/mattn/go-colorable v0.1.15
-	github.com/mattn/go-isatty v0.0.22
+	github.com/mattn/go-isatty v0.0.23
 	github.com/muesli/cancelreader v0.2.2
 	github.com/open-policy-agent/opa v1.18.2
-	github.com/osac-project/bare-metal-fulfillment-operator v0.0.8
+	github.com/osac-project/bare-metal-fulfillment-operator v0.0.9
 	github.com/osac-project/osac-operator/api v0.0.7
 	github.com/prometheus/client_golang v1.23.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
@@ -40,7 +40,7 @@ require (
 	golang.org/x/sync v0.22.0
 	golang.org/x/term v0.45.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa
-	google.golang.org/grpc v1.82.0
+	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.2
@@ -143,7 +143,7 @@ require (
 
 require (
 	github.com/DataDog/gostackparse v0.7.0
-	github.com/bits-and-blooms/bitset v1.24.5
+	github.com/bits-and-blooms/bitset v1.24.6
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/cel-go v0.29.2

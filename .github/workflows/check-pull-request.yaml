@@ -19,11 +19,11 @@ on:
     branches:
     - main
     paths-ignore:
-    - 'OWNERS'
-    - 'LICENSE'
-    - '*.md'
-    - 'docs/**'
-    - 'examples/**'
+      - 'OWNERS'
+      - 'LICENSE'
+      - '*.md'
+      - 'docs/**'
+      - 'examples/**'
 
 permissions:
   contents: read

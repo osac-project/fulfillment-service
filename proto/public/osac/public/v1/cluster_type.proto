@@ -275,6 +275,17 @@ enum ClusterState {
 
   // Indicates indicates that the cluster is unusable.
   CLUSTER_STATE_FAILED = 3;
+
+  // The cluster is being deprovisioned.
+  //
+  // The cluster will be archived once deletion completes successfully.
+  CLUSTER_STATE_DELETING = 4;
+
+  // The cluster deletion has failed.
+  //
+  // The deprovision operation encountered an error and could not complete.
+  // The status conditions will contain specific error details.
+  CLUSTER_STATE_DELETE_FAILED = 5;
 }
 
 // Contains the details of a condition that describes the status of a cluster.
