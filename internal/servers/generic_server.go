@@ -51,6 +51,7 @@ type GenericServerBuilder[O dao.Object] struct {
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
+	filterDesc        protoreflect.MessageDescriptor
 }
 
 // GenericServer is a gRPC server that knows how to implement the List, Get, Create, Update and Delete operators for
@@ -172,6 +173,17 @@ func (b *GenericServerBuilder[O]) SetMetricsRegisterer(value prometheus.Register
 	return b
 }
 
+// SetFilterDesc sets the protobuf message descriptor used to validate and translate CEL filter expressions. This is
+// optional. When unset, the descriptor of the O generic parameter is used.
+//
+// Pass a different descriptor to restrict which fields clients may reference in filters. Public servers that store
+// private objects typically pass the public message descriptor so that private-only fields are rejected during CEL
+// compilation. The value is forwarded to the underlying DAO via [dao.GenericDAOBuilder.SetFilterDesc].
+func (b *GenericServerBuilder[O]) SetFilterDesc(value protoreflect.MessageDescriptor) *GenericServerBuilder[O] {
+	b.filterDesc = value
+	return b
+}
+
 // Build uses the configuration stored in the builder to create and configure a new generic server.
 func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) {
 	// Check parameters:
@@ -236,6 +248,9 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 	}
 	if b.metricsRegisterer != nil {
 		daoBuilder.SetMetricsRegisterer(b.metricsRegisterer)
+	}
+	if b.filterDesc != nil {
+		daoBuilder.SetFilterDesc(b.filterDesc)
 	}
 	s.dao, err = daoBuilder.Build()
 	if err != nil {

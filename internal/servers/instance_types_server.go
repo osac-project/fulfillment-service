@@ -131,6 +131,7 @@ func (b *InstanceTypesServerBuilder) Build() (result *InstanceTypesServer, err e
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetFilterDesc((*publicv1.InstanceType)(nil).ProtoReflect().Descriptor()).
 		Build()
 	if err != nil {
 		return

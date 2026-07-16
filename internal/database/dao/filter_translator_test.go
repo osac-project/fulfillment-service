@@ -19,20 +19,24 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	testsv1 "github.com/osac-project/fulfillment-service/internal/api/osac/tests/v1"
 )
 
 var _ = Describe("Filter translator", func() {
 	Describe("Object translation", func() {
-		var translator *FilterTranslator[*testsv1.Object]
+		var translator *FilterTranslator
 
 		BeforeEach(func() {
 			var err error
+			var object *testsv1.Object
 
-			translator, err = NewFilterTranslator[*testsv1.Object]().
+			translator, err = NewFilterTranslator().
 				SetLogger(logger).
+				SetDescriptor(object.ProtoReflect().Descriptor()).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -375,44 +379,44 @@ var _ = Describe("Filter translator", func() {
 	// Projects need special translation because the type of the 'name' column is 'ltree', and that can't be
 	// compared directly to strings using the 'like' operator.
 	Describe("Project translation", func() {
-		var translator *FilterTranslator[*privatev1.Project]
-
-		BeforeEach(func() {
-			var err error
-
-			translator, err = NewFilterTranslator[*privatev1.Project]().
-				SetLogger(logger).
-				Build()
-			Expect(err).ToNot(HaveOccurred())
-		})
-
-		DescribeTable(
-			"Project translation",
-			func(ctx context.Context, filter, expected string) {
-				actual, err := translator.Translate(ctx, filter)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(actual).To(Equal(expected))
-			},
-			Entry(
-				"Compare name to string",
-				`this.metadata.name == 'my_project'`,
-				`name = 'my_project'`,
-			),
-			Entry(
-				"Name starts with string",
-				`this.metadata.name.startsWith('my_project.')`,
-				`cast(name as text) like 'my\_project.%'`,
-			),
-			Entry(
-				"Name ends with string",
-				`this.metadata.name.endsWith('.my_project')`,
-				`cast(name as text) like '%.my\_project'`,
-			),
-			Entry(
-				"Name contains string",
-				`this.metadata.name.contains('my')`,
-				`cast(name as text) like '%my%'`,
-			),
-		)
+		projectDescs := []protoreflect.MessageDescriptor{
+			(*publicv1.Project)(nil).ProtoReflect().Descriptor(),
+			(*privatev1.Project)(nil).ProtoReflect().Descriptor(),
+		}
+		for _, projectDesc := range projectDescs {
+			DescribeTable(
+				"Project translation",
+				func(ctx context.Context, filter, expected string) {
+					translator, err := NewFilterTranslator().
+						SetLogger(logger).
+						SetDescriptor(projectDesc).
+						Build()
+					Expect(err).ToNot(HaveOccurred())
+					actual, err := translator.Translate(ctx, filter)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(actual).To(Equal(expected))
+				},
+				Entry(
+					"Compare name to string",
+					`this.metadata.name == 'my_project'`,
+					`name = 'my_project'`,
+				),
+				Entry(
+					"Name starts with string",
+					`this.metadata.name.startsWith('my_project.')`,
+					`cast(name as text) like 'my\_project.%'`,
+				),
+				Entry(
+					"Name ends with string",
+					`this.metadata.name.endsWith('.my_project')`,
+					`cast(name as text) like '%.my\_project'`,
+				),
+				Entry(
+					"Name contains string",
+					`this.metadata.name.contains('my')`,
+					`cast(name as text) like '%my%'`,
+				),
+			)
+		}
 	})
 })
