@@ -384,6 +384,14 @@ func (r *TableRenderer) renderCell(ctx context.Context, col *columnLayout, val r
 				slog.String("type", string(col.Type)),
 			)
 		}
+		_, err := fmt.Fprintf(r.writer, "%d", val)
+		return err
+	case types.Uint:
+		_, err := fmt.Fprintf(r.writer, "%d", val)
+		return err
+	case types.Double:
+		_, err := fmt.Fprintf(r.writer, "%g", val)
+		return err
 	case types.String:
 		if col.Lookup && col.Type != "" {
 			messageType, _ := protoregistry.GlobalTypes.FindMessageByName(col.Type)
