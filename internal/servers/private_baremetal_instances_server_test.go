@@ -183,10 +183,11 @@ var _ = Describe("Private bare metal instances server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.NotFound))
+			Expect(status.Message()).To(ContainSubstring("identifier or name"))
 			Expect(status.Message()).To(ContainSubstring("does-not-exist"))
 		})
 
-		It("Rejects catalog item referenced by name instead of ID", func() {
+		It("Resolves catalog item referenced by name", func() {
 			namedResp, err := catalogServer.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
 				Object: privatev1.BareMetalInstanceCatalogItem_builder{
 					Metadata: privatev1.Metadata_builder{
@@ -207,18 +208,28 @@ var _ = Describe("Private bare metal instances server", func() {
 			})
 			Expect(namedResp.GetObject().GetMetadata().GetName()).To(Equal("my-named-catalog-item"))
 
-			_, err = server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+			response, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
 						CatalogItem: "my-named-catalog-item",
 					}.Build(),
 				}.Build(),
 			}.Build())
-			Expect(err).To(HaveOccurred())
-			status, ok := grpcstatus.FromError(err)
-			Expect(ok).To(BeTrue())
-			Expect(status.Code()).To(Equal(grpccodes.NotFound))
-			Expect(status.Message()).To(ContainSubstring("my-named-catalog-item"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.GetObject().GetId()).ToNot(BeEmpty())
+		})
+
+		It("Resolves catalog item referenced by ID", func() {
+			response, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.GetObject().GetId()).ToNot(BeEmpty())
+			Expect(response.GetObject().GetSpec().GetCatalogItem()).To(Equal(catalogItemID))
 		})
 
 		It("Rejects unpublished catalog item", func() {

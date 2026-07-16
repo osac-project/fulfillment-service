@@ -16,8 +16,10 @@ package servers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -230,20 +232,10 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx contex
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "spec.catalog_item is mandatory")
 	}
 
-	response, err := s.catalogItemsDao.Get().
-		SetId(ref).
-		Do(ctx)
+	item, err := s.lookupCatalogItem(ctx, ref)
 	if err != nil {
-		var notFoundErr *dao.ErrNotFound
-		if errors.As(err, &notFoundErr) {
-			return grpcstatus.Errorf(grpccodes.NotFound,
-				"catalog item '%s' not found", ref)
-		}
-		s.logger.ErrorContext(ctx, "Failed to lookup bare metal instance catalog item",
-			slog.Any("error", err))
-		return grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item")
+		return err
 	}
-	item := response.GetObject()
 
 	if err := validateCatalogItemAccess(item, ref); err != nil {
 		return err
@@ -254,6 +246,37 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx contex
 	}
 
 	return s.validateAndApplyTemplateParameters(ctx, bmi, item.GetTemplate())
+}
+
+func (s *PrivateBareMetalInstancesServer) lookupCatalogItem(ctx context.Context,
+	key string) (result *privatev1.BareMetalInstanceCatalogItem, err error) {
+	if key == "" {
+		return
+	}
+	response, err := s.catalogItemsDao.List().
+		SetFilter(fmt.Sprintf("this.id == %[1]s || this.metadata.name == %[1]s", strconv.Quote(key))).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		var deniedErr *dao.ErrDenied
+		if errors.As(err, &deniedErr) {
+			err = grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+			return
+		}
+		s.logger.ErrorContext(ctx, "Failed to lookup catalog item",
+			slog.String("key", key),
+			slog.Any("error", err))
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to lookup catalog item")
+		return
+	}
+	items := response.GetItems()
+	if len(items) == 0 {
+		err = grpcstatus.Errorf(grpccodes.NotFound,
+			"there is no catalog item with identifier or name '%s'", key)
+		return
+	}
+	result = items[0]
+	return
 }
 
 // validateAndApplyTemplateParameters fetches the template referenced by the catalog item,
