@@ -25,22 +25,19 @@
 -- Trigger function that checks whether any active bare metal instance references the bare metal instance catalog item
 -- being deleted:
 create function check_bmi_catalog_item_not_in_use() returns trigger as $$
-declare
-  child_id text;
 begin
-  select id into child_id
-  from bare_metal_instances
-  where deletion_timestamp = 'epoch'
-    and (data->'spec'->>'catalog_item' = old.id or data->'spec'->>'catalog_item' = old.name)
-    and (old.tenant = 'shared' or bare_metal_instances.tenant = old.tenant)
-  limit 1;
-
-  if child_id is not null then
+  if exists (
+    select 1
+    from bare_metal_instances
+    where deletion_timestamp = 'epoch'
+      and (data->'spec'->>'catalog_item' = old.id or data->'spec'->>'catalog_item' = old.name)
+      and (old.tenant = 'shared' or bare_metal_instances.tenant = old.tenant)
+  ) then
     raise exception using
       errcode = 'Z0003',
       message = format(
-        'cannot delete bare metal instance catalog item ''%s'': it is in use by at least bare metal instance ''%s''',
-        old.id, child_id
+        'cannot delete bare metal instance catalog item ''%s'': it is in use by at least one bare metal instance',
+        old.id
       );
   end if;
 

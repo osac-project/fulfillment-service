@@ -147,7 +147,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 		Expect(errors.As(err, &pgErr)).To(BeTrue())
 		Expect(pgErr.Code).To(Equal("Z0003"))
 		Expect(pgErr.Message).To(ContainSubstring("bmici-1"))
-		Expect(pgErr.Message).To(ContainSubstring("bmi-1"))
+		Expect(pgErr.Message).ToNot(ContainSubstring("bmi-1"))
 	})
 
 	It("Prevents soft-deleting a BMI catalog item when a bare metal instance references it by name", func(ctx context.Context) {
@@ -178,7 +178,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 		Expect(errors.As(err, &pgErr)).To(BeTrue())
 		Expect(pgErr.Code).To(Equal("Z0003"))
 		Expect(pgErr.Message).To(ContainSubstring("bmici-byname-1"))
-		Expect(pgErr.Message).To(ContainSubstring("bmi-byname-1"))
+		Expect(pgErr.Message).ToNot(ContainSubstring("bmi-byname-1"))
 	})
 
 	It("Allows soft-deleting a BMI catalog item that is not in use", func(ctx context.Context) {
@@ -265,7 +265,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 		Expect(errors.As(err, &pgErr)).To(BeTrue())
 		Expect(pgErr.Code).To(Equal("Z0003"))
 		Expect(pgErr.Message).To(ContainSubstring("bmici-global-1"))
-		Expect(pgErr.Message).To(ContainSubstring("bmi-global-1"))
+		Expect(pgErr.Message).ToNot(ContainSubstring("bmi-global-1"))
 	})
 
 	It("Allows soft-deleting a BMI catalog item when the referencing bare metal instance is already deleted", func(ctx context.Context) {
