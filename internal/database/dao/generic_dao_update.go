@@ -244,6 +244,10 @@ func (r *UpdateRequest[O]) translateError(ctx context.Context, id, name, tenant 
 		return &ErrAlreadyExists{
 			ID: id,
 		}
+	case errReferenceCode:
+		return &ErrReference{
+			Reason: pgErr.Message,
+		}
 	case pgerrcode.ForeignKeyViolation:
 		switch {
 		case strings.HasSuffix(pgErr.ConstraintName, "_tenant_fk"):
