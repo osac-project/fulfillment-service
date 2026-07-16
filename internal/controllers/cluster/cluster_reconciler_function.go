@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -222,6 +223,10 @@ func (t *task) update(ctx context.Context) error {
 		}
 		err = t.hubClient.Create(ctx, object)
 		if err != nil {
+			if apierrors.IsInvalid(err) {
+				t.setFailed(err)
+				return nil
+			}
 			return err
 		}
 		t.r.logger.DebugContext(
@@ -235,6 +240,10 @@ func (t *task) update(ctx context.Context) error {
 		update.Spec = spec
 		err = t.hubClient.Patch(ctx, update, clnt.MergeFrom(object))
 		if err != nil {
+			if apierrors.IsInvalid(err) {
+				t.setFailed(err)
+				return nil
+			}
 			return err
 		}
 		t.r.logger.DebugContext(
@@ -464,6 +473,19 @@ func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.ClusterO
 		result = &items[0]
 	}
 	return
+}
+
+// setFailed transitions the cluster to FAILED state with the given error message.
+// Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
+// cannot be provisioned.
+func (t *task) setFailed(err error) {
+	t.cluster.GetStatus().SetState(privatev1.ClusterState_CLUSTER_STATE_FAILED)
+	t.updateCondition(
+		privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_PROGRESSING,
+		privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+		"ValidationFailed",
+		err.Error(),
+	)
 }
 
 // updateCondition updates or creates a condition with the specified type, status, reason, and message.
