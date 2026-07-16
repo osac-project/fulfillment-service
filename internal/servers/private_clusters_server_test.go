@@ -1711,7 +1711,7 @@ var _ = Describe("Private clusters server", func() {
 		})
 
 		Describe("Dry run", func() {
-			It("returns resolved cluster with template path", func() {
+			It("Returns resolved cluster with template path", func() {
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					DryRun: true,
 					Object: privatev1.Cluster_builder{
@@ -1738,7 +1738,45 @@ var _ = Describe("Private clusters server", func() {
 				Expect(nodeSets["compute"].GetHostType()).To(Equal("acme-1ti-id"))
 			})
 
-			It("does not persist the object", func() {
+			It("Returns resolved cluster with catalog item path", func() {
+				catalogItemsDao, err := dao.NewGenericDAO[*privatev1.ClusterCatalogItem]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ClusterCatalogItem_builder{
+						Id: "cat-dry-run",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "cat-dry-run-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Dry Run Catalog Item",
+						Published: true,
+						Template:  "my-template-id",
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					DryRun: true,
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-dry-run",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+				Expect(object.GetSpec().GetCatalogItem()).To(Equal("cat-dry-run"))
+			})
+
+			It("Does not persist the object", func() {
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					DryRun: true,
 					Object: privatev1.Cluster_builder{
@@ -1757,7 +1795,7 @@ var _ = Describe("Private clusters server", func() {
 				Expect(listResponse.GetTotal()).To(Equal(int32(0)))
 			})
 
-			It("returns same error as real creation for invalid template", func() {
+			It("Returns same error as real creation for invalid template", func() {
 				_, realErr := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
@@ -1783,6 +1821,7 @@ var _ = Describe("Private clusters server", func() {
 				}.Build())
 				Expect(dryRunErr).To(HaveOccurred())
 				Expect(grpcstatus.Code(dryRunErr)).To(Equal(grpcstatus.Code(realErr)))
+				Expect(grpcstatus.Convert(dryRunErr).Message()).To(Equal(grpcstatus.Convert(realErr).Message()))
 			})
 		})
 	})

@@ -1804,7 +1804,7 @@ var _ = Describe("Clusters server", func() {
 		})
 
 		Describe("Dry run", func() {
-			It("returns resolved cluster without persisting", func() {
+			It("Returns resolved cluster without persisting", func() {
 				response, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
 					DryRun: true,
 					Object: publicv1.Cluster_builder{
@@ -1823,7 +1823,7 @@ var _ = Describe("Clusters server", func() {
 				Expect(listResponse.GetTotal()).To(Equal(int32(0)))
 			})
 
-			It("returns same error as real creation for invalid template", func() {
+			It("Returns same error as real creation for invalid template", func() {
 				_, realErr := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
 					Object: publicv1.Cluster_builder{
 						Spec: publicv1.ClusterSpec_builder{
@@ -1843,6 +1843,7 @@ var _ = Describe("Clusters server", func() {
 				}.Build())
 				Expect(dryRunErr).To(HaveOccurred())
 				Expect(grpcstatus.Code(dryRunErr)).To(Equal(grpcstatus.Code(realErr)))
+				Expect(grpcstatus.Convert(dryRunErr).Message()).To(Equal(grpcstatus.Convert(realErr).Message()))
 			})
 		})
 	})

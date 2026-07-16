@@ -154,7 +154,7 @@ var _ = Describe("Generic server CreateDryRun", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("assigns creator and tenant to the object", func() {
+	It("Assigns creator and tenant to the object", func() {
 		response := &privatev1.HostTypesCreateResponse{}
 		err := server.CreateDryRun(
 			ctx,
@@ -174,7 +174,7 @@ var _ = Describe("Generic server CreateDryRun", func() {
 		Expect(response.GetObject().GetMetadata().GetTenant()).To(Equal(auth.SystemTenant))
 	})
 
-	It("validates metadata and rejects invalid labels", func() {
+	It("Validates metadata and rejects invalid labels", func() {
 		response := &privatev1.HostTypesCreateResponse{}
 		err := server.CreateDryRun(
 			ctx,
@@ -192,7 +192,7 @@ var _ = Describe("Generic server CreateDryRun", func() {
 		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 	})
 
-	It("does not persist the object", func() {
+	It("Does not persist the object", func() {
 		response := &privatev1.HostTypesCreateResponse{}
 		err := server.CreateDryRun(
 			ctx,
@@ -216,21 +216,9 @@ var _ = Describe("Generic server CreateDryRun", func() {
 		Expect(listResponse.GetTotal()).To(Equal(int32(0)))
 	})
 
-	It("does not emit events", func() {
-		ctrl := gomock.NewController(GinkgoT())
-		notifier := events.NewMockNotifier(ctrl)
-		// No EXPECT on notifier - any call would fail the test
-		srv, err := NewGenericServer[*privatev1.HostType]().
-			SetLogger(logger).
-			SetService(privatev1.HostTypes_ServiceDesc.ServiceName).
-			SetAttributionLogic(attribution).
-			SetTenancyLogic(tenancy).
-			SetNotifier(notifier).
-			Build()
-		Expect(err).ToNot(HaveOccurred())
-
+	It("Does not emit events", func() {
 		response := &privatev1.HostTypesCreateResponse{}
-		err = srv.CreateDryRun(
+		err := server.CreateDryRun(
 			ctx,
 			privatev1.HostTypesCreateRequest_builder{
 				Object: privatev1.HostType_builder{
