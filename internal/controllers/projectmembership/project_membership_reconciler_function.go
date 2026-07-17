@@ -152,11 +152,9 @@ func (t *task) update(ctx context.Context) error {
 		return nil
 	}
 
-	// For READY memberships, spec fields (user, project, role) are immutable.
-	// The controller doesn't support changing these fields after initial sync.
-	// If spec changes are needed, users must delete and recreate the membership.
+	// For READY memberships, detect user list changes and sync accordingly
 	if state == privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY {
-		return nil
+		return t.handleUserListChange(ctx)
 	}
 
 	// Project membership is PENDING, perform initial synchronization
@@ -181,7 +179,7 @@ func (t *task) getProjectByNameOrID(ctx context.Context, nameOrID string) (*priv
 
 	// If not found by ID, try listing by name
 	t.r.logger.DebugContext(ctx, "Project not found by ID, trying by name",
-		slog.String("name_or_id", nameOrID),
+		slog.String("!name_or_id", nameOrID),
 	)
 
 	// Escape single quotes in the name to prevent CEL injection
@@ -228,90 +226,208 @@ func (t *task) setDefaults() {
 }
 
 func (t *task) syncProjectMembership(ctx context.Context) error {
-	// Get the user
-	userID := t.membership.GetSpec().GetUser()
-	if userID == "" {
-		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
-		t.membership.GetStatus().SetMessage("User ID is required")
+	users := t.membership.GetSpec().GetUsers()
+	if len(users) == 0 {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY)
+		t.membership.GetStatus().SetUsers(nil)
+		t.membership.GetStatus().SetMessage("")
 		return nil
 	}
 
-	userResponse, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
-		Id: userID,
-	}.Build())
+	_, organizationName, groupID, err := t.resolveProjectGroup(ctx)
 	if err != nil {
-		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
-		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch user: %v", err))
 		return nil
 	}
-	user := userResponse.GetObject()
 
-	// Get the project
-	projectNameOrID := t.membership.GetSpec().GetProject()
+	var assignmentErrors []string
+	for _, userID := range users {
+		if err := t.addUserToGroup(ctx, userID, organizationName, groupID); err != nil {
+			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: %v", userID, err))
+		}
+	}
+
+	if len(assignmentErrors) > 0 {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage(fmt.Sprintf(
+			"Failed to sync %d user(s): %s", len(assignmentErrors), strings.Join(assignmentErrors, "; "),
+		))
+		return nil
+	}
+
+	t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY)
+	t.membership.GetStatus().SetUsers(users)
+	t.membership.GetStatus().SetMessage("")
+	return nil
+}
+
+func (t *task) handleUserListChange(ctx context.Context) error {
+	desiredUsers := t.membership.GetSpec().GetUsers()
+	syncedUsers := t.membership.GetStatus().GetUsers()
+
+	desiredSet := make(map[string]bool)
+	for _, u := range desiredUsers {
+		desiredSet[u] = true
+	}
+	syncedSet := make(map[string]bool)
+	for _, u := range syncedUsers {
+		syncedSet[u] = true
+	}
+
+	var usersToAdd []string
+	for _, u := range desiredUsers {
+		if !syncedSet[u] {
+			usersToAdd = append(usersToAdd, u)
+		}
+	}
+
+	var usersToRemove []string
+	for _, u := range syncedUsers {
+		if !desiredSet[u] {
+			usersToRemove = append(usersToRemove, u)
+		}
+	}
+
+	if len(usersToAdd) == 0 && len(usersToRemove) == 0 {
+		return nil
+	}
+
+	_, organizationName, groupID, err := t.resolveProjectGroup(ctx)
+	if err != nil {
+		return nil
+	}
+
+	var syncErrors []string
+
+	for _, userID := range usersToRemove {
+		if err := t.removeUserFromGroup(ctx, userID, organizationName, groupID); err != nil {
+			syncErrors = append(syncErrors, fmt.Sprintf("remove user %s: %v", userID, err))
+		}
+	}
+
+	for _, userID := range usersToAdd {
+		if err := t.addUserToGroup(ctx, userID, organizationName, groupID); err != nil {
+			syncErrors = append(syncErrors, fmt.Sprintf("add user %s: %v", userID, err))
+		}
+	}
+
+	if len(syncErrors) > 0 {
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetMessage(fmt.Sprintf(
+			"Failed to sync user changes: %s", strings.Join(syncErrors, "; "),
+		))
+		return nil
+	}
+
+	t.membership.GetStatus().SetUsers(desiredUsers)
+	t.membership.GetStatus().SetMessage(fmt.Sprintf(
+		"Synced: added %d user(s), removed %d user(s)", len(usersToAdd), len(usersToRemove),
+	))
+	return nil
+}
+
+// resolveProjectGroup resolves the project, organization, and group ID for the membership.
+// On failure, it sets the membership status to FAILED and returns a non-nil error.
+func (t *task) resolveProjectGroup(ctx context.Context) (
+	project *privatev1.Project, organizationName string, groupID string, err error,
+) {
+	projectNameOrID := t.membership.GetMetadata().GetProject()
 	if projectNameOrID == "" {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
 		t.membership.GetStatus().SetMessage("Project is required")
-		return nil
+		err = fmt.Errorf("project is required")
+		return
 	}
 
-	project, err := t.getProjectByNameOrID(ctx, projectNameOrID)
+	project, err = t.getProjectByNameOrID(ctx, projectNameOrID)
 	if err != nil {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
 		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch project: %v", err))
-		return nil
+		return
 	}
 
-	// Determine the authorization group based on the membership role
 	role := t.membership.GetSpec().GetRole()
 	groupSuffix := t.mapRoleToGroupSuffix(role)
 	if groupSuffix == "" {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
 		t.membership.GetStatus().SetMessage(fmt.Sprintf("Unknown project membership role: %v", role))
-		return nil
+		err = fmt.Errorf("unknown role")
+		return
 	}
 
-	// Get organization from project tenant
-	organizationName := project.GetMetadata().GetTenant()
+	organizationName = project.GetMetadata().GetTenant()
 	if organizationName == "" {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
 		t.membership.GetStatus().SetMessage("Project has no organization tenant")
-		return nil
+		err = fmt.Errorf("no tenant")
+		return
 	}
 
-	// Get the IDP user ID from the user status
-	idpUserID := user.GetStatus().GetKeycloakUserId()
-	if idpUserID == "" {
-		// User controller hasn't populated the Keycloak ID yet, stay pending
-		t.membership.GetStatus().SetMessage("Waiting for user IDP ID to be populated")
-		return nil
-	}
-
-	// Build the full hierarchical group path for this project + role
-	groupPath, err := t.buildProjectGroupPath(ctx, project, groupSuffix)
-	if err != nil {
+	groupPath, pathErr := t.buildProjectGroupPath(ctx, project, groupSuffix)
+	if pathErr != nil {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
-		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to build project hierarchy path: %v", err))
-		return nil
+		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to build project hierarchy path: %v", pathErr))
+		err = pathErr
+		return
 	}
 
-	// Get the group ID from the path
-	groupID, err := t.r.idpClient.GetGroupIDByPath(ctx, organizationName, groupPath)
+	groupID, err = t.r.idpClient.GetGroupIDByPath(ctx, organizationName, groupPath)
 	if err != nil {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
 		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to find authorization group %s: %v", groupPath, err))
-		return nil
+		return
 	}
 
-	// Add the user to the authorization group
-	err = t.r.idpClient.AddUserToGroup(ctx, organizationName, idpUserID, groupID)
+	return
+}
+
+func (t *task) addUserToGroup(ctx context.Context, userID, organizationName, groupID string) error {
+	userResponse, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+		Id: userID,
+	}.Build())
 	if err != nil {
-		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
-		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to add user to authorization group: %v", err))
+		return fmt.Errorf("failed to fetch user: %w", err)
+	}
+	user := userResponse.GetObject()
+
+	idpUserID := user.GetStatus().GetKeycloakUserId()
+	if idpUserID == "" {
+		return fmt.Errorf("user IDP ID not yet populated")
+	}
+
+	if err := t.r.idpClient.AddUserToGroup(ctx, organizationName, idpUserID, groupID); err != nil {
+		return fmt.Errorf("failed to add to group: %w", err)
+	}
+	return nil
+}
+
+func (t *task) removeUserFromGroup(ctx context.Context, userID, organizationName, groupID string) error {
+	userResponse, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
+		Id: userID,
+	}.Build())
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			t.r.logger.DebugContext(ctx, "User not found during removal, skipping",
+				slog.String("!user_id", userID))
+			return nil
+		}
+		return fmt.Errorf("failed to fetch user: %w", err)
+	}
+	user := userResponse.GetObject()
+
+	idpUserID := user.GetStatus().GetKeycloakUserId()
+	if idpUserID == "" {
+		t.r.logger.DebugContext(ctx, "User has no IDP user ID during removal, skipping",
+			slog.String("!user_id", userID))
 		return nil
 	}
 
-	t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY)
-	t.membership.GetStatus().SetMessage("")
+	if err := t.r.idpClient.RemoveUserFromGroup(ctx, organizationName, idpUserID, groupID); err != nil {
+		code := status.Code(err)
+		if code == codes.NotFound || code == codes.AlreadyExists {
+			return nil
+		}
+		return fmt.Errorf("failed to remove from group: %w", err)
+	}
 	return nil
 }
 
@@ -412,42 +528,28 @@ func (t *task) delete(ctx context.Context) error {
 }
 
 func (t *task) cleanupProjectMembership(ctx context.Context) error {
-	// Get the user
-	userID := t.membership.GetSpec().GetUser()
-	if userID == "" {
+	users := t.membership.GetStatus().GetUsers()
+	if len(users) == 0 {
+		users = t.membership.GetSpec().GetUsers()
+	}
+	if len(users) == 0 {
 		return nil
 	}
 
-	userResponse, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
-		Id: userID,
-	}.Build())
-	if err != nil {
-		// Only ignore NotFound - propagate transient errors for retry
-		if status.Code(err) == codes.NotFound {
-			t.r.logger.DebugContext(ctx, "User not found during cleanup, skipping")
-			return nil
-		}
-		return fmt.Errorf("failed to fetch user during cleanup: %w", err)
-	}
-	user := userResponse.GetObject()
-
-	// Get the project
-	projectNameOrID := t.membership.GetSpec().GetProject()
+	projectNameOrID := t.membership.GetMetadata().GetProject()
 	if projectNameOrID == "" {
 		return nil
 	}
 
 	project, err := t.getProjectByNameOrID(ctx, projectNameOrID)
 	if err != nil {
-		// Only ignore NotFound - propagate transient errors for retry
-		if status.Code(err) == codes.NotFound {
+		if status.Code(err) == codes.NotFound || strings.Contains(err.Error(), "not found") {
 			t.r.logger.DebugContext(ctx, "Project not found during cleanup, skipping")
 			return nil
 		}
 		return fmt.Errorf("failed to fetch project during cleanup: %w", err)
 	}
 
-	// Determine the authorization group
 	role := t.membership.GetSpec().GetRole()
 	groupSuffix := t.mapRoleToGroupSuffix(role)
 	if groupSuffix == "" {
@@ -456,23 +558,13 @@ func (t *task) cleanupProjectMembership(ctx context.Context) error {
 
 	organizationName := project.GetMetadata().GetTenant()
 
-	// Get the IDP user ID from the user status
-	idpUserID := user.GetStatus().GetKeycloakUserId()
-	if idpUserID == "" {
-		t.r.logger.DebugContext(ctx, "User has no IDP user ID during cleanup, skipping")
-		return nil
-	}
-
 	groupPath, err := t.buildProjectGroupPath(ctx, project, groupSuffix)
 	if err != nil {
 		return fmt.Errorf("failed to build project hierarchy path during cleanup: %w", err)
 	}
 
-	// Get the group ID from the path
 	groupID, err := t.r.idpClient.GetGroupIDByPath(ctx, organizationName, groupPath)
 	if err != nil {
-		// Only ignore NotFound - propagate transient errors for retry
-		// Check both gRPC status code and error message since IDP client wraps errors
 		if status.Code(err) == codes.NotFound || strings.Contains(err.Error(), "not found") {
 			t.r.logger.DebugContext(ctx, "Authorization group not found during cleanup, skipping",
 				slog.String("group_path", groupPath))
@@ -481,16 +573,10 @@ func (t *task) cleanupProjectMembership(ctx context.Context) error {
 		return fmt.Errorf("failed to find authorization group during cleanup: %w", err)
 	}
 
-	// Remove the user from the authorization group
-	err = t.r.idpClient.RemoveUserFromGroup(ctx, organizationName, idpUserID, groupID)
-	if err != nil {
-		// Only ignore NotFound/AlreadyExists - propagate transient errors for retry
-		code := status.Code(err)
-		if code == codes.NotFound || code == codes.AlreadyExists {
-			t.r.logger.DebugContext(ctx, "User already removed from group, skipping")
-			return nil
+	for _, userID := range users {
+		if err := t.removeUserFromGroup(ctx, userID, organizationName, groupID); err != nil {
+			return fmt.Errorf("failed to remove user %s during cleanup: %w", userID, err)
 		}
-		return fmt.Errorf("failed to remove user from authorization group during cleanup: %w", err)
 	}
 
 	return nil

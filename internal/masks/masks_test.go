@@ -352,6 +352,48 @@ var _ = Describe("Calculator", func() {
 		})
 	})
 
+	Context("when fields are cleared", func() {
+		It("should detect cleared sub-message field", func() {
+			before := privatev1.Tenant_builder{
+				Status: privatev1.TenantStatus_builder{
+					State:         privatev1.TenantState_TENANT_STATE_PENDING,
+					IdpTenantName: "my-tenant",
+					BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+						Username: "my-tenant-osac-break-glass",
+						Password: "secret",
+					}.Build(),
+				}.Build(),
+			}.Build()
+
+			after := privatev1.Tenant_builder{
+				Status: privatev1.TenantStatus_builder{
+					State:         privatev1.TenantState_TENANT_STATE_SYNCED,
+					IdpTenantName: "my-tenant",
+				}.Build(),
+			}.Build()
+
+			mask := calculator.Calculate(before, after)
+			Expect(mask.Paths).To(ContainElement("status.state"))
+			Expect(mask.Paths).To(ContainElement("status.break_glass_credentials"))
+		})
+
+		It("should detect cleared top-level message field", func() {
+			before := privatev1.Cluster_builder{
+				Id: "test-cluster",
+				Status: privatev1.ClusterStatus_builder{
+					State: privatev1.ClusterState_CLUSTER_STATE_PROGRESSING,
+				}.Build(),
+			}.Build()
+
+			after := privatev1.Cluster_builder{
+				Id: "test-cluster",
+			}.Build()
+
+			mask := calculator.Calculate(before, after)
+			Expect(mask.Paths).To(ContainElement("status"))
+		})
+	})
+
 	Context("when transitioning from empty to populated", func() {
 		It("should detect all new fields at top level", func() {
 			before := privatev1.Cluster_builder{}.Build()

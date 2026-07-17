@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"gopkg.in/yaml.v3"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstance"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstancecatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/cluster"
@@ -194,6 +195,17 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 				"Created %s with identifier '%s'.\n",
 				objectSingular, objectId,
 			)
+		}
+		if tenant, ok := object.(*privatev1.Tenant); ok {
+			if tenant.HasStatus() && tenant.GetStatus().HasBreakGlassCredentials() {
+				creds := tenant.GetStatus().GetBreakGlassCredentials()
+				c.console.Infof(ctx, "\n")
+				c.console.Infof(ctx, "Break-glass account credentials (shown only once, save them now):\n")
+				c.console.Infof(ctx, "  Username: %s\n", creds.GetUsername())
+				c.console.Infof(ctx, "  Password: %s\n", creds.GetPassword())
+				c.console.Infof(ctx, "\n")
+				c.console.Infof(ctx, "This is a temporary password that must be changed on first login.\n")
+			}
 		}
 	}
 

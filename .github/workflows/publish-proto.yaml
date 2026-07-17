@@ -34,5 +34,6 @@ jobs:
       with:
         setup_only: true
         token: ${{ secrets.BUF_TOKEN }}
+        version: 1.71.0
     - run: |
         buf push --label "${{ github.ref_name }}"

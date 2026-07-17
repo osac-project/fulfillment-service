@@ -16,12 +16,15 @@ package user
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"slices"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
 	"github.com/osac-project/fulfillment-service/internal/idp"
 	"github.com/osac-project/fulfillment-service/internal/masks"
 )
@@ -97,7 +100,12 @@ func (r *function) Run(ctx context.Context, user *privatev1.User) error {
 		user: user,
 	}
 
-	err := task.reconcile(ctx)
+	var err error
+	if user.HasMetadata() && user.GetMetadata().HasDeletionTimestamp() {
+		err = task.delete(ctx)
+	} else {
+		err = task.reconcile(ctx)
+	}
 	if err != nil {
 		return err
 	}
@@ -122,8 +130,7 @@ type task struct {
 
 // reconcile performs the reconciliation logic for a user.
 func (t *task) reconcile(ctx context.Context) error {
-	// Skip if user is being deleted
-	if t.user.HasMetadata() && t.user.GetMetadata().HasDeletionTimestamp() {
+	if t.addFinalizer() {
 		return nil
 	}
 
@@ -189,4 +196,68 @@ func (t *task) reconcile(ctx context.Context) error {
 	)
 
 	return nil
+}
+
+// delete performs the deletion cleanup for a user.
+func (t *task) delete(ctx context.Context) error {
+	keycloakUserID := t.user.GetStatus().GetKeycloakUserId()
+	tenant := t.user.GetMetadata().GetTenant()
+	username := t.user.GetSpec().GetUsername()
+
+	if tenant != "" {
+		if keycloakUserID == "" && username != "" {
+			keycloakUser, err := t.r.idpClient.GetUserByUsername(ctx, tenant, username)
+			if err != nil {
+				return fmt.Errorf("failed to look up user in IDP for deletion: %w", err)
+			}
+			if keycloakUser != nil {
+				keycloakUserID = keycloakUser.ID
+			}
+		}
+
+		if keycloakUserID != "" {
+			err := t.r.idpClient.DeleteUser(ctx, tenant, keycloakUserID)
+			if err != nil {
+				return fmt.Errorf("failed to delete user from IDP: %w", err)
+			}
+
+			t.r.logger.DebugContext(ctx, "Deleted user from IDP",
+				slog.String("!user_id", t.user.GetId()),
+				slog.String("!keycloak_user_id", keycloakUserID),
+				slog.String("!tenant", tenant),
+			)
+		}
+	}
+
+	t.removeFinalizer()
+	return nil
+}
+
+// addFinalizer adds the controller finalizer to the user if not already present.
+// Returns true if the finalizer was added (indicating the update should be saved immediately).
+func (t *task) addFinalizer() bool {
+	if !t.user.HasMetadata() {
+		t.user.SetMetadata(&privatev1.Metadata{})
+	}
+	list := t.user.GetMetadata().GetFinalizers()
+	if !slices.Contains(list, finalizers.Controller) {
+		list = append(list, finalizers.Controller)
+		t.user.GetMetadata().SetFinalizers(list)
+		return true
+	}
+	return false
+}
+
+// removeFinalizer removes the controller finalizer from the user.
+func (t *task) removeFinalizer() {
+	if !t.user.HasMetadata() {
+		return
+	}
+	list := t.user.GetMetadata().GetFinalizers()
+	if slices.Contains(list, finalizers.Controller) {
+		list = slices.DeleteFunc(list, func(item string) bool {
+			return item == finalizers.Controller
+		})
+		t.user.GetMetadata().SetFinalizers(list)
+	}
 }

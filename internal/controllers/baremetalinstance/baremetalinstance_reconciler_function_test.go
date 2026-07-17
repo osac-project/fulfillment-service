@@ -1175,7 +1175,7 @@ var _ = Describe("syncStatus", func() {
 		t := newTask(0)
 		object := &bmfov1alpha1.BareMetalInstance{
 			Spec: bmfov1alpha1.BareMetalInstanceSpec{
-				TemplateID: "some-template",
+				TemplateID: "some_template",
 			},
 			Status: bmfov1alpha1.BareMetalInstanceStatus{
 				Conditions: []metav1.Condition{
