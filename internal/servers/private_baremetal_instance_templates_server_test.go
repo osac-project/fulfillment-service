@@ -80,6 +80,7 @@ var _ = Describe("Private bare metal instance templates server", func() {
 		It("Creates object", func() {
 			response, err := server.Create(ctx, privatev1.BareMetalInstanceTemplatesCreateRequest_builder{
 				Object: privatev1.BareMetalInstanceTemplate_builder{
+					Id:          "test_template_create",
 					Title:       "My template",
 					Description: "A test template.",
 				}.Build(),
@@ -87,7 +88,7 @@ var _ = Describe("Private bare metal instance templates server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())
 			object := response.GetObject()
-			Expect(object.GetId()).ToNot(BeEmpty())
+			Expect(object.GetId()).To(Equal("test_template_create"))
 			Expect(object.GetTitle()).To(Equal("My template"))
 			Expect(object.GetDescription()).To(Equal("A test template."))
 		})
@@ -97,6 +98,7 @@ var _ = Describe("Private bare metal instance templates server", func() {
 			for i := range count {
 				_, err := server.Create(ctx, privatev1.BareMetalInstanceTemplatesCreateRequest_builder{
 					Object: privatev1.BareMetalInstanceTemplate_builder{
+						Id:    fmt.Sprintf("test_template_list_%d", i),
 						Title: fmt.Sprintf("Template %d", i),
 					}.Build(),
 				}.Build())
@@ -111,6 +113,7 @@ var _ = Describe("Private bare metal instance templates server", func() {
 		It("Gets object", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstanceTemplatesCreateRequest_builder{
 				Object: privatev1.BareMetalInstanceTemplate_builder{
+					Id:    "test_template_get",
 					Title: "My template",
 				}.Build(),
 			}.Build())
@@ -127,6 +130,7 @@ var _ = Describe("Private bare metal instance templates server", func() {
 		It("Updates object", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstanceTemplatesCreateRequest_builder{
 				Object: privatev1.BareMetalInstanceTemplate_builder{
+					Id:          "test_template_update",
 					Title:       "Original title",
 					Description: "Original description.",
 				}.Build(),
@@ -146,9 +150,29 @@ var _ = Describe("Private bare metal instance templates server", func() {
 			Expect(updateResponse.GetObject().GetDescription()).To(Equal("Updated description."))
 		})
 
+		It("Rejects update when ID does not match required pattern", func() {
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstanceTemplatesCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceTemplate_builder{
+					Id:    "0192a3b4-5678-7def-9012-abcdef345678",
+					Title: "My template",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Update(ctx, privatev1.BareMetalInstanceTemplatesUpdateRequest_builder{
+				Object: privatev1.BareMetalInstanceTemplate_builder{
+					Id:    createResponse.GetObject().GetId(),
+					Title: "Updated title",
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("does not match regex pattern"))
+		})
+
 		It("Deletes object", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstanceTemplatesCreateRequest_builder{
 				Object: privatev1.BareMetalInstanceTemplate_builder{
+					Id: "test_template_delete",
 					Metadata: privatev1.Metadata_builder{
 						Finalizers: []string{"keep"},
 					}.Build(),
@@ -173,6 +197,7 @@ var _ = Describe("Private bare metal instance templates server", func() {
 		It("Signals object", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstanceTemplatesCreateRequest_builder{
 				Object: privatev1.BareMetalInstanceTemplate_builder{
+					Id:    "test_template_signal",
 					Title: "My template",
 				}.Build(),
 			}.Build())

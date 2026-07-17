@@ -15,8 +15,11 @@ package servers
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"fmt"
 	"log/slog"
+	"math/big"
 
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
@@ -174,6 +177,24 @@ func (s *PrivateTenantsServer) Create(ctx context.Context,
 		metadata.SetTenant(name)
 	}
 
+	// Generate break-glass credentials so they are persisted temporarily and
+	// returned in the Create response. The reconciler will read the password
+	// when creating the Keycloak account and then clear it from the database.
+	password, genErr := generatePassword()
+	if genErr != nil {
+		err = grpcstatus.Errorf(grpccodes.Internal, "failed to generate break-glass password: %v", genErr)
+		return
+	}
+	if !object.HasStatus() {
+		object.SetStatus(&privatev1.TenantStatus{})
+	}
+	object.GetStatus().SetBreakGlassCredentials(
+		privatev1.BreakGlassCredentials_builder{
+			Username: fmt.Sprintf("%s-osac-break-glass", name),
+			Password: password,
+		}.Build(),
+	)
+
 	// Domain validation is now handled by protovalidate in the interceptor
 	// Delegate to the generic server:
 	err = s.generic.Create(ctx, request, &response)
@@ -185,6 +206,9 @@ func (s *PrivateTenantsServer) Update(ctx context.Context,
 	// Domain validation is now handled by protovalidate after update_mask merge in generic server
 	// Delegate to the generic server:
 	err = s.generic.Update(ctx, request, &response)
+	if err == nil {
+		stripBreakGlassCredentials(response.GetObject())
+	}
 	return
 }
 
@@ -198,6 +222,26 @@ func (s *PrivateTenantsServer) Signal(ctx context.Context,
 	request *privatev1.TenantsSignalRequest) (response *privatev1.TenantsSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)
 	return
+}
+
+func generatePassword() (string, error) {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%"
+	const length = 24
+	b := make([]byte, length)
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = charset[n.Int64()]
+	}
+	return string(b), nil
+}
+
+func stripBreakGlassCredentials(tenant *privatev1.Tenant) {
+	if tenant.HasStatus() && tenant.GetStatus().HasBreakGlassCredentials() {
+		tenant.GetStatus().ClearBreakGlassCredentials()
+	}
 }
 
 // Domain validation has been migrated to protovalidate constraints in tenant_type.proto.

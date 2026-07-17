@@ -115,8 +115,9 @@ func (c *Calculator) compareMessages(before, after protoreflect.Message, prefix 
 			// No need to recurse since field masks are hierarchical
 			paths = append(paths, fieldPath)
 
-			// case hasInBefore && !hasInAfter:
-			//     Field only in before (removed/cleared): skip
+		case hasInBefore && !hasInAfter:
+			// Field was present in before but cleared in after
+			paths = append(paths, fieldPath)
 		}
 	}
 

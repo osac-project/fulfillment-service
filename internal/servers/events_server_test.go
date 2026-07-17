@@ -314,4 +314,31 @@ var _ = Describe("Events server visibility", func() {
 		// Verify that the payload of the event is a compute instance:
 		Expect(collector.Events()[0].HasComputeInstance()).To(BeTrue())
 	})
+
+	It("Delivers event with bare metal instance payload", func() {
+		// Send an event with bare metal instance payload:
+		server, client := startServer(makeTenancy(
+			collections.NewSet("tenant-a"),
+		))
+		collector, cancel := startWatch(server, client)
+		defer cancel()
+		sendEvent(
+			privatev1.Event_builder{
+				Id:   uuid.New(),
+				Type: privatev1.EventType_EVENT_TYPE_OBJECT_CREATED,
+				BareMetalInstance: privatev1.BareMetalInstance_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Tenant: "tenant-a",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		)
+
+		// Wait till the event is delivered:
+		Eventually(collector.Events, time.Second).Should(HaveLen(1))
+
+		// Verify that the payload of the event is a bare metal instance:
+		Expect(collector.Events()[0].HasBareMetalInstance()).To(BeTrue())
+	})
 })
