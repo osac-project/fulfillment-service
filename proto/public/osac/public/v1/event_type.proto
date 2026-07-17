@@ -15,6 +15,7 @@ syntax = "proto3";
 
 package osac.public.v1;
 
+import "osac/public/v1/baremetal_instance_type.proto";
 import "osac/public/v1/cluster_template_type.proto";
 import "osac/public/v1/cluster_type.proto";
 import "osac/public/v1/cluster_version_type.proto";
@@ -48,6 +49,7 @@ message Event {
     InstanceType instance_type = 12;
     Tenant tenant = 13;
     ClusterVersion cluster_version = 14;
+    BareMetalInstance bare_metal_instance = 15;
   }
 }
 
