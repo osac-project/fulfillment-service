@@ -30,9 +30,14 @@ jobs:
     - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       with:
         persist-credentials: false
+    # Pinned so setup doesn't depend on a live "resolve latest buf CLI
+    # release from github.com" call on every run -- that call returned a
+    # raw github.com 404 page (not the JSON api.github.com error) on
+    # 2026-07-16, failing this step in under a second with no retry.
     - uses: bufbuild/buf-action@fd21066df7214747548607aaa45548ba2b9bc1ff  # v1
       with:
         setup_only: true
         token: ${{ secrets.BUF_TOKEN }}
+        version: 1.71.0
     - run: |
         buf push --label "${{ github.ref_name }}"
