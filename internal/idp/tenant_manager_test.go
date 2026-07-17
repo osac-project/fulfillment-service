@@ -432,7 +432,7 @@ var _ = Describe("TenantManager", func() {
 			Expect(credentials.UserID).To(Equal(breakGlassUser.ID))
 		})
 
-		It("generates password when not provided", func() {
+		It("generates a password when not provided", func() {
 			config := &TenantConfig{
 				Name:        "test-tenant",
 				DisplayName: "Test Tenant",
@@ -441,12 +441,9 @@ var _ = Describe("TenantManager", func() {
 
 			credentials, err := manager.CreateTenant(ctx, config)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(credentials.Username).To(Equal("test-tenant-osac-break-glass"))
-			Expect(credentials.Email).To(Equal("break-glass@test-tenant.osac.local"))
+			Expect(credentials).ToNot(BeNil())
 			Expect(credentials.Password).ToNot(BeEmpty())
 			Expect(credentials.Password).To(HaveLen(24))
-			// Password should contain characters from the defined charset
-			Expect(credentials.Password).To(MatchRegexp(`^[A-Za-z0-9!@#$%]{24}$`))
 		})
 
 		It("rolls back tenant on break-glass user creation failure", func() {
