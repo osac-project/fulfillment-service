@@ -26,10 +26,8 @@ columns:
 - header: PROJECT
   value: "has(this.metadata.project)? this.metadata.project: '-'"
 
-- header: USER
-  value: this.spec.user
-  type: osac.private.v1.User
-  lookup: true
+- header: USERS
+  value: "size(this.spec.users) > 0? this.spec.users.join(', '): '-'"
 
 - header: ROLE
   value: this.spec.role

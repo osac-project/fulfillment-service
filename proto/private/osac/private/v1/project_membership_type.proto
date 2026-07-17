@@ -32,16 +32,14 @@ message ProjectMembership {
   ProjectMembershipStatus status = 4;
 }
 
-// Describes a member of a project.
+// Describes the members of a project.
 message ProjectMembershipSpec {
-  // Role of the member in the project. This indicates whether the member is a viewer, manager, etc.
+  // Role of the members in the project. This indicates whether the members are viewers, managers, etc.
   ProjectMembershipRole role = 2;
 
-  // Unique identifier of the member. Currently members are users (referenced by their User object ID), but this leaves
-  // room for adding other kinds of members in the future, like groups.
-  oneof member {
-    string user = 3;
-  }
+  // Identifiers of the users that are members of the project. These are user identifiers (the `id` field of User
+  // objects), not usernames or email addresses.
+  repeated string users = 3;
 }
 
 // Describes the role of a member in a project.
@@ -64,6 +62,11 @@ message ProjectMembershipStatus {
   // Human-readable message providing additional details about the current state. For example, if the state is
   // FAILED, this field may explain why the synchronization with the identity provider failed.
   optional string message = 2;
+
+  // List of user IDs that have been successfully synced to the identity provider. This tracks which users
+  // currently have the role assigned, allowing the controller to detect when users are added or removed from
+  // the membership.
+  repeated string users = 3;
 }
 
 // Describes the state of a project membership.
