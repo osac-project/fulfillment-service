@@ -301,13 +301,20 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return fmt.Errorf("failed to create validation interceptor: %w", err)
 	}
 
-	// Create metadata fetcher for project authorization
+	// Create metadata fetchers for project and project membership authorization.
 	metadataFetcher, err := dao.NewMetadataFetcher().
 		SetLogger(c.logger).
 		SetTable("projects").
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create metadata fetcher: %w", err)
+	}
+	pmMetadataFetcher, err := dao.NewMetadataFetcher().
+		SetLogger(c.logger).
+		SetTable("project_memberships").
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create project membership metadata fetcher: %w", err)
 	}
 
 	// Prepare the authentication interceptor:
@@ -360,6 +367,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		SetLogger(c.logger).
 		AddAnonymousMethodRegex(anonymousMethodsRegex).
 		SetMetadataFetcher(metadataFetcher).
+		SetProjectMembershipMetadataFetcher(pmMetadataFetcher).
 		AddEmergencyServiceAccounts(c.args.emergencyServiceAccounts...).
 		Build()
 	if err != nil {

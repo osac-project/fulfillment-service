@@ -30,8 +30,8 @@ var _ = Describe("GrpcExternalAuthInterceptor project metadata authorization", f
 		It("Should fetch metadata from database and include in context extensions", func(ctx context.Context) {
 			interceptor, err := NewGrpcAuthzInterceptor().
 				SetLogger(logger).
-				SetMetadataFetcher(func(ctx context.Context, id string) (string, string) {
-					return "authoritative-tenant", "authoritative-project"
+				SetMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					return &ObjectMetadata{Tenant: "authoritative-tenant", Name: "authoritative-project"}
 				}).
 				SetInputCallback(func(ctx context.Context, input map[string]any) error {
 					Expect(input).To(HaveKey("context"))
@@ -69,8 +69,8 @@ var _ = Describe("GrpcExternalAuthInterceptor project metadata authorization", f
 		It("Should fetch metadata from database and include in context extensions", func(ctx context.Context) {
 			interceptor, err := NewGrpcAuthzInterceptor().
 				SetLogger(logger).
-				SetMetadataFetcher(func(ctx context.Context, id string) (string, string) {
-					return "authoritative-tenant", "authoritative-project"
+				SetMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					return &ObjectMetadata{Tenant: "authoritative-tenant", Name: "authoritative-project"}
 				}).
 				SetInputCallback(func(ctx context.Context, input map[string]any) error {
 					Expect(input).To(HaveKey("context"))
@@ -108,8 +108,8 @@ var _ = Describe("GrpcExternalAuthInterceptor project metadata authorization", f
 		It("Should fetch metadata from database and include in context extensions", func(ctx context.Context) {
 			interceptor, err := NewGrpcAuthzInterceptor().
 				SetLogger(logger).
-				SetMetadataFetcher(func(ctx context.Context, id string) (string, string) {
-					return "authoritative-tenant", "authoritative-project"
+				SetMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					return &ObjectMetadata{Tenant: "authoritative-tenant", Name: "authoritative-project"}
 				}).
 				SetInputCallback(func(ctx context.Context, input map[string]any) error {
 					Expect(input).To(HaveKey("context"))
@@ -152,8 +152,8 @@ var _ = Describe("GrpcExternalAuthInterceptor project metadata authorization", f
 		It("Should ignore client-provided metadata values and use authoritative database values", func(ctx context.Context) {
 			interceptor, err := NewGrpcAuthzInterceptor().
 				SetLogger(logger).
-				SetMetadataFetcher(func(ctx context.Context, id string) (string, string) {
-					return "authoritative-tenant", "authoritative-project"
+				SetMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					return &ObjectMetadata{Tenant: "authoritative-tenant", Name: "authoritative-project"}
 				}).
 				SetInputCallback(func(ctx context.Context, input map[string]any) error {
 					Expect(input).To(HaveKey("context"))
@@ -199,9 +199,9 @@ var _ = Describe("GrpcExternalAuthInterceptor project metadata authorization", f
 		It("Should not fetch metadata for list operations", func(ctx context.Context) {
 			interceptor, err := NewGrpcAuthzInterceptor().
 				SetLogger(logger).
-				SetMetadataFetcher(func(ctx context.Context, id string) (string, string) {
+				SetMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
 					Fail("metadata fetcher should not be called for list operations")
-					return "", ""
+					return nil
 				}).
 				SetInputCallback(func(ctx context.Context, input map[string]any) error {
 					Expect(input).To(HaveKey("context"))
@@ -232,13 +232,173 @@ var _ = Describe("GrpcExternalAuthInterceptor project metadata authorization", f
 		})
 	})
 
+	Describe("ProjectMemberships Get operation", func() {
+		It("Should fetch project membership metadata and include in context extensions", func(ctx context.Context) {
+			interceptor, err := NewGrpcAuthzInterceptor().
+				SetLogger(logger).
+				SetProjectMembershipMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					Expect(id).To(Equal("pm-123"))
+					return &ObjectMetadata{Tenant: "authoritative-tenant", Project: "authoritative-project"}
+				}).
+				SetInputCallback(func(ctx context.Context, input map[string]any) error {
+					Expect(input).To(HaveKey("context"))
+					context, ok := input["context"].(map[string]any)
+					Expect(ok).To(BeTrue())
+					Expect(context).To(HaveKey("context_extensions"))
+					extensions, ok := context["context_extensions"].(map[string]any)
+					Expect(ok).To(BeTrue())
+					Expect(extensions).To(HaveKeyWithValue("id", "pm-123"))
+					Expect(extensions).To(HaveKeyWithValue("tenant", "authoritative-tenant"))
+					Expect(extensions).To(HaveKeyWithValue("project", "authoritative-project"))
+					return nil
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			token := MakeTokenObject(nil, nil)
+			ctx = ContextWithToken(ctx, token)
+			_, _ = interceptor.UnaryServer(
+				ctx,
+				publicv1.ProjectMembershipsGetRequest_builder{
+					Id: "pm-123",
+				}.Build(),
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Get",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					return nil, nil
+				},
+			)
+		})
+	})
+
+	Describe("ProjectMemberships Delete operation", func() {
+		It("Should fetch project membership metadata and include in context extensions", func(ctx context.Context) {
+			interceptor, err := NewGrpcAuthzInterceptor().
+				SetLogger(logger).
+				SetProjectMembershipMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					return &ObjectMetadata{Tenant: "authoritative-tenant", Project: "authoritative-project"}
+				}).
+				SetInputCallback(func(ctx context.Context, input map[string]any) error {
+					Expect(input).To(HaveKey("context"))
+					context, ok := input["context"].(map[string]any)
+					Expect(ok).To(BeTrue())
+					Expect(context).To(HaveKey("context_extensions"))
+					extensions, ok := context["context_extensions"].(map[string]any)
+					Expect(ok).To(BeTrue())
+					Expect(extensions).To(HaveKeyWithValue("id", "pm-456"))
+					Expect(extensions).To(HaveKeyWithValue("tenant", "authoritative-tenant"))
+					Expect(extensions).To(HaveKeyWithValue("project", "authoritative-project"))
+					return nil
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			token := MakeTokenObject(nil, nil)
+			ctx = ContextWithToken(ctx, token)
+			_, _ = interceptor.UnaryServer(
+				ctx,
+				publicv1.ProjectMembershipsDeleteRequest_builder{
+					Id: "pm-456",
+				}.Build(),
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Delete",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					return nil, nil
+				},
+			)
+		})
+	})
+
+	Describe("ProjectMemberships Create operation", func() {
+		It("Should extract project name from request body and include in context extensions", func(ctx context.Context) {
+			interceptor, err := NewGrpcAuthzInterceptor().
+				SetLogger(logger).
+				SetProjectMembershipMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					Fail("project membership metadata fetcher should not be called for Create")
+					return nil
+				}).
+				SetInputCallback(func(ctx context.Context, input map[string]any) error {
+					Expect(input).To(HaveKey("context"))
+					context, ok := input["context"].(map[string]any)
+					Expect(ok).To(BeTrue())
+					Expect(context).To(HaveKey("context_extensions"))
+					extensions, ok := context["context_extensions"].(map[string]any)
+					Expect(ok).To(BeTrue())
+					Expect(extensions).To(HaveKeyWithValue("project", "my-project"))
+					Expect(extensions).ToNot(HaveKey("tenant"))
+					return nil
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			token := MakeTokenObject(nil, nil)
+			ctx = ContextWithToken(ctx, token)
+			_, _ = interceptor.UnaryServer(
+				ctx,
+				publicv1.ProjectMembershipsCreateRequest_builder{
+					Object: publicv1.ProjectMembership_builder{
+						Metadata: publicv1.Metadata_builder{
+							Name:    "test-membership",
+							Project: "my-project",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Create",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					return nil, nil
+				},
+			)
+		})
+	})
+
+	Describe("ProjectMemberships List operation", func() {
+		It("Should not fetch metadata for list operations", func(ctx context.Context) {
+			interceptor, err := NewGrpcAuthzInterceptor().
+				SetLogger(logger).
+				SetProjectMembershipMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					Fail("project membership metadata fetcher should not be called for List")
+					return nil
+				}).
+				SetInputCallback(func(ctx context.Context, input map[string]any) error {
+					Expect(input).To(HaveKey("context"))
+					context, ok := input["context"].(map[string]any)
+					Expect(ok).To(BeTrue())
+					Expect(context).To(HaveKey("context_extensions"))
+					extensions, ok := context["context_extensions"].(map[string]any)
+					Expect(ok).To(BeTrue())
+					Expect(extensions).ToNot(HaveKey("tenant"))
+					Expect(extensions).ToNot(HaveKey("project"))
+					return nil
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			token := MakeTokenObject(nil, nil)
+			ctx = ContextWithToken(ctx, token)
+			_, _ = interceptor.UnaryServer(
+				ctx,
+				publicv1.ProjectMembershipsListRequest_builder{}.Build(),
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/List",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					return nil, nil
+				},
+			)
+		})
+	})
+
 	Describe("Other resource operations", func() {
 		It("Should not fetch project metadata for Clusters operations", func(ctx context.Context) {
 			interceptor, err := NewGrpcAuthzInterceptor().
 				SetLogger(logger).
-				SetMetadataFetcher(func(ctx context.Context, id string) (string, string) {
+				SetMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
 					Fail("metadata fetcher should not be called for non-Projects resources")
-					return "", ""
+					return nil
 				}).
 				SetInputCallback(func(ctx context.Context, input map[string]any) error {
 					Expect(input).To(HaveKey("context"))

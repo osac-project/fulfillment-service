@@ -49,7 +49,6 @@ func (b *MetadataFetcherBuilder) SetTable(value string) *MetadataFetcherBuilder 
 // Build creates the metadata fetcher function.
 // This bypasses authorization checks since it's used FOR authorization.
 func (b *MetadataFetcherBuilder) Build() (auth.MetadataFetcher, error) {
-	// Check required parameters:
 	if b.logger == nil {
 		return nil, errors.New("logger is mandatory")
 	}
@@ -57,33 +56,30 @@ func (b *MetadataFetcherBuilder) Build() (auth.MetadataFetcher, error) {
 		return nil, errors.New("table is mandatory")
 	}
 
-	// Capture builder values in closure:
 	logger := b.logger
-	query := fmt.Sprintf("select tenant, name from %s where id = $1", b.table)
+	query := fmt.Sprintf("select tenant, name::text, project::text from %s where id = $1", b.table)
 
-	return func(ctx context.Context, id string) (tenant, project string) {
-		var objectTenant, objectName string
-
-		// Get transaction from context
+	return func(ctx context.Context, id string) *auth.ObjectMetadata {
 		tx, err := database.TxFromContext(ctx)
 		if err != nil {
 			logger.WarnContext(ctx, "Failed to get transaction from context for metadata fetch",
 				slog.String("id", id),
 				slog.Any("error", err),
 			)
-			return "", ""
+			return nil
 		}
 
+		var meta auth.ObjectMetadata
 		row := tx.QueryRow(ctx, query, id)
-		err = row.Scan(&objectTenant, &objectName)
+		err = row.Scan(&meta.Tenant, &meta.Name, &meta.Project)
 		if err != nil {
 			logger.WarnContext(ctx, "Failed to fetch object metadata for authorization",
 				slog.String("id", id),
 				slog.Any("error", err),
 			)
-			return "", ""
+			return nil
 		}
 
-		return objectTenant, objectName
+		return &meta
 	}, nil
 }

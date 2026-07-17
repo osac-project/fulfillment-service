@@ -270,46 +270,39 @@ allow if {
   }
 }
 
-# Tenant admins can create and manage tenant-scoped bare metal catalog items.
-# The application layer (generic server) enforces that the tenant field is set from caller identity.
+# Tenant admins can manage bare metal catalog items, users, identity providers,
+# projects, and project memberships within their tenant. The application layer
+# (generic server) enforces resource-level authorization via tenant field validation.
 allow if {
   is_tenant_admin
   grpc_method in {
     "/osac.public.v1.BareMetalInstanceCatalogItems/Create",
     "/osac.public.v1.BareMetalInstanceCatalogItems/Update",
     "/osac.public.v1.BareMetalInstanceCatalogItems/Delete",
-  }
-}
-
-# Tenant-scoped user management for tenant admins
-# Note: Tenant admins can manage users. IdP managers cannot (they only manage IdP config).
-# OPA performs method-level authorization (can this user call this method?).
-# The application layer enforces resource-level authorization via the generic server's
-# determineAssignedTenant validation, which ensures users can only assign a tenant they have visibility to.
-allow if {
-  is_tenant_admin
-  grpc_method in {
-    "/osac.public.v1.Users/Create",
-    "/osac.public.v1.Users/Get",
-    "/osac.public.v1.Users/List",
-    "/osac.public.v1.Users/Update",
-    "/osac.public.v1.Users/Delete",
-  }
-}
-
-# Tenant-scoped IdP management for both tenant admins and IdP managers
-# Both roles can perform CRUD operations on identity providers within their tenant.
-# The application layer (generic server) enforces that the tenant field is set from caller identity.
-allow if {
-  is_tenant_admin
-  grpc_method in {
     "/osac.public.v1.IdentityProviders/Create",
     "/osac.public.v1.IdentityProviders/Get",
     "/osac.public.v1.IdentityProviders/List",
     "/osac.public.v1.IdentityProviders/Update",
     "/osac.public.v1.IdentityProviders/Delete",
+    "/osac.public.v1.Users/Create",
+    "/osac.public.v1.Users/Get",
+    "/osac.public.v1.Users/List",
+    "/osac.public.v1.Users/Update",
+    "/osac.public.v1.Users/Delete",
+    "/osac.public.v1.Projects/Create",
+    "/osac.public.v1.Projects/Get",
+    "/osac.public.v1.Projects/List",
+    "/osac.public.v1.Projects/Update",
+    "/osac.public.v1.Projects/Delete",
+    "/osac.public.v1.ProjectMemberships/Create",
+    "/osac.public.v1.ProjectMemberships/Get",
+    "/osac.public.v1.ProjectMemberships/List",
+    "/osac.public.v1.ProjectMemberships/Update",
+    "/osac.public.v1.ProjectMemberships/Delete",
   }
 }
+
+# Tenant IdP managers can manage identity providers (but not users or project memberships).
 allow if {
   is_tenant_idp_manager
   grpc_method in {
@@ -327,12 +320,6 @@ allow if {
 }
 
 # Project authorization
-# Tenant admins can create projects
-allow if {
-  is_tenant_admin
-  grpc_method == "/osac.public.v1.Projects/Create"
-}
-
 # All authenticated users with client permissions can list projects
 # (application layer filters results based on actual project memberships)
 allow if {
@@ -364,6 +351,40 @@ allow if {
   input.auth.identity.authnMethod == "jwt"
   some group in subject_org_groups[tenant].groups
   group == sprintf("/%s/system:managers", [name])
+}
+
+# All authenticated users with client permissions can list project memberships
+# (application layer filters results based on actual project memberships)
+allow if {
+  has_client_permissions
+  grpc_method == "/osac.public.v1.ProjectMemberships/List"
+}
+
+# Project managers can create memberships for their project.
+# For Create, only the project name is available from the request body (no DB lookup),
+# so we iterate over the user's tenants to find a matching manager group.
+allow if {
+  grpc_method == "/osac.public.v1.ProjectMemberships/Create"
+  input.auth.identity.authnMethod == "jwt"
+  project := input.context.context_extensions.project
+  some tenant in subject_tenants
+  some group in subject_org_groups[tenant].groups
+  group == sprintf("/%s/system:managers", [project])
+}
+
+# Project managers can get, update, and delete memberships for their project.
+# Uses DB-authoritative tenant and project name from context extensions.
+allow if {
+  grpc_method in {
+    "/osac.public.v1.ProjectMemberships/Get",
+    "/osac.public.v1.ProjectMemberships/Update",
+    "/osac.public.v1.ProjectMemberships/Delete",
+  }
+  input.auth.identity.authnMethod == "jwt"
+  tenant := input.context.context_extensions.tenant
+  project := input.context.context_extensions.project
+  some group in subject_org_groups[tenant].groups
+  group == sprintf("/%s/system:managers", [project])
 }
 
 # Subject construction:
