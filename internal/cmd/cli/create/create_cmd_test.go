@@ -14,11 +14,13 @@ language governing permissions and limitations under the License.
 package create
 
 import (
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/ginkgo/v2/dsl/table"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
@@ -64,6 +66,35 @@ var _ = Describe("Create command", func() {
 			}
 
 			Expect(subcommandNames).To(ContainElements("baremetalinstancecatalogitem", "cluster", "clustercatalogitem", "computeinstance", "computeinstancecatalogitem", "hub", "publicip", "publicipattachment", "virtualnetwork", "subnet", "securitygroup"))
+		})
+	})
+
+	Describe("Output flag", func() {
+		It("registers the -o/--output flag", func() {
+			cmd := Cmd()
+			flag := cmd.Flags().Lookup("output")
+			Expect(flag).ToNot(BeNil())
+			Expect(flag.Shorthand).To(Equal("o"))
+			Expect(flag.DefValue).To(Equal(""))
+		})
+
+		It("encodes created objects with @type for JSON/YAML output", func() {
+			runner := &runnerContext{
+				marshalOptions: protojson.MarshalOptions{
+					UseProtoNames: true,
+				},
+			}
+			object := publicv1.Cluster_builder{
+				Id: "123",
+				Metadata: publicv1.Metadata_builder{
+					Name: "my-cluster",
+				}.Build(),
+			}.Build()
+
+			encoded, err := runner.encodeObject(object)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(encoded).To(HaveKeyWithValue("@type", "type.googleapis.com/osac.public.v1.Cluster"))
+			Expect(encoded).To(HaveKeyWithValue("id", "123"))
 		})
 	})
 })
