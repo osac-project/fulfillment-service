@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -125,8 +126,24 @@ func (c *runnerContext) run(cmd *cobra.Command, _ []string) error {
 	}
 	defer conn.Close()
 
+	catalogItemsClient := publicv1.NewBareMetalInstanceCatalogItemsClient(conn)
+	catalogItem, err := lookup.Find(c.args.catalogItem, "bare metal instance catalog item",
+		func(filter string, limit int32) ([]*publicv1.BareMetalInstanceCatalogItem, error) {
+			resp, err := catalogItemsClient.List(ctx, publicv1.BareMetalInstanceCatalogItemsListRequest_builder{
+				Filter: proto.String(filter),
+				Limit:  proto.Int32(limit),
+			}.Build())
+			if err != nil {
+				return nil, fmt.Errorf("failed to list catalog items: %w", err)
+			}
+			return resp.GetItems(), nil
+		})
+	if err != nil {
+		return err
+	}
+
 	spec := publicv1.BareMetalInstanceSpec_builder{
-		CatalogItem: c.args.catalogItem,
+		CatalogItem: catalogItem.GetId(),
 	}
 	if c.args.sshKey != "" {
 		sshKey := c.args.sshKey
