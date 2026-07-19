@@ -520,6 +520,8 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 }
 
 func (s *GenericServer[O]) prepareForCreate(ctx context.Context, request any) (O, error) {
+	var nilObject O
+
 	type requestIface interface {
 		GetObject() O
 	}
@@ -530,34 +532,26 @@ func (s *GenericServer[O]) prepareForCreate(ctx context.Context, request any) (O
 	} else {
 		requestMetadata := s.getMetadata(requestObject)
 		if requestMetadata != nil {
-			err := s.validateMetadata(ctx, requestMetadata)
-			if err != nil {
-				var zero O
-				return zero, err
+			if err := s.validateMetadata(ctx, requestMetadata); err != nil {
+				return nilObject, err
 			}
 		}
 	}
 
 	assignedCreator, err := s.determineAssignedCreator(ctx)
 	if err != nil {
-		var zero O
-		return zero, err
+		return nilObject, err
 	}
-	err = s.setCreator(ctx, requestObject, assignedCreator)
-	if err != nil {
-		var zero O
-		return zero, err
+	if err = s.setCreator(ctx, requestObject, assignedCreator); err != nil {
+		return nilObject, err
 	}
 
 	assignedTenant, err := s.determineAssignedTenant(ctx, requestObject, requestObject)
 	if err != nil {
-		var zero O
-		return zero, err
+		return nilObject, err
 	}
-	err = s.setTenant(ctx, requestObject, assignedTenant)
-	if err != nil {
-		var zero O
-		return zero, err
+	if err = s.setTenant(ctx, requestObject, assignedTenant); err != nil {
+		return nilObject, err
 	}
 
 	return requestObject, nil
