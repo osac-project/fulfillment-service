@@ -35,6 +35,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/token"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
+	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/rendering"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -62,6 +63,7 @@ func Cmd() *cobra.Command {
 		Short:                 shortHelp,
 		Long:                  longHelp,
 		RunE:                  runner.run,
+		ValidArgsFunction:     completeObjectTypes,
 	}
 	result.AddCommand(externalippool.Cmd())
 	result.AddCommand(kubeconfig.Cmd())
@@ -305,6 +307,13 @@ func (c *runnerContext) encodeObject(object proto.Message) (result any, err erro
 	}
 	err = json.Unmarshal(data, &result)
 	return
+}
+
+func completeObjectTypes(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return reflection.ObjectTypeNames(packages.Public...), cobra.ShellCompDirectiveNoFileComp
 }
 
 const shortHelp = `Get objects`
