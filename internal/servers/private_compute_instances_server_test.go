@@ -1009,6 +1009,12 @@ var _ = Describe("Private compute instances server", func() {
 					SetTenancyLogic(tenancy).
 					Build()
 				Expect(err).ToNot(HaveOccurred())
+
+				// Backing template for the catalog items created below, with full
+				// spec_defaults so catalog-item creation succeeds for the right
+				// reason (defaults resolved from the template), not because
+				// required-field validation was skipped.
+				createTemplate("ci-template-id")
 			})
 
 			createCICatalogItem := func(id string, published bool, fieldDefs []*privatev1.FieldDefinition) {
@@ -1117,6 +1123,41 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Code()).To(Equal(grpccodes.NotFound))
 				Expect(status.Message()).To(Equal(
 					"catalog item 'ci-cat-unpub' is not published",
+				))
+			})
+
+			It("Fails when catalog item does not reference a template", func() {
+				_, err := catalogItemsDao.Create().SetObject(
+					privatev1.ComputeInstanceCatalogItem_builder{
+						Id: "ci-cat-no-template",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "ci-cat-no-template-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item without template",
+						Published: true,
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-no-template",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"catalog item 'ci-cat-no-template' does not reference a template",
 				))
 			})
 
@@ -1282,6 +1323,60 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Message()).To(Equal(
 					"cannot change spec.catalog_item from 'ci-cat-immut' to 'different-catalog-item': catalog item is immutable",
 				))
+			})
+
+			It("Rejects creation via catalog item when template has no spec defaults", func() {
+				templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = templatesDao.Create().SetObject(
+					privatev1.ComputeInstanceTemplate_builder{
+						Id:    "ci-template-no-defaults",
+						Title: "Template without spec defaults",
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ComputeInstanceCatalogItem_builder{
+						Id: "ci-cat-no-defaults",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "ci-cat-no-defaults-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item without defaults",
+						Published: true,
+						Template:  "ci-template-no-defaults",
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-no-defaults",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("instance_type"))
+				Expect(status.Message()).To(ContainSubstring("image"))
+				Expect(status.Message()).To(ContainSubstring("boot_disk"))
+				Expect(status.Message()).To(ContainSubstring("run_strategy"))
 			})
 
 			It("Validates instance_type from template spec_defaults via catalog item", func() {
