@@ -37,9 +37,6 @@ import "osac/private/v1/network_class_type.proto";
 import "osac/private/v1/project_membership_type.proto";
 import "osac/private/v1/project_type.proto";
 import "osac/private/v1/tenant_type.proto";
-import "osac/private/v1/public_ip_attachment_type.proto";
-import "osac/private/v1/public_ip_pool_type.proto";
-import "osac/private/v1/public_ip_type.proto";
 import "osac/private/v1/role_binding_type.proto";
 import "osac/private/v1/role_type.proto";
 import "osac/private/v1/secret_type.proto";
@@ -52,7 +49,7 @@ import "osac/private/v1/virtual_network_type.proto";
 
 // Represents events delivered by the server.
 message Event {
-  reserved 18; // Previously Organization, removed in favor of Tenant.
+  reserved 16, 17, 18, 25; // 16-17, 25: Previously PublicIP resources, renamed to ExternalIP. 18: Previously Organization, removed in favor of Tenant.
 
   // Unique identifier of the event.
   string id = 1;
@@ -72,15 +69,12 @@ message Event {
     Subnet subnet = 12;
     VirtualNetwork virtual_network = 13;
     SecurityGroup security_group = 14;
-    PublicIPPool public_ip_pool = 16;
-    PublicIP public_ip = 17;
     User user = 19;
     Role role = 20;
     RoleBinding role_binding = 21;
     ClusterCatalogItem cluster_catalog_item = 22;
     ComputeInstanceCatalogItem compute_instance_catalog_item = 23;
     Project project = 24;
-    PublicIPAttachment public_ip_attachment = 25;
     InstanceType instance_type = 26;
     BareMetalInstance bare_metal_instance = 27;
     BareMetalInstanceTemplate bare_metal_instance_template = 28;

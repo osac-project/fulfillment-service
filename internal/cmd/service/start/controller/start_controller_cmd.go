@@ -52,9 +52,6 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/onboarding"
 	"github.com/osac-project/fulfillment-service/internal/controllers/project"
 	"github.com/osac-project/fulfillment-service/internal/controllers/projectmembership"
-	"github.com/osac-project/fulfillment-service/internal/controllers/publicip"
-	"github.com/osac-project/fulfillment-service/internal/controllers/publicipattachment"
-	"github.com/osac-project/fulfillment-service/internal/controllers/publicippool"
 	"github.com/osac-project/fulfillment-service/internal/controllers/role"
 	"github.com/osac-project/fulfillment-service/internal/controllers/rolebinding"
 	"github.com/osac-project/fulfillment-service/internal/controllers/securitygroup"
@@ -601,117 +598,6 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			r.logger.InfoContext(
 				ctx,
 				"Security group reconciler failed",
-				slog.Any("error", err),
-			)
-		}
-	}()
-
-	// Create the public IP pool reconciler:
-	r.logger.InfoContext(ctx, "Creating public IP pool reconciler")
-	publicIPPoolReconcilerFunction, err := publicippool.NewFunction().
-		SetLogger(r.logger).
-		SetConnection(r.client).
-		SetHubCache(hubCache).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create public IP pool reconciler function: %w", err)
-	}
-	publicIPPoolReconciler, err := controllers.NewReconciler[*privatev1.PublicIPPool]().
-		SetLogger(r.logger).
-		SetName("public_ip_pool").
-		SetClient(r.client).
-		SetFunction(publicIPPoolReconcilerFunction).
-		SetEventFilter("has(event.public_ip_pool) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
-		SetHealthReporter(healthAggregator).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create public IP pool reconciler: %w", err)
-	}
-
-	// Start the public IP pool reconciler:
-	r.logger.InfoContext(ctx, "Starting public IP pool reconciler")
-	go func() {
-		err := publicIPPoolReconciler.Start(ctx)
-		if err == nil || errors.Is(err, context.Canceled) {
-			r.logger.InfoContext(ctx, "Public IP pool reconciler finished")
-		} else {
-			r.logger.InfoContext(
-				ctx,
-				"Public IP pool reconciler failed",
-				slog.Any("error", err),
-			)
-		}
-	}()
-
-	// Create the public IP reconciler:
-	r.logger.InfoContext(ctx, "Creating public IP reconciler")
-	publicIPReconcilerFunction, err := publicip.NewFunction().
-		SetLogger(r.logger).
-		SetConnection(r.client).
-		SetHubCache(hubCache).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create public IP reconciler function: %w", err)
-	}
-	publicIPReconciler, err := controllers.NewReconciler[*privatev1.PublicIP]().
-		SetLogger(r.logger).
-		SetName("public_ip").
-		SetClient(r.client).
-		SetFunction(publicIPReconcilerFunction).
-		SetEventFilter("has(event.public_ip) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
-		SetHealthReporter(healthAggregator).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create public IP reconciler: %w", err)
-	}
-
-	// Start the public IP reconciler:
-	r.logger.InfoContext(ctx, "Starting public IP reconciler")
-	go func() {
-		err := publicIPReconciler.Start(ctx)
-		if err == nil || errors.Is(err, context.Canceled) {
-			r.logger.InfoContext(ctx, "Public IP reconciler finished")
-		} else {
-			r.logger.InfoContext(
-				ctx,
-				"Public IP reconciler failed",
-				slog.Any("error", err),
-			)
-		}
-	}()
-
-	// Create the public IP attachment reconciler:
-	r.logger.InfoContext(ctx, "Creating public IP attachment reconciler")
-	publicIPAttachmentReconcilerFunction, err := publicipattachment.NewFunction().
-		SetLogger(r.logger).
-		SetConnection(r.client).
-		SetHubCache(hubCache).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create public IP attachment reconciler function: %w", err)
-	}
-	publicIPAttachmentReconciler, err := controllers.NewReconciler[*privatev1.PublicIPAttachment]().
-		SetLogger(r.logger).
-		SetName("public_ip_attachment").
-		SetClient(r.client).
-		SetFunction(publicIPAttachmentReconcilerFunction).
-		SetEventFilter("has(event.public_ip_attachment) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
-		SetHealthReporter(healthAggregator).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create public IP attachment reconciler: %w", err)
-	}
-
-	// Start the public IP attachment reconciler:
-	r.logger.InfoContext(ctx, "Starting public IP attachment reconciler")
-	go func() {
-		err := publicIPAttachmentReconciler.Start(ctx)
-		if err == nil || errors.Is(err, context.Canceled) {
-			r.logger.InfoContext(ctx, "Public IP attachment reconciler finished")
-		} else {
-			r.logger.InfoContext(
-				ctx,
-				"Public IP attachment reconciler failed",
 				slog.Any("error", err),
 			)
 		}

@@ -828,7 +828,6 @@ var platformScopedTypes = map[protoreflect.Name]bool{
 	"IdentityProvider": true,
 	"InstanceType":     true,
 	"NetworkClass":     true,
-	"PublicIPPool":     true,
 	"Role":             true,
 	"StorageBackend":   true,
 	"StorageTier":      true,

@@ -223,7 +223,7 @@ In both cases the system reports progress and outcome through `status` fields an
 
 ### Types and messages
 
-Type names use `CamelCase`: `Cluster`, `ComputeInstance`, `PublicIPAttachment`.
+Type names use `CamelCase`: `Cluster`, `ComputeInstance`, `ExternalIPAttachment`.
 
 Nested spec and status messages follow the pattern `<Type>Spec` and `<Type>Status`:
 `ClusterSpec`, `ClusterStatus`.
