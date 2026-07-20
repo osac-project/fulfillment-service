@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,7 +64,7 @@ func validateFieldDefinitions(fieldDefinitions []*privatev1.FieldDefinition) err
 }
 
 // applyFieldDefinitions validates and applies field definitions from a catalog item against a resource spec.
-// Rejects any spec field not listed in field_definitions (except system fields catalog_item, template and template_parameters).
+// Rejects any spec field not listed in field_definitions (except system fields catalog_item and template).
 // For non-editable fields: rejects user-provided values; applies the catalog item default.
 // For editable fields with user values: validates against the JSON Schema.
 // For editable fields without user values: applies the catalog item default.
@@ -87,9 +88,8 @@ func applyFieldDefinitions(
 	}
 
 	allowedPaths := map[string]bool{
-		"catalog_item":        true,
-		"template":            true,
-		"template_parameters": true,
+		"catalog_item": true,
+		"template":     true,
 	}
 	for _, fd := range fieldDefinitions {
 		if fd.GetPath() != "" {
@@ -131,7 +131,7 @@ func applyFieldDefinitions(
 			if userHasValue && userVal != nil {
 				schema := fd.GetValidationSchema()
 				if schema != "" {
-					if err := validateAgainstSchema(compiler, path, userVal, schema); err != nil {
+					if err := validateAgainstSchema(compiler, path, unwrapAnyValue(path, userVal), schema); err != nil {
 						return err
 					}
 				}
@@ -188,8 +188,65 @@ func applyDefault(specMap map[string]any, path string, defaultVal *structpb.Valu
 		return grpcstatus.Errorf(grpccodes.Internal,
 			"failed to parse default for field '%s': %v", path, err)
 	}
+	if strings.HasPrefix(path, "template_parameters.") {
+		parsed = wrapValueAsAny(parsed)
+	}
 	setNestedValue(specMap, path, parsed)
 	return nil
+}
+
+// wrapValueAsAny wraps a Go value in the protobuf Any JSON format required by
+// map<string, google.protobuf.Any> fields. Int64 values are encoded as strings
+// per the proto3 JSON mapping.
+func wrapValueAsAny(value any) map[string]any {
+	switch v := value.(type) {
+	case bool:
+		return map[string]any{
+			"@type": "type.googleapis.com/google.protobuf.BoolValue",
+			"value": v,
+		}
+	case float64:
+		if v == float64(int64(v)) {
+			return map[string]any{
+				"@type": "type.googleapis.com/google.protobuf.Int64Value",
+				"value": fmt.Sprintf("%d", int64(v)),
+			}
+		}
+		return map[string]any{
+			"@type": "type.googleapis.com/google.protobuf.DoubleValue",
+			"value": v,
+		}
+	default:
+		return map[string]any{
+			"@type": "type.googleapis.com/google.protobuf.StringValue",
+			"value": fmt.Sprintf("%v", v),
+		}
+	}
+}
+
+// unwrapAnyValue extracts the inner value from a protobuf Any JSON wrapper
+// for template_parameters paths. For other paths, returns the value unchanged.
+func unwrapAnyValue(path string, val any) any {
+	if !strings.HasPrefix(path, "template_parameters.") {
+		return val
+	}
+	m, ok := val.(map[string]any)
+	if !ok {
+		return val
+	}
+	v, exists := m["value"]
+	if !exists {
+		return val
+	}
+	typeURL, _ := m["@type"].(string)
+	if strings.HasSuffix(typeURL, "Int64Value") || strings.HasSuffix(typeURL, "UInt64Value") {
+		if s, ok := v.(string); ok {
+			if f, err := strconv.ParseFloat(s, 64); err == nil {
+				return f
+			}
+		}
+	}
+	return v
 }
 
 func validateAgainstSchema(compiler *jsonschema.Compiler, path string, value any, schemaStr string) error {
