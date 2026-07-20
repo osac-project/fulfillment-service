@@ -25,6 +25,7 @@ import (
 	"buf.build/go/protovalidate"
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
+	grpcmetadata "google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -462,40 +463,16 @@ func (s *GenericServer[O]) Get(ctx context.Context, request any, response any) e
 }
 
 func (s *GenericServer[O]) Create(ctx context.Context, request any, response any) error {
-	// Extract the object from the request message:
-	type requestIface interface {
-		GetObject() O
-	}
-	requestMsg := request.(requestIface)
-	requestObject := requestMsg.GetObject()
-	if s.isNil(requestObject) {
-		requestObject = proto.Clone(s.template).(O)
-	} else {
-		requestMetadata := s.getMetadata(requestObject)
-		if requestMetadata != nil {
-			err := s.validateMetadata(ctx, requestMetadata)
-			if err != nil {
-				return err
-			}
-		}
+	// Route dry-run requests to skip persistence and event emission. Resource-specific
+	// validation (template resolution, catalog item field definitions, spec defaults)
+	// runs in the calling server before reaching GenericServer. The dry-run flag is
+	// carried as gRPC metadata (HTTP header X-Dry-Run: true) rather than a proto field
+	// to keep request messages purely declarative.
+	if isDryRun(ctx) {
+		return s.createDryRun(ctx, request, response)
 	}
 
-	// Calculate the assigned creator:
-	assignedCreator, err := s.determineAssignedCreator(ctx)
-	if err != nil {
-		return err
-	}
-	err = s.setCreator(ctx, requestObject, assignedCreator)
-	if err != nil {
-		return err
-	}
-
-	// Calculate the assigned tenant:
-	assignedTenant, err := s.determineAssignedTenant(ctx, requestObject, requestObject)
-	if err != nil {
-		return err
-	}
-	err = s.setTenant(ctx, requestObject, assignedTenant)
+	requestObject, err := s.prepareForCreate(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -539,6 +516,76 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	s.setPointer(response, responseMsg)
 
 	return nil
+}
+
+func (s *GenericServer[O]) prepareForCreate(ctx context.Context, request any) (O, error) {
+	var nilObject O
+
+	type requestIface interface {
+		GetObject() O
+	}
+	requestMsg := request.(requestIface)
+	requestObject := requestMsg.GetObject()
+	if s.isNil(requestObject) {
+		requestObject = proto.Clone(s.template).(O)
+	} else {
+		requestMetadata := s.getMetadata(requestObject)
+		if requestMetadata != nil {
+			if err := s.validateMetadata(ctx, requestMetadata); err != nil {
+				return nilObject, err
+			}
+		}
+	}
+
+	assignedCreator, err := s.determineAssignedCreator(ctx)
+	if err != nil {
+		return nilObject, err
+	}
+	if err = s.setCreator(ctx, requestObject, assignedCreator); err != nil {
+		return nilObject, err
+	}
+
+	assignedTenant, err := s.determineAssignedTenant(ctx, requestObject, requestObject)
+	if err != nil {
+		return nilObject, err
+	}
+	if err = s.setTenant(ctx, requestObject, assignedTenant); err != nil {
+		return nilObject, err
+	}
+
+	return requestObject, nil
+}
+
+func (s *GenericServer[O]) createDryRun(ctx context.Context, request any, response any) error {
+	requestObject, err := s.prepareForCreate(ctx, request)
+	if err != nil {
+		return err
+	}
+
+	type responseIface interface {
+		SetObject(O)
+	}
+	responseMsg := proto.Clone(s.createResponse).(responseIface)
+	responseMsg.SetObject(requestObject)
+	s.setPointer(response, responseMsg)
+
+	return nil
+}
+
+const dryRunMetadataKey = "x-dry-run"
+
+func isDryRun(ctx context.Context) bool {
+	md, ok := grpcmetadata.FromIncomingContext(ctx)
+	if !ok {
+		return false
+	}
+	values := md.Get(dryRunMetadataKey)
+	for _, v := range values {
+		if strings.EqualFold(v, "true") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *GenericServer[O]) Update(ctx context.Context, request any, response any) error {
