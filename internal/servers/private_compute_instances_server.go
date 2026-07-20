@@ -221,21 +221,25 @@ func (s *PrivateComputeInstancesServer) Create(ctx context.Context,
 			"catalog_item and template are mutually exclusive")
 		return
 	}
+	var template *privatev1.ComputeInstanceTemplate
 	if catalogItemRef != "" {
 		err = s.validateAndTransformCatalogItem(ctx, request.GetObject())
 		if err != nil {
 			return
 		}
+		template, err = s.fetchTemplate(ctx, spec.GetTemplate())
 	} else {
-		template, templateErr := s.fetchAndValidateTemplate(ctx, request.GetObject())
-		if templateErr != nil {
-			err = templateErr
-			return
-		}
-		err = s.applySpecDefaults(request.GetObject().GetSpec(), template)
-		if err != nil {
-			return
-		}
+		template, err = s.fetchAndValidateTemplate(ctx, request.GetObject())
+	}
+	if err != nil {
+		return
+	}
+
+	// Apply the template's spec defaults and validate required fields, regardless
+	// of whether the template was referenced directly or resolved via a catalog item.
+	err = s.applySpecDefaults(spec, template)
+	if err != nil {
+		return
 	}
 
 	// Validate instance type existence and state (D-02: validate-only, no resolution).
@@ -784,7 +788,15 @@ func (s *PrivateComputeInstancesServer) validateNetworkReferencesState(
 	return nil
 }
 
-func (s *PrivateComputeInstancesServer) validateAndTransformCatalogItem(ctx context.Context, ci *privatev1.ComputeInstance) error {
+// validateAndTransformCatalogItem validates a catalog item reference, ensures it references
+// a template, and applies its field definitions to the compute instance spec. Every catalog
+// item must reference a template — it's the only source of the spec defaults (image,
+// boot_disk, run_strategy, instance_type) that provisioning requires; a catalog item without
+// one can never produce a valid compute instance. Callers fetch the template separately once
+// this succeeds, using the template reference now set on the spec.
+func (s *PrivateComputeInstancesServer) validateAndTransformCatalogItem(
+	ctx context.Context, ci *privatev1.ComputeInstance,
+) error {
 	if ci == nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "object is mandatory")
 	}
@@ -803,15 +815,13 @@ func (s *PrivateComputeInstancesServer) validateAndTransformCatalogItem(ctx cont
 	}
 
 	templateRef := catalogItem.GetTemplate()
-	if templateRef != "" {
-		ci.GetSpec().SetTemplate(templateRef)
+	if templateRef == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"catalog item '%s' does not reference a template", catalogItemRef)
 	}
+	ci.GetSpec().SetTemplate(templateRef)
 
-	if err := applyFieldDefinitions(ci.GetSpec(), catalogItem.GetFieldDefinitions()); err != nil {
-		return err
-	}
-
-	return nil
+	return applyFieldDefinitions(ci.GetSpec(), catalogItem.GetFieldDefinitions())
 }
 
 func (s *PrivateComputeInstancesServer) lookupCatalogItem(ctx context.Context,

@@ -39,6 +39,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/externalipattachment"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/hub"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/instancetype"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/natgateway"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/publicip"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/publicipattachment"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/securitygroup"
@@ -71,6 +72,7 @@ func Cmd() *cobra.Command {
 	result.AddCommand(externalipattachment.Cmd())
 	result.AddCommand(hub.Cmd())
 	result.AddCommand(instancetype.Cmd())
+	result.AddCommand(natgateway.Cmd())
 	result.AddCommand(publicip.Cmd())
 	result.AddCommand(publicipattachment.Cmd())
 	result.AddCommand(virtualnetwork.Cmd())

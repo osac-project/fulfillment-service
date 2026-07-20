@@ -49,7 +49,7 @@ const (
 	// The cluster version is fully available for new cluster creation.
 	//
 	// This is the default state assigned on creation. Returning to ACTIVE from DEPRECATED or OBSOLETE
-	// clears the corresponding deprecation timestamps.
+	// retains the corresponding deprecation timestamps as historical record.
 	ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE ClusterVersionState = 1
 	// The cluster version is available with warnings; migration to a newer version is recommended.
 	//
@@ -104,8 +104,8 @@ func (x ClusterVersionState) Number() protoreflect.EnumNumber {
 // Contains deprecation details for a cluster version.
 //
 // The timestamps are managed by the server during lifecycle state transitions. The deprecation_timestamp is set when
-// the version transitions to DEPRECATED, and the obsolescence_timestamp is set when it transitions to OBSOLETE. Both
-// are cleared if the version returns to ACTIVE.
+// the version transitions to DEPRECATED, and the obsolescence_timestamp is set when it transitions to OBSOLETE.
+// Timestamps are retained as historical record when the version returns to ACTIVE.
 type ClusterVersionDeprecation struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
 	// When deprecation was announced. Auto-set on transition to DEPRECATED.

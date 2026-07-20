@@ -188,6 +188,8 @@ allow if {
     "/osac.public.v1.ClusterCatalogItems/List",
     "/osac.public.v1.ClusterTemplates/Get",
     "/osac.public.v1.ClusterTemplates/List",
+    "/osac.public.v1.ClusterVersions/Get",
+    "/osac.public.v1.ClusterVersions/List",
     "/osac.public.v1.Clusters/Create",
     "/osac.public.v1.Clusters/Delete",
     "/osac.public.v1.Clusters/Get",

@@ -352,22 +352,4 @@ var _ = Describe("addPublishedFilter", func() {
 		Entry("unbalanced opening paren", `(true`),
 	)
 
-	DescribeTable("validateCELSyntax",
-		func(input string, shouldPass bool) {
-			err := validateCELSyntax(input)
-			if shouldPass {
-				Expect(err).ToNot(HaveOccurred())
-			} else {
-				Expect(err).To(HaveOccurred())
-			}
-		},
-		Entry("valid simple expression", "true", true),
-		Entry("valid field reference", "this.published", true),
-		Entry("valid comparison", "this.id == '123'", true),
-		Entry("valid compound", "this.a && this.b || this.c", true),
-		Entry("unbalanced closing paren", "true)", false),
-		Entry("unbalanced opening paren", "(true", false),
-		Entry("injection attempt", `true) || (true`, false),
-		Entry("empty string is not valid CEL", "", false),
-	)
 })

@@ -26,6 +26,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
 	"github.com/osac-project/fulfillment-service/internal/idp"
 )
 
@@ -95,8 +96,9 @@ var _ = Describe("User Reconciler", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					Metadata: privatev1.Metadata_builder{
-						Name:   "testuser",
-						Tenant: "test-tenant",
+						Name:       "testuser",
+						Tenant:     "test-tenant",
+						Finalizers: []string{finalizers.Controller},
 					}.Build(),
 					Spec: privatev1.UserSpec_builder{
 						Username: "testuser",
@@ -128,8 +130,9 @@ var _ = Describe("User Reconciler", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					Metadata: privatev1.Metadata_builder{
-						Name:   "testuser",
-						Tenant: "test-tenant",
+						Name:       "testuser",
+						Tenant:     "test-tenant",
+						Finalizers: []string{finalizers.Controller},
 					}.Build(),
 					Spec: privatev1.UserSpec_builder{
 						Username: "testuser",
@@ -163,8 +166,9 @@ var _ = Describe("User Reconciler", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					Metadata: privatev1.Metadata_builder{
-						Name:   "testuser",
-						Tenant: "test-tenant",
+						Name:       "testuser",
+						Tenant:     "test-tenant",
+						Finalizers: []string{finalizers.Controller},
 					}.Build(),
 					Spec: privatev1.UserSpec_builder{
 						Username: "testuser",
@@ -194,8 +198,9 @@ var _ = Describe("User Reconciler", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					Metadata: privatev1.Metadata_builder{
-						Name:   "testuser",
-						Tenant: "test-tenant",
+						Name:       "testuser",
+						Tenant:     "test-tenant",
+						Finalizers: []string{finalizers.Controller},
 					}.Build(),
 					Spec: privatev1.UserSpec_builder{
 						Username: "testuser",
@@ -225,8 +230,9 @@ var _ = Describe("User Reconciler", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					Metadata: privatev1.Metadata_builder{
-						Name:   "testuser",
-						Tenant: "test-tenant",
+						Name:       "testuser",
+						Tenant:     "test-tenant",
+						Finalizers: []string{finalizers.Controller},
 					}.Build(),
 					Spec: privatev1.UserSpec_builder{
 						Username: "testuser",
@@ -254,15 +260,13 @@ var _ = Describe("User Reconciler", func() {
 			})
 		})
 
-		Context("when user is being deleted", func() {
-			It("should skip reconciliation", func() {
-				now := timestamppb.New(time.Now())
+		Context("when user has no finalizer", func() {
+			It("should add the finalizer and return early", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					Metadata: privatev1.Metadata_builder{
-						Name:              "testuser",
-						Tenant:            "test-tenant",
-						DeletionTimestamp: now,
+						Name:   "testuser",
+						Tenant: "test-tenant",
 					}.Build(),
 					Spec: privatev1.UserSpec_builder{
 						Username: "testuser",
@@ -271,9 +275,6 @@ var _ = Describe("User Reconciler", func() {
 					Status: privatev1.UserStatus_builder{}.Build(),
 				}.Build()
 
-				// Should not call GetUserByUsername since user is being deleted
-				// No mock expectations set
-
 				task := &task{
 					r:    function,
 					user: user,
@@ -281,6 +282,7 @@ var _ = Describe("User Reconciler", func() {
 
 				err := task.reconcile(ctx)
 				Expect(err).ToNot(HaveOccurred())
+				Expect(user.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
 				Expect(user.GetStatus().GetKeycloakUserId()).To(BeEmpty())
 			})
 		})
@@ -290,8 +292,9 @@ var _ = Describe("User Reconciler", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					Metadata: privatev1.Metadata_builder{
-						Name:   "testuser",
-						Tenant: "test-tenant",
+						Name:       "testuser",
+						Tenant:     "test-tenant",
+						Finalizers: []string{finalizers.Controller},
 					}.Build(),
 					Spec: privatev1.UserSpec_builder{
 						// No username
@@ -319,7 +322,8 @@ var _ = Describe("User Reconciler", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					Metadata: privatev1.Metadata_builder{
-						Name: "testuser",
+						Name:       "testuser",
+						Finalizers: []string{finalizers.Controller},
 						// No tenant
 					}.Build(),
 					Spec: privatev1.UserSpec_builder{
@@ -344,7 +348,7 @@ var _ = Describe("User Reconciler", func() {
 		})
 
 		Context("when user has no metadata", func() {
-			It("should skip reconciliation for deletion check", func() {
+			It("should add metadata with finalizer", func() {
 				user := privatev1.User_builder{
 					Id: "user-123",
 					// No metadata
@@ -355,9 +359,6 @@ var _ = Describe("User Reconciler", func() {
 					Status: privatev1.UserStatus_builder{}.Build(),
 				}.Build()
 
-				// Should not call GetUserByUsername
-				// No mock expectations set
-
 				task := &task{
 					r:    function,
 					user: user,
@@ -365,6 +366,213 @@ var _ = Describe("User Reconciler", func() {
 
 				err := task.reconcile(ctx)
 				Expect(err).ToNot(HaveOccurred())
+				Expect(user.HasMetadata()).To(BeTrue())
+				Expect(user.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+			})
+		})
+	})
+
+	Describe("Delete logic", func() {
+		Context("when user has keycloak_user_id", func() {
+			It("should delete user from IDP and remove finalizer", func() {
+				now := timestamppb.New(time.Now())
+				user := privatev1.User_builder{
+					Id: "user-123",
+					Metadata: privatev1.Metadata_builder{
+						Name:              "testuser",
+						Tenant:            "test-tenant",
+						DeletionTimestamp: now,
+						Finalizers:        []string{finalizers.Controller},
+					}.Build(),
+					Spec: privatev1.UserSpec_builder{
+						Username: "testuser",
+						Email:    "test@example.com",
+					}.Build(),
+					Status: privatev1.UserStatus_builder{
+						KeycloakUserId: "keycloak-user-id-456",
+					}.Build(),
+				}.Build()
+
+				mockClient.EXPECT().
+					DeleteUser(ctx, "test-tenant", "keycloak-user-id-456").
+					Return(nil)
+
+				task := &task{
+					r:    function,
+					user: user,
+				}
+
+				err := task.delete(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(user.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
+			})
+		})
+
+		Context("when IDP deletion fails", func() {
+			It("should return error and keep finalizer", func() {
+				now := timestamppb.New(time.Now())
+				user := privatev1.User_builder{
+					Id: "user-123",
+					Metadata: privatev1.Metadata_builder{
+						Name:              "testuser",
+						Tenant:            "test-tenant",
+						DeletionTimestamp: now,
+						Finalizers:        []string{finalizers.Controller},
+					}.Build(),
+					Spec: privatev1.UserSpec_builder{
+						Username: "testuser",
+						Email:    "test@example.com",
+					}.Build(),
+					Status: privatev1.UserStatus_builder{
+						KeycloakUserId: "keycloak-user-id-456",
+					}.Build(),
+				}.Build()
+
+				mockClient.EXPECT().
+					DeleteUser(ctx, "test-tenant", "keycloak-user-id-456").
+					Return(errors.New("IDP connection failed"))
+
+				task := &task{
+					r:    function,
+					user: user,
+				}
+
+				err := task.delete(ctx)
+				Expect(err).To(HaveOccurred())
+				Expect(user.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+			})
+		})
+
+		Context("when user has no keycloak_user_id", func() {
+			It("should look up user by username and delete from IDP", func() {
+				now := timestamppb.New(time.Now())
+				user := privatev1.User_builder{
+					Id: "user-123",
+					Metadata: privatev1.Metadata_builder{
+						Name:              "testuser",
+						Tenant:            "test-tenant",
+						DeletionTimestamp: now,
+						Finalizers:        []string{finalizers.Controller},
+					}.Build(),
+					Spec: privatev1.UserSpec_builder{
+						Username: "testuser",
+						Email:    "test@example.com",
+					}.Build(),
+					Status: privatev1.UserStatus_builder{}.Build(),
+				}.Build()
+
+				gomock.InOrder(
+					mockClient.EXPECT().
+						GetUserByUsername(ctx, "test-tenant", "testuser").
+						Return(&idp.User{
+							ID:       "resolved-keycloak-id",
+							Username: "testuser",
+						}, nil),
+					mockClient.EXPECT().
+						DeleteUser(ctx, "test-tenant", "resolved-keycloak-id").
+						Return(nil),
+				)
+
+				task := &task{
+					r:    function,
+					user: user,
+				}
+
+				err := task.delete(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(user.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
+			})
+
+			It("should remove finalizer when user not found in IDP", func() {
+				now := timestamppb.New(time.Now())
+				user := privatev1.User_builder{
+					Id: "user-123",
+					Metadata: privatev1.Metadata_builder{
+						Name:              "testuser",
+						Tenant:            "test-tenant",
+						DeletionTimestamp: now,
+						Finalizers:        []string{finalizers.Controller},
+					}.Build(),
+					Spec: privatev1.UserSpec_builder{
+						Username: "testuser",
+						Email:    "test@example.com",
+					}.Build(),
+					Status: privatev1.UserStatus_builder{}.Build(),
+				}.Build()
+
+				mockClient.EXPECT().
+					GetUserByUsername(ctx, "test-tenant", "testuser").
+					Return(nil, nil)
+
+				task := &task{
+					r:    function,
+					user: user,
+				}
+
+				err := task.delete(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(user.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
+			})
+
+			It("should return error when IDP lookup fails", func() {
+				now := timestamppb.New(time.Now())
+				user := privatev1.User_builder{
+					Id: "user-123",
+					Metadata: privatev1.Metadata_builder{
+						Name:              "testuser",
+						Tenant:            "test-tenant",
+						DeletionTimestamp: now,
+						Finalizers:        []string{finalizers.Controller},
+					}.Build(),
+					Spec: privatev1.UserSpec_builder{
+						Username: "testuser",
+						Email:    "test@example.com",
+					}.Build(),
+					Status: privatev1.UserStatus_builder{}.Build(),
+				}.Build()
+
+				mockClient.EXPECT().
+					GetUserByUsername(ctx, "test-tenant", "testuser").
+					Return(nil, errors.New("IDP connection failed"))
+
+				task := &task{
+					r:    function,
+					user: user,
+				}
+
+				err := task.delete(ctx)
+				Expect(err).To(HaveOccurred())
+				Expect(user.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+			})
+		})
+
+		Context("when user has no tenant", func() {
+			It("should skip IDP deletion and remove finalizer", func() {
+				now := timestamppb.New(time.Now())
+				user := privatev1.User_builder{
+					Id: "user-123",
+					Metadata: privatev1.Metadata_builder{
+						Name:              "testuser",
+						DeletionTimestamp: now,
+						Finalizers:        []string{finalizers.Controller},
+					}.Build(),
+					Spec: privatev1.UserSpec_builder{
+						Username: "testuser",
+						Email:    "test@example.com",
+					}.Build(),
+					Status: privatev1.UserStatus_builder{
+						KeycloakUserId: "keycloak-user-id-456",
+					}.Build(),
+				}.Build()
+
+				task := &task{
+					r:    function,
+					user: user,
+				}
+
+				err := task.delete(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(user.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
 			})
 		})
 	})
