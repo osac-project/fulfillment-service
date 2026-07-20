@@ -109,10 +109,10 @@ func Cmd() *cobra.Command {
 		imageSourceTypeFlagHelp,
 	)
 	flags.StringVar(
-		&runner.args.sshKey,
-		"ssh-key",
+		&runner.args.sshPublicKey,
+		"ssh-public-key",
 		"",
-		sshKeyFlagHelp,
+		sshPublicKeyFlagHelp,
 	)
 	flags.Int32Var(
 		&runner.args.bootDiskSizeGiB,
@@ -166,7 +166,7 @@ type runnerContext struct {
 		instanceType            string
 		imageSourceRef          string
 		imageSourceType         string
-		sshKey                  string
+		sshPublicKey            string
 		bootDiskSizeGiB         int32
 		additionalDisks         []string
 		runStrategy             string
@@ -711,8 +711,8 @@ func (c *runnerContext) buildSpec(templateID string,
 	if c.args.instanceType != "" {
 		spec.InstanceType = new(c.args.instanceType)
 	}
-	if c.args.sshKey != "" {
-		spec.SshKey = new(c.args.sshKey)
+	if c.args.sshPublicKey != "" {
+		spec.SshPublicKey = new(c.args.sshPublicKey)
 	}
 	if c.args.bootDiskSizeGiB > 0 {
 		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
@@ -857,8 +857,8 @@ func (c *runnerContext) buildSpecFromCatalogItem(catalogItemID string) (*publicv
 	if c.args.instanceType != "" {
 		spec.InstanceType = new(c.args.instanceType)
 	}
-	if c.args.sshKey != "" {
-		spec.SshKey = new(c.args.sshKey)
+	if c.args.sshPublicKey != "" {
+		spec.SshPublicKey = new(c.args.sshPublicKey)
 	}
 	if c.args.bootDiskSizeGiB > 0 {
 		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
@@ -1002,7 +1002,7 @@ const imageSourceTypeFlagHelp = `
 _TYPE_ - Image source type.
 `
 
-const sshKeyFlagHelp = `
+const sshPublicKeyFlagHelp = `
 _KEY_ - SSH public key.
 `
 

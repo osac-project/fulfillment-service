@@ -136,7 +136,7 @@ message ComputeInstanceSpec {
   reserved "cores", "memory_gib";
 
   // SSH public key.
-  optional string ssh_key = 7;
+  optional string ssh_public_key = 7;
 
   // Boot disk configuration.
   optional ComputeInstanceDisk boot_disk = 8;

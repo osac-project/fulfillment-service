@@ -135,7 +135,7 @@ description: General-purpose virtual machine with KubeVirt.
 template: "osac.templates.ocp_virt_vm"
 published: true
 field_definitions:
-  - path: ssh_key
+  - path: ssh_public_key
     display_name: SSH Key
     editable: true
     default: "ssh-ed25519 AAAA..."
@@ -219,7 +219,7 @@ catalog item, the server rejects any spec field not listed in `field_definitions
 
 | Path | Description |
 |------|-------------|
-| `ssh_key` | SSH public key |
+| `ssh_public_key` | SSH public key |
 | `instance_type` | Instance Type includes number of CPU cores, memory, etc. |
 | `run_strategy` | VM run strategy (e.g., `Always`, `Halted`) |
 | `user_data` | Cloud-init or ignition user data |

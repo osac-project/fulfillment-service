@@ -168,7 +168,7 @@ var _ = Describe("buildSpec", func() {
 						Template:     template,
 						InstanceType: new("standard-4-8"),
 						RunStrategy:  new("Always"),
-						SshKey:       new("ssh-rsa AAAA..."),
+						SshPublicKey: new("ssh-rsa AAAA..."),
 						Image: privatev1.ComputeInstanceImage_builder{
 							SourceType: "registry",
 							SourceRef:  "quay.io/fedora/fedora:latest",

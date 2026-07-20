@@ -651,8 +651,8 @@ func (t *task) addExplicitFields(ctx context.Context, spec *osacv1alpha1.Compute
 	if ciSpec.HasRunStrategy() {
 		spec.RunStrategy = osacv1alpha1.RunStrategyType(ciSpec.GetRunStrategy())
 	}
-	if ciSpec.HasSshKey() {
-		spec.SSHKey = ciSpec.GetSshKey()
+	if ciSpec.HasSshPublicKey() {
+		spec.SSHKey = ciSpec.GetSshPublicKey()
 	}
 	if t.userDataSecretName != "" {
 		spec.UserDataSecretRef = &corev1.LocalObjectReference{
