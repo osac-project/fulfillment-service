@@ -16,7 +16,6 @@ package it
 import (
 	"context"
 	"encoding/json"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,22 +26,16 @@ var _ = Describe("CLI Tenant", Label("cli", "tenant"), func() {
 	var homeDir string
 
 	BeforeEach(func() {
-		var err error
-		homeDir, err = tool.NewCLIHomeDir()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := os.RemoveAll(homeDir)
-			Expect(err).ToNot(HaveOccurred())
-		})
+		homeDir = setupCLIHomeDir()
 	})
 
 	It("Set tenant scopes subsequent commands", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "tenant", usersGroup)
 		Expect(exitCode).To(Equal(0), "setting tenant should succeed")
 		Expect(stdout).To(ContainSubstring("saved"))
+		Expect(stdout).To(ContainSubstring(usersGroup))
 
 		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "tenant")
 		Expect(exitCode).To(Equal(0), "showing tenant should succeed")
@@ -50,22 +43,17 @@ var _ = Describe("CLI Tenant", Label("cli", "tenant"), func() {
 	})
 
 	It("Show tenant without one set hints at usage", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "tenant")
 		Expect(exitCode).To(Equal(0), "showing tenant should succeed even with none set")
-		Expect(stdout).To(SatisfyAny(
-			ContainSubstring("tenant"),
-			ContainSubstring("No tenant"),
-		))
+		Expect(stdout).To(ContainSubstring("No tenant is currently set"))
 	})
 
 	It("Clear tenant removes saved scope", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
-		_, _, exitCode = tool.RunCLI(ctx, homeDir, "tenant", usersGroup)
+		_, _, exitCode := tool.RunCLI(ctx, homeDir, "tenant", usersGroup)
 		Expect(exitCode).To(Equal(0), "setting tenant should succeed")
 
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "tenant", "--clear")
@@ -74,30 +62,30 @@ var _ = Describe("CLI Tenant", Label("cli", "tenant"), func() {
 
 		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "tenant")
 		Expect(exitCode).To(Equal(0))
+		Expect(stdout).To(ContainSubstring("No tenant is currently set"))
 		Expect(stdout).ToNot(ContainSubstring(usersGroup))
 	})
 
 	It("Tenant JSON output is valid", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
-		_, _, exitCode = tool.RunCLI(ctx, homeDir, "tenant", usersGroup)
+		_, _, exitCode := tool.RunCLI(ctx, homeDir, "tenant", usersGroup)
 		Expect(exitCode).To(Equal(0), "setting tenant should succeed")
 
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "tenant", "-o", "json")
 		Expect(exitCode).To(Equal(0), "tenant -o json should succeed")
 		Expect(stdout).ToNot(BeEmpty())
 
-		var parsed any
+		var parsed map[string]any
 		err := json.Unmarshal([]byte(stdout), &parsed)
 		Expect(err).ToNot(HaveOccurred(), "tenant JSON output should be valid")
+		Expect(stdout).To(ContainSubstring(usersGroup), "JSON output should include the tenant name")
 	})
 
 	It("Tenant YAML output is valid", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
-		_, _, exitCode = tool.RunCLI(ctx, homeDir, "tenant", usersGroup)
+		_, _, exitCode := tool.RunCLI(ctx, homeDir, "tenant", usersGroup)
 		Expect(exitCode).To(Equal(0), "setting tenant should succeed")
 
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "tenant", "-o", "yaml")
@@ -107,5 +95,6 @@ var _ = Describe("CLI Tenant", Label("cli", "tenant"), func() {
 		var parsed any
 		err := yaml.Unmarshal([]byte(stdout), &parsed)
 		Expect(err).ToNot(HaveOccurred(), "tenant YAML output should be valid")
+		Expect(stdout).To(ContainSubstring(usersGroup), "YAML output should include the tenant name")
 	})
 })

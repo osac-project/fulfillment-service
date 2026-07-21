@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
@@ -33,34 +32,12 @@ var _ = Describe("CLI File Create", Label("cli", "create"), func() {
 	)
 
 	BeforeEach(func() {
-		var err error
-		homeDir, err = tool.NewCLIHomeDir()
-		Expect(err).ToNot(HaveOccurred())
-
-		ncClient := privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
-		ncResp, err := ncClient.Create(context.Background(), privatev1.NetworkClassesCreateRequest_builder{
-			Object: privatev1.NetworkClass_builder{
-				Title:                  "CLI File Create Test NC",
-				ImplementationStrategy: "cudn",
-				FabricManager:          "netris",
-			}.Build(),
-		}.Build())
-		Expect(err).ToNot(HaveOccurred())
-		networkClassId = ncResp.GetObject().GetId()
-
-		DeferCleanup(func() {
-			ctx := context.Background()
-			ncClient := privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
-			ncClient.Delete(ctx, privatev1.NetworkClassesDeleteRequest_builder{
-				Id: networkClassId,
-			}.Build())
-			os.RemoveAll(homeDir)
-		})
+		homeDir = setupCLIHomeDir()
+		networkClassId = setupTestNetworkClass("CLI File Create Test NC")
 	})
 
 	It("Create from JSON file", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		name := fmt.Sprintf("json-create-%s", uuid.New())
 		jsonContent := fmt.Sprintf(`{
@@ -81,6 +58,11 @@ var _ = Describe("CLI File Create", Label("cli", "create"), func() {
 		stdout, stderr, exitCode := tool.RunCLI(ctx, homeDir, "create", "-f", filePath)
 		Expect(exitCode).To(Equal(0), "create -f JSON should succeed, stdout=%s, stderr=%s", stdout, stderr)
 		Expect(stdout).To(ContainSubstring("Created"))
+		Expect(stdout).To(ContainSubstring(name))
+
+		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", name)
+		Expect(exitCode).To(Equal(0), "get after create -f JSON should succeed")
+		Expect(stdout).To(ContainSubstring(name))
 
 		DeferCleanup(func() {
 			tool.RunCLI(ctx, homeDir, "delete", "virtualnetwork", name)
@@ -88,8 +70,7 @@ var _ = Describe("CLI File Create", Label("cli", "create"), func() {
 	})
 
 	It("Create from YAML file", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		name := fmt.Sprintf("yaml-create-%s", uuid.New())
 		yamlContent := fmt.Sprintf(`"@type": "type.googleapis.com/osac.public.v1.VirtualNetwork"
@@ -107,6 +88,11 @@ spec:
 		stdout, stderr, exitCode := tool.RunCLI(ctx, homeDir, "create", "-f", filePath)
 		Expect(exitCode).To(Equal(0), "create -f YAML should succeed, stdout=%s, stderr=%s", stdout, stderr)
 		Expect(stdout).To(ContainSubstring("Created"))
+		Expect(stdout).To(ContainSubstring(name))
+
+		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", name)
+		Expect(exitCode).To(Equal(0), "get after create -f YAML should succeed")
+		Expect(stdout).To(ContainSubstring(name))
 
 		DeferCleanup(func() {
 			tool.RunCLI(ctx, homeDir, "delete", "virtualnetwork", name)
@@ -114,8 +100,7 @@ spec:
 	})
 
 	It("Create from invalid file fails gracefully", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		filePath := filepath.Join(homeDir, "bad.yaml")
 		err := os.WriteFile(filePath, []byte("this is not valid proto"), 0644)
@@ -124,6 +109,7 @@ spec:
 		stdout, stderr, exitCode := tool.RunCLI(ctx, homeDir, "create", "-f", filePath)
 		Expect(exitCode).ToNot(Equal(0), "create -f with invalid content should fail")
 		combinedOutput := stdout + stderr
+		Expect(combinedOutput).ToNot(BeEmpty(), "should produce an error message")
 		Expect(combinedOutput).ToNot(ContainSubstring("runtime error"), "should not panic")
 		Expect(combinedOutput).ToNot(ContainSubstring("goroutine"), "should not dump stack trace")
 	})

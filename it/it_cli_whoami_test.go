@@ -15,7 +15,6 @@ package it
 
 import (
 	"context"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,18 +24,11 @@ var _ = Describe("CLI Whoami", Label("cli", "whoami"), func() {
 	var homeDir string
 
 	BeforeEach(func() {
-		var err error
-		homeDir, err = tool.NewCLIHomeDir()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := os.RemoveAll(homeDir)
-			Expect(err).ToNot(HaveOccurred())
-		})
+		homeDir = setupCLIHomeDir()
 	})
 
 	It("Displays current user after login", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "whoami")
 		Expect(exitCode).To(Equal(0), "whoami should succeed after login")

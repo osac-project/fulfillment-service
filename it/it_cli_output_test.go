@@ -16,7 +16,6 @@ package it
 import (
 	"context"
 	"encoding/json"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,57 +23,55 @@ import (
 )
 
 var _ = Describe("CLI Output Formats", Label("cli", "output"), func() {
-	var homeDir string
+	var (
+		homeDir        string
+		networkClassId string
+	)
 
 	BeforeEach(func() {
-		var err error
-		homeDir, err = tool.NewCLIHomeDir()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := os.RemoveAll(homeDir)
-			Expect(err).ToNot(HaveOccurred())
-		})
+		homeDir = setupCLIHomeDir()
+		networkClassId = setupTestNetworkClass("CLI Output Test NC")
 	})
 
-	It("Table output contains expected headers", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+	It("Table output contains headers and resource data", func(ctx context.Context) {
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		vnName := createCLIVirtualNetwork(ctx, homeDir, networkClassId, "10.140.0.0/16")
 
-		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "computeinstance")
-		Expect(exitCode).To(Equal(0), "get computeinstance should succeed")
-
-		Expect(stdout).To(SatisfyAny(
-			ContainSubstring("ID"),
-			ContainSubstring("No matching"),
-			ContainSubstring("no objects matching"),
-		))
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "virtualnetwork")
+		Expect(exitCode).To(Equal(0), "get virtualnetwork should succeed")
+		Expect(stdout).To(ContainSubstring("ID"))
+		Expect(stdout).To(ContainSubstring(vnName), "table output should include the created resource name")
 	})
 
-	It("JSON output is valid", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+	It("JSON output is valid and contains resource data", func(ctx context.Context) {
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		vnName := createCLIVirtualNetwork(ctx, homeDir, networkClassId, "10.141.0.0/16")
 
-		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "computeinstance", "-o", "json")
-		Expect(exitCode).To(Equal(0), "get computeinstance -o json should succeed")
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", vnName, "-o", "json")
+		Expect(exitCode).To(Equal(0), "get virtualnetwork -o json should succeed")
+		Expect(stdout).ToNot(BeEmpty())
 
-		if stdout != "" {
-			var parsed any
-			err := json.Unmarshal([]byte(stdout), &parsed)
-			Expect(err).ToNot(HaveOccurred(), "JSON output should be valid")
-		}
+		var parsed map[string]any
+		err := json.Unmarshal([]byte(stdout), &parsed)
+		Expect(err).ToNot(HaveOccurred(), "JSON output should be valid")
+		metadata, ok := parsed["metadata"].(map[string]any)
+		Expect(ok).To(BeTrue(), "JSON should contain metadata object")
+		Expect(metadata).To(HaveKeyWithValue("name", vnName))
 	})
 
-	It("YAML output is valid", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+	It("YAML output is valid and contains resource data", func(ctx context.Context) {
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		vnName := createCLIVirtualNetwork(ctx, homeDir, networkClassId, "10.142.0.0/16")
 
-		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "computeinstance", "-o", "yaml")
-		Expect(exitCode).To(Equal(0), "get computeinstance -o yaml should succeed")
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", vnName, "-o", "yaml")
+		Expect(exitCode).To(Equal(0), "get virtualnetwork -o yaml should succeed")
+		Expect(stdout).ToNot(BeEmpty())
 
-		if stdout != "" {
-			var parsed any
-			err := yaml.Unmarshal([]byte(stdout), &parsed)
-			Expect(err).ToNot(HaveOccurred(), "YAML output should be valid")
-		}
+		var parsed map[any]any
+		err := yaml.Unmarshal([]byte(stdout), &parsed)
+		Expect(err).ToNot(HaveOccurred(), "YAML output should be valid")
+		metadata, ok := parsed["metadata"].(map[any]any)
+		Expect(ok).To(BeTrue(), "YAML should contain metadata object")
+		Expect(metadata["name"]).To(Equal(vnName))
 	})
 })

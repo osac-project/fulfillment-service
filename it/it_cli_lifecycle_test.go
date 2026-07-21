@@ -16,12 +16,10 @@ package it
 import (
 	"context"
 	"fmt"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
@@ -32,52 +30,22 @@ var _ = Describe("CLI Resource Lifecycle", Label("cli", "lifecycle"), func() {
 	)
 
 	BeforeEach(func() {
-		var err error
-		homeDir, err = tool.NewCLIHomeDir()
-		Expect(err).ToNot(HaveOccurred())
-
-		ncClient := privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
-		ncResp, err := ncClient.Create(context.Background(), privatev1.NetworkClassesCreateRequest_builder{
-			Object: privatev1.NetworkClass_builder{
-				Title:                  "CLI Lifecycle Test NC",
-				ImplementationStrategy: "cudn",
-				FabricManager:          "netris",
-			}.Build(),
-		}.Build())
-		Expect(err).ToNot(HaveOccurred())
-		networkClassId = ncResp.GetObject().GetId()
-
-		DeferCleanup(func() {
-			ncClient := privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
-			ncClient.Delete(context.Background(), privatev1.NetworkClassesDeleteRequest_builder{
-				Id: networkClassId,
-			}.Build())
-			os.RemoveAll(homeDir)
-		})
+		homeDir = setupCLIHomeDir()
+		networkClassId = setupTestNetworkClass("CLI Lifecycle Test NC")
 	})
 
 	It("Create virtual network via CLI", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
-		vnName := fmt.Sprintf("cli-create-%s", uuid.New())
-		stdout, stderr, exitCode := tool.RunCLI(ctx, homeDir,
-			"create", "virtualnetwork",
-			"--name", vnName,
-			"--network-class", networkClassId,
-			"--ipv4-cidr", "10.100.0.0/16",
-		)
-		Expect(exitCode).To(Equal(0), "create should succeed, stdout=%s, stderr=%s", stdout, stderr)
-		Expect(stdout).To(ContainSubstring("Created"))
+		vnName := createCLIVirtualNetwork(ctx, homeDir, networkClassId, "10.100.0.0/16")
 
-		DeferCleanup(func() {
-			tool.RunCLI(ctx, homeDir, "delete", "virtualnetwork", vnName)
-		})
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", vnName)
+		Expect(exitCode).To(Equal(0), "get after create should succeed")
+		Expect(stdout).To(ContainSubstring(vnName))
 	})
 
 	It("Full create-get-describe-delete lifecycle", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		vnName := fmt.Sprintf("cli-lifecycle-%s", uuid.New())
 
@@ -90,6 +58,7 @@ var _ = Describe("CLI Resource Lifecycle", Label("cli", "lifecycle"), func() {
 		)
 		Expect(exitCode).To(Equal(0), "create should succeed, stderr=%s", stderr)
 		Expect(stdout).To(ContainSubstring("Created"))
+		Expect(stdout).To(ContainSubstring(vnName))
 
 		// Get by name
 		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", vnName)
@@ -100,9 +69,18 @@ var _ = Describe("CLI Resource Lifecycle", Label("cli", "lifecycle"), func() {
 		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "describe", "virtualnetwork", vnName)
 		Expect(exitCode).To(Equal(0), "describe should succeed")
 		Expect(stdout).To(ContainSubstring("ID:"))
+		Expect(stdout).To(ContainSubstring(vnName))
 
 		// Delete by name
-		_, _, exitCode = tool.RunCLI(ctx, homeDir, "delete", "virtualnetwork", vnName)
+		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "delete", "virtualnetwork", vnName)
 		Expect(exitCode).To(Equal(0), "delete should succeed")
+		Expect(stdout).To(ContainSubstring("Deleted"))
+
+		// Confirm soft-delete: resource remains visible with DELETING=Yes until finalizers complete
+		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", vnName)
+		Expect(exitCode).To(Equal(0), "get after delete should succeed")
+		Expect(stdout).To(ContainSubstring(vnName))
+		Expect(stdout).To(MatchRegexp(`(?m)^\S+\s+Yes\s+.*%s`, vnName),
+			"DELETING column should be Yes after delete")
 	})
 })

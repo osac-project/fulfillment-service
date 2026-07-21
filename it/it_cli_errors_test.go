@@ -15,7 +15,6 @@ package it
 
 import (
 	"context"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,13 +24,7 @@ var _ = Describe("CLI Error Handling", Label("cli", "errors"), func() {
 	var homeDir string
 
 	BeforeEach(func() {
-		var err error
-		homeDir, err = tool.NewCLIHomeDir()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := os.RemoveAll(homeDir)
-			Expect(err).ToNot(HaveOccurred())
-		})
+		homeDir = setupCLIHomeDir()
 	})
 
 	It("Command without login shows configuration error", func(ctx context.Context) {
@@ -44,14 +37,13 @@ var _ = Describe("CLI Error Handling", Label("cli", "errors"), func() {
 	})
 
 	It("Unknown resource type shows a helpful error", func(ctx context.Context) {
-		// Login first so we have valid credentials
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		// Try to get an unknown resource type
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "nonexistentresource")
 		Expect(exitCode).To(Equal(0), "unknown resource type renders help and exits 0")
 		Expect(stdout).To(ContainSubstring("There is no object named"))
+		Expect(stdout).To(ContainSubstring("nonexistentresource"))
 	})
 
 	It("Version command does not crash", func(ctx context.Context) {
@@ -60,29 +52,30 @@ var _ = Describe("CLI Error Handling", Label("cli", "errors"), func() {
 		stdout, stderr, exitCode := tool.RunCLI(ctx, homeDir, "version")
 		combinedOutput := stdout + stderr
 
-		// The command should not panic — any exit code is acceptable as long as
-		// there is meaningful output and no stack trace
+		Expect(exitCode).To(Equal(0), "version should succeed")
 		Expect(combinedOutput).ToNot(BeEmpty(), "version should produce output")
 		Expect(combinedOutput).ToNot(ContainSubstring("runtime error"), "version should not panic")
 		Expect(combinedOutput).ToNot(ContainSubstring("goroutine"), "version should not produce a stack trace")
-		_ = exitCode
 	})
 
 	It("Delete nonexistent resource shows message", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
-		stdout, stderr, _ := tool.RunCLI(ctx, homeDir,
-			"delete", "computeinstance", "00000000-0000-0000-0000-000000000000",
+		missingID := "00000000-0000-0000-0000-000000000000"
+		stdout, stderr, exitCode := tool.RunCLI(ctx, homeDir,
+			"delete", "computeinstance", missingID,
 		)
 		combinedOutput := stdout + stderr
+		// CLI resolves the reference first; missing IDs render a helpful message and exit 0.
+		Expect(exitCode).To(Equal(0), "delete with unresolved reference exits 0 after printing guidance")
+		Expect(combinedOutput).To(ContainSubstring("No objects of type"))
+		Expect(combinedOutput).To(ContainSubstring(missingID))
 		Expect(combinedOutput).ToNot(ContainSubstring("runtime error"), "should not panic")
 		Expect(combinedOutput).ToNot(ContainSubstring("goroutine"), "should not dump stack trace")
 	})
 
 	It("Invalid output format is rejected", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0), "login should succeed")
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
 		_, stderr, exitCode := tool.RunCLI(ctx, homeDir,
 			"get", "computeinstance", "-o", "invalid",

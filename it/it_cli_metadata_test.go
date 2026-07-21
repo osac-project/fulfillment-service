@@ -15,66 +15,28 @@ package it
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"encoding/json"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
-	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("CLI Metadata", Label("cli", "metadata"), func() {
 	var (
 		homeDir        string
 		networkClassId string
-		vnName         string
 	)
 
 	BeforeEach(func() {
-		var err error
-		homeDir, err = tool.NewCLIHomeDir()
-		Expect(err).ToNot(HaveOccurred())
-
-		ncClient := privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
-		ncResp, err := ncClient.Create(context.Background(), privatev1.NetworkClassesCreateRequest_builder{
-			Object: privatev1.NetworkClass_builder{
-				Title:                  "CLI Metadata Test NC",
-				ImplementationStrategy: "cudn",
-				FabricManager:          "netris",
-			}.Build(),
-		}.Build())
-		Expect(err).ToNot(HaveOccurred())
-		networkClassId = ncResp.GetObject().GetId()
-
-		DeferCleanup(func() {
-			ctx := context.Background()
-			if vnName != "" {
-				tool.RunCLI(ctx, homeDir, "delete", "virtualnetwork", vnName)
-			}
-			ncClient := privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
-			ncClient.Delete(ctx, privatev1.NetworkClassesDeleteRequest_builder{
-				Id: networkClassId,
-			}.Build())
-			os.RemoveAll(homeDir)
-		})
+		homeDir = setupCLIHomeDir()
+		networkClassId = setupTestNetworkClass("CLI Metadata Test NC")
 	})
 
 	It("Label a resource", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0))
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		vnName := createCLIVirtualNetwork(ctx, homeDir, networkClassId, "10.110.0.0/16")
 
-		vnName = fmt.Sprintf("cli-label-%s", uuid.New())
-		_, stderr, exitCode := tool.RunCLI(ctx, homeDir,
-			"create", "virtualnetwork",
-			"--name", vnName,
-			"--network-class", networkClassId,
-			"--ipv4-cidr", "10.110.0.0/16",
-		)
-		Expect(exitCode).To(Equal(0), "create should succeed, stderr=%s", stderr)
-
-		_, _, exitCode = tool.RunCLI(ctx, homeDir,
+		_, _, exitCode := tool.RunCLI(ctx, homeDir,
 			"label", "virtualnetwork", vnName, "env=test",
 		)
 		Expect(exitCode).To(Equal(0), "label should succeed")
@@ -83,23 +45,22 @@ var _ = Describe("CLI Metadata", Label("cli", "metadata"), func() {
 			"get", "virtualnetwork", vnName, "-o", "json",
 		)
 		Expect(exitCode).To(Equal(0), "get should succeed")
-		Expect(stdout).To(ContainSubstring("env"))
+
+		var parsed map[string]any
+		err := json.Unmarshal([]byte(stdout), &parsed)
+		Expect(err).ToNot(HaveOccurred())
+		metadata, ok := parsed["metadata"].(map[string]any)
+		Expect(ok).To(BeTrue(), "JSON should contain metadata object")
+		labels, ok := metadata["labels"].(map[string]any)
+		Expect(ok).To(BeTrue(), "metadata should contain labels")
+		Expect(labels).To(HaveKeyWithValue("env", "test"))
 	})
 
 	It("Annotate a resource", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0))
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		vnName := createCLIVirtualNetwork(ctx, homeDir, networkClassId, "10.111.0.0/16")
 
-		vnName = fmt.Sprintf("cli-annotate-%s", uuid.New())
-		_, stderr, exitCode := tool.RunCLI(ctx, homeDir,
-			"create", "virtualnetwork",
-			"--name", vnName,
-			"--network-class", networkClassId,
-			"--ipv4-cidr", "10.111.0.0/16",
-		)
-		Expect(exitCode).To(Equal(0), "create should succeed, stderr=%s", stderr)
-
-		_, _, exitCode = tool.RunCLI(ctx, homeDir,
+		_, _, exitCode := tool.RunCLI(ctx, homeDir,
 			"annotate", "virtualnetwork", vnName, "note=testing",
 		)
 		Expect(exitCode).To(Equal(0), "annotate should succeed")
@@ -108,23 +69,22 @@ var _ = Describe("CLI Metadata", Label("cli", "metadata"), func() {
 			"get", "virtualnetwork", vnName, "-o", "json",
 		)
 		Expect(exitCode).To(Equal(0), "get should succeed")
-		Expect(stdout).To(ContainSubstring("note"))
+
+		var parsed map[string]any
+		err := json.Unmarshal([]byte(stdout), &parsed)
+		Expect(err).ToNot(HaveOccurred())
+		metadata, ok := parsed["metadata"].(map[string]any)
+		Expect(ok).To(BeTrue(), "JSON should contain metadata object")
+		annotations, ok := metadata["annotations"].(map[string]any)
+		Expect(ok).To(BeTrue(), "metadata should contain annotations")
+		Expect(annotations).To(HaveKeyWithValue("note", "testing"))
 	})
 
 	It("Remove a label", func(ctx context.Context) {
-		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
-		Expect(exitCode).To(Equal(0))
+		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		vnName := createCLIVirtualNetwork(ctx, homeDir, networkClassId, "10.112.0.0/16")
 
-		vnName = fmt.Sprintf("cli-rmlabel-%s", uuid.New())
-		_, stderr, exitCode := tool.RunCLI(ctx, homeDir,
-			"create", "virtualnetwork",
-			"--name", vnName,
-			"--network-class", networkClassId,
-			"--ipv4-cidr", "10.112.0.0/16",
-		)
-		Expect(exitCode).To(Equal(0), "create should succeed, stderr=%s", stderr)
-
-		_, _, exitCode = tool.RunCLI(ctx, homeDir,
+		_, _, exitCode := tool.RunCLI(ctx, homeDir,
 			"label", "virtualnetwork", vnName, "env=test",
 		)
 		Expect(exitCode).To(Equal(0), "add label should succeed")
@@ -138,6 +98,14 @@ var _ = Describe("CLI Metadata", Label("cli", "metadata"), func() {
 			"get", "virtualnetwork", vnName, "-o", "json",
 		)
 		Expect(exitCode).To(Equal(0), "get should succeed")
-		Expect(stdout).ToNot(ContainSubstring(`"env"`))
+
+		var parsed map[string]any
+		err := json.Unmarshal([]byte(stdout), &parsed)
+		Expect(err).ToNot(HaveOccurred())
+		metadata, ok := parsed["metadata"].(map[string]any)
+		Expect(ok).To(BeTrue(), "JSON should contain metadata object")
+		if labels, hasLabels := metadata["labels"].(map[string]any); hasLabels {
+			Expect(labels).ToNot(HaveKey("env"))
+		}
 	})
 })
