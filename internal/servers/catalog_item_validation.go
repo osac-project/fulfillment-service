@@ -20,10 +20,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/google/cel-go/cel"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -34,29 +32,6 @@ import (
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
-
-var (
-	celSyntaxEnv     *cel.Env
-	celSyntaxEnvOnce sync.Once
-	celSyntaxEnvErr  error
-)
-
-// validateCELSyntax checks that a filter string is a syntactically valid, complete CEL expression.
-// This prevents filter bypass attacks where a malicious filter like "true) || (true" could
-// break out of parenthesized composition and change operator precedence.
-func validateCELSyntax(filter string) error {
-	celSyntaxEnvOnce.Do(func() {
-		celSyntaxEnv, celSyntaxEnvErr = cel.NewEnv()
-	})
-	if celSyntaxEnvErr != nil {
-		return fmt.Errorf("failed to create CEL environment: %w", celSyntaxEnvErr)
-	}
-	_, issues := celSyntaxEnv.Parse(filter)
-	if issues != nil && issues.Err() != nil {
-		return fmt.Errorf("syntax error: %w", issues.Err())
-	}
-	return nil
-}
 
 // catalogItem is implemented by both ClusterCatalogItem and ComputeInstanceCatalogItem.
 type catalogItem interface {

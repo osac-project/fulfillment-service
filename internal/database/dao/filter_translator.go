@@ -64,6 +64,7 @@ const (
 	filterTranslatorMdKind
 	filterTranslatorJsonKind
 	filterTranslatorMapKind
+	filterTranslatorJsonArrayKind
 	filterTranslatorLtreeKind
 )
 
@@ -88,6 +89,8 @@ func (t filterTranslatorResultKind) String() string {
 		return "json"
 	case filterTranslatorMapKind:
 		return "map"
+	case filterTranslatorJsonArrayKind:
+		return "json_array"
 	case filterTranslatorLtreeKind:
 		return "ltree"
 	default:
@@ -782,6 +785,12 @@ func (t *FilterTranslator[O]) translateInField(key ast.Expr, value ast.SelectExp
 		buffer.WriteString(" ? ")
 		buffer.WriteString(keyTr.sql)
 		result.precedence = filterTranslatorOtherPrecedence
+	case filterTranslatorJsonArrayKind:
+		buffer.WriteString(valueTr.sql)
+		buffer.WriteString(" @> jsonb_build_array(")
+		buffer.WriteString(keyTr.sql)
+		buffer.WriteString(")")
+		result.precedence = filterTranslatorOtherPrecedence
 	default:
 		buffer.WriteString(valueTr.sql)
 		buffer.WriteString(" @> array[")
@@ -988,6 +997,13 @@ func (t *FilterTranslator[O]) translateSelectJsonField(operandSql string, msgDes
 		return
 	}
 	fieldDesc := msgDesc.Fields().ByName(protoreflect.Name(fieldName))
+	// Repeated fields are stored as JSONB arrays — use -> to preserve the array structure:
+	if fieldDesc.IsList() {
+		result.sql = fmt.Sprintf("%s->'%s'", operandSql, fieldName)
+		result.kind = filterTranslatorJsonArrayKind
+		result.precedence = filterTranslatorMaxPrecedence
+		return
+	}
 	fieldKind := fieldDesc.Kind()
 	switch fieldKind {
 	case protoreflect.BoolKind:

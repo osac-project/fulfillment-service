@@ -1709,5 +1709,116 @@ var _ = Describe("Private clusters server", func() {
 
 			})
 		})
+
+		Describe("Dry run", func() {
+			It("Returns resolved cluster with template path", func() {
+				response, err := server.Create(dryRunCtx(), privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-name",
+							NodeSets: map[string]*privatev1.ClusterNodeSet{
+								"compute": privatev1.ClusterNodeSet_builder{
+									HostType: "acme-1ti-name",
+									Size:     7,
+								}.Build(),
+							},
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+				nodeSets := object.GetSpec().GetNodeSets()
+				Expect(nodeSets).To(HaveKey("compute"))
+				Expect(nodeSets["compute"].GetHostType()).To(Equal("acme-1ti-id"))
+			})
+
+			It("Returns resolved cluster with catalog item path", func() {
+				catalogItemsDao, err := dao.NewGenericDAO[*privatev1.ClusterCatalogItem]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ClusterCatalogItem_builder{
+						Id: "cat-dry-run",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "cat-dry-run-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Dry Run Catalog Item",
+						Published: true,
+						Template:  "my-template-id",
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				response, err := server.Create(dryRunCtx(), privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-dry-run",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				object := response.GetObject()
+				Expect(object).ToNot(BeNil())
+				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+				Expect(object.GetSpec().GetCatalogItem()).To(Equal("cat-dry-run"))
+			})
+
+			It("Does not persist the object", func() {
+				_, err := server.Create(dryRunCtx(), privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-name",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				listResponse, err := server.List(ctx, privatev1.ClustersListRequest_builder{}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(listResponse.GetTotal()).To(Equal(int32(0)))
+			})
+
+			It("Returns same error as real creation for invalid template", func() {
+				_, realErr := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "non-existent-template",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(realErr).To(HaveOccurred())
+
+				_, dryRunErr := server.Create(dryRunCtx(), privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "non-existent-template",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(dryRunErr).To(HaveOccurred())
+				Expect(grpcstatus.Code(dryRunErr)).To(Equal(grpcstatus.Code(realErr)))
+				Expect(grpcstatus.Convert(dryRunErr).Message()).To(Equal(grpcstatus.Convert(realErr).Message()))
+			})
+		})
 	})
 })

@@ -1009,6 +1009,12 @@ var _ = Describe("Private compute instances server", func() {
 					SetTenancyLogic(tenancy).
 					Build()
 				Expect(err).ToNot(HaveOccurred())
+
+				// Backing template for the catalog items created below, with full
+				// spec_defaults so catalog-item creation succeeds for the right
+				// reason (defaults resolved from the template), not because
+				// required-field validation was skipped.
+				createTemplate("ci-template-id")
 			})
 
 			createCICatalogItem := func(id string, published bool, fieldDefs []*privatev1.FieldDefinition) {
@@ -1120,6 +1126,41 @@ var _ = Describe("Private compute instances server", func() {
 				))
 			})
 
+			It("Fails when catalog item does not reference a template", func() {
+				_, err := catalogItemsDao.Create().SetObject(
+					privatev1.ComputeInstanceCatalogItem_builder{
+						Id: "ci-cat-no-template",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "ci-cat-no-template-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item without template",
+						Published: true,
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-no-template",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(Equal(
+					"catalog item 'ci-cat-no-template' does not reference a template",
+				))
+			})
+
 			It("Fails when both catalog_item and template are set", func() {
 				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
 					Object: privatev1.ComputeInstance_builder{
@@ -1144,7 +1185,7 @@ var _ = Describe("Private compute instances server", func() {
 			It("Rejects user value for non-editable field", func() {
 				createCICatalogItem("ci-cat-nonedit", true, []*privatev1.FieldDefinition{
 					privatev1.FieldDefinition_builder{
-						Path:     "ssh_key",
+						Path:     "ssh_public_key",
 						Editable: false,
 						Default:  structpb.NewStringValue("forced-key"),
 					}.Build(),
@@ -1157,8 +1198,8 @@ var _ = Describe("Private compute instances server", func() {
 				_, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
 					Object: privatev1.ComputeInstance_builder{
 						Spec: privatev1.ComputeInstanceSpec_builder{
-							CatalogItem: "ci-cat-nonedit",
-							SshKey:      new("user-key"),
+							CatalogItem:  "ci-cat-nonedit",
+							SshPublicKey: new("user-key"),
 							NetworkAttachments: []*privatev1.NetworkAttachment{
 								privatev1.NetworkAttachment_builder{
 									Subnet: "test-subnet",
@@ -1178,7 +1219,7 @@ var _ = Describe("Private compute instances server", func() {
 				func(catID string, value string, expectError bool) {
 					createCICatalogItem(catID, true, []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "ssh_key",
+							Path:             "ssh_public_key",
 							Editable:         true,
 							ValidationSchema: `{"type":"string","minLength":10}`,
 						}.Build(),
@@ -1191,8 +1232,8 @@ var _ = Describe("Private compute instances server", func() {
 					response, err := server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
 						Object: privatev1.ComputeInstance_builder{
 							Spec: privatev1.ComputeInstanceSpec_builder{
-								CatalogItem: catID,
-								SshKey:      new(value),
+								CatalogItem:  catID,
+								SshPublicKey: new(value),
 								NetworkAttachments: []*privatev1.NetworkAttachment{
 									privatev1.NetworkAttachment_builder{
 										Subnet: "test-subnet",
@@ -1206,10 +1247,10 @@ var _ = Describe("Private compute instances server", func() {
 						status, ok := grpcstatus.FromError(err)
 						Expect(ok).To(BeTrue())
 						Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-						Expect(status.Message()).To(ContainSubstring("validation failed for field 'ssh_key'"))
+						Expect(status.Message()).To(ContainSubstring("validation failed for field 'ssh_public_key'"))
 					} else {
 						Expect(err).ToNot(HaveOccurred())
-						Expect(response.GetObject().GetSpec().GetSshKey()).To(Equal(value))
+						Expect(response.GetObject().GetSpec().GetSshPublicKey()).To(Equal(value))
 					}
 				},
 				Entry("rejects value below minLength", "ci-cat-schema-reject", "short-val", true),
@@ -1219,7 +1260,7 @@ var _ = Describe("Private compute instances server", func() {
 			It("Applies default for editable field when not provided", func() {
 				createCICatalogItem("ci-cat-dflt", true, []*privatev1.FieldDefinition{
 					privatev1.FieldDefinition_builder{
-						Path:     "ssh_key",
+						Path:     "ssh_public_key",
 						Editable: true,
 						Default:  structpb.NewStringValue("default-key"),
 					}.Build(),
@@ -1243,7 +1284,7 @@ var _ = Describe("Private compute instances server", func() {
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				object := response.GetObject()
-				Expect(object.GetSpec().GetSshKey()).To(Equal("default-key"))
+				Expect(object.GetSpec().GetSshPublicKey()).To(Equal("default-key"))
 			})
 
 			It("Rejects changing catalog_item on update", func() {
@@ -1282,6 +1323,60 @@ var _ = Describe("Private compute instances server", func() {
 				Expect(status.Message()).To(Equal(
 					"cannot change spec.catalog_item from 'ci-cat-immut' to 'different-catalog-item': catalog item is immutable",
 				))
+			})
+
+			It("Rejects creation via catalog item when template has no spec defaults", func() {
+				templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = templatesDao.Create().SetObject(
+					privatev1.ComputeInstanceTemplate_builder{
+						Id:    "ci-template-no-defaults",
+						Title: "Template without spec defaults",
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+						}.Build(),
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ComputeInstanceCatalogItem_builder{
+						Id: "ci-cat-no-defaults",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "ci-cat-no-defaults-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item without defaults",
+						Published: true,
+						Template:  "ci-template-no-defaults",
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = server.Create(ctx, privatev1.ComputeInstancesCreateRequest_builder{
+					Object: privatev1.ComputeInstance_builder{
+						Spec: privatev1.ComputeInstanceSpec_builder{
+							CatalogItem: "ci-cat-no-defaults",
+							NetworkAttachments: []*privatev1.NetworkAttachment{
+								privatev1.NetworkAttachment_builder{
+									Subnet: "test-subnet",
+								}.Build(),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("instance_type"))
+				Expect(status.Message()).To(ContainSubstring("image"))
+				Expect(status.Message()).To(ContainSubstring("boot_disk"))
+				Expect(status.Message()).To(ContainSubstring("run_strategy"))
 			})
 
 			It("Validates instance_type from template spec_defaults via catalog item", func() {

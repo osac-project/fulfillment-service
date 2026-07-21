@@ -24,7 +24,7 @@ import (
 
 var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	It("Creates the 'check_bmi_catalog_item_not_in_use' function", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -42,7 +42,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Adds a trigger to the bare_metal_instance_catalog_items table", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -62,7 +62,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Creates the 'check_bmi_catalog_item_ref' function", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -80,7 +80,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Adds a trigger to the bare_metal_instances table for catalog item ref on INSERT", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -100,7 +100,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Adds a trigger to the bare_metal_instances table for catalog item ref on UPDATE", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		var count int
@@ -120,7 +120,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents soft-deleting a BMI catalog item that is in use by a bare metal instance", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -151,7 +151,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents soft-deleting a BMI catalog item when a bare metal instance references it by name", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -182,7 +182,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Allows soft-deleting a BMI catalog item that is not in use", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -202,7 +202,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Allows soft-deleting a tenant-scoped BMI catalog item when only a different-tenant bare metal instance references one with the same name", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -238,7 +238,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents soft-deleting a shared BMI catalog item when a bare metal instance in any tenant references it", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -269,7 +269,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Allows soft-deleting a BMI catalog item when the referencing bare metal instance is already deleted", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -295,7 +295,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents creating a bare metal instance referencing a non-existent BMI catalog item", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -316,7 +316,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents creating a bare metal instance referencing a soft-deleted BMI catalog item", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -345,7 +345,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Allows creating a bare metal instance with no catalog item reference", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -361,7 +361,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Allows creating a bare metal instance with a valid catalog item reference", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -383,7 +383,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Allows creating a bare metal instance that references a shared BMI catalog item", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -405,7 +405,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents creating a bare metal instance that references a BMI catalog item in a different tenant", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -436,7 +436,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents updating a bare metal instance to reference a non-existent BMI catalog item", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -467,7 +467,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents updating a bare metal instance to reference a soft-deleted BMI catalog item", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,
@@ -506,7 +506,7 @@ var _ = DescribeMigration("Add BMI catalog item ref triggers", func() {
 	})
 
 	It("Prevents updating a bare metal instance when its referenced catalog item has been soft-deleted", func(ctx context.Context) {
-		err := tool.Migrate(ctx, 80)
+		err := tool.Migrate(ctx, 82)
 		Expect(err).ToNot(HaveOccurred())
 
 		_, err = conn.Exec(ctx,

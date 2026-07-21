@@ -282,7 +282,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.ssh_key",
+							Path:             "spec.ssh_public_key",
 							DisplayName:      "SSH Key",
 							Editable:         true,
 							ValidationSchema: `{"type":"string","minLength":1}`,
@@ -313,7 +313,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			Expect(fetched.GetFieldDefinitions()).To(HaveLen(2))
 
 			fd0 := fetched.GetFieldDefinitions()[0]
-			Expect(fd0.GetPath()).To(Equal("spec.ssh_key"))
+			Expect(fd0.GetPath()).To(Equal("spec.ssh_public_key"))
 			Expect(fd0.GetDisplayName()).To(Equal("SSH Key"))
 			Expect(fd0.GetEditable()).To(BeTrue())
 			Expect(fd0.GetValidationSchema()).To(Equal(`{"type":"string","minLength":1}`))
@@ -969,7 +969,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.ssh_key",
+								Path:     "spec.ssh_public_key",
 								Editable: true,
 							}.Build(),
 						},

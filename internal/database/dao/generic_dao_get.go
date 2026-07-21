@@ -20,7 +20,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
 
@@ -147,6 +150,10 @@ func (r *GetRequest[O]) do(ctx context.Context) (response *GetResponse[O], err e
 		return
 	}
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.DeadlockDetected {
+			err = &ErrDeadlock{}
+		}
 		return
 	}
 

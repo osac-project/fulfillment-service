@@ -1802,5 +1802,46 @@ var _ = Describe("Clusters server", func() {
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(ContainSubstring("service_cidr"))
 		})
+
+		Describe("Dry run", func() {
+			It("Returns resolved cluster without persisting", func() {
+				response, err := server.Create(dryRunCtx(), publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
+							Template: "my_template",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				Expect(response.GetObject()).ToNot(BeNil())
+
+				listResponse, err := server.List(ctx, publicv1.ClustersListRequest_builder{}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(listResponse.GetTotal()).To(Equal(int32(0)))
+			})
+
+			It("Returns same error as real creation for invalid template", func() {
+				_, realErr := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
+							Template: "non-existent",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(realErr).To(HaveOccurred())
+
+				_, dryRunErr := server.Create(dryRunCtx(), publicv1.ClustersCreateRequest_builder{
+					Object: publicv1.Cluster_builder{
+						Spec: publicv1.ClusterSpec_builder{
+							Template: "non-existent",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(dryRunErr).To(HaveOccurred())
+				Expect(grpcstatus.Code(dryRunErr)).To(Equal(grpcstatus.Code(realErr)))
+				Expect(grpcstatus.Convert(dryRunErr).Message()).To(Equal(grpcstatus.Convert(realErr).Message()))
+			})
+		})
 	})
 })

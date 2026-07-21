@@ -24,6 +24,7 @@ import (
 
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
+	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -40,6 +41,7 @@ func Cmd() *cobra.Command {
 		Short:                 shortHelp,
 		Long:                  longHelp,
 		RunE:                  runner.run,
+		ValidArgsFunction:     completeObjectTypes,
 	}
 	return result
 }
@@ -211,6 +213,13 @@ func (c *runnerContext) applyAnnotationOperations(metadata reflection.Metadata, 
 	if len(annotations) > 0 || metadata.GetAnnotations() != nil {
 		metadata.SetAnnotations(annotations)
 	}
+}
+
+func completeObjectTypes(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return reflection.ObjectTypeNames(packages.Public...), cobra.ShellCompDirectiveNoFileComp
 }
 
 const shortHelp = `Add or remove annotations from objects`

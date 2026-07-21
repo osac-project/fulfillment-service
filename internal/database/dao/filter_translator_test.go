@@ -280,6 +280,31 @@ var _ = Describe("Filter translator", func() {
 				`labels ? 'mylabel'`,
 			),
 			Entry(
+				"String in repeated string field",
+				`'myvalue' in this.my_string_list`,
+				`data->'my_string_list' @> jsonb_build_array('myvalue')`,
+			),
+			Entry(
+				"Integer in repeated int32 field",
+				`42 in this.my_int32_list`,
+				`data->'my_int32_list' @> jsonb_build_array(42)`,
+			),
+			Entry(
+				"Integer in repeated int64 field",
+				`99 in this.my_int64_list`,
+				`data->'my_int64_list' @> jsonb_build_array(99)`,
+			),
+			Entry(
+				"Boolean in repeated bool field",
+				`true in this.my_bool_list`,
+				`data->'my_bool_list' @> jsonb_build_array(true)`,
+			),
+			Entry(
+				"Field reference in repeated string field",
+				`this.my_string in this.my_string_list`,
+				`data->'my_string_list' @> jsonb_build_array(data->>'my_string')`,
+			),
+			Entry(
 				"Double-quoted string with single quote from %q",
 				`this.id == "it's"`,
 				`id = e'it\'s'`,

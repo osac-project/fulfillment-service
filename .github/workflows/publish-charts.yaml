@@ -15,35 +15,73 @@
 name: Publish charts
 
 on:
-  push:
-    tags:
-    - 'v*'
+  workflow_run:
+    workflows: ["Container image"]
+    types: [completed]
 
 jobs:
 
+  guard:
+    name: Verify image build succeeded
+    runs-on: ubuntu-latest
+    # Read-only job: only inspects workflow_run event metadata, no repo/API access needed.
+    permissions: {}
+    if: >
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    outputs:
+      tag: ${{ github.event.workflow_run.head_branch }}
+      sha: ${{ github.event.workflow_run.head_sha }}
+    steps:
+    - name: Check image build result
+      env:
+        CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      run: |
+        # No build-metadata (+...) suffix allowed: this tag is used verbatim as a
+        # container image tag downstream, and Docker/OCI tags cannot contain '+'.
+        semver_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.((0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+        if ! [[ "$HEAD_BRANCH" =~ $semver_re ]]; then
+          echo "::error::Tag '$HEAD_BRANCH' is not a valid semver release tag"
+          exit 1
+        fi
+        if [[ "$CONCLUSION" != "success" ]]; then
+          echo "::error::Image build for tag $HEAD_BRANCH did not succeed (conclusion: $CONCLUSION). Refusing to publish chart."
+          exit 1
+        fi
+        echo "Image build succeeded for tag $HEAD_BRANCH"
+
   publish-service-chart:
     name: Publish service chart
+    needs: guard
     runs-on: ubuntu-latest
+    # contents: read to checkout; packages: write to push the chart to GHCR.
     permissions:
       contents: read
       packages: write
     steps:
     - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       with:
+        ref: ${{ needs.guard.outputs.sha }}
         fetch-depth: 0
         persist-credentials: false
     - id: run
+      env:
+        TAG: ${{ needs.guard.outputs.tag }}
+        REGISTRY_USERNAME: ${{ github.actor }}
+        REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        REPO: ${{ github.repository }}
       run: |
         # Login to the registry:
         export registry="ghcr.io"
-        echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login --username "${{ github.actor }}" --password-stdin "${registry}"
+        echo "${REGISTRY_PASSWORD}" | helm registry login --username "${REGISTRY_USERNAME}" --password-stdin "${registry}"
 
-        # Get the git version from the tag that triggered the workflow:
-        export git_version="${GITHUB_REF_NAME}"
+        # Get the git version from the tag that triggered the image build:
+        export git_version="${TAG}"
 
         # Update the image reference in the chart:
         export app_version="${git_version}"
-        export app_image="${registry}/${{ github.repository }}:${app_version}"
+        export app_image="${registry}/${REPO}:${app_version}"
         yq -i '.images.service = strenv(app_image)' charts/service/values.yaml
 
         # Package the chart:

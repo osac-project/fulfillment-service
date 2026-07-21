@@ -238,6 +238,8 @@ func (r *DeleteRequest[O]) translateError(ctx context.Context, tenant string, er
 		default:
 			return err
 		}
+	case pgerrcode.DeadlockDetected:
+		return &ErrDeadlock{}
 	default:
 		r.dao.logger.WarnContext(
 			ctx,

@@ -15,6 +15,7 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/timestamp.proto";
 import "osac/private/v1/metadata_type.proto";
@@ -30,7 +31,7 @@ enum ClusterVersionState {
   // The cluster version is fully available for new cluster creation.
   //
   // This is the default state assigned on creation. Returning to ACTIVE from DEPRECATED or OBSOLETE
-  // clears the corresponding deprecation timestamps.
+  // retains the corresponding deprecation timestamps as historical record.
   CLUSTER_VERSION_STATE_ACTIVE = 1;
 
   // The cluster version is available with warnings; migration to a newer version is recommended.
@@ -49,8 +50,8 @@ enum ClusterVersionState {
 // Contains deprecation details for a cluster version.
 //
 // The timestamps are managed by the server during lifecycle state transitions. The deprecation_timestamp is set when
-// the version transitions to DEPRECATED, and the obsolescence_timestamp is set when it transitions to OBSOLETE. Both
-// are cleared if the version returns to ACTIVE.
+// the version transitions to DEPRECATED, and the obsolescence_timestamp is set when it transitions to OBSOLETE.
+// Timestamps are retained as historical record when the version returns to ACTIVE.
 message ClusterVersionDeprecation {
   // When deprecation was announced. Auto-set on transition to DEPRECATED.
   google.protobuf.Timestamp deprecation_timestamp = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
@@ -68,7 +69,17 @@ message ClusterVersionDeprecation {
 message ClusterVersionAllowedUpgrades {
   // ClusterVersion names (metadata.name). Must reference existing, non-deleted ClusterVersions. When a target
   // version is deleted, it is automatically removed from all lists.
-  repeated string version_names = 1;
+  // No duplicate or empty entries are allowed.
+  repeated string version_names = 1 [(buf.validate.field).repeated = {
+    unique: true,
+    max_items: 1000,
+    items: {
+      string: {
+        min_len: 1,
+        max_len: 63
+      }
+    }
+  }];
 }
 
 // Contains the details about the cluster version that are available only for the system.

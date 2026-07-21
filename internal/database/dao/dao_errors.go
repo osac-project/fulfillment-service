@@ -188,6 +188,14 @@ func (e *ErrNotUnique) Error() string {
 	return e.Reason
 }
 
+// ErrDeadlock indicates that a PostgreSQL deadlock was detected. The caller should retry the operation.
+type ErrDeadlock struct{}
+
+// Error returns the error message.
+func (e *ErrDeadlock) Error() string {
+	return "concurrent modification detected, please retry"
+}
+
 // Custom PostgreSQL SQLSTATE error codes used by database triggers. These codes use the 'Z' class, which is reserved
 // for user-defined conditions and will not collide with any standard PostgreSQL error code.
 const (

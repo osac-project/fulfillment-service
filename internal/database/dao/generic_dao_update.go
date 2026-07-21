@@ -319,6 +319,8 @@ func (r *UpdateRequest[O]) translateError(ctx context.Context, id, name, tenant 
 		return &ErrAlreadyExists{
 			ID: id,
 		}
+	case pgerrcode.DeadlockDetected:
+		return &ErrDeadlock{}
 	default:
 		return err
 	}
