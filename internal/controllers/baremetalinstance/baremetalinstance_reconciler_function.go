@@ -394,6 +394,9 @@ func (t *task) removeFinalizer() {
 }
 
 func (t *task) setFailed(err error) {
+	if !t.bareMetalInstance.HasStatus() {
+		t.bareMetalInstance.SetStatus(&privatev1.BareMetalInstanceStatus{})
+	}
 	t.bareMetalInstance.GetStatus().SetState(privatev1.BareMetalInstanceState_BARE_METAL_INSTANCE_STATE_FAILED)
 	t.updateCondition(
 		privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_CONFIGURATION_APPLIED,

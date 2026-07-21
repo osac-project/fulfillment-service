@@ -508,6 +508,9 @@ func (t *task) removeFinalizer() {
 // Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
 // cannot be provisioned.
 func (t *task) setFailed(err error) {
+	if !t.computeInstance.HasStatus() {
+		t.computeInstance.SetStatus(&privatev1.ComputeInstanceStatus{})
+	}
 	t.computeInstance.GetStatus().SetState(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED)
 	t.updateCondition(
 		privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_CONFIGURATION_APPLIED,

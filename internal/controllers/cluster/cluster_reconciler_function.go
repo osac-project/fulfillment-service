@@ -479,6 +479,9 @@ func (t *task) getKubeObject(ctx context.Context) (result *osacv1alpha1.ClusterO
 // Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
 // cannot be provisioned.
 func (t *task) setFailed(err error) {
+	if !t.cluster.HasStatus() {
+		t.cluster.SetStatus(&privatev1.ClusterStatus{})
+	}
 	t.cluster.GetStatus().SetState(privatev1.ClusterState_CLUSTER_STATE_FAILED)
 	t.updateCondition(
 		privatev1.ClusterConditionType_CLUSTER_CONDITION_TYPE_PROGRESSING,

@@ -196,7 +196,7 @@ func (t *task) update(ctx context.Context) error {
 		err = t.hubClient.Create(ctx, newObject)
 		if err != nil {
 			if apierrors.IsInvalid(err) {
-				t.setFailed()
+				t.setFailed(err)
 				return nil
 			}
 			return err
@@ -213,7 +213,7 @@ func (t *task) update(ctx context.Context) error {
 		err = t.hubClient.Patch(ctx, update, clnt.MergeFrom(object))
 		if err != nil {
 			if apierrors.IsInvalid(err) {
-				t.setFailed()
+				t.setFailed(err)
 				return nil
 			}
 			return err
@@ -408,10 +408,15 @@ func (t *task) removeFinalizer() {
 	}
 }
 
-// setFailed transitions the external IP to FAILED state. Used when a permanent error
-// (e.g., Kubernetes CRD validation failure) means the resource cannot be provisioned.
-func (t *task) setFailed() {
+// setFailed transitions the external IP to FAILED state with the given error message.
+// Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
+// cannot be provisioned.
+func (t *task) setFailed(err error) {
+	if !t.externalIP.HasStatus() {
+		t.externalIP.SetStatus(&privatev1.ExternalIPStatus{})
+	}
 	t.externalIP.GetStatus().SetState(privatev1.ExternalIPState_EXTERNAL_IP_STATE_FAILED)
+	t.externalIP.GetStatus().SetMessage(err.Error())
 }
 
 // buildSpec constructs the spec map for the Kubernetes ExternalIP object based on the

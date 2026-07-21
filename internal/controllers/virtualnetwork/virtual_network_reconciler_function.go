@@ -197,7 +197,7 @@ func (t *task) update(ctx context.Context) error {
 		err = t.hubClient.Create(ctx, object)
 		if err != nil {
 			if apierrors.IsInvalid(err) {
-				t.setFailed()
+				t.setFailed(err)
 				return nil
 			}
 			return err
@@ -214,7 +214,7 @@ func (t *task) update(ctx context.Context) error {
 		err = t.hubClient.Patch(ctx, update, clnt.MergeFrom(object))
 		if err != nil {
 			if apierrors.IsInvalid(err) {
-				t.setFailed()
+				t.setFailed(err)
 				return nil
 			}
 			return err
@@ -399,10 +399,15 @@ func (t *task) removeFinalizer() {
 	}
 }
 
-// setFailed transitions the virtual network to FAILED state. Used when a permanent error
-// (e.g., Kubernetes CRD validation failure) means the resource cannot be provisioned.
-func (t *task) setFailed() {
+// setFailed transitions the virtual network to FAILED state with the given error message.
+// Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
+// cannot be provisioned.
+func (t *task) setFailed(err error) {
+	if !t.virtualNetwork.HasStatus() {
+		t.virtualNetwork.SetStatus(&privatev1.VirtualNetworkStatus{})
+	}
 	t.virtualNetwork.GetStatus().SetState(privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_FAILED)
+	t.virtualNetwork.GetStatus().SetMessage(err.Error())
 }
 
 // buildSpec constructs the spec for the Kubernetes VirtualNetwork object based on the

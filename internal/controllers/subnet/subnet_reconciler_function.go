@@ -197,7 +197,7 @@ func (t *task) update(ctx context.Context) error {
 		err = t.hubClient.Create(ctx, object)
 		if err != nil {
 			if apierrors.IsInvalid(err) {
-				t.setFailed()
+				t.setFailed(err)
 				return nil
 			}
 			return err
@@ -214,7 +214,7 @@ func (t *task) update(ctx context.Context) error {
 		err = t.hubClient.Patch(ctx, update, clnt.MergeFrom(object))
 		if err != nil {
 			if apierrors.IsInvalid(err) {
-				t.setFailed()
+				t.setFailed(err)
 				return nil
 			}
 			return err
@@ -399,10 +399,15 @@ func (t *task) removeFinalizer() {
 	}
 }
 
-// setFailed transitions the subnet to FAILED state. Used when a permanent error
-// (e.g., Kubernetes CRD validation failure) means the resource cannot be provisioned.
-func (t *task) setFailed() {
+// setFailed transitions the subnet to FAILED state with the given error message.
+// Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
+// cannot be provisioned.
+func (t *task) setFailed(err error) {
+	if !t.subnet.HasStatus() {
+		t.subnet.SetStatus(&privatev1.SubnetStatus{})
+	}
 	t.subnet.GetStatus().SetState(privatev1.SubnetState_SUBNET_STATE_FAILED)
+	t.subnet.GetStatus().SetMessage(err.Error())
 }
 
 // buildSpec constructs the spec for the Kubernetes Subnet object based on the

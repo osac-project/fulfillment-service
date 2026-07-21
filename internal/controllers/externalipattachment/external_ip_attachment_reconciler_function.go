@@ -179,7 +179,7 @@ func (t *task) update(ctx context.Context) error {
 		err = t.hubClient.Create(ctx, newObject)
 		if err != nil {
 			if apierrors.IsInvalid(err) {
-				t.setFailed()
+				t.setFailed(err)
 				return nil
 			}
 			return err
@@ -196,7 +196,7 @@ func (t *task) update(ctx context.Context) error {
 		err = t.hubClient.Patch(ctx, update, clnt.MergeFrom(object))
 		if err != nil {
 			if apierrors.IsInvalid(err) {
-				t.setFailed()
+				t.setFailed(err)
 				return nil
 			}
 			return err
@@ -376,10 +376,15 @@ func (t *task) removeFinalizer() {
 	}
 }
 
-// setFailed transitions the external IP attachment to FAILED state. Used when a permanent error
-// (e.g., Kubernetes CRD validation failure) means the resource cannot be provisioned.
-func (t *task) setFailed() {
+// setFailed transitions the external IP attachment to FAILED state with the given error message.
+// Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
+// cannot be provisioned.
+func (t *task) setFailed(err error) {
+	if !t.externalIPAttachment.HasStatus() {
+		t.externalIPAttachment.SetStatus(&privatev1.ExternalIPAttachmentStatus{})
+	}
 	t.externalIPAttachment.GetStatus().SetState(privatev1.ExternalIPAttachmentState_EXTERNAL_IP_ATTACHMENT_STATE_FAILED)
+	t.externalIPAttachment.GetStatus().SetMessage(err.Error())
 }
 
 func (t *task) buildSpec() osacv1alpha1.ExternalIPAttachmentSpec {
