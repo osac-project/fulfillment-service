@@ -21,6 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
@@ -62,6 +63,7 @@ var _ = Describe("CLI Get Subcommands", Label("cli", "get"), func() {
 	It("Get publicippool lists a created pool", func(ctx context.Context) {
 		mustLoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 
+		// Public list only exposes READY pools with available capacity.
 		poolName := fmt.Sprintf("cli-pool-%s", uuid.New())
 		poolClient := privatev1.NewPublicIPPoolsClient(tool.InternalView().AdminConn())
 		createResp, err := poolClient.Create(ctx, privatev1.PublicIPPoolsCreateRequest_builder{
@@ -77,17 +79,23 @@ var _ = Describe("CLI Get Subcommands", Label("cli", "get"), func() {
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		pool := createResp.GetObject()
-		pool.GetStatus().SetState(privatev1.PublicIPPoolState_PUBLIC_IP_POOL_STATE_READY)
-		pool.GetStatus().SetAvailable(256)
-		_, err = poolClient.Update(ctx, privatev1.PublicIPPoolsUpdateRequest_builder{
-			Object: pool,
-		}.Build())
-		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func() {
 			_, _ = poolClient.Delete(context.Background(), privatev1.PublicIPPoolsDeleteRequest_builder{
 				Id: pool.GetId(),
 			}.Build())
 		})
+
+		pool.SetStatus(privatev1.PublicIPPoolStatus_builder{
+			State:     privatev1.PublicIPPoolState_PUBLIC_IP_POOL_STATE_READY,
+			Total:     pool.GetStatus().GetTotal(),
+			Available: pool.GetStatus().GetAvailable(),
+			Allocated: pool.GetStatus().GetAllocated(),
+		}.Build())
+		_, err = poolClient.Update(ctx, privatev1.PublicIPPoolsUpdateRequest_builder{
+			Object:     pool,
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"status.state"}},
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
 
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "publicippool")
 		Expect(exitCode).To(Equal(0), "get publicippool should succeed")
