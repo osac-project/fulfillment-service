@@ -135,26 +135,29 @@ func (r *function) run(ctx context.Context, computeInstance *privatev1.ComputeIn
 		r:               r,
 		computeInstance: computeInstance,
 	}
-	var err error
+	var reconcileErr error
 	if computeInstance.HasMetadata() && computeInstance.GetMetadata().HasDeletionTimestamp() {
-		err = t.delete(ctx)
+		reconcileErr = t.delete(ctx)
 	} else {
-		err = t.update(ctx)
+		reconcileErr = t.update(ctx)
 	}
-	if err != nil {
-		return err
+	if reconcileErr != nil {
+		t.setReconciliationFailed(reconcileErr)
 	}
 	// Calculate which fields the reconciler actually modified and use a field mask
 	// to update only those fields. This prevents overwriting concurrent user changes.
 	updateMask := r.maskCalculator.Calculate(oldComputeInstance, computeInstance)
 
 	// Only send an update if there are actual changes
-	_, err = r.computeInstancesClient.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+	_, updateErr := r.computeInstancesClient.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
 		Object:     computeInstance,
 		UpdateMask: updateMask,
 	}.Build())
 
-	return err
+	if reconcileErr != nil {
+		return reconcileErr
+	}
+	return updateErr
 }
 
 func (t *task) update(ctx context.Context) error {
@@ -522,6 +525,19 @@ func (t *task) updateCondition(conditionType privatev1.ComputeInstanceConditionT
 		}.Build())
 	}
 	t.computeInstance.GetStatus().SetConditions(conditions)
+}
+
+func (t *task) setReconciliationFailed(err error) {
+	if !t.computeInstance.HasStatus() {
+		t.computeInstance.SetStatus(&privatev1.ComputeInstanceStatus{})
+	}
+	t.computeInstance.GetStatus().SetState(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED)
+	t.updateCondition(
+		privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED,
+		privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+		"ReconciliationFailed",
+		err.Error(),
+	)
 }
 
 // buildSpec constructs the spec for the Kubernetes ComputeInstance object based on the
