@@ -79,7 +79,9 @@ var _ = Describe("CLI Tenant", Label("cli", "tenant"), func() {
 		var parsed map[string]any
 		err := json.Unmarshal([]byte(stdout), &parsed)
 		Expect(err).ToNot(HaveOccurred(), "tenant JSON output should be valid")
-		Expect(stdout).To(ContainSubstring(usersGroup), "JSON output should include the tenant name")
+		metadata, ok := parsed["metadata"].(map[string]any)
+		Expect(ok).To(BeTrue(), "JSON should contain metadata object")
+		Expect(metadata).To(HaveKeyWithValue("name", usersGroup))
 	})
 
 	It("Tenant YAML output is valid", func(ctx context.Context) {
@@ -92,9 +94,11 @@ var _ = Describe("CLI Tenant", Label("cli", "tenant"), func() {
 		Expect(exitCode).To(Equal(0), "tenant -o yaml should succeed")
 		Expect(stdout).ToNot(BeEmpty())
 
-		var parsed any
+		var parsed map[any]any
 		err := yaml.Unmarshal([]byte(stdout), &parsed)
 		Expect(err).ToNot(HaveOccurred(), "tenant YAML output should be valid")
-		Expect(stdout).To(ContainSubstring(usersGroup), "YAML output should include the tenant name")
+		metadata, ok := parsed["metadata"].(map[any]any)
+		Expect(ok).To(BeTrue(), "YAML should contain metadata object")
+		Expect(metadata["name"]).To(Equal(usersGroup))
 	})
 })

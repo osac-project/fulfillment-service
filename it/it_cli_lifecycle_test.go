@@ -76,11 +76,6 @@ var _ = Describe("CLI Resource Lifecycle", Label("cli", "lifecycle"), func() {
 		Expect(exitCode).To(Equal(0), "delete should succeed")
 		Expect(stdout).To(ContainSubstring("Deleted"))
 
-		// Confirm soft-delete: resource remains visible with DELETING=Yes until finalizers complete
-		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", vnName)
-		Expect(exitCode).To(Equal(0), "get after delete should succeed")
-		Expect(stdout).To(ContainSubstring(vnName))
-		Expect(stdout).To(MatchRegexp(`(?m)^\S+\s+Yes\s+.*%s`, vnName),
-			"DELETING column should be Yes after delete")
+		expectCLISoftDeletedVirtualNetwork(ctx, homeDir, vnName)
 	})
 })

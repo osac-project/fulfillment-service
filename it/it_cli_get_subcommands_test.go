@@ -79,8 +79,9 @@ var _ = Describe("CLI Get Subcommands", Label("cli", "get"), func() {
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		pool := createResp.GetObject()
-		DeferCleanup(func() {
-			_, _ = poolClient.Delete(context.Background(), privatev1.PublicIPPoolsDeleteRequest_builder{
+		DeferCleanup(func(ctx context.Context) {
+			// Best-effort cleanup; ignore not-found / already-deleted.
+			_, _ = poolClient.Delete(ctx, privatev1.PublicIPPoolsDeleteRequest_builder{
 				Id: pool.GetId(),
 			}.Build())
 		})

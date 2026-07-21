@@ -54,9 +54,10 @@ func setupTestNetworkClass(title string) string {
 	Expect(err).ToNot(HaveOccurred())
 	networkClassId := ncResp.GetObject().GetId()
 
-	DeferCleanup(func() {
+	DeferCleanup(func(ctx context.Context) {
 		ncClient := privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
-		_, _ = ncClient.Delete(context.Background(), privatev1.NetworkClassesDeleteRequest_builder{
+		// Best-effort cleanup; ignore not-found / already-deleted.
+		_, _ = ncClient.Delete(ctx, privatev1.NetworkClassesDeleteRequest_builder{
 			Id: networkClassId,
 		}.Build())
 	})
@@ -75,8 +76,18 @@ func createCLIVirtualNetwork(ctx context.Context, homeDir, networkClassId, cidr 
 	)
 	Expect(exitCode).To(Equal(0), "create virtualnetwork should succeed, stdout=%s, stderr=%s", stdout, stderr)
 	Expect(stdout).To(ContainSubstring("Created"))
-	DeferCleanup(func() {
-		tool.RunCLI(context.Background(), homeDir, "delete", "virtualnetwork", vnName)
+	DeferCleanup(func(ctx context.Context) {
+		tool.RunCLI(ctx, homeDir, "delete", "virtualnetwork", vnName)
 	})
 	return vnName
+}
+
+// expectCLISoftDeletedVirtualNetwork asserts the resource is still listed after delete
+// with DELETING=Yes (soft-delete until finalizers complete).
+func expectCLISoftDeletedVirtualNetwork(ctx context.Context, homeDir, vnName string) {
+	stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "virtualnetwork", vnName)
+	Expect(exitCode).To(Equal(0), "get after delete should succeed")
+	Expect(stdout).To(ContainSubstring(vnName))
+	Expect(stdout).To(MatchRegexp(`(?m)^\S+\s+Yes\s+.*%s`, vnName),
+		"DELETING column should be Yes after delete")
 }

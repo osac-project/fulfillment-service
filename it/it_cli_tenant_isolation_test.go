@@ -15,7 +15,6 @@ package it
 
 import (
 	"context"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -54,8 +53,7 @@ var _ = Describe("CLI Tenant Isolation", Label("cli", "tenant", "isolation"), fu
 
 		stdout, _, exitCode := tool.RunCLI(ctx, homeDirB, "get", "virtualnetwork")
 		Expect(exitCode).To(Equal(0), "ben list should succeed")
-		visible := strings.Contains(stdout, vnName)
-		Expect(visible).To(BeFalse(), "ben should not see adam's resource")
+		Expect(stdout).ToNot(ContainSubstring(vnName), "ben should not see adam's resource")
 	})
 
 	It("Tenant user deletes own resource", func(ctx context.Context) {
@@ -67,11 +65,6 @@ var _ = Describe("CLI Tenant Isolation", Label("cli", "tenant", "isolation"), fu
 		Expect(exitCode).To(Equal(0), "adam should delete own resource")
 		Expect(stdout).To(ContainSubstring("Deleted"))
 
-		// Confirm soft-delete: resource remains visible with DELETING=Yes until finalizers complete
-		stdout, _, exitCode = tool.RunCLI(ctx, homeDirA, "get", "virtualnetwork", vnName)
-		Expect(exitCode).To(Equal(0), "get after delete should succeed")
-		Expect(stdout).To(ContainSubstring(vnName))
-		Expect(stdout).To(MatchRegexp(`(?m)^\S+\s+Yes\s+.*%s`, vnName),
-			"DELETING column should be Yes after delete")
+		expectCLISoftDeletedVirtualNetwork(ctx, homeDirA, vnName)
 	})
 })
