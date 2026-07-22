@@ -80,6 +80,8 @@ $ osac get clustertemplates
 ID                                    NAME  TITLE
 osac.templates.ocp_small              -     OpenShift Small Cluster
 osac.templates.ocp_ci_small           -     CI OpenShift Cluster
+osac.templates.ocp_4_20_ai_maas       -     OpenShift AI 4.20 Cluster with MaaS
+osac.templates.ocp_4_20_small_nico    -     OpenShift 4.20 Cluster on NICo Bare Metal
 ```
 
 ### ClusterCatalogItem
