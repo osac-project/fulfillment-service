@@ -29,7 +29,9 @@ in two ways:
   provisioning.
 - `osac create cluster --catalog-item <id>` — the server resolves the template from the catalog
   item and applies `field_definitions` to enforce defaults and validation. Only the fixed set of
-  known fields can be controlled; custom template parameters are not supported.
+  known fields can be controlled; custom template parameters cannot be passed via the CLI yet
+  (`--template-parameter` flag — support is planned), but they can be passed through the
+  gRPC/REST API directly.
 
 Both templates and catalog items are created and managed by the platform admin through the private
 API. The distinction is not one of roles but of purpose: templates define what infrastructure
@@ -48,13 +50,16 @@ flags (`--pull-secret`, `--ssh-public-key`, `--pod-cidr`).
 correspond to known fields in the resource spec — unknown paths have no effect on provisioning.
 
 Custom provisioning parameters (like `vpc_id`, `ip_block_id`, `ssh_key_group_id`) are defined as
-**template parameters**, which are a separate mechanism. Template parameters are passed by the user
-with `--template-parameter` and forwarded to AAP as extra variables. However, `--template-parameter`
-is **not supported with `--catalog-item`**, which means:
+**template parameters**, which are a separate mechanism. Template parameters are forwarded to AAP as
+extra variables. The OSAC CLI does not yet support `--template-parameter` with `--catalog-item`
+(support is planned), but the
+gRPC/REST API accepts `template_parameters` on any create request regardless of whether it uses a
+template or a catalog item. This means:
 
 - Catalog items work well with templates that only need the standard spec fields.
-- Templates that require custom parameters (e.g., `osac.templates.ocp_4_20_small_nico`) cannot be
-  fully used through catalog items — users must use `--template` directly instead.
+- Templates that require custom parameters (e.g., `osac.templates.ocp_virt_vm`) can be used
+  through catalog items when creating resources via the API with `template_parameters`. Through the
+  CLI, users must use `--template` directly instead.
 
 ## Creating Catalog Items
 
@@ -73,11 +78,10 @@ Cluster Catalog Items are based on Cluster Templates, you can list the ones avai
 ```bash
 $ osac get clustertemplates
 ID                                    NAME  TITLE
-ocp_4_17_small                        -     OpenShift 4.17 small
-osac.templates.ocp_4_17_small         -     Simple OpenShift 4.17 Cluster
-osac.templates.ocp_4_17_small_github  -     OpenShift 4.17 Cluster + GitHub
-osac.templates.ocp_4_20_small_nico    -     OpenShift 4.20 Cluster on NICo Bare Metal
+osac.templates.ocp_small              -     OpenShift Small Cluster
 osac.templates.ocp_ci_small           -     CI OpenShift Cluster
+osac.templates.ocp_4_20_ai_maas       -     OpenShift AI 4.20 Cluster with MaaS
+osac.templates.ocp_4_20_small_nico    -     OpenShift 4.20 Cluster on NICo Bare Metal
 ```
 
 ### ClusterCatalogItem
@@ -88,7 +92,7 @@ metadata:
   name: dev-sandbox
 title: Dev Sandbox Cluster
 description: Small development cluster with locked-down defaults.
-template: "osac.templates.ocp_4_17_small"
+template: "osac.templates.ocp_small"
 published: true
 field_definitions:
   - path: ssh_public_key
@@ -251,8 +255,11 @@ osac create cluster --catalog-item dev-sandbox \
   --pod-cidr "10.128.0.0/14"
 ```
 
-> **Note:** `--template-parameter` is not supported with `--catalog-item`. For templates that
-> require custom parameters, use `--template` directly (see
+> **Note:** The CLI does not yet support `--template-parameter` with `--catalog-item` (support is
+> planned). To pass custom
+> template parameters with a catalog item, use the gRPC/REST API directly (the
+> `template_parameters` field is accepted on all create requests). Alternatively, use `--template`
+> with the CLI (see
 > [What field_definitions can and cannot do](#what-field_definitions-can-and-cannot-do)).
 
 ### How CLI flags interact with field_definitions

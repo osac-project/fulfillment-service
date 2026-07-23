@@ -63,7 +63,7 @@ func createClusterInState(
 				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.ClusterSpec_builder{
-				Template: "ocp_4_17_small",
+				Template: "ocp_small",
 			}.Build(),
 		}.Build(),
 	).Do(ctx)

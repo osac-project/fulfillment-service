@@ -15,11 +15,14 @@ package it
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Cluster templates", func() {
@@ -34,24 +37,42 @@ var _ = Describe("Cluster templates", func() {
 	})
 
 	It("Can get the list of templates", func() {
+		// Create a template via the private API:
+		adminClient := privatev1.NewClusterTemplatesClient(tool.InternalView().AdminConn())
+		id := fmt.Sprintf("my_template_%s", uuid.New())
+		_, err := adminClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
+			Object: privatev1.ClusterTemplate_builder{
+				Id:          id,
+				Title:       "My title",
+				Description: "My description.",
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+
 		listResponse, err := client.List(ctx, publicv1.ClusterTemplatesListRequest_builder{}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResponse).ToNot(BeNil())
 		items := listResponse.GetItems()
 		Expect(items).ToNot(BeEmpty())
+		ids := make([]string, len(items))
+		for i, item := range items {
+			ids[i] = item.GetId()
+		}
+		Expect(ids).To(ContainElement(id))
 	})
 
 	It("Can get a specific template", func() {
-		// First get the list to find an existing template:
-		listResponse, err := client.List(ctx, publicv1.ClusterTemplatesListRequest_builder{}.Build())
+		// Create a template via the private API:
+		adminClient := privatev1.NewClusterTemplatesClient(tool.InternalView().AdminConn())
+		id := fmt.Sprintf("my_template_%s", uuid.New())
+		_, err := adminClient.Create(ctx, privatev1.ClusterTemplatesCreateRequest_builder{
+			Object: privatev1.ClusterTemplate_builder{
+				Id:          id,
+				Title:       "My title",
+				Description: "My description.",
+			}.Build(),
+		}.Build())
 		Expect(err).ToNot(HaveOccurred())
-		Expect(listResponse).ToNot(BeNil())
-		items := listResponse.GetItems()
-		Expect(items).ToNot(BeEmpty())
-
-		// Get the first template from the list:
-		firstTemplate := items[0]
-		id := firstTemplate.GetId()
 
 		// Get the template and verify that the returned object is correct:
 		response, err := client.Get(ctx, publicv1.ClusterTemplatesGetRequest_builder{
