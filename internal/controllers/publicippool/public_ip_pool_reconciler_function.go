@@ -25,6 +25,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -197,6 +198,10 @@ func (t *task) update(ctx context.Context) error {
 		}
 		err = t.hubClient.Create(ctx, object)
 		if err != nil {
+			if apierrors.IsInvalid(err) {
+				t.setFailed(err)
+				return nil
+			}
 			return err
 		}
 		t.r.logger.DebugContext(
@@ -210,6 +215,10 @@ func (t *task) update(ctx context.Context) error {
 		update.Spec = spec
 		err = t.hubClient.Patch(ctx, update, clnt.MergeFrom(existingObject))
 		if err != nil {
+			if apierrors.IsInvalid(err) {
+				t.setFailed(err)
+				return nil
+			}
 			return err
 		}
 		t.r.logger.DebugContext(
@@ -388,6 +397,17 @@ func (t *task) removeFinalizer() {
 		})
 		t.publicIPPool.GetMetadata().SetFinalizers(list)
 	}
+}
+
+// setFailed transitions the public IP pool to FAILED state with the given error message.
+// Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
+// cannot be provisioned.
+func (t *task) setFailed(err error) {
+	if !t.publicIPPool.HasStatus() {
+		t.publicIPPool.SetStatus(&privatev1.PublicIPPoolStatus{})
+	}
+	t.publicIPPool.GetStatus().SetState(privatev1.PublicIPPoolState_PUBLIC_IP_POOL_STATE_FAILED)
+	t.publicIPPool.GetStatus().SetMessage(err.Error())
 }
 
 func (t *task) buildSpec() osacv1alpha1.PublicIPPoolSpec {
