@@ -25,23 +25,18 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
-	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/testing"
 )
 
 var _ = Describe("Reflection helper", func() {
 	var (
-		ctx        context.Context
 		server     *testing.Server
 		connection *grpc.ClientConn
 	)
 
 	BeforeEach(func() {
 		var err error
-
-		// Create a context:
-		ctx = context.Background()
 
 		// Create the server:
 		server = testing.NewServer()
@@ -58,28 +53,28 @@ var _ = Describe("Reflection helper", func() {
 
 	Describe("Creation", func() {
 		It("Can be created with all the mandatory parameters", func() {
-			helper, err := NewHelper().
+			globalHelper, err := NewHelper().
 				SetLogger(logger).
 				SetConnection(connection).
 				AddPackage(packages.PublicV1, 1).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(helper).ToNot(BeNil())
+			Expect(globalHelper).ToNot(BeNil())
 		})
 
 		It("Can be created with multiple packages", func() {
-			helper, err := NewHelper().
+			globalHelper, err := NewHelper().
 				SetLogger(logger).
 				SetConnection(connection).
 				AddPackage(packages.PublicV1, 1).
 				AddPackage(packages.PrivateV1, 0).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(helper).ToNot(BeNil())
+			Expect(globalHelper).ToNot(BeNil())
 		})
 
 		It("Can be created with multiple specified in one call", func() {
-			helper, err := NewHelper().
+			globalHelper, err := NewHelper().
 				SetLogger(logger).
 				SetConnection(connection).
 				AddPackages(map[string]int{
@@ -88,53 +83,49 @@ var _ = Describe("Reflection helper", func() {
 				}).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(helper).ToNot(BeNil())
+			Expect(globalHelper).ToNot(BeNil())
 		})
 
 		It("Can't be created without a logger", func() {
-			helper, err := NewHelper().
+			globalHelper, err := NewHelper().
 				SetConnection(connection).
 				AddPackage(packages.PublicV1, 1).
 				Build()
 			Expect(err).To(MatchError("logger is mandatory"))
-			Expect(helper).To(BeNil())
+			Expect(globalHelper).To(BeNil())
 		})
 
 		It("Can't be created without a connection", func() {
-			helper, err := NewHelper().
+			globalHelper, err := NewHelper().
 				SetLogger(logger).
 				AddPackage(packages.PublicV1, 1).
 				Build()
 			Expect(err).To(MatchError("gRPC connection is mandatory"))
-			Expect(helper).To(BeNil())
+			Expect(globalHelper).To(BeNil())
 		})
 
 		It("Can't be created without at least one package", func() {
-			helper, err := NewHelper().
+			globalHelper, err := NewHelper().
 				SetLogger(logger).
 				SetConnection(connection).
 				Build()
 			Expect(err).To(MatchError("at least one package is mandatory"))
-			Expect(helper).To(BeNil())
+			Expect(globalHelper).To(BeNil())
 		})
 	})
 
 	Describe("Behaviour", func() {
-		var helper Helper
-
-		BeforeEach(func() {
-			var err error
-			helper, err = NewHelper().
+		It("Returns object types in singular", func() {
+			// Create the helper:
+			globalHelper, err := NewHelper().
 				SetLogger(logger).
 				SetConnection(connection).
 				AddPackage(packages.PublicV1, 1).
-				SetTenantFunc(config.TenantFromContext).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-		})
 
-		It("Returns object types in singular", func() {
-			Expect(helper.Singulars()).To(ConsistOf(
+			// Verify the object types in singular:
+			Expect(globalHelper.Singulars()).To(ConsistOf(
 				"baremetalinstance",
 				"baremetalinstancecatalogitem",
 				"baremetalinstancetemplate",
@@ -168,7 +159,16 @@ var _ = Describe("Reflection helper", func() {
 		})
 
 		It("Returns object types in plural", func() {
-			Expect(helper.Plurals()).To(ConsistOf(
+			// Create the globalHelper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the object types in plural:
+			Expect(globalHelper.Plurals()).To(ConsistOf(
 				"baremetalinstances",
 				"baremetalinstancecatalogitems",
 				"baremetalinstancetemplates",
@@ -204,7 +204,13 @@ var _ = Describe("Reflection helper", func() {
 		DescribeTable(
 			"Lookup by object type",
 			func(objectType string, expectedFullName string) {
-				objectHelper := helper.Lookup(objectType)
+				globalHelper, err := NewHelper().
+					SetLogger(logger).
+					SetConnection(connection).
+					AddPackage(packages.PublicV1, 1).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				objectHelper := globalHelper.Lookup(objectType)
 				Expect(objectHelper).ToNot(BeNil())
 				Expect(string(objectHelper.FullName())).To(Equal(expectedFullName))
 			},
@@ -248,7 +254,13 @@ var _ = Describe("Reflection helper", func() {
 		DescribeTable(
 			"Returns descriptor",
 			func(objectType string, expectedFullName string) {
-				objectHelper := helper.Lookup(objectType)
+				globalHelper, err := NewHelper().
+					SetLogger(logger).
+					SetConnection(connection).
+					AddPackage(packages.PublicV1, 1).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				objectHelper := globalHelper.Lookup(objectType)
 				Expect(objectHelper).ToNot(BeNil())
 				objectDescriptor := objectHelper.Descriptor()
 				Expect(objectDescriptor).ToNot(BeNil())
@@ -284,7 +296,13 @@ var _ = Describe("Reflection helper", func() {
 		DescribeTable(
 			"Creates instance",
 			func(objectType string, expectedInstance proto.Message) {
-				objectHelper := helper.Lookup(objectType)
+				globalHelper, err := NewHelper().
+					SetLogger(logger).
+					SetConnection(connection).
+					AddPackage(packages.PublicV1, 1).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				objectHelper := globalHelper.Lookup(objectType)
 				Expect(objectHelper).ToNot(BeNil())
 				actualInstance := objectHelper.Instance()
 				Expect(proto.Equal(actualInstance, expectedInstance)).To(BeTrue())
@@ -306,7 +324,15 @@ var _ = Describe("Reflection helper", func() {
 			),
 		)
 
-		It("Invokes get method", func() {
+		It("Invokes get method", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
 			// Register a clusters server that responds to the get request:
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				GetFunc: func(ctx context.Context, request *publicv1.ClustersGetRequest,
@@ -329,7 +355,7 @@ var _ = Describe("Reflection helper", func() {
 			server.Start()
 
 			// Use the helper to send the request, and verify the response:
-			objectHelper := helper.Lookup("cluster")
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
 			object, err := objectHelper.Get(ctx, "123")
 			Expect(err).ToNot(HaveOccurred())
@@ -341,7 +367,15 @@ var _ = Describe("Reflection helper", func() {
 			}.Build())).To(BeTrue())
 		})
 
-		It("Invokes list method", func() {
+		It("Invokes list method", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
 			// Register a clusters server that responds to the list request:
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				ListFunc: func(ctx context.Context, request *publicv1.ClustersListRequest,
@@ -366,7 +400,7 @@ var _ = Describe("Reflection helper", func() {
 			server.Start()
 
 			// Use the helper to send the request, and verify the response:
-			objectHelper := helper.Lookup("cluster")
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
 			listResult, err := objectHelper.List(ctx, ListOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -386,7 +420,15 @@ var _ = Describe("Reflection helper", func() {
 			)).To(BeTrue())
 		})
 
-		It("Invokes create method", func() {
+		It("Invokes create method", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
 			// Register a clusters server that responds to the create request:
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				CreateFunc: func(ctx context.Context, request *publicv1.ClustersCreateRequest,
@@ -426,7 +468,7 @@ var _ = Describe("Reflection helper", func() {
 			server.Start()
 
 			// Use the helper to send the request, and verify the response:
-			objectHelper := helper.Lookup("cluster")
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
 			object, err := objectHelper.Create(ctx, publicv1.Cluster_builder{
 				Spec: publicv1.ClusterSpec_builder{
@@ -455,7 +497,15 @@ var _ = Describe("Reflection helper", func() {
 			)).To(BeTrue())
 		})
 
-		It("Invokes update method", func() {
+		It("Invokes update method", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
 			// Register a clusters server that responds to the update request:
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				UpdateFunc: func(ctx context.Context, request *publicv1.ClustersUpdateRequest,
@@ -495,7 +545,7 @@ var _ = Describe("Reflection helper", func() {
 			server.Start()
 
 			// Use the helper to send the request, and verify the response:
-			objectHelper := helper.Lookup("cluster")
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
 			object, err := objectHelper.Update(ctx, publicv1.Cluster_builder{
 				Id: "123",
@@ -524,7 +574,15 @@ var _ = Describe("Reflection helper", func() {
 			)).To(BeTrue())
 		})
 
-		It("Invokes delete method", func() {
+		It("Invokes delete method", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
 			// Register a clusters server that responds to the delete request:
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				DeleteFunc: func(ctx context.Context, request *publicv1.ClustersDeleteRequest,
@@ -539,13 +597,21 @@ var _ = Describe("Reflection helper", func() {
 			server.Start()
 
 			// Use the helper to send the request, and verify the response:
-			objectHelper := helper.Lookup("cluster")
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
-			err := objectHelper.Delete(ctx, "123")
+			err = objectHelper.Delete(ctx, "123")
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("Returns metadata from get method", func() {
+		It("Returns metadata from get method", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
 			// Register a clusters server that responds to the get request with metadata:
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				GetFunc: func(ctx context.Context, request *publicv1.ClustersGetRequest,
@@ -568,7 +634,7 @@ var _ = Describe("Reflection helper", func() {
 			server.Start()
 
 			// Use the helper to send the request, and verify the metadata is returned:
-			objectHelper := helper.Lookup("cluster")
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
 			object, err := objectHelper.Get(ctx, "123")
 			Expect(err).ToNot(HaveOccurred())
@@ -650,7 +716,16 @@ var _ = Describe("Reflection helper", func() {
 		})
 
 		It("Sets tenant on an object with existing metadata", func() {
-			objectHelper := helper.Lookup("cluster")
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Lookup the cluster object:
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
 			object := publicv1.Cluster_builder{
 				Metadata: publicv1.Metadata_builder{
@@ -663,7 +738,16 @@ var _ = Describe("Reflection helper", func() {
 		})
 
 		It("Sets tenant on an object without metadata", func() {
-			objectHelper := helper.Lookup("cluster")
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Lookup the cluster object:
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
 			object := publicv1.Cluster_builder{
 				Id: "123",
@@ -673,7 +757,16 @@ var _ = Describe("Reflection helper", func() {
 		})
 
 		It("Returns empty tenant when none is set", func() {
-			objectHelper := helper.Lookup("cluster")
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Lookup the cluster object:
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
 			object := publicv1.Cluster_builder{
 				Metadata: publicv1.Metadata_builder{
@@ -683,12 +776,24 @@ var _ = Describe("Reflection helper", func() {
 			Expect(objectHelper.GetTenant(object)).To(BeEmpty())
 		})
 
-		It("Injects tenant filter into list when tenant is in context", func() {
-			var capturedFilter string
+		It("Injects tenant filter into list when tenant is returned by the tenant function", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				SetTenantFunc(func() string {
+					return "acme"
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create a server that captures the filter:
+			var filter string
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				ListFunc: func(ctx context.Context, request *publicv1.ClustersListRequest,
 				) (response *publicv1.ClustersListResponse, err error) {
-					capturedFilter = request.GetFilter()
+					filter = request.GetFilter()
 					response = publicv1.ClustersListResponse_builder{
 						Size:  0,
 						Total: 0,
@@ -698,20 +803,32 @@ var _ = Describe("Reflection helper", func() {
 			})
 			server.Start()
 
-			tenantCtx := config.TenantIntoContext(ctx, "acme")
-			objectHelper := helper.Lookup("cluster")
+			// Lookup the cluster object:
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
-			_, err := objectHelper.List(tenantCtx, ListOptions{})
+			_, err = objectHelper.List(ctx, ListOptions{})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(capturedFilter).To(Equal(`this.metadata.tenant == "acme"`))
+			Expect(filter).To(Equal(`this.metadata.tenant == "acme"`))
 		})
 
-		It("Combines tenant filter with user-provided filter", func() {
-			var capturedFilter string
+		It("Combines tenant filter with user-provided filter", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				SetTenantFunc(func() string {
+					return "acme"
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create a server that captures the filter:
+			var filter string
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				ListFunc: func(ctx context.Context, request *publicv1.ClustersListRequest,
 				) (response *publicv1.ClustersListResponse, err error) {
-					capturedFilter = request.GetFilter()
+					filter = request.GetFilter()
 					response = publicv1.ClustersListResponse_builder{
 						Size:  0,
 						Total: 0,
@@ -721,51 +838,86 @@ var _ = Describe("Reflection helper", func() {
 			})
 			server.Start()
 
-			tenantCtx := config.TenantIntoContext(ctx, "acme")
-			objectHelper := helper.Lookup("cluster")
+			// Lookup the cluster object:
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
-			_, err := objectHelper.List(tenantCtx, ListOptions{
+			_, err = objectHelper.List(ctx, ListOptions{
 				Filter: `this.metadata.name == "my-cluster"`,
 			})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(capturedFilter).To(Equal(
+			Expect(filter).To(Equal(
 				`this.metadata.tenant == "acme" && (this.metadata.name == "my-cluster")`,
 			))
 		})
 
 		It("Reports tenant-scoped types correctly", func() {
-			Expect(helper.Lookup("cluster").IsTenantScoped()).To(BeTrue())
-			Expect(helper.Lookup("virtualnetwork").IsTenantScoped()).To(BeTrue())
-			Expect(helper.Lookup("subnet").IsTenantScoped()).To(BeTrue())
-			Expect(helper.Lookup("project").IsTenantScoped()).To(BeTrue())
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Check the objects that should be tenant-scoped:
+			Expect(globalHelper.Lookup("cluster").IsTenantScoped()).To(BeTrue())
+			Expect(globalHelper.Lookup("virtualnetwork").IsTenantScoped()).To(BeTrue())
+			Expect(globalHelper.Lookup("subnet").IsTenantScoped()).To(BeTrue())
+			Expect(globalHelper.Lookup("project").IsTenantScoped()).To(BeTrue())
 		})
 
 		It("Reports platform-scoped types correctly", func() {
-			Expect(helper.Lookup("hosttype").IsTenantScoped()).To(BeFalse())
-			Expect(helper.Lookup("tenant").IsTenantScoped()).To(BeFalse())
-			Expect(helper.Lookup("networkclass").IsTenantScoped()).To(BeFalse())
-			Expect(helper.Lookup("role").IsTenantScoped()).To(BeFalse())
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Check the objects that should be platform-scoped:
+			Expect(globalHelper.Lookup("hosttype").IsTenantScoped()).To(BeFalse())
+			Expect(globalHelper.Lookup("tenant").IsTenantScoped()).To(BeFalse())
+			Expect(globalHelper.Lookup("networkclass").IsTenantScoped()).To(BeFalse())
+			Expect(globalHelper.Lookup("role").IsTenantScoped()).To(BeFalse())
 		})
 
 		It("Accounts for every discovered type as tenant-scoped or platform-scoped", func() {
-			names := helper.Names()
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Get all the type names:
+			names := globalHelper.Names()
 			Expect(names).ToNot(BeEmpty())
 			for _, name := range names {
-				objectHelper := helper.Lookup(name)
+				objectHelper := globalHelper.Lookup(name)
 				Expect(objectHelper).ToNot(BeNil(), "Lookup failed for %s", name)
-				// Verify that every type has an explicit scope decision — if this test
-				// fails after adding a new resource type, add it to platformScopedTypes
-				// if it is not tenant-scoped.
+				// Verify that every type has an explicit scope decision - if this test fails after
+				// adding a new resource type, add it to platformScopedTypes if it is not tenant-scoped.
 				_ = objectHelper.IsTenantScoped()
 			}
 		})
 
-		It("Does not inject tenant filter when no tenant in context", func() {
-			var capturedFilter string
+		It("Does not inject tenant filter when no tenant in context", func(ctx context.Context) {
+			// Create the helper:
+			globalHelper, err := NewHelper().
+				SetLogger(logger).
+				SetConnection(connection).
+				AddPackage(packages.PublicV1, 1).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			// Create a server that captures the filter:
+			var filter string
 			publicv1.RegisterClustersServer(server.Registrar(), &testing.ClustersServerFuncs{
 				ListFunc: func(ctx context.Context, request *publicv1.ClustersListRequest,
 				) (response *publicv1.ClustersListResponse, err error) {
-					capturedFilter = request.GetFilter()
+					filter = request.GetFilter()
 					response = publicv1.ClustersListResponse_builder{
 						Size:  0,
 						Total: 0,
@@ -775,13 +927,14 @@ var _ = Describe("Reflection helper", func() {
 			})
 			server.Start()
 
-			objectHelper := helper.Lookup("cluster")
+			// Lookup the cluster object:
+			objectHelper := globalHelper.Lookup("cluster")
 			Expect(objectHelper).ToNot(BeNil())
-			_, err := objectHelper.List(ctx, ListOptions{
+			_, err = objectHelper.List(ctx, ListOptions{
 				Filter: `this.metadata.name == "my-cluster"`,
 			})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(capturedFilter).To(Equal(`this.metadata.name == "my-cluster"`))
+			Expect(filter).To(Equal(`this.metadata.name == "my-cluster"`))
 		})
 
 		It("Sorts types according to package order when adding packages", func() {

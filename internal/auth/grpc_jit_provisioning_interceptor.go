@@ -21,7 +21,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/grpc"
 
-	"github.com/osac-project/fulfillment-service/internal/util"
+	"github.com/osac-project/fulfillment-service/internal/reflection"
 )
 
 //go:generate mockgen -source=$GOFILE -destination=grpc_jit_provisioning_interceptor_mock.go -package=$GOPACKAGE UserProvisioner
@@ -57,7 +57,7 @@ func (b *GrpcJitProvisioningInterceptorBuilder) SetLogger(value *slog.Logger) *G
 
 // SetProvisioner sets the user provisioner.
 func (b *GrpcJitProvisioningInterceptorBuilder) SetProvisioner(value UserProvisioner) *GrpcJitProvisioningInterceptorBuilder {
-	b.provisioner = util.NormalizeNil(value)
+	b.provisioner = reflection.NormalizeNil(value)
 	return b
 }
 

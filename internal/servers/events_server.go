@@ -36,7 +36,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/collections"
 	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/packages"
-	"github.com/osac-project/fulfillment-service/internal/util"
+	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
@@ -81,12 +81,12 @@ func (b *EventsServerBuilder) SetLogger(value *slog.Logger) *EventsServerBuilder
 
 // SetListener sets the listener that will be used to receive event notifications. This is mandatory.
 func (b *EventsServerBuilder) SetListener(value events.Listener) *EventsServerBuilder {
-	b.listener = util.NormalizeNil(value)
+	b.listener = reflection.NormalizeNil(value)
 	return b
 }
 
 func (b *EventsServerBuilder) SetTenancyLogic(value auth.TenancyLogic) *EventsServerBuilder {
-	b.tenancyLogic = util.NormalizeNil(value)
+	b.tenancyLogic = reflection.NormalizeNil(value)
 	return b
 }
 

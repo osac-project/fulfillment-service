@@ -37,7 +37,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
 	"github.com/osac-project/fulfillment-service/internal/masks"
-	"github.com/osac-project/fulfillment-service/internal/util"
+	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
@@ -141,7 +141,7 @@ func (b *GenericServerBuilder[O]) AddIgnoredFields(values ...any) *GenericServer
 
 // SetNotifier sets the notifier that the server will use to send change notifications. This is optional.
 func (b *GenericServerBuilder[O]) SetNotifier(value events.Notifier) *GenericServerBuilder[O] {
-	b.notifier = util.NormalizeNil(value)
+	b.notifier = reflection.NormalizeNil(value)
 	return b
 }
 
