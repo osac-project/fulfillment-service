@@ -315,7 +315,7 @@ osac create cluster --catalog-item dev-sandbox \
 ```
 
 Use `--set` to pass template parameters or override editable spec fields. Each `--set` takes a
-single `KEY=VALUE` pair (same parsing as `helm --set` — split on first `=`):
+single `KEY=VALUE` pair (split on the first `=`):
 
 ```bash
 osac create cluster --catalog-item rhel-ai-small \

@@ -92,8 +92,7 @@ func inferValue(s string) any {
 	if s == "false" {
 		return false
 	}
-	if _, err := strconv.ParseInt(s, 10, 64); err == nil {
-		n, _ := strconv.ParseFloat(s, 64)
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
 		return n
 	}
 	if n, err := strconv.ParseFloat(s, 64); err == nil && strings.Count(s, ".") == 1 {
