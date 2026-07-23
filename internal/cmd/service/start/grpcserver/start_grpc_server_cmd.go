@@ -332,7 +332,12 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	jwtValidator, err := auth.NewJwtValidator().
 		SetLogger(c.logger).
 		SetJwksCache(jwksCache).
-		SetExpirationLeeway(5 * time.Second).
+		SetExpirationLeeway(5*time.Second).
+		AddAudiences(
+			auth.Audience,
+			"https://kubernetes.default.svc",
+			"https://kubernetes.default.svc.cluster.local",
+		).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create JWT validator: %w", err)
