@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -34,6 +35,7 @@ type PrivateNATGatewaysServerBuilder struct {
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
+	filterDesc        protoreflect.MessageDescriptor
 }
 
 var _ privatev1.NATGatewaysServer = (*PrivateNATGatewaysServer)(nil)
@@ -75,6 +77,14 @@ func (b *PrivateNATGatewaysServerBuilder) SetMetricsRegisterer(value prometheus.
 	return b
 }
 
+// SetFilterDesc sets the protobuf message descriptor used to validate and translate CEL filter expressions. This is
+// optional. When unset, the private object type is used. Public servers that wrap this private server should pass the
+// corresponding public object descriptor so that clients cannot filter on private-only fields.
+func (b *PrivateNATGatewaysServerBuilder) SetFilterDesc(value protoreflect.MessageDescriptor) *PrivateNATGatewaysServerBuilder {
+	b.filterDesc = value
+	return b
+}
+
 func (b *PrivateNATGatewaysServerBuilder) Build() (result *PrivateNATGatewaysServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
@@ -105,6 +115,7 @@ func (b *PrivateNATGatewaysServerBuilder) Build() (result *PrivateNATGatewaysSer
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetFilterDesc(b.filterDesc).
 		Build()
 	if err != nil {
 		return
