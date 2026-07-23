@@ -23,6 +23,7 @@ on:
       - 'LICENSE'
       - '*.md'
       - 'docs/**'
+      - 'examples/**'
 
 permissions:
   contents: read

@@ -23,6 +23,7 @@ on:
       - 'LICENSE'
       - '*.md'
       - 'docs/**'
+      - 'examples/**'
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
