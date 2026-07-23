@@ -692,6 +692,113 @@ var _ = Describe("Private cluster versions server", func() {
 			})
 		})
 
+		Describe("UNSPECIFIED state handling", func() {
+			DescribeTable("preserves existing state when state is not explicitly set",
+				func(maskPaths []string, specBuilder func(string, string) *privatev1.ClusterVersionSpec) {
+					object := createWithState("unspec-guard", "4.17.0",
+						privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE)
+
+					_, err := server.Update(ctx, privatev1.ClusterVersionsUpdateRequest_builder{
+						Object: privatev1.ClusterVersion_builder{
+							Id:       object.GetId(),
+							Metadata: privatev1.Metadata_builder{Name: object.GetMetadata().GetName()}.Build(),
+							Spec:     specBuilder(object.GetSpec().GetVersion(), object.GetSpec().GetImage()),
+						}.Build(),
+						UpdateMask: func() *fieldmaskpb.FieldMask {
+							if maskPaths == nil {
+								return nil
+							}
+							return &fieldmaskpb.FieldMask{Paths: maskPaths}
+						}(),
+					}.Build())
+					Expect(err).ToNot(HaveOccurred())
+
+					getResponse, err := server.Get(ctx, privatev1.ClusterVersionsGetRequest_builder{
+						Id: object.GetId(),
+					}.Build())
+					Expect(err).ToNot(HaveOccurred())
+					Expect(getResponse.GetObject().GetSpec().GetState()).To(Equal(
+						privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE),
+						"state must remain ACTIVE, not be corrupted to UNSPECIFIED")
+				},
+				Entry("parent spec mask without state",
+					[]string{"spec"},
+					func(version, image string) *privatev1.ClusterVersionSpec {
+						return privatev1.ClusterVersionSpec_builder{
+							Version: version,
+							Image:   image,
+							Enabled: new(false),
+						}.Build()
+					},
+				),
+				Entry("explicit spec.state mask with zero value",
+					[]string{"spec.state"},
+					func(_, _ string) *privatev1.ClusterVersionSpec {
+						return privatev1.ClusterVersionSpec_builder{}.Build()
+					},
+				),
+				Entry("nil mask (full replacement) without state",
+					[]string(nil),
+					func(version, image string) *privatev1.ClusterVersionSpec {
+						return privatev1.ClusterVersionSpec_builder{
+							Version: version,
+							Image:   image,
+						}.Build()
+					},
+				),
+			)
+
+			It("Does not create spurious deprecation record when state is unchanged", func() {
+				object := createWithState("unspec-no-dep", "4.17.1",
+					privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE)
+				Expect(object.GetSpec().GetDeprecation()).To(BeNil())
+
+				_, err := server.Update(ctx, privatev1.ClusterVersionsUpdateRequest_builder{
+					Object: privatev1.ClusterVersion_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ClusterVersionSpec_builder{
+							Version: object.GetSpec().GetVersion(),
+							Image:   object.GetSpec().GetImage(),
+							Enabled: new(false),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				getResponse, err := server.Get(ctx, privatev1.ClusterVersionsGetRequest_builder{
+					Id: object.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				spec := getResponse.GetObject().GetSpec()
+				Expect(spec.GetState()).To(Equal(
+					privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE))
+				Expect(spec.GetDeprecation()).To(BeNil())
+			})
+
+			It("Rejects an unknown state value", func() {
+				object := createWithState("unknown-state", "4.17.2",
+					privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE)
+
+				_, err := server.Update(ctx, privatev1.ClusterVersionsUpdateRequest_builder{
+					Object: privatev1.ClusterVersion_builder{
+						Id: object.GetId(),
+						Spec: privatev1.ClusterVersionSpec_builder{
+							Version: object.GetSpec().GetVersion(),
+							Image:   object.GetSpec().GetImage(),
+							State:   privatev1.ClusterVersionState(999),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.state"}},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("unsupported cluster version state"))
+			})
+		})
+
 		Describe("Default swap", func() {
 			It("Create with is_default clears previous default", func() {
 				// Create first version as default:
