@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"sort"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
@@ -31,6 +32,15 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
 )
+
+// validCapabilityNames defines the set of recognized capability names that can be used in
+// spec.disable_capabilities. These correspond to the boolean fields in NetworkClassCapabilities.
+var validCapabilityNames = map[string]bool{
+	"supports_ipv4":       true,
+	"supports_ipv6":       true,
+	"supports_dual_stack": true,
+	"dpu_support":         true,
+}
 
 // findDefaultNetworkClass returns the current default NetworkClass using the provided DAO, or nil if none is set.
 // If multiple defaults exist (invariant violation), it returns the newest and logs a warning.
@@ -384,6 +394,11 @@ func (s *PrivateNetworkClassesServer) validateNetworkClass(ctx context.Context,
 		}
 	}
 
+	// NC-VAL-09: Validate disable_capabilities entries
+	if err := validateDisableCapabilities(newNC.GetSpec().GetDisableCapabilities()); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -419,6 +434,30 @@ func validateNetworkDefaults(defaults *privatev1.NetworkDefaults) error {
 		}
 	}
 
+	return nil
+}
+
+// validateDisableCapabilities checks that all entries are recognized capability names with no
+// duplicates. Returns nil for an empty or nil slice.
+func validateDisableCapabilities(caps []string) error {
+	seen := make(map[string]bool, len(caps))
+	for _, cap := range caps {
+		if !validCapabilityNames[cap] {
+			sorted := make([]string, 0, len(validCapabilityNames))
+			for k := range validCapabilityNames {
+				sorted = append(sorted, k)
+			}
+			sort.Strings(sorted)
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"spec.disable_capabilities: %q is not a valid capability name; valid names are: %s",
+				cap, strings.Join(sorted, ", "))
+		}
+		if seen[cap] {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"spec.disable_capabilities: duplicate entry %q", cap)
+		}
+		seen[cap] = true
+	}
 	return nil
 }
 
@@ -472,6 +511,12 @@ func validateDefaultCIDRPair(vnCIDR, subnetCIDR, ipVersion, vnField, subnetField
 func applyNetworkClassUpdate(base, update *privatev1.NetworkClass, mask *fieldmaskpb.FieldMask) {
 	if mask == nil || len(mask.GetPaths()) == 0 {
 		proto.Merge(base, update)
+		// proto.Merge appends repeated fields. Since the nil-mask case represents a full
+		// object replacement, take spec from the update object when set so that repeated
+		// fields (disable_capabilities, security rules) are not doubled.
+		if update.GetSpec() != nil {
+			base.SetSpec(proto.Clone(update.GetSpec()).(*privatev1.NetworkClassSpec))
+		}
 		return
 	}
 	for _, path := range mask.GetPaths() {
@@ -504,11 +549,18 @@ func applyNetworkClassUpdate(base, update *privatev1.NetworkClass, mask *fieldma
 			} else {
 				base.ClearK8SManager()
 			}
-		case "spec", "spec.defaults":
+		case "spec":
+			base.SetSpec(update.GetSpec())
+		case "spec.defaults":
 			if base.GetSpec() == nil {
 				base.SetSpec(&privatev1.NetworkClassSpec{})
 			}
 			base.GetSpec().SetDefaults(update.GetSpec().GetDefaults())
+		case "spec.disable_capabilities":
+			if base.GetSpec() == nil {
+				base.SetSpec(&privatev1.NetworkClassSpec{})
+			}
+			base.GetSpec().SetDisableCapabilities(update.GetSpec().GetDisableCapabilities())
 		default:
 			// For unknown paths, fall through - the generic handler will
 			// reject invalid paths if needed.
