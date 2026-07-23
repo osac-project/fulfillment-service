@@ -50,6 +50,14 @@
                         "port": 30003
                 },
                 {
+                        "name": "attach console-proxy",
+                        "type": "go",
+                        "request": "attach",
+                        "mode": "remote",
+                        "host": "127.0.0.1",
+                        "port": 30004
+                },
+                {
                         "name": "start grpc-server (guest tenancy)",
                         "type": "go",
                         "request": "launch",

@@ -340,13 +340,14 @@ kubectl get configmap ca-bundle -n osac -o json | jq -r '.data["bundle.pem"]' > 
 In the integration tests environment you can use the usual Kubernetes tools and logs for
 debugging, but you can also set the `IT_DEBUG` environment variable to `true`. That will add the
 `dlv` debugger to the container image, use it to run the binaries of the gRPC server, the REST
-gateway and the controller, and expose the debugger on the following ports:
+gateway, the controller and the console proxy, and expose the debugger on the following ports:
 
-| Component    | Port  |
-|--------------|-------|
-| gRPC server  | 30001 |
-| REST gateway | 30002 |
-| Controller   | 30003 |
+| Component     | Port  |
+|---------------|-------|
+| gRPC server   | 30001 |
+| REST gateway  | 30002 |
+| Controller    | 30003 |
+| Console proxy | 30004 |
 
 For example, to connect to the gRPC server debugger from Visual Studio Code, add the following
 configuration to your `.vscode/launch.json` file:
