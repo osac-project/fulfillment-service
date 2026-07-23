@@ -75,13 +75,27 @@ func createBareMetalInstanceInState(
 	ctx context.Context,
 	bareMetalInstanceDao *dao.GenericDAO[*privatev1.BareMetalInstance],
 ) *privatev1.BareMetalInstance {
+	catalogItemDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceCatalogItem]().
+		SetLogger(logger).
+		SetTenancyLogic(tenancy).
+		Build()
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	catalogResp, err := catalogItemDao.Create().SetObject(
+		privatev1.BareMetalInstanceCatalogItem_builder{
+			Metadata: privatev1.Metadata_builder{
+				Tenant: auth.SharedTenant,
+			}.Build(),
+		}.Build(),
+	).Do(ctx)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+
 	resp, err := bareMetalInstanceDao.Create().SetObject(
 		privatev1.BareMetalInstance_builder{
 			Metadata: privatev1.Metadata_builder{
 				Tenant: auth.SharedTenant,
 			}.Build(),
 			Spec: privatev1.BareMetalInstanceSpec_builder{
-				CatalogItem: "bcm_h100",
+				CatalogItem: catalogResp.GetObject().GetId(),
 			}.Build(),
 		}.Build(),
 	).Do(ctx)
