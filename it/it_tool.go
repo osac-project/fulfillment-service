@@ -2318,6 +2318,16 @@ func (t *Tool) LoginCLI(ctx context.Context, homeDir, user, password string) (st
 	)
 }
 
+// LoginCLIWithTokenScript authenticates the CLI using a token-script against the external API.
+// The script parameter is a shell command that produces a bearer token on stdout.
+func (t *Tool) LoginCLIWithTokenScript(ctx context.Context, homeDir, script string) (stdout, stderr string, exitCode int) {
+	return t.RunCLI(ctx, homeDir,
+		"login", fmt.Sprintf("https://%s", externalServiceAddr),
+		"--token-script="+script,
+		"--insecure",
+	)
+}
+
 func (t *Tool) Cleanup(ctx context.Context) error {
 	var errs []error
 
@@ -2379,6 +2389,11 @@ func (t *Tool) Dump(ctx context.Context) error {
 	}
 	logsDir := filepath.Join(t.projectDir, "logs")
 	return t.cluster.Dump(ctx, logsDir)
+}
+
+// KubeconfigFile returns the path to the kubeconfig file for the Kind cluster.
+func (t *Tool) KubeconfigFile() string {
+	return t.kcFile
 }
 
 // Cluster returns the Kind cluster.
