@@ -25,6 +25,7 @@ import "osac/public/v1/host_type_type.proto";
 import "osac/public/v1/instance_type_type.proto";
 import "osac/public/v1/role_binding_type.proto";
 import "osac/public/v1/project_type.proto";
+import "osac/public/v1/secret_type.proto";
 import "osac/public/v1/role_type.proto";
 import "osac/public/v1/tenant_type.proto";
 
@@ -50,6 +51,7 @@ message Event {
     Tenant tenant = 13;
     ClusterVersion cluster_version = 14;
     BareMetalInstance bare_metal_instance = 15;
+    Secret secret = 16;
   }
 }
 

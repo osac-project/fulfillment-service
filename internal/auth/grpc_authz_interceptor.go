@@ -40,19 +40,52 @@ import (
 //go:embed policies/authz.rego
 var authzPolicy string
 
-// MetadataFetcher fetches object metadata (tenant and project name) for authorization. Returns empty strings if object
-// not found or on error.
-type MetadataFetcher func(ctx context.Context, id string) (tenant, project string)
+// ObjectMetadata contains the metadata fields fetched from the database for authorization decisions.
+type ObjectMetadata struct {
+	Tenant  string
+	Name    string
+	Project string
+}
+
+// MetadataFetcher fetches object metadata for authorization. Returns nil if the object is not found or on error.
+type MetadataFetcher func(ctx context.Context, id string) *ObjectMetadata
+
+// ContextExtensions holds the typed fields passed to OPA as input.context.context_extensions.
+type ContextExtensions struct {
+	ID      string
+	Tenant  string
+	Name    string
+	Project string
+}
+
+// ToMap converts the extensions to the untyped map OPA expects, omitting empty fields.
+func (e *ContextExtensions) ToMap() map[string]any {
+	m := map[string]any{}
+	if e.ID != "" {
+		m["id"] = e.ID
+	}
+	if e.Tenant != "" {
+		m["tenant"] = e.Tenant
+	}
+	if e.Name != "" {
+		m["name"] = e.Name
+	}
+	if e.Project != "" {
+		m["project"] = e.Project
+	}
+	return m
+}
 
 // GrpcAuthzInterceptorBuilder contains the data and logic needed to build an interceptor that checks authorization
 // using an embedded Rego policy evaluated with the OPA library. Don't create instances of this type directly, use the
 // NewGrpcAuthzInterceptor function instead.
 type GrpcAuthzInterceptorBuilder struct {
-	logger                   *slog.Logger
-	anonymousMethods         []string
-	inputCallback            func(ctx context.Context, input map[string]any) error
-	metadataFetcher          MetadataFetcher
-	emergencyServiceAccounts []string
+	logger                           *slog.Logger
+	anonymousMethods                 []string
+	inputCallback                    func(ctx context.Context, input map[string]any) error
+	metadataFetcher                  MetadataFetcher
+	projectMembershipMetadataFetcher MetadataFetcher
+	emergencyServiceAccounts         []string
 }
 
 // GrpcAuthzInterceptor is a gRPC interceptor that evaluates an embedded Rego policy for authorization. It reads the
@@ -60,11 +93,12 @@ type GrpcAuthzInterceptorBuilder struct {
 // evaluates the policy to determine if the request is allowed. On success it constructs a Subject containing the user
 // and tenants and stores it in the context.
 type GrpcAuthzInterceptor struct {
-	logger           *slog.Logger
-	anonymousMethods []*regexp.Regexp
-	inputCallback    func(ctx context.Context, input map[string]any) error
-	query            rego.PreparedEvalQuery
-	metadataFetcher  MetadataFetcher
+	logger                           *slog.Logger
+	anonymousMethods                 []*regexp.Regexp
+	inputCallback                    func(ctx context.Context, input map[string]any) error
+	query                            rego.PreparedEvalQuery
+	metadataFetcher                  MetadataFetcher
+	projectMembershipMetadataFetcher MetadataFetcher
 }
 
 // NewGrpcAuthzInterceptor creates a builder that can then be used to configure and create a new authorization
@@ -103,6 +137,14 @@ func (b *GrpcAuthzInterceptorBuilder) SetInputCallback(value func(ctx context.Co
 // This is optional - if not set, metadata will not be fetched for authorization.
 func (b *GrpcAuthzInterceptorBuilder) SetMetadataFetcher(value MetadataFetcher) *GrpcAuthzInterceptorBuilder {
 	b.metadataFetcher = value
+	return b
+}
+
+// SetProjectMembershipMetadataFetcher sets the function used to retrieve project membership metadata (tenant and
+// project name) for authorization of project membership operations.
+func (b *GrpcAuthzInterceptorBuilder) SetProjectMembershipMetadataFetcher(
+	value MetadataFetcher) *GrpcAuthzInterceptorBuilder {
+	b.projectMembershipMetadataFetcher = value
 	return b
 }
 
@@ -202,11 +244,12 @@ func (b *GrpcAuthzInterceptorBuilder) Build() (result *GrpcAuthzInterceptor, err
 
 	// Create the interceptor:
 	result = &GrpcAuthzInterceptor{
-		logger:           b.logger,
-		anonymousMethods: anonymousMethods,
-		metadataFetcher:  b.metadataFetcher,
-		inputCallback:    b.inputCallback,
-		query:            query,
+		logger:                           b.logger,
+		anonymousMethods:                 anonymousMethods,
+		metadataFetcher:                  b.metadataFetcher,
+		projectMembershipMetadataFetcher: b.projectMembershipMetadataFetcher,
+		inputCallback:                    b.inputCallback,
+		query:                            query,
 	}
 	return
 }
@@ -433,26 +476,33 @@ func (i *GrpcAuthzInterceptor) buildInput(ctx context.Context, method string, re
 	// Check if this the token corresponds to a Kubernetes service account:
 	_, kube := claims["kubernetes.io"]
 
-	// Try to extract the object identifier from the request so that the external authorization service can use
-	// it to make fine grained authorization decisions. The identifier is sent in the context extensions of the
-	// check request, available to OPA policies as `input.context.context_extensions.id`.
-	extensions := map[string]any{}
+	// Build the context extensions that the OPA policy reads from input.context.context_extensions.
+	var ext ContextExtensions
 	if request != nil {
-		id := i.extractId(request)
-		if id != "" {
-			extensions["id"] = id
-		}
+		ext.ID = i.extractId(request)
 
 		// For project Get/Delete/Update operations, fetch the authoritative tenant and name from the database
 		// to prevent clients from spoofing these values for authorization bypass.
-		if i.shouldFetchProjectMetadata(method, id) && i.metadataFetcher != nil {
-			tenant, name := i.metadataFetcher(ctx, id)
-			if tenant != "" {
-				extensions["tenant"] = tenant
+		if i.shouldFetchProjectMetadata(method, ext.ID) && i.metadataFetcher != nil {
+			if meta := i.metadataFetcher(ctx, ext.ID); meta != nil {
+				ext.Tenant = meta.Tenant
+				ext.Name = meta.Name
 			}
-			if name != "" {
-				extensions["name"] = name
+		}
+
+		// For project membership Get/Delete/Update, fetch the membership's tenant and project name
+		// from the database for authorization.
+		if i.shouldFetchProjectMembershipMetadata(method, ext.ID) && i.projectMembershipMetadataFetcher != nil {
+			if meta := i.projectMembershipMetadataFetcher(ctx, ext.ID); meta != nil {
+				ext.Tenant = meta.Tenant
+				ext.Project = meta.Project
 			}
+		}
+
+		// For project membership Create, extract the project name from the request body.
+		// The OPA policy iterates over the user's tenants to check manager group membership.
+		if method == "/osac.public.v1.ProjectMemberships/Create" {
+			ext.Project = i.extractProjectFromRequest(request)
 		}
 	}
 
@@ -501,7 +551,7 @@ func (i *GrpcAuthzInterceptor) buildInput(ctx context.Context, method string, re
 					"path": method,
 				},
 			},
-			"context_extensions": extensions,
+			"context_extensions": ext.ToMap(),
 		},
 		"auth": map[string]any{
 			"identity": identity,
@@ -521,6 +571,50 @@ func (i *GrpcAuthzInterceptor) shouldFetchProjectMetadata(method string, id stri
 	return method == "/osac.public.v1.Projects/Get" ||
 		method == "/osac.public.v1.Projects/Delete" ||
 		method == "/osac.public.v1.Projects/Update"
+}
+
+// shouldFetchProjectMembershipMetadata determines if we should fetch project membership metadata for authorization.
+func (i *GrpcAuthzInterceptor) shouldFetchProjectMembershipMetadata(method string, id string) bool {
+	if id == "" {
+		return false
+	}
+	return method == "/osac.public.v1.ProjectMemberships/Get" ||
+		method == "/osac.public.v1.ProjectMemberships/Delete" ||
+		method == "/osac.public.v1.ProjectMemberships/Update"
+}
+
+// extractProjectFromRequest extracts the project name from the request's embedded object metadata using proto
+// reflection. This navigates object -> metadata -> project.
+func (i *GrpcAuthzInterceptor) extractProjectFromRequest(request any) string {
+	message, ok := request.(proto.Message)
+	if !ok {
+		return ""
+	}
+	reflect := message.ProtoReflect()
+
+	objectField := reflect.Descriptor().Fields().ByName("object")
+	if objectField == nil {
+		return ""
+	}
+	if !reflect.Has(objectField) {
+		return ""
+	}
+	objectMsg := reflect.Get(objectField).Message()
+
+	metadataField := objectMsg.Descriptor().Fields().ByName("metadata")
+	if metadataField == nil {
+		return ""
+	}
+	if !objectMsg.Has(metadataField) {
+		return ""
+	}
+	metadataMsg := objectMsg.Get(metadataField).Message()
+
+	projectField := metadataMsg.Descriptor().Fields().ByName("project")
+	if projectField == nil {
+		return ""
+	}
+	return metadataMsg.Get(projectField).String()
 }
 
 // claimAsAnySlice extracts a claim value and returns it as []any, which is the type that JSON-decoded arrays produce

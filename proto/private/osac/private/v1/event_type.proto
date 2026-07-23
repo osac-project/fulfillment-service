@@ -42,6 +42,7 @@ import "osac/private/v1/public_ip_pool_type.proto";
 import "osac/private/v1/public_ip_type.proto";
 import "osac/private/v1/role_binding_type.proto";
 import "osac/private/v1/role_type.proto";
+import "osac/private/v1/secret_type.proto";
 import "osac/private/v1/security_group_type.proto";
 import "osac/private/v1/storage_backend_type.proto";
 import "osac/private/v1/storage_tier_type.proto";
@@ -94,6 +95,7 @@ message Event {
     NATGateway nat_gateway = 37;
     ClusterVersion cluster_version = 38;
     StorageTier storage_tier = 39;
+    Secret secret = 40;
   }
 }
 
