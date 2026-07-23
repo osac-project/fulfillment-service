@@ -583,8 +583,8 @@ The authorization policy allows:
      - Events: `Watch`
      - Host Types: `Get`, `List`
      - Network Classes: `Create`, `Delete`, `Get`, `List`, `Update`
-     - Public IP Attachments: `Create`, `Delete`, `Get`, `List`, `Update`
-     - Public IPs: `Create`, `Delete`, `Get`, `List`, `Update`
+     - External IP Attachments: `Create`, `Delete`, `Get`, `List`, `Update`
+     - External IPs: `Create`, `Delete`, `Get`, `List`, `Update`
      - Role Bindings: `Get`, `List`
      - Roles: `Get`, `List`
      - Security Groups: `Create`, `Delete`, `Get`, `List`, `Update`
@@ -669,7 +669,7 @@ The fulfillment service implements a comprehensive authorization model that comb
 **Permissions:** Read/write access to infrastructure resources:
 - Bare-metal instances, clusters, compute instances
 - Networking (virtual networks, subnets, network classes, security groups)
-- IPs (public IPs, external IPs, and their attachments/pools)
+- IPs (external IPs and their attachments/pools)
 - Templates and catalog items (read-only)
 - Console sessions, events, host types, instance types
 - Roles and role bindings (read-only)
