@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/fieldutil"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
@@ -89,6 +90,12 @@ func Cmd() *cobra.Command {
 		false,
 		externalIPAttachmentFlagHelp,
 	)
+	flags.StringArrayVar(
+		&runner.args.setFields,
+		"set",
+		nil,
+		setFlagHelp,
+	)
 
 	if err := result.MarkFlagRequired("catalog-item"); err != nil {
 		panic(fmt.Sprintf("failed to mark catalog-item flag as required: %v", err))
@@ -100,6 +107,7 @@ type runnerContext struct {
 	args struct {
 		name                 string
 		catalogItem          string
+		setFields            []string
 		sshKey               string
 		userData             string
 		runStrategy          string
@@ -172,11 +180,16 @@ func (c *runnerContext) run(cmd *cobra.Command, _ []string) error {
 	}
 	spec.AutoExternalIpAttachment = c.args.externalIPAttachment
 
+	builtSpec := spec.Build()
+	if err := fieldutil.ApplyFields(builtSpec, c.args.setFields); err != nil {
+		return err
+	}
+
 	bmi := publicv1.BareMetalInstance_builder{
 		Metadata: publicv1.Metadata_builder{
 			Name: c.args.name,
 		}.Build(),
-		Spec: spec.Build(),
+		Spec: builtSpec,
 	}.Build()
 
 	client := publicv1.NewBareMetalInstancesClient(conn)
@@ -233,4 +246,11 @@ const externalIPAttachmentFlagHelp = `
 _[BOOLEAN]_ - When set, the system auto-selects an ExternalIPPool and
 creates an ExternalIP with an ExternalIPAttachment for this instance
 atomically during creation. Immutable after creation.
+`
+
+const setFlagHelp = `
+_KEY=VALUE_ - Set a spec field or template parameter on the resource.
+Use dot notation for nested fields (e.g.
+{{ bt }}template_parameters.vpc_id=vpc-123{{ bt }}). Can be specified
+multiple times.
 `

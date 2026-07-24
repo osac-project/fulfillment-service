@@ -34,6 +34,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/fieldutil"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/exit"
 	"github.com/osac-project/fulfillment-service/internal/logging"
@@ -132,6 +133,12 @@ func Cmd() *cobra.Command {
 		"",
 		serviceCIDRFlagHelp,
 	)
+	flags.StringArrayVar(
+		&runner.args.setFields,
+		"set",
+		nil,
+		setFlagHelp,
+	)
 	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
 	result.MarkFlagsOneRequired("catalog-item", "template")
 	return result
@@ -144,6 +151,7 @@ type runnerContext struct {
 		catalogItem             string
 		templateParameterValues []string
 		templateParameterFiles  []string
+		setFields               []string
 		pullSecret              string
 		pullSecretFile          string
 		sshPublicKey            string
@@ -182,6 +190,11 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 				"--template-parameter and --template-parameter-file are not supported with --catalog-item",
 			)
 		}
+	}
+
+	// Reject --set without --catalog-item:
+	if c.args.catalogItem == "" && len(c.args.setFields) > 0 {
+		return fmt.Errorf("--set is only supported with --catalog-item")
 	}
 
 	// Deprecation warning for --template (per D-03):
@@ -230,7 +243,11 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 			CatalogItem: c.args.catalogItem,
 		}
 		c.applyOptionalSpecFields(&specBuilder, pullSecret, sshPublicKey)
-		return c.createCluster(ctx, specBuilder.Build())
+		spec := specBuilder.Build()
+		if err := fieldutil.ApplyFields(spec, c.args.setFields); err != nil {
+			return err
+		}
+		return c.createCluster(ctx, spec)
 	}
 
 	// Legacy template path (existing code continues below):
@@ -819,4 +836,11 @@ is used.
 const serviceCIDRFlagHelp = `
 _CIDR_ - CIDR for the cluster's service network. If omitted the server
 default is used.
+`
+
+const setFlagHelp = `
+_KEY=VALUE_ - Set a spec field or template parameter on the resource.
+Use dot notation for nested fields (e.g.
+{{ bt }}template_parameters.vpc_id=vpc-123{{ bt }}). Only supported
+with {{ bt }}--catalog-item{{ bt }}. Can be specified multiple times.
 `
