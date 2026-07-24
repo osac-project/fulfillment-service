@@ -52,6 +52,12 @@ const userDataSecretSuffix = "-user-data"
 // userDataSecretKey is the key used in the Secret's stringData to store the cloud-init user data.
 const userDataSecretKey = "userdata"
 
+// errTransientK8sError marks errors from Kubernetes Create/Patch calls that are not permanent
+// validation failures. Reconciliation errors are normally recorded as a FAILED state via
+// setReconciliationFailed, but transient errors should just be retried, leaving the compute
+// instance's state untouched so it doesn't look like a permanent failure while it is retried.
+var errTransientK8sError = errors.New("transient kubernetes error")
+
 // FunctionBuilder contains the data and logic needed to build a function that reconciles compute instances.
 type FunctionBuilder struct {
 	logger     *slog.Logger
@@ -141,7 +147,7 @@ func (r *function) run(ctx context.Context, computeInstance *privatev1.ComputeIn
 	} else {
 		reconcileErr = t.update(ctx)
 	}
-	if reconcileErr != nil {
+	if reconcileErr != nil && !errors.Is(reconcileErr, errTransientK8sError) {
 		t.setReconciliationFailed(reconcileErr)
 	}
 	// Calculate which fields the reconciler actually modified and use a field mask
@@ -224,7 +230,11 @@ func (t *task) update(ctx context.Context) error {
 		}
 		err = t.hubClient.Create(ctx, object)
 		if err != nil {
-			return err
+			if apierrors.IsInvalid(err) {
+				t.setFailed(err)
+				return nil
+			}
+			return fmt.Errorf("%w: %w", errTransientK8sError, err)
 		}
 		t.r.logger.DebugContext(
 			ctx,
@@ -237,7 +247,11 @@ func (t *task) update(ctx context.Context) error {
 		update.Spec = spec
 		err = t.hubClient.Patch(ctx, update, clnt.MergeFrom(object))
 		if err != nil {
-			return err
+			if apierrors.IsInvalid(err) {
+				t.setFailed(err)
+				return nil
+			}
+			return fmt.Errorf("%w: %w", errTransientK8sError, err)
 		}
 		t.r.logger.DebugContext(
 			ctx,
@@ -497,6 +511,22 @@ func (t *task) removeFinalizer() {
 		})
 		t.computeInstance.GetMetadata().SetFinalizers(list)
 	}
+}
+
+// setFailed transitions the compute instance to FAILED state with the given error message.
+// Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
+// cannot be provisioned.
+func (t *task) setFailed(err error) {
+	if !t.computeInstance.HasStatus() {
+		t.computeInstance.SetStatus(&privatev1.ComputeInstanceStatus{})
+	}
+	t.computeInstance.GetStatus().SetState(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED)
+	t.updateCondition(
+		privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_CONFIGURATION_APPLIED,
+		privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+		"ValidationFailed",
+		err.Error(),
+	)
 }
 
 // updateCondition updates or creates a condition with the specified type, status, reason, and message.

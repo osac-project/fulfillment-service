@@ -25,6 +25,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -195,6 +196,10 @@ func (t *task) update(ctx context.Context) error {
 		}
 		err = t.hubClient.Create(ctx, object)
 		if err != nil {
+			if apierrors.IsInvalid(err) {
+				t.setFailed(err)
+				return nil
+			}
 			return err
 		}
 		t.r.logger.DebugContext(
@@ -208,6 +213,10 @@ func (t *task) update(ctx context.Context) error {
 		update.Spec = spec
 		err = t.hubClient.Patch(ctx, update, clnt.MergeFrom(object))
 		if err != nil {
+			if apierrors.IsInvalid(err) {
+				t.setFailed(err)
+				return nil
+			}
 			return err
 		}
 		t.r.logger.DebugContext(
@@ -388,6 +397,17 @@ func (t *task) removeFinalizer() {
 		})
 		t.subnet.GetMetadata().SetFinalizers(list)
 	}
+}
+
+// setFailed transitions the subnet to FAILED state with the given error message.
+// Used when a permanent error (e.g., Kubernetes CRD validation failure) means the resource
+// cannot be provisioned.
+func (t *task) setFailed(err error) {
+	if !t.subnet.HasStatus() {
+		t.subnet.SetStatus(&privatev1.SubnetStatus{})
+	}
+	t.subnet.GetStatus().SetState(privatev1.SubnetState_SUBNET_STATE_FAILED)
+	t.subnet.GetStatus().SetMessage(err.Error())
 }
 
 // buildSpec constructs the spec for the Kubernetes Subnet object based on the

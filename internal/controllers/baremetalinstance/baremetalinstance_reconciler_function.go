@@ -189,6 +189,10 @@ func (t *task) update(ctx context.Context) error {
 		return t.mutateBMI(ctx, object)
 	})
 	if err != nil {
+		if apierrors.IsInvalid(err) {
+			t.setFailed(err)
+			return nil
+		}
 		return err
 	}
 	t.r.logger.DebugContext(
@@ -387,6 +391,19 @@ func (t *task) removeFinalizer() {
 		})
 		t.bareMetalInstance.GetMetadata().SetFinalizers(list)
 	}
+}
+
+func (t *task) setFailed(err error) {
+	if !t.bareMetalInstance.HasStatus() {
+		t.bareMetalInstance.SetStatus(&privatev1.BareMetalInstanceStatus{})
+	}
+	t.bareMetalInstance.GetStatus().SetState(privatev1.BareMetalInstanceState_BARE_METAL_INSTANCE_STATE_FAILED)
+	t.updateCondition(
+		privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_CONFIGURATION_APPLIED,
+		privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+		"ValidationFailed",
+		err.Error(),
+	)
 }
 
 func (t *task) updateCondition(conditionType privatev1.BareMetalInstanceConditionType, status privatev1.ConditionStatus,
