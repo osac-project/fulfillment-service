@@ -117,6 +117,7 @@ func (b *PublicIPAttachmentsServerBuilder) Build() (result *PublicIPAttachmentsS
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetFilterDesc((*publicv1.PublicIPAttachment)(nil).ProtoReflect().Descriptor()).
 		Build()
 	if err != nil {
 		return

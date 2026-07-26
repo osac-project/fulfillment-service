@@ -102,6 +102,26 @@ var _ = Describe("Public tenants server", func() {
 			Expect(listResponse.Items[0].Metadata.Name).To(Equal("my-tenant"))
 		})
 
+		It("Rejects filters that reference private-only fields", func() {
+			// The 'status.state' field exists on the private tenant message but not on the public one. The public server
+			// configures the filter translator with the public descriptor so this must fail.
+			_, err := publicServer.List(ctx, publicv1.TenantsListRequest_builder{
+				Filter: new("this.status.state == 1"),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.Internal))
+			Expect(status.Message()).To(Equal("failed to list"))
+		})
+
+		It("Allows the private server to filter on private-only fields", func() {
+			_, err := privateServer.List(ctx, privatev1.TenantsListRequest_builder{
+				Filter: new("this.status.state == 1"),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		It("Gets a tenant by identifier", func() {
 			// Create the tenant using the private server, as that isn't implemented for the public server:
 			createResponse, err := privateServer.Create(ctx, privatev1.TenantsCreateRequest_builder{

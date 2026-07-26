@@ -554,6 +554,28 @@ var _ = Describe("Private clusters server", func() {
 			}
 		})
 
+		It("Accepts filters that reference private-only fields", func() {
+			// The private server does not set a public filter descriptor, so private-only fields such as 'status.hub' are valid
+			// in CEL filters.
+			_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Spec: privatev1.ClusterSpec_builder{
+						Template: "my-template-id",
+					}.Build(),
+					Status: privatev1.ClusterStatus_builder{
+						Hub: "my-hub",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			response, err := server.List(ctx, privatev1.ClustersListRequest_builder{
+				Filter: new("this.status.hub == 'my-hub'"),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.GetSize()).To(BeNumerically("==", 1))
+			Expect(response.GetItems()[0].GetStatus().GetHub()).To(Equal("my-hub"))
+		})
+
 		It("Get object", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{

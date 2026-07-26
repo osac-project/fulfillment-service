@@ -721,6 +721,26 @@ var _ = Describe("Clusters server", func() {
 			}
 		})
 
+		It("Rejects filters that reference private-only fields", func() {
+			// The 'status.hub' field exists on the private cluster message but not on the public one. The public server
+			// configures the filter translator with the public descriptor so this must fail.
+			_, err := server.List(ctx, publicv1.ClustersListRequest_builder{
+				Filter: new("this.status.hub == 'my-hub'"),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.Internal))
+			Expect(status.Message()).To(Equal("failed to list"))
+		})
+
+		It("Accepts filters that reference public fields", func() {
+			_, err := server.List(ctx, publicv1.ClustersListRequest_builder{
+				Filter: new("this.status.api_url == 'https://api.example.com'"),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		It("Get object", func() {
 			// Create the object:
 			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{

@@ -96,7 +96,7 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 
 	// Find OUTPUT_ONLY fields so that we can configure the inMapper to ignore them.
 	// This prevents public API callers from directly setting these fields.
-	ncDescriptor := new(publicv1.NetworkClass).ProtoReflect().Descriptor()
+	ncDescriptor := (*publicv1.NetworkClass)(nil).ProtoReflect().Descriptor()
 	isDefaultField := ncDescriptor.Fields().ByName("is_default")
 	if isDefaultField == nil {
 		err = fmt.Errorf("failed to find the is_default field of type '%s'", ncDescriptor.FullName())
@@ -132,6 +132,7 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
+		SetFilterDesc(ncDescriptor).
 		Build()
 	if err != nil {
 		return
