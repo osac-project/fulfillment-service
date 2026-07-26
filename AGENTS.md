@@ -79,7 +79,9 @@ running tests with specific options, or installing a tool), refer to [dev/README
 
 - `cmd/fulfillment-service/` - Service binary entry point (calls `internal/cmd/service.Root()`)
 - `cmd/osac/` - CLI binary entry point (calls `internal/cmd/cli.Root()`)
-- `internal/cmd/service/start/` - Server startup commands (grpcserver, restgateway, controller)
+- `cmd/osac-dev/` - Development tooling binary
+- `cmd/test-server/` - Test server binary
+- `internal/cmd/service/start/` - Server startup commands (grpcserver, restgateway, consoleproxy, controller)
 - `internal/servers/` - gRPC service implementations (one `*_server.go` per resource)
 - `internal/database/` - PostgreSQL access layer with generic DAO
 - `internal/database/dao/` - Generic type-safe DAO (`GenericDAO[O Object]`)
@@ -116,7 +118,7 @@ Public servers delegate to private servers and add tenant/auth logic:
 Uses `pgx/v5` with a generic DAO pattern:
 - `GenericDAO[O Object]` provides type-safe CRUD for any protobuf message
 - Resources stored as JSON-serialized protobuf in a `data` column
-- Standard columns: `id`, `name`, `creation_timestamp`, `deletion_timestamp`, `finalizers`, `creator`, `tenant`, `labels`, `annotations`, `data`
+- Standard columns: `id`, `name`, `creation_timestamp`, `deletion_timestamp`, `finalizers`, `creator`, `tenant`, `project`, `labels`, `annotations`, `version`, `data`
 - CEL filter expressions translated to SQL WHERE clauses via `FilterTranslator`
 - Migrations in `internal/database/migrations/` (numbered `*.up.sql` files)
 
@@ -211,8 +213,10 @@ The gRPC server uses chained interceptors (configured in `internal/cmd/service/s
 1. Panic recovery
 2. Prometheus metrics
 3. Structured logging (slog)
-4. Authentication (JWT validation)
-5. Database transaction management
+4. Database transaction management
+5. Authentication (JWT validation)
+6. Authorization (Rego/OPA)
+7. JIT user provisioning
 
 ### Mock Generation
 
@@ -223,7 +227,7 @@ Uses `go.uber.org/mock` (uber-go/mock). Mocks are generated with `//go:generate 
 Tests use Ginkgo v2 + Gomega. Typical suite setup in `*_suite_test.go`:
 - `BeforeSuite` initializes logger, auth logic, database
 - `DeferCleanup` for teardown
-- `dao.CreateTables[T]()` dynamically creates test schemas
+- `database.NewContainer()` creates a PostgreSQL test container; `server.NewInstance().Build()` creates isolated database instances per test
 
 ## Automated Hooks
 

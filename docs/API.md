@@ -23,6 +23,9 @@ The public API must always be a strict subset of the private API. The private AP
 services, methods, messages, and fields that do not appear in the public API, but the reverse is
 never allowed. Public protos must never import private protos, and vice versa.
 
+Exceptions: `console_proxy_service`, `console_service`, `json_web_key_set_service`, and
+`openapi_options` exist only in the public API (no private counterpart).
+
 Both APIs must be documented with documentation comments in the `.proto` files. The documentation in
 both should be identical for the parts they share. The private API has not been documented
 consistently in the past, but all new additions must include documentation. The reason is that in the
@@ -426,7 +429,7 @@ Other examples from the codebase:
 
 - `SubnetSpec.virtual_network` references a `VirtualNetwork` by its `id`.
 - `RoleBindingSpec.role` references a `Role` by its `id`.
-- `ProjectSpec.parent` references a parent `Project` by its `id`.
+- `Metadata.project` tracks project hierarchy via a dot-separated path (not a spec field).
 
 In the future the project plans to introduce a typed `Reference` message to make these references
 type-safe. Until then, references are plain `string` fields and the relationship must be documented
