@@ -83,6 +83,7 @@ The `Metadata` message is shared by all object types and contains the following 
 | `labels`               | `map<string, string>`        | Indexed key-value pairs for organizing objects.  |
 | `annotations`          | `map<string, string>`        | Arbitrary user-controlled metadata.              |
 | `version`              | `int32`                      | Auto-incremented on every change.                |
+| `project`              | `string`                     | Dot-separated project path (empty = default).    |
 
 The private API adds a `finalizers` field (`repeated string`) that is not exposed in the public API.
 

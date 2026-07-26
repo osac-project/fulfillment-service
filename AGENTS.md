@@ -209,7 +209,7 @@ Without this step, the raw PostgreSQL error will propagate as an internal error 
 
 ### gRPC Interceptor Chain
 
-The gRPC server uses chained interceptors (configured in `internal/cmd/service/start/grpcserver/`):
+The gRPC server uses chained unary interceptors (configured in `internal/cmd/service/start/grpcserver/`; stream RPCs omit the transaction interceptor):
 1. Panic recovery
 2. Prometheus metrics
 3. Structured logging (slog)
