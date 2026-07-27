@@ -23,9 +23,12 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 	grpcmetadata "google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 )
 
@@ -127,4 +130,29 @@ var _ = BeforeEach(func() {
 func dryRunCtx() context.Context {
 	md := grpcmetadata.Pairs(DryRunMetadataKey, "true")
 	return grpcmetadata.NewIncomingContext(ctx, md)
+}
+
+func seedDefaultClusterVersion(ctx context.Context) {
+	clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+		SetLogger(logger).
+		SetTenancyLogic(tenancy).
+		Build()
+	Expect(err).ToNot(HaveOccurred())
+	_, err = clusterVersionsDao.Create().
+		SetObject(privatev1.ClusterVersion_builder{
+			Id: "cv-default",
+			Metadata: privatev1.Metadata_builder{
+				Name:   "4-17-0",
+				Tenant: auth.SharedTenant,
+			}.Build(),
+			Spec: privatev1.ClusterVersionSpec_builder{
+				Image:     "quay.io/openshift-release-dev/ocp-release:4.17.0-multi",
+				Enabled:   proto.Bool(true),
+				IsDefault: proto.Bool(true),
+				Version:   "4.17.0",
+				State:     privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE,
+			}.Build(),
+		}.Build()).
+		Do(ctx)
+	Expect(err).ToNot(HaveOccurred())
 }

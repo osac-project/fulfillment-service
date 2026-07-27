@@ -52,25 +52,23 @@ var _ = Describe("Tenancy logic", func() {
 		}
 		createTenant("my-tenant")
 		createTenant("your-tenant")
+
+		// Create a default cluster version for version resolution:
+		seedDefaultClusterVersion(ctx)
 	})
 
 	It("Returns tenant in metadata when object is created", func() {
 		// Create a mock tenancy logic that returns a specific tenant:
+		assignable := collections.NewSet("my-tenant")
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(
-				collections.NewSet("my-tenant"),
-				nil,
-			).
+			Return(assignable, nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
 			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(
-				collections.NewSet("my-tenant"),
-				nil,
-			).
+			Return(auth.SharedTenants.Union(assignable), nil).
 			AnyTimes()
 
 		// Create the template using the DAO directly (this is setup for the test):
@@ -154,7 +152,7 @@ var _ = Describe("Tenancy logic", func() {
 			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant"), nil).
+			Return(auth.SharedTenants.Union(collections.NewSet("my-tenant")), nil).
 			AnyTimes()
 
 		// Create the clusters server with the empty tenancy logic:
@@ -184,15 +182,16 @@ var _ = Describe("Tenancy logic", func() {
 
 	It("Uses default tenant when tenant is explicitly empty", func() {
 		// Create a tenancy logic that returns a valid tenant:
+		assignable := collections.NewSet("my-tenant")
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant"), nil).
+			Return(assignable, nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
 			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant"), nil).
+			Return(auth.SharedTenants.Union(assignable), nil).
 			AnyTimes()
 
 		// Create the template using the DAO:
@@ -246,15 +245,16 @@ var _ = Describe("Tenancy logic", func() {
 
 	It("Respects explicitly specified tenant over default", func() {
 		// Create a tenancy logic where the default tenant differs from the one the user will specify:
+		assignable := collections.NewSet("my-tenant", "your-tenant")
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant", "your-tenant"), nil).
+			Return(assignable, nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
 			Return("your-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant", "your-tenant"), nil).
+			Return(auth.SharedTenants.Union(assignable), nil).
 			AnyTimes()
 
 		// Create the template using the DAO:
@@ -305,15 +305,16 @@ var _ = Describe("Tenancy logic", func() {
 	})
 
 	It("Rejects changing tenant on update", func() {
+		assignable := collections.NewSet("my-tenant", "your-tenant")
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant", "your-tenant"), nil).
+			Return(assignable, nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
 			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant", "your-tenant"), nil).
+			Return(auth.SharedTenants.Union(assignable), nil).
 			AnyTimes()
 
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
@@ -367,15 +368,16 @@ var _ = Describe("Tenancy logic", func() {
 	})
 
 	It("Preserves tenant when update does not specify it", func() {
+		assignable := collections.NewSet("my-tenant")
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant"), nil).
+			Return(assignable, nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
 			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(collections.NewSet("my-tenant"), nil).
+			Return(auth.SharedTenants.Union(assignable), nil).
 			AnyTimes()
 
 		templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
@@ -432,16 +434,16 @@ var _ = Describe("Tenancy logic", func() {
 
 	It("Rejects object creation when assigned tenant is invisible to the user", func() {
 		// Create a tenancy logic that returns visible tenants:
-		visible := collections.NewSet("my-tenant")
+		assignable := collections.NewSet("my-tenant")
 		tenancy := auth.NewMockTenancyLogic(ctrl)
 		tenancy.EXPECT().DetermineAssignableTenants(gomock.Any()).
-			Return(visible, nil).
+			Return(assignable, nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineDefaultTenant(gomock.Any()).
 			Return("my-tenant", nil).
 			AnyTimes()
 		tenancy.EXPECT().DetermineVisibleTenants(gomock.Any()).
-			Return(visible, nil).
+			Return(auth.SharedTenants.Union(assignable), nil).
 			AnyTimes()
 
 		// Create the template:

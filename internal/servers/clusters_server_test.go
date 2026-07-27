@@ -95,6 +95,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(err).To(MatchError("scheme is mandatory"))
 			Expect(server).To(BeNil())
 		})
+
 	})
 
 	Describe("Behaviour", func() {
@@ -250,6 +251,9 @@ var _ = Describe("Clusters server", func() {
 				).
 				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
+
+			// Create a default cluster version for version resolution:
+			seedDefaultClusterVersion(ctx)
 		})
 
 		It("Creates object", func() {
@@ -1544,6 +1548,9 @@ var _ = Describe("Clusters server", func() {
 				}.Build()).
 				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
+
+			// Create a default cluster version for version resolution:
+			seedDefaultClusterVersion(ctx)
 		})
 
 		It("Redacts pull_secret on Create response", func() {
@@ -1600,17 +1607,41 @@ var _ = Describe("Clusters server", func() {
 		It("Preserves explicit fields through create and get", func() {
 			pullSecret := "my-pull-secret"
 			sshKey := "ssh-ed25519 AAAA..."
-			releaseImage := "quay.io/openshift-release-dev/ocp-release:4.17.0-multi"
 			podCIDR := "10.128.0.0/14"
 			serviceCIDR := "172.30.0.0/16"
 
+			// Seed a non-default ClusterVersion so the assertion proves the explicit
+			// value was preserved, not the system default applied.
+			clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			_, err = clusterVersionsDao.Create().
+				SetObject(privatev1.ClusterVersion_builder{
+					Id: "cv-non-default",
+					Metadata: privatev1.Metadata_builder{
+						Name:   "4-18-0",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.ClusterVersionSpec_builder{
+						Image:   "quay.io/openshift-release-dev/ocp-release:4.18.0-multi",
+						Enabled: proto.Bool(true),
+						Version: "4.18.0",
+						State:   privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			versionName := "4-18-0"
 			createResponse, err := server.Create(ctx, publicv1.ClustersCreateRequest_builder{
 				Object: publicv1.Cluster_builder{
 					Spec: publicv1.ClusterSpec_builder{
 						Template:     "my_template",
 						PullSecret:   &pullSecret,
 						SshPublicKey: &sshKey,
-						ReleaseImage: &releaseImage,
+						VersionName:  &versionName,
 						Network: publicv1.ClusterNetwork_builder{
 							PodCidr:     &podCIDR,
 							ServiceCidr: &serviceCIDR,
@@ -1630,7 +1661,7 @@ var _ = Describe("Clusters server", func() {
 			Expect(spec.GetPullSecret()).To(Equal("***"))
 			// other fields preserved
 			Expect(spec.GetSshPublicKey()).To(Equal(sshKey))
-			Expect(spec.GetReleaseImage()).To(Equal(releaseImage))
+			Expect(spec.GetVersionName()).To(Equal(versionName))
 			Expect(spec.GetNetwork().GetPodCidr()).To(Equal(podCIDR))
 			Expect(spec.GetNetwork().GetServiceCidr()).To(Equal(serviceCIDR))
 		})

@@ -146,11 +146,17 @@ message ClusterSpec {
   // If not provided, the provider's default SSH key is used.
   optional string ssh_public_key = 5;
 
-  // OCP release image URL that controls the OpenShift version.
+  // Reference to a ClusterVersion by `metadata.name`.
   //
-  // For example: `quay.io/openshift-release-dev/ocp-release:4.17.0-multi`.
-  // If not provided, the template's default release image is used.
-  optional string release_image = 6;
+  // The version is resolved with the following precedence:
+  //
+  //   1. Explicit `spec.version_name` provided by the user.
+  //   2. Template `spec_defaults.version_name` (template path) or catalog item field definition default (catalog-item
+  //      path).
+  //   3. System default (`is_default = true`).
+  //
+  // The referenced ClusterVersion must exist, be enabled, and not be in `OBSOLETE` state.
+  optional string version_name = 6;
 
   // Cluster networking configuration.
   optional ClusterNetwork network = 7;

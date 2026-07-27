@@ -32,8 +32,8 @@ func ApplyClusterSpecDefaults(spec *privatev1.ClusterSpec, defaults *privatev1.C
 	if !spec.HasSshPublicKey() && defaults.HasSshPublicKey() {
 		spec.SetSshPublicKey(defaults.GetSshPublicKey())
 	}
-	if !spec.HasReleaseImage() && defaults.HasReleaseImage() {
-		spec.SetReleaseImage(defaults.GetReleaseImage())
+	if !spec.HasVersionName() && defaults.HasVersionName() {
+		spec.SetVersionName(defaults.GetVersionName())
 	}
 	mergeClusterNetworkDefaults(spec, defaults)
 }

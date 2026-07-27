@@ -26,7 +26,9 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
+	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
 
 var _ = Describe("Private cluster catalog items server", func() {
@@ -741,6 +743,117 @@ var _ = Describe("Private cluster catalog items server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(updateResponse.GetObject().GetFieldDefinitions()).To(HaveLen(2))
+		})
+
+		Describe("ClusterVersion validation on field_definitions", func() {
+			var validatedServer *PrivateClusterCatalogItemsServer
+
+			BeforeEach(func() {
+				var err error
+				validatedServer, err = NewPrivateClusterCatalogItemsServer().
+					SetLogger(logger).
+					SetAttributionLogic(attribution).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("Rejects create with non-existent version_name default in field_definitions", func() {
+				_, err := validatedServer.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+					Object: privatev1.ClusterCatalogItem_builder{
+						Title:    "Bad version catalog item",
+						Template: "my-template-id",
+						FieldDefinitions: []*privatev1.FieldDefinition{
+							privatev1.FieldDefinition_builder{
+								Path:     "version_name",
+								Editable: true,
+								Default:  structpb.NewStringValue("does-not-exist"),
+							}.Build(),
+						},
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("cluster version 'does-not-exist' not found"))
+			})
+
+			It("Rejects create with obsolete version_name default in field_definitions", func() {
+				// Seed an obsolete ClusterVersion:
+				clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Create().
+					SetObject(
+						privatev1.ClusterVersion_builder{
+							Id: uuid.New(),
+							Metadata: privatev1.Metadata_builder{
+								Name:   "4-16-0-obsolete",
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Spec: privatev1.ClusterVersionSpec_builder{
+								Image:   "quay.io/openshift-release-dev/ocp-release:4.16.0-multi",
+								Enabled: proto.Bool(true),
+								Version: "4.16.0",
+								State:   privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_OBSOLETE,
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = validatedServer.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+					Object: privatev1.ClusterCatalogItem_builder{
+						Title:    "Obsolete version catalog item",
+						Template: "my-template-id",
+						FieldDefinitions: []*privatev1.FieldDefinition{
+							privatev1.FieldDefinition_builder{
+								Path:     "version_name",
+								Editable: true,
+								Default:  structpb.NewStringValue("4-16-0-obsolete"),
+							}.Build(),
+						},
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("is obsolete"))
+			})
+
+			It("Rejects update with non-existent version_name default in field_definitions", func() {
+				createResponse, err := validatedServer.Create(ctx, privatev1.ClusterCatalogItemsCreateRequest_builder{
+					Object: privatev1.ClusterCatalogItem_builder{
+						Title:    "Catalog item for update test",
+						Template: "my-template-id",
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = validatedServer.Update(ctx, privatev1.ClusterCatalogItemsUpdateRequest_builder{
+					Object: privatev1.ClusterCatalogItem_builder{
+						Id:       createResponse.GetObject().GetId(),
+						Title:    "Catalog item for update test",
+						Template: "my-template-id",
+						FieldDefinitions: []*privatev1.FieldDefinition{
+							privatev1.FieldDefinition_builder{
+								Path:     "version_name",
+								Editable: true,
+								Default:  structpb.NewStringValue("does-not-exist"),
+							}.Build(),
+						},
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("cluster version 'does-not-exist' not found"))
+			})
 		})
 
 		It("Allows empty name without conflict", func() {

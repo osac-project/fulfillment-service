@@ -36,7 +36,7 @@ message ClusterSpec {
   map<string, ClusterNodeSet> node_sets = 3;
   optional string pull_secret = 4;
   optional string ssh_public_key = 5;
-  optional string release_image = 6;
+  optional string version_name = 6;
   optional ClusterNetwork network = 7;
 
   // Reference to a cluster catalog item. Mutually exclusive with template during the migration period.

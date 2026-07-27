@@ -70,6 +70,7 @@ var _ = Describe("Private clusters server", func() {
 			Expect(err).To(MatchError("tenancy logic is mandatory"))
 			Expect(server).To(BeNil())
 		})
+
 	})
 
 	Describe("Behaviour", func() {
@@ -85,6 +86,9 @@ var _ = Describe("Private clusters server", func() {
 				SetTenancyLogic(tenancy).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
+
+			// Create a default cluster version for version resolution:
+			seedDefaultClusterVersion(ctx)
 
 			// Create the host types DAO:
 			hostTypesDao, err := dao.NewGenericDAO[*privatev1.HostType]().
@@ -1494,7 +1498,7 @@ var _ = Describe("Private clusters server", func() {
 								}.Build(),
 							},
 							SpecDefaults: privatev1.ClusterTemplateSpecDefaults_builder{
-								ReleaseImage: new("quay.io/openshift-release-dev/ocp-release:4.22"),
+								SshPublicKey: proto.String("ssh-rsa TEMPLATE_DEFAULT_KEY"),
 							}.Build(),
 						}.Build(),
 					).
@@ -1516,7 +1520,7 @@ var _ = Describe("Private clusters server", func() {
 				).Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
 
-				// Create a cluster via catalog item without specifying release_image:
+				// Create a cluster via catalog item without specifying ssh_public_key:
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
@@ -1531,7 +1535,7 @@ var _ = Describe("Private clusters server", func() {
 				object := response.GetObject()
 
 				// Verify spec defaults from template are applied:
-				Expect(object.GetSpec().GetReleaseImage()).To(Equal("quay.io/openshift-release-dev/ocp-release:4.22"))
+				Expect(object.GetSpec().GetSshPublicKey()).To(Equal("ssh-rsa TEMPLATE_DEFAULT_KEY"))
 
 				// Verify node sets are also populated:
 				nodeSets := object.GetSpec().GetNodeSets()
@@ -1539,6 +1543,249 @@ var _ = Describe("Private clusters server", func() {
 				Expect(nodeSets).To(HaveKey("worker"))
 				Expect(nodeSets["worker"].GetHostType()).To(Equal("acme-1ti-id"))
 				Expect(nodeSets["worker"].GetSize()).To(Equal(int32(2)))
+			})
+
+			It("Applies version_name from template spec_defaults via catalog item", func() {
+				// Seed a non-default ClusterVersion for the template to pin:
+				clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Create().
+					SetObject(privatev1.ClusterVersion_builder{
+						Id: "cv-pinned",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "4-18-0",
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.ClusterVersionSpec_builder{
+							Image:     "quay.io/openshift-release-dev/ocp-release:4.18.0-multi",
+							Enabled:   proto.Bool(true),
+							IsDefault: proto.Bool(false),
+							Version:   "4.18.0",
+							State:     privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE,
+						}.Build(),
+					}.Build()).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a template whose spec_defaults pins version_name:
+				templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = templatesDao.Create().
+					SetObject(
+						privatev1.ClusterTemplate_builder{
+							Id: "template-version-pinned",
+							Metadata: privatev1.Metadata_builder{
+								Name:   "template-version-pinned-name",
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title:       "Version-pinned template",
+							Description: "Template that pins version via spec_defaults",
+							NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
+								"worker": privatev1.ClusterTemplateNodeSet_builder{
+									HostType: "acme-1ti-id",
+									Size:     2,
+								}.Build(),
+							},
+							SpecDefaults: privatev1.ClusterTemplateSpecDefaults_builder{
+								VersionName: proto.String("4-18-0"),
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a catalog item referencing the version-pinned template
+				// (no version_name field_definition):
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ClusterCatalogItem_builder{
+						Id: "cat-version-pinned",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "cat-version-pinned-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item with Version-Pinned Template",
+						Published: true,
+						Template:  "template-version-pinned",
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a cluster via catalog item without specifying version_name:
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-version-pinned",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				// Template spec_defaults.version_name should win over system default:
+				Expect(response.GetObject().GetSpec().GetVersionName()).To(Equal("4-18-0"))
+			})
+
+			It("Field definition version_name overrides template spec_defaults via catalog item", func() {
+				// Seed a non-default ClusterVersion for the field_definition to set:
+				clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Create().
+					SetObject(privatev1.ClusterVersion_builder{
+						Id: "cv-fd-override",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "4-19-0",
+							Tenant: auth.SharedTenant,
+						}.Build(),
+						Spec: privatev1.ClusterVersionSpec_builder{
+							Image:     "quay.io/openshift-release-dev/ocp-release:4.19.0-multi",
+							Enabled:   proto.Bool(true),
+							IsDefault: proto.Bool(false),
+							Version:   "4.19.0",
+							State:     privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE,
+						}.Build(),
+					}.Build()).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a template whose spec_defaults pins version_name to 4-17-0
+				// (the system default, but specified explicitly as a template default):
+				templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = templatesDao.Create().
+					SetObject(
+						privatev1.ClusterTemplate_builder{
+							Id: "template-fd-override",
+							Metadata: privatev1.Metadata_builder{
+								Name:   "template-fd-override-name",
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title:       "Template for FD override test",
+							Description: "Template whose spec_defaults are overridden by field_definitions",
+							NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
+								"worker": privatev1.ClusterTemplateNodeSet_builder{
+									HostType: "acme-1ti-id",
+									Size:     2,
+								}.Build(),
+							},
+							SpecDefaults: privatev1.ClusterTemplateSpecDefaults_builder{
+								VersionName: proto.String("4-17-0"),
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a catalog item with a field_definition that overrides version_name:
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ClusterCatalogItem_builder{
+						Id: "cat-fd-override",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "cat-fd-override-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item with FD version override",
+						Published: true,
+						Template:  "template-fd-override",
+						FieldDefinitions: []*privatev1.FieldDefinition{
+							privatev1.FieldDefinition_builder{
+								Path:     "version_name",
+								Editable: false,
+								Default:  structpb.NewStringValue("4-19-0"),
+							}.Build(),
+						},
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a cluster via catalog item without specifying version_name:
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-fd-override",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				// Field definition default should win over template spec_defaults:
+				Expect(response.GetObject().GetSpec().GetVersionName()).To(Equal("4-19-0"))
+			})
+
+			It("Falls back to system default version via catalog item when nothing sets version_name", func() {
+				// Create a template with no spec_defaults.version_name:
+				templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = templatesDao.Create().
+					SetObject(
+						privatev1.ClusterTemplate_builder{
+							Id: "template-no-version",
+							Metadata: privatev1.Metadata_builder{
+								Name:   "template-no-version-name",
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Title:       "Template without version default",
+							Description: "Template with no spec_defaults.version_name",
+							NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
+								"worker": privatev1.ClusterTemplateNodeSet_builder{
+									HostType: "acme-1ti-id",
+									Size:     2,
+								}.Build(),
+							},
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a catalog item with no version_name field_definition:
+				_, err = catalogItemsDao.Create().SetObject(
+					privatev1.ClusterCatalogItem_builder{
+						Id: "cat-no-version",
+						Metadata: privatev1.Metadata_builder{
+							Name:   "cat-no-version-name",
+							Tenant: "shared",
+						}.Build(),
+						Title:     "Catalog Item without version",
+						Published: true,
+						Template:  "template-no-version",
+					}.Build(),
+				).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Create a cluster via catalog item without specifying version_name:
+				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							CatalogItem: "cat-no-version",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				// System default (4-17-0) should be used as last resort:
+				Expect(response.GetObject().GetSpec().GetVersionName()).To(Equal("4-17-0"))
 			})
 
 			It("Fails when catalog item has no template", func() {
@@ -1606,6 +1853,515 @@ var _ = Describe("Private clusters server", func() {
 				Expect(status.Message()).To(Equal(
 					"cannot change spec.catalog_item from 'cat-immut' to 'different-catalog-item': catalog item is immutable",
 				))
+			})
+		})
+
+		It("Allows changing version_name to a valid version on update", func() {
+			versionName := "4-17-0"
+
+			// Create a cluster with an explicit version_name:
+			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Spec: privatev1.ClusterSpec_builder{
+						Template:    "my-template-id",
+						VersionName: &versionName,
+					}.Build(),
+					Status: privatev1.ClusterStatus_builder{
+						Hub: "my-hub-id",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Seed a second usable ClusterVersion:
+			clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			_, err = clusterVersionsDao.Create().
+				SetObject(privatev1.ClusterVersion_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Name:   "4-18-0",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.ClusterVersionSpec_builder{
+						Image:   "quay.io/openshift-release-dev/ocp-release:4.18.0-multi",
+						Enabled: proto.Bool(true),
+						Version: "4.18.0",
+						State:   privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Change the version_name:
+			newVersion := "4-18-0"
+			updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Id: object.GetId(),
+					Spec: privatev1.ClusterSpec_builder{
+						VersionName: &newVersion,
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"spec.version_name"},
+				},
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updateResponse.GetObject().GetSpec().GetVersionName()).To(Equal("4-18-0"))
+		})
+
+		It("Rejects changing version_name to a non-existent version", func() {
+			versionName := "4-17-0"
+
+			// Create a cluster with an explicit version_name:
+			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Spec: privatev1.ClusterSpec_builder{
+						Template:    "my-template-id",
+						VersionName: &versionName,
+					}.Build(),
+					Status: privatev1.ClusterStatus_builder{
+						Hub: "my-hub-id",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Try to change to a non-existent version:
+			nonExistent := "does-not-exist"
+			_, err = server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Id: object.GetId(),
+					Spec: privatev1.ClusterSpec_builder{
+						VersionName: &nonExistent,
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"spec.version_name"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		})
+
+		It("Rejects changing version_name to a disabled version", func() {
+			versionName := "4-17-0"
+
+			// Create a cluster with an explicit version_name:
+			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Spec: privatev1.ClusterSpec_builder{
+						Template:    "my-template-id",
+						VersionName: &versionName,
+					}.Build(),
+					Status: privatev1.ClusterStatus_builder{
+						Hub: "my-hub-id",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Seed a disabled ClusterVersion:
+			clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			_, err = clusterVersionsDao.Create().
+				SetObject(privatev1.ClusterVersion_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Name:   "4-18-0-disabled",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.ClusterVersionSpec_builder{
+						Image:   "quay.io/openshift-release-dev/ocp-release:4.18.0-multi",
+						Enabled: proto.Bool(false),
+						Version: "4.18.0",
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Try to change to the disabled version:
+			disabledName := "4-18-0-disabled"
+			_, err = server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Id: object.GetId(),
+					Spec: privatev1.ClusterSpec_builder{
+						VersionName: &disabledName,
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"spec.version_name"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		})
+
+		It("Rejects changing version_name to an obsolete version", func() {
+			versionName := "4-17-0"
+
+			// Create a cluster with an explicit version_name:
+			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Spec: privatev1.ClusterSpec_builder{
+						Template:    "my-template-id",
+						VersionName: &versionName,
+					}.Build(),
+					Status: privatev1.ClusterStatus_builder{
+						Hub: "my-hub-id",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Seed an obsolete ClusterVersion:
+			clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			_, err = clusterVersionsDao.Create().
+				SetObject(privatev1.ClusterVersion_builder{
+					Id: uuid.New(),
+					Metadata: privatev1.Metadata_builder{
+						Name:   "4-16-0-obsolete",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.ClusterVersionSpec_builder{
+						Image:   "quay.io/openshift-release-dev/ocp-release:4.16.0-multi",
+						Enabled: proto.Bool(true),
+						Version: "4.16.0",
+						State:   privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_OBSOLETE,
+					}.Build(),
+				}.Build()).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Try to change to the obsolete version:
+			obsoleteName := "4-16-0-obsolete"
+			_, err = server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Id: object.GetId(),
+					Spec: privatev1.ClusterSpec_builder{
+						VersionName: &obsoleteName,
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"spec.version_name"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		})
+
+		It("Rejects non-existent version_name on nil-mask full-object update", func() {
+			versionName := "4-17-0"
+
+			// Create a cluster with a valid version_name:
+			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
+				Object: privatev1.Cluster_builder{
+					Spec: privatev1.ClusterSpec_builder{
+						Template:    "my-template-id",
+						VersionName: &versionName,
+					}.Build(),
+					Status: privatev1.ClusterStatus_builder{
+						Hub: "my-hub-id",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			// Full-object update with nil mask and a non-existent version_name:
+			nonExistent := "does-not-exist"
+			object.GetSpec().SetVersionName(nonExistent)
+			_, err = server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
+				Object: object,
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+		})
+
+		Describe("ClusterVersion validation", func() {
+			var validatedServer *PrivateClustersServer
+
+			BeforeEach(func() {
+				var err error
+				validatedServer, err = NewPrivateClustersServer().
+					SetLogger(logger).
+					SetAttributionLogic(attribution).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("Rejects create with non-existent version_name", func() {
+				nonExistent := "does-not-exist"
+				_, err := validatedServer.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template:    "my-template-id",
+							VersionName: &nonExistent,
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("cluster version 'does-not-exist' not found"))
+			})
+
+			It("Rejects create with disabled version", func() {
+				// Seed a disabled ClusterVersion:
+				clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Create().
+					SetObject(
+						privatev1.ClusterVersion_builder{
+							Id: uuid.New(),
+							Metadata: privatev1.Metadata_builder{
+								Name:   "4-18-0-disabled",
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Spec: privatev1.ClusterVersionSpec_builder{
+								Image:   "quay.io/openshift-release-dev/ocp-release:4.18.0-multi",
+								Enabled: proto.Bool(false),
+								Version: "4.18.0",
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				disabledName := "4-18-0-disabled"
+				_, err = validatedServer.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template:    "my-template-id",
+							VersionName: &disabledName,
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("is disabled"))
+			})
+
+			It("Rejects create with obsolete version", func() {
+				// Seed an obsolete ClusterVersion:
+				clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Create().
+					SetObject(
+						privatev1.ClusterVersion_builder{
+							Id: uuid.New(),
+							Metadata: privatev1.Metadata_builder{
+								Name:   "4-16-0-obsolete",
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Spec: privatev1.ClusterVersionSpec_builder{
+								Image:   "quay.io/openshift-release-dev/ocp-release:4.16.0-multi",
+								Enabled: proto.Bool(true),
+								Version: "4.16.0",
+								State:   privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_OBSOLETE,
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				obsoleteName := "4-16-0-obsolete"
+				_, err = validatedServer.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template:    "my-template-id",
+							VersionName: &obsoleteName,
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("is obsolete"))
+			})
+
+			It("Resolves system default version when none specified", func() {
+				// The BeforeEach in the parent Behaviour block already seeds a default
+				// ClusterVersion with name "4-17-0" and is_default=true.
+				response, err := validatedServer.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-id",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.GetObject().GetSpec().GetVersionName()).To(Equal("4-17-0"))
+			})
+
+			It("Rejects create when no system default version exists", func() {
+				// Delete the default ClusterVersion:
+				clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Delete().
+					SetId("cv-default").
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = validatedServer.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-id",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("no version specified and no system default"))
+			})
+
+			It("Rejects create when system default version is disabled", func() {
+				// Replace the existing default with a disabled one:
+				clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Delete().
+					SetId("cv-default").
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Create().
+					SetObject(
+						privatev1.ClusterVersion_builder{
+							Id: uuid.New(),
+							Metadata: privatev1.Metadata_builder{
+								Name:   "4-18-0-disabled-default",
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Spec: privatev1.ClusterVersionSpec_builder{
+								Image:     "quay.io/openshift-release-dev/ocp-release:4.18.0-multi",
+								Enabled:   proto.Bool(false),
+								IsDefault: proto.Bool(true),
+								Version:   "4.18.0",
+								State:     privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE,
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = validatedServer.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-id",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("is disabled"))
+			})
+
+			It("Rejects create when system default version is obsolete", func() {
+				// Replace the existing default with an obsolete one:
+				clusterVersionsDao, err := dao.NewGenericDAO[*privatev1.ClusterVersion]().
+					SetLogger(logger).
+					SetTenancyLogic(tenancy).
+					Build()
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Delete().
+					SetId("cv-default").
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = clusterVersionsDao.Create().
+					SetObject(
+						privatev1.ClusterVersion_builder{
+							Id: uuid.New(),
+							Metadata: privatev1.Metadata_builder{
+								Name:   "4-16-0-obsolete-default",
+								Tenant: auth.SharedTenant,
+							}.Build(),
+							Spec: privatev1.ClusterVersionSpec_builder{
+								Image:     "quay.io/openshift-release-dev/ocp-release:4.16.0-multi",
+								Enabled:   proto.Bool(true),
+								IsDefault: proto.Bool(true),
+								Version:   "4.16.0",
+								State:     privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_OBSOLETE,
+							}.Build(),
+						}.Build(),
+					).
+					Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = validatedServer.Create(ctx, privatev1.ClustersCreateRequest_builder{
+					Object: privatev1.Cluster_builder{
+						Spec: privatev1.ClusterSpec_builder{
+							Template: "my-template-id",
+						}.Build(),
+						Status: privatev1.ClusterStatus_builder{
+							Hub: "my-hub-id",
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+				Expect(status.Message()).To(ContainSubstring("is obsolete"))
 			})
 		})
 

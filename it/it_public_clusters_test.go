@@ -728,6 +728,58 @@ var _ = Describe("Public clusters", func() {
 		).Should(Succeed())
 	})
 
+	It("Can create a cluster with explicit version_name", func() {
+		// Create a non-default cluster version:
+		cvClient := privatev1.NewClusterVersionsClient(tool.InternalView().AdminConn())
+		version := nextCVVersion()
+		cvResponse, err := cvClient.Create(ctx, privatev1.ClusterVersionsCreateRequest_builder{
+			Object: privatev1.ClusterVersion_builder{
+				Spec: privatev1.ClusterVersionSpec_builder{
+					Version: version,
+					Image:   fmt.Sprintf("quay.io/openshift-release-dev/ocp-release:%s-multi", version),
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		cvObject := cvResponse.GetObject()
+		cvName := cvObject.GetMetadata().GetName()
+		Expect(cvName).ToNot(BeEmpty(), "ClusterVersion should have a metadata.name assigned")
+		DeferCleanup(func() {
+			_, err := cvClient.Delete(ctx, privatev1.ClusterVersionsDeleteRequest_builder{
+				Id: cvObject.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		// Create a cluster specifying that version_name:
+		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
+			Object: publicv1.Cluster_builder{
+				Spec: publicv1.ClusterSpec_builder{
+					Template:    templateId,
+					VersionName: &cvName,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		object := createResponse.GetObject()
+		DeferCleanup(func() {
+			_, err := clustersClient.Delete(ctx, publicv1.ClustersDeleteRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		// Verify the cluster has the correct version_name:
+		Expect(object.GetSpec().GetVersionName()).To(Equal(cvName))
+
+		// Verify via Get as well:
+		getResponse, err := clustersClient.Get(ctx, publicv1.ClustersGetRequest_builder{
+			Id: object.GetId(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getResponse.GetObject().GetSpec().GetVersionName()).To(Equal(cvName))
+	})
+
 	It("Sets creator to the ID of the user when creating a cluster", func() {
 		// Look up the user to get their ID:
 		usersClient := privatev1.NewUsersClient(tool.InternalView().AdminConn())
