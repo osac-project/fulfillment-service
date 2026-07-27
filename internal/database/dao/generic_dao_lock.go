@@ -15,10 +15,14 @@ package dao
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/osac-project/fulfillment-service/internal/database"
 )
@@ -110,6 +114,10 @@ func (r *LockRequest[O]) do(ctx context.Context) (response *LockResponse[O], err
 		return rows.Err()
 	}()
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.DeadlockDetected {
+			err = &ErrDeadlock{}
+		}
 		return
 	}
 

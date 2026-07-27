@@ -56,30 +56,6 @@ message IdentityProvidersListResponse {
   repeated IdentityProvider items = 3;
 }
 
-// Request to list all available identity providers.
-message IdentityProvidersListAvailableRequest {
-  // Index of the first result. If not specified the default value will be zero.
-  optional int32 offset = 1;
-
-  // Maximum number of results to be returned by the server.
-  optional int32 limit = 2;
-
-  // Filter criteria. CEL expression to filter identity providers.
-  optional string filter = 3;
-}
-
-// Response containing the list of available identity providers.
-message IdentityProvidersListAvailableResponse {
-  // Actual number of items returned.
-  int32 size = 1;
-
-  // Total number of items that match the search criteria.
-  int32 total = 2;
-
-  // List of identity providers available.
-  repeated IdentityProvider items = 3;
-}
-
 // Request to get a tenant's identity provider by ID.
 message IdentityProvidersGetRequest {
   // ID of the identity provider.
@@ -121,26 +97,6 @@ message IdentityProvidersDeleteRequest {
 // Response for delete operation.
 message IdentityProvidersDeleteResponse {}
 
-// Request to assign an identity provider to a tenant.
-// The tenant is inferred from the authenticated user's context.
-message IdentityProvidersAssignRequest {
-  // Name of the identity provider to assign.
-  string name = 1;
-}
-
-// Response for assign operation.
-message IdentityProvidersAssignResponse {}
-
-// Request to unassign an identity provider from a tenant.
-// The tenant is inferred from the authenticated user's context.
-message IdentityProvidersUnassignRequest {
-  // Name of the identity provider to unassign.
-  string name = 1;
-}
-
-// Response for unassign operation.
-message IdentityProvidersUnassignResponse {}
-
 // IdentityProviders service provides operations for managing tenant identity providers.
 // Users can only access identity providers for their tenant.
 // Identity providers enable users to authenticate using their existing corporate credentials
@@ -159,13 +115,6 @@ service IdentityProviders {
   rpc List(IdentityProvidersListRequest) returns (IdentityProvidersListResponse) {
     option (google.api.http) = {
       get: "/api/fulfillment/v1/identity_providers"
-    };
-  }
-
-  // Lists all identity providers available.
-  rpc ListAvailable(IdentityProvidersListAvailableRequest) returns (IdentityProvidersListAvailableResponse) {
-    option (google.api.http) = {
-      get: "/api/fulfillment/v1/identity_providers:list-available"
     };
   }
 
@@ -189,24 +138,6 @@ service IdentityProviders {
   rpc Delete(IdentityProvidersDeleteRequest) returns (IdentityProvidersDeleteResponse) {
     option (google.api.http) = {
       delete: "/api/fulfillment/v1/identity_providers/{id}"
-    };
-  }
-
-  // Assigns an identity provider to a tenant.
-  // The tenant is specified in metadata.tenant.
-  rpc Assign(IdentityProvidersAssignRequest) returns (IdentityProvidersAssignResponse) {
-    option (google.api.http) = {
-      post: "/api/fulfillment/v1/identity_providers/{name}:assign"
-      body: "*"
-    };
-  }
-
-  // Unassigns an identity provider from a tenant.
-  // The tenant is specified in metadata.tenant.
-  rpc Unassign(IdentityProvidersUnassignRequest) returns (IdentityProvidersUnassignResponse) {
-    option (google.api.http) = {
-      post: "/api/fulfillment/v1/identity_providers/{name}:unassign"
-      body: "*"
     };
   }
 }

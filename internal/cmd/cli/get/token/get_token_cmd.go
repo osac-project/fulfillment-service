@@ -14,17 +14,12 @@ language governing permissions and limitations under the License.
 package token
 
 import (
-	"context"
-	"log/slog"
-	"time"
-
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/neilotoole/jsoncolor"
 	"github.com/spf13/cobra"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/tokenutil"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/exit"
-	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
 
@@ -78,7 +73,6 @@ func Cmd() *cobra.Command {
 }
 
 type runnerContext struct {
-	logger  *slog.Logger
 	console *terminal.Console
 	refresh bool
 	header  bool
@@ -93,8 +87,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	// Get the context:
 	ctx := cmd.Context()
 
-	// Get the logger, console and flags:
-	c.logger = logging.LoggerFromContext(ctx)
+	// Get the console:
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Get the configuration:
@@ -147,47 +140,11 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		c.console.RenderJson(ctx, parsed.Header)
 	case c.payload:
 		claims := *parsed.Claims.(*jwt.MapClaims)
-		claims = c.replaceTimeClaims(ctx, claims)
-		c.console.RenderJson(ctx, claims)
+		tokenutil.DisplayTokenClaims(ctx, c.console, claims, c.rfc3339, c.utc)
 	default:
 		c.console.Infof(ctx, "%s\n", selected)
 	}
 	return nil
-}
-
-func (c *runnerContext) replaceTimeClaims(ctx context.Context, claims jwt.MapClaims) jwt.MapClaims {
-	result := jwt.MapClaims{}
-	for name, value := range claims {
-		switch name {
-		case "iat", "exp", "nbf", "auth_time":
-			result[name] = c.replaceTimeClaim(ctx, name, value.(jsoncolor.Number))
-		default:
-			result[name] = value
-		}
-	}
-	return result
-}
-
-func (c *runnerContext) replaceTimeClaim(ctx context.Context, name string, value jsoncolor.Number) any {
-	if !c.rfc3339 {
-		return value
-	}
-	s, err := value.Int64()
-	if err != nil {
-		c.logger.ErrorContext(
-			ctx,
-			"Failed to parse claim as seconds",
-			slog.String("name", name),
-			slog.Any("value", value),
-			slog.Any("error", err),
-		)
-		return value
-	}
-	t := time.Unix(s, 0)
-	if c.utc {
-		t = t.UTC()
-	}
-	return t.Format(time.RFC3339)
 }
 
 const shortHelp = `Shows the authentication token, requesting a new one if necessary`

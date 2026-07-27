@@ -36,6 +36,8 @@ const (
 )
 
 // A tenant groups resources and users for a customer or business unit.
+//
+// buf:lint:ignore OSAC_OBJECT_SHAPE
 type Tenant struct {
 	state               protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Id       string                 `protobuf:"bytes,1,opt,name=id,proto3"`

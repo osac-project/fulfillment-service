@@ -52,7 +52,29 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/recovery"
 	"github.com/osac-project/fulfillment-service/internal/servers"
 	shtdwn "github.com/osac-project/fulfillment-service/internal/shutdown"
+	"github.com/osac-project/fulfillment-service/internal/validation"
 )
+
+// userIDResolver implements auth.UserIDResolver by querying the users DAO.
+type userIDResolver struct {
+	usersDAO *dao.GenericDAO[*privatev1.User]
+}
+
+func (r *userIDResolver) GetID(ctx context.Context, username string) (string, error) {
+	filter := fmt.Sprintf("this.spec.username==%q", username)
+	listResponse, err := r.usersDAO.List().
+		SetFilter(filter).
+		SetLimit(1).
+		Do(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get user ID: %w", err)
+	}
+	if listResponse.GetSize() == 0 {
+		return "", nil
+	}
+	user := listResponse.GetItems()[0]
+	return user.GetId(), nil
+}
 
 // Cmd creates and returns the `start grpc-server` command.
 func Cmd() *cobra.Command {
@@ -270,13 +292,29 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return err
 	}
 
-	// Create metadata fetcher for project authorization
+	// Prepare the validation interceptor:
+	c.logger.InfoContext(ctx, "Creating validation interceptor")
+	validationInterceptor, err := validation.NewProtovalidateInterceptor().
+		SetLogger(c.logger).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create validation interceptor: %w", err)
+	}
+
+	// Create metadata fetchers for project and project membership authorization.
 	metadataFetcher, err := dao.NewMetadataFetcher().
 		SetLogger(c.logger).
 		SetTable("projects").
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create metadata fetcher: %w", err)
+	}
+	pmMetadataFetcher, err := dao.NewMetadataFetcher().
+		SetLogger(c.logger).
+		SetTable("project_memberships").
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create project membership metadata fetcher: %w", err)
 	}
 
 	// Prepare the authentication interceptor:
@@ -329,25 +367,55 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		SetLogger(c.logger).
 		AddAnonymousMethodRegex(anonymousMethodsRegex).
 		SetMetadataFetcher(metadataFetcher).
+		SetProjectMembershipMetadataFetcher(pmMetadataFetcher).
 		AddEmergencyServiceAccounts(c.args.emergencyServiceAccounts...).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create Rego authorization interceptor: %w", err)
 	}
 
-	// Create the users DAO and user provisioner for just-in-time user provisioning:
-	c.logger.InfoContext(ctx, "Creating users DAO for JIT provisioning")
-	usersDAO, err := dao.NewGenericDAO[*privatev1.User]().
+	// Create the notifier:
+	c.logger.InfoContext(ctx, "Creating notifier")
+	notifier, err := database.NewNotifier().
 		SetLogger(c.logger).
-		SetTenancyLogic(tenancyLogic).
+		SetChannel("events").
+		SetPool(dbPool).
 		Build()
 	if err != nil {
-		return fmt.Errorf("failed to create users DAO: %w", err)
+		return fmt.Errorf("failed to create notifier: %w", err)
+	}
+	err = notifier.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start notifier: %w", err)
 	}
 
+	// Create the private attribution logic:
+	c.logger.InfoContext(ctx, "Creating private attribution logic")
+	privateAttributionLogic, err := auth.NewSystemAttributionLogic().
+		SetLogger(c.logger).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create system attribution logic: %w", err)
+	}
+
+	// Create the private users server:
+	c.logger.InfoContext(ctx, "Creating private users server")
+	privateUsersServer, err := servers.NewPrivateUsersServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private users server: %w", err)
+	}
+
+	// Create the user provisioner:
 	c.logger.InfoContext(ctx, "Creating user provisioner for JIT provisioning")
 	userProvisioner, err := provisioners.NewUserProvisioner().
-		SetUsersDAO(usersDAO).
+		SetLogger(c.logger).
+		SetUsersServer(privateUsersServer).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create user provisioner: %w", err)
@@ -422,6 +490,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			panicInterceptor.UnaryServer,
 			metricsInterceptor.UnaryServer,
 			loggingInterceptor.UnaryServer,
+			validationInterceptor.UnaryServer,
 			txInterceptor.UnaryServer,
 			authnInterceptor.UnaryServer,
 			authzInterceptor.UnaryServer,
@@ -431,6 +500,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			panicInterceptor.StreamServer,
 			metricsInterceptor.StreamServer,
 			loggingInterceptor.StreamServer,
+			validationInterceptor.StreamServer,
 			authnInterceptor.StreamServer,
 			authzInterceptor.StreamServer,
 			jitProvisioningInterceptor.StreamServer,
@@ -447,37 +517,28 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	healthServer := health.NewServer()
 	healthv1.RegisterHealthServer(grpcServer, healthServer)
 
-	// Create the notifier:
-	c.logger.InfoContext(ctx, "Creating notifier")
-	notifier, err := database.NewNotifier().
+	// Create the users DAO for user ID resolution in attribution:
+	c.logger.InfoContext(ctx, "Creating users DAO for attribution")
+	usersDAO, err2 := dao.NewGenericDAO[*privatev1.User]().
 		SetLogger(c.logger).
-		SetChannel("events").
-		SetPool(dbPool).
+		SetTableName("users").
+		SetTenancyLogic(tenancyLogic).
 		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create notifier: %w", err)
+	if err2 != nil {
+		return fmt.Errorf("failed to create users DAO: %w", err2)
 	}
-	err = notifier.Start(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to start notifier: %w", err)
-	}
+
+	// Create user ID resolver implementation:
+	userIDResolver := &userIDResolver{usersDAO: usersDAO}
 
 	// Create the public attribution logic:
 	c.logger.InfoContext(ctx, "Creating public attribution logic")
 	publicAttributionLogic, err := auth.NewDefaultAttributionLogic().
 		SetLogger(c.logger).
+		SetUserIDResolver(userIDResolver).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create public attribution logic: %w", err)
-	}
-
-	// Create the private attribution logic:
-	c.logger.InfoContext(ctx, "Creating private attribution logic")
-	privateAttributionLogic, err := auth.NewSystemAttributionLogic().
-		SetLogger(c.logger).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create system attribution logic: %w", err)
 	}
 
 	// Create the capabilities servers:
@@ -940,6 +1001,34 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	privatev1.RegisterInstanceTypesServer(grpcServer, privateInstanceTypesServer)
 
+	// Create the cluster versions server:
+	c.logger.InfoContext(ctx, "Creating cluster versions server")
+	clusterVersionsServer, err := servers.NewClusterVersionsServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(publicAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create cluster versions server: %w", err)
+	}
+	publicv1.RegisterClusterVersionsServer(grpcServer, clusterVersionsServer)
+
+	// Create the private cluster versions server:
+	c.logger.InfoContext(ctx, "Creating private cluster versions server")
+	privateClusterVersionsServer, err := servers.NewPrivateClusterVersionsServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private cluster versions server: %w", err)
+	}
+	privatev1.RegisterClusterVersionsServer(grpcServer, privateClusterVersionsServer)
+
 	// Create the private storage backends server:
 	c.logger.InfoContext(ctx, "Creating private storage backends server")
 	privateStorageBackendsServer, err := servers.NewPrivateStorageBackendsServer().
@@ -953,6 +1042,44 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return fmt.Errorf("failed to create private storage backends server: %w", err)
 	}
 	privatev1.RegisterStorageBackendsServer(grpcServer, privateStorageBackendsServer)
+
+	// Create the private secrets server:
+	c.logger.InfoContext(ctx, "Creating private secrets server")
+	privateSecretsServer, err := servers.NewPrivateSecretsServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private secrets server: %w", err)
+	}
+	privatev1.RegisterSecretsServer(grpcServer, privateSecretsServer)
+
+	// Create the storage backends DAO for cross-resource validation in the storage tiers server:
+	storageBackendsDAO, err := dao.NewGenericDAO[*privatev1.StorageBackend]().
+		SetLogger(c.logger).
+		SetTenancyLogic(tenancyLogic).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create storage backends DAO: %w", err)
+	}
+
+	// Create the private storage tiers server:
+	c.logger.InfoContext(ctx, "Creating private storage tiers server")
+	privateStorageTiersServer, err := servers.NewPrivateStorageTiersServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		SetStorageBackendsDAO(storageBackendsDAO).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private storage tiers server: %w", err)
+	}
+	privatev1.RegisterStorageTiersServer(grpcServer, privateStorageTiersServer)
 
 	// Create the roles server:
 	c.logger.InfoContext(ctx, "Creating roles server")
@@ -1206,6 +1333,34 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	privatev1.RegisterExternalIPAttachmentsServer(grpcServer, privateExternalIPAttachmentsServer)
 
+	// Create the NAT gateways server:
+	c.logger.InfoContext(ctx, "Creating NAT gateways server")
+	natGatewaysServer, err := servers.NewNATGatewaysServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(publicAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create NAT gateways server: %w", err)
+	}
+	publicv1.RegisterNATGatewaysServer(grpcServer, natGatewaysServer)
+
+	// Create the private NAT gateways server:
+	c.logger.InfoContext(ctx, "Creating private NAT gateways server")
+	privateNATGatewaysServer, err := servers.NewPrivateNATGatewaysServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private NAT gateways server: %w", err)
+	}
+	privatev1.RegisterNATGatewaysServer(grpcServer, privateNATGatewaysServer)
+
 	// Create the public tenants server:
 	c.logger.InfoContext(ctx, "Creating public tenants server")
 	publicTenantsServer, err := servers.NewTenantsServer().
@@ -1304,18 +1459,7 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	publicv1.RegisterUsersServer(grpcServer, publicUsersServer)
 
-	// Create the private users server:
-	c.logger.InfoContext(ctx, "Creating private users server")
-	privateUsersServer, err := servers.NewPrivateUsersServer().
-		SetLogger(c.logger).
-		SetNotifier(notifier).
-		SetAttributionLogic(privateAttributionLogic).
-		SetTenancyLogic(tenancyLogic).
-		SetMetricsRegisterer(metricsRegisterer).
-		Build()
-	if err != nil {
-		return fmt.Errorf("failed to create private users server: %w", err)
-	}
+	// Register the private users server:
 	privatev1.RegisterUsersServer(grpcServer, privateUsersServer)
 
 	// Create the token sealer (sign + encrypt infrastructure):

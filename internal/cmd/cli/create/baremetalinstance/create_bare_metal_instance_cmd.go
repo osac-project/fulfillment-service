@@ -22,9 +22,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/lookup"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
-	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
 
@@ -71,6 +71,24 @@ func Cmd() *cobra.Command {
 		"",
 		runStrategyFlagHelp,
 	)
+	flags.StringVar(
+		&runner.args.imageSourceRef,
+		"image",
+		"",
+		imageFlagHelp,
+	)
+	flags.StringVar(
+		&runner.args.imageSourceType,
+		"image-source-type",
+		"registry",
+		imageSourceTypeFlagHelp,
+	)
+	flags.BoolVar(
+		&runner.args.externalIPAttachment,
+		"external-ip-attachment",
+		false,
+		externalIPAttachmentFlagHelp,
+	)
 
 	if err := result.MarkFlagRequired("catalog-item"); err != nil {
 		panic(fmt.Sprintf("failed to mark catalog-item flag as required: %v", err))
@@ -80,11 +98,14 @@ func Cmd() *cobra.Command {
 
 type runnerContext struct {
 	args struct {
-		name        string
-		catalogItem string
-		sshKey      string
-		userData    string
-		runStrategy string
+		name                 string
+		catalogItem          string
+		sshKey               string
+		userData             string
+		runStrategy          string
+		imageSourceRef       string
+		imageSourceType      string
+		externalIPAttachment bool
 	}
 	logger *slog.Logger
 }
@@ -105,18 +126,24 @@ func (c *runnerContext) run(cmd *cobra.Command, _ []string) error {
 	}
 	defer conn.Close()
 
-	helper, err := reflection.NewHelper().
-		SetLogger(c.logger).
-		SetConnection(conn).
-		AddPackages(cfg.Packages()).
-		Build()
+	catalogItemsClient := publicv1.NewBareMetalInstanceCatalogItemsClient(conn)
+	catalogItem, err := lookup.Find(c.args.catalogItem, "bare metal instance catalog item",
+		func(filter string, limit int32) ([]*publicv1.BareMetalInstanceCatalogItem, error) {
+			resp, err := catalogItemsClient.List(ctx, publicv1.BareMetalInstanceCatalogItemsListRequest_builder{
+				Filter: proto.String(filter),
+				Limit:  proto.Int32(limit),
+			}.Build())
+			if err != nil {
+				return nil, fmt.Errorf("failed to list catalog items: %w", err)
+			}
+			return resp.GetItems(), nil
+		})
 	if err != nil {
-		return fmt.Errorf("failed to create reflection tool: %w", err)
+		return err
 	}
-	console.SetHelper(helper)
 
 	spec := publicv1.BareMetalInstanceSpec_builder{
-		CatalogItem: c.args.catalogItem,
+		CatalogItem: catalogItem.GetId(),
 	}
 	if c.args.sshKey != "" {
 		sshKey := c.args.sshKey
@@ -125,6 +152,12 @@ func (c *runnerContext) run(cmd *cobra.Command, _ []string) error {
 	if c.args.userData != "" {
 		userData := c.args.userData
 		spec.UserData = &userData
+	}
+	if c.args.imageSourceRef != "" {
+		spec.Image = publicv1.BareMetalInstanceImage_builder{
+			SourceType: c.args.imageSourceType,
+			SourceRef:  c.args.imageSourceRef,
+		}.Build()
 	}
 	if c.args.runStrategy != "" {
 		val, ok := publicv1.BareMetalInstanceRunStrategy_value["BARE_METAL_INSTANCE_RUN_STRATEGY_"+strings.ToUpper(c.args.runStrategy)]
@@ -137,6 +170,7 @@ func (c *runnerContext) run(cmd *cobra.Command, _ []string) error {
 		rs := publicv1.BareMetalInstanceRunStrategy(val)
 		spec.RunStrategy = &rs
 	}
+	spec.AutoExternalIpAttachment = c.args.externalIPAttachment
 
 	bmi := publicv1.BareMetalInstance_builder{
 		Metadata: publicv1.Metadata_builder{
@@ -185,4 +219,18 @@ const runStrategyFlagHelp = `
 _STRATEGY_ - Run strategy controlling the power state. Valid values are
 {{ bt }}Always{{ bt }} (keep powered on) and {{ bt }}Halted{{ bt }}
 (power off).
+`
+
+const imageFlagHelp = `
+_URL_ - Image reference, for example an OCI image URL.
+`
+
+const imageSourceTypeFlagHelp = `
+_TYPE_ - Image source type.
+`
+
+const externalIPAttachmentFlagHelp = `
+_[BOOLEAN]_ - When set, the system auto-selects an ExternalIPPool and
+creates an ExternalIP with an ExternalIPAttachment for this instance
+atomically during creation. Immutable after creation.
 `

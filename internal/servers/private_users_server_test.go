@@ -43,13 +43,9 @@ var _ = Describe("Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &privatev1.UserSpec{
-					Username:      "testuser",
-					Email:         "test@example.com",
-					EmailVerified: true,
-					Enabled:       true,
-					FirstName:     "Test",
-					LastName:      "User",
-					Tenant:        "tenant-123",
+					Username: "testuser",
+					Email:    "test@example.com",
+					Enabled:  true,
 				},
 			},
 		}
@@ -62,7 +58,6 @@ var _ = Describe("Users Server", func() {
 		Expect(response.Object.Id).ToNot(BeEmpty())
 		Expect(response.Object.Metadata.Name).To(Equal("test-user"))
 		Expect(response.Object.Spec.Username).To(Equal("testuser"))
-		Expect(response.Object.Spec.Tenant).To(Equal("tenant-123"))
 	})
 
 	It("Lists users", func() {
@@ -211,7 +206,7 @@ var _ = Describe("Users Server", func() {
 			Object: &privatev1.User{
 				Id: createResp.Object.Id,
 				Spec: &privatev1.UserSpec{
-					FirstName: "Updated",
+					Email: "updated@example.com",
 					Credentials: &privatev1.UserCredentials{
 						Password: &password,
 					},
@@ -230,9 +225,8 @@ var _ = Describe("Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &privatev1.UserSpec{
-					Username:  "testuser",
-					Email:     "test@example.com",
-					FirstName: "Original",
+					Username: "testuser",
+					Email:    "test@example.com",
 				},
 			},
 		}
@@ -244,12 +238,12 @@ var _ = Describe("Users Server", func() {
 			Object: &privatev1.User{
 				Id: createResp.Object.Id,
 				Spec: &privatev1.UserSpec{
-					FirstName: "Updated",
+					Email: "updated@example.com",
 				},
 			},
 		}
 		updateResp, err := privateServer.Update(ctx, updateReq)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(updateResp.Object.Spec.FirstName).To(Equal("Updated"))
+		Expect(updateResp.Object.Spec.Email).To(Equal("updated@example.com"))
 	})
 })

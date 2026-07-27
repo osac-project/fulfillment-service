@@ -248,6 +248,16 @@ func (s *Settings) SetAccessToken(value string) {
 	s.secret.AccessToken = value
 }
 
+// ClientId returns the OAuth client identifier.
+func (s *Settings) ClientId() string {
+	return s.secret.ClientId
+}
+
+// ClientSecret returns the OAuth client secret.
+func (s *Settings) ClientSecret() string {
+	return s.secret.ClientSecret
+}
+
 // SetRefreshToken sets the refresh token.
 func (s *Settings) SetRefreshToken(value string) {
 	s.secret.RefreshToken = value

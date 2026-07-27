@@ -63,6 +63,39 @@ var _ = Describe("Access control", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		It("Allows regular users to list cluster versions", func() {
+			client := publicv1.NewClusterVersionsClient(tool.ExternalView().UserConn())
+			_, err := client.List(ctx, publicv1.ClusterVersionsListRequest_builder{}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Denies regular users creating cluster versions", func() {
+			client := publicv1.NewClusterVersionsClient(tool.ExternalView().UserConn())
+			_, err := client.Create(ctx, publicv1.ClusterVersionsCreateRequest_builder{}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
+		})
+
+		It("Denies regular users updating cluster versions", func() {
+			client := publicv1.NewClusterVersionsClient(tool.ExternalView().UserConn())
+			_, err := client.Update(ctx, publicv1.ClusterVersionsUpdateRequest_builder{}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
+		})
+
+		It("Denies regular users deleting cluster versions", func() {
+			client := publicv1.NewClusterVersionsClient(tool.ExternalView().UserConn())
+			_, err := client.Delete(ctx, publicv1.ClusterVersionsDeleteRequest_builder{}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
+		})
+
 		It("Allows admin users to list cluster templates", func() {
 			client := publicv1.NewClusterTemplatesClient(tool.ExternalView().AdminConn())
 
@@ -91,6 +124,12 @@ var _ = Describe("Access control", func() {
 		It("Allows admin users to list compute instances", func() {
 			client := publicv1.NewComputeInstancesClient(tool.ExternalView().AdminConn())
 			_, err := client.List(ctx, publicv1.ComputeInstancesListRequest_builder{}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Allows admin users to list cluster versions", func() {
+			client := publicv1.NewClusterVersionsClient(tool.ExternalView().AdminConn())
+			_, err := client.List(ctx, publicv1.ClusterVersionsListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -129,6 +168,12 @@ var _ = Describe("Access control", func() {
 		It("Allows admin users to list private compute instances", func() {
 			client := privatev1.NewComputeInstancesClient(tool.InternalView().AdminConn())
 			_, err := client.List(ctx, privatev1.ComputeInstancesListRequest_builder{}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Allows admin users to list private cluster versions", func() {
+			client := privatev1.NewClusterVersionsClient(tool.InternalView().AdminConn())
+			_, err := client.List(ctx, privatev1.ClusterVersionsListRequest_builder{}.Build())
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -180,6 +225,15 @@ var _ = Describe("Access control", func() {
 		It("Denies regular users access to private compute instances", func() {
 			client := privatev1.NewComputeInstancesClient(tool.InternalView().UserConn())
 			_, err := client.List(ctx, privatev1.ComputeInstancesListRequest_builder{}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
+		})
+
+		It("Denies regular users access to private cluster versions", func() {
+			client := privatev1.NewClusterVersionsClient(tool.InternalView().UserConn())
+			_, err := client.List(ctx, privatev1.ClusterVersionsListRequest_builder{}.Build())
 			Expect(err).To(HaveOccurred())
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())

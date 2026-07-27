@@ -32,33 +32,14 @@ var validRunStrategies = []string{"Always", "Halted"}
 // ApplySpecDefaults applies default values from a template's spec_defaults to a compute instance spec.
 //
 // User-provided values have precedence over defaults, and should never be overridden by defaults.
-// This function is path-aware (D-18): when the user provides instance_type, cores/memory_gib
-// defaults are skipped; when the user provides cores or memory_gib, instance_type defaults are
-// skipped. This prevents template defaults from creating mutual exclusivity violations.
 func ApplySpecDefaults(spec *privatev1.ComputeInstanceSpec, defaults *privatev1.ComputeInstanceTemplateSpecDefaults) {
 	if spec == nil || defaults == nil {
 		return
 	}
 
-	// Determine user's compute path before applying any defaults.
-	userHasCoresOrMemory := spec.HasCores() || spec.HasMemoryGib()
-
-	// Apply instance_type default only when user is NOT on the cores/memory_gib path.
-	if spec.GetInstanceType() == "" && defaults.HasInstanceType() && defaults.GetInstanceType() != "" && !userHasCoresOrMemory {
+	// Apply instance_type default.
+	if spec.GetInstanceType() == "" && defaults.HasInstanceType() && defaults.GetInstanceType() != "" {
 		spec.SetInstanceType(defaults.GetInstanceType())
-	}
-
-	// Re-evaluate after potential default application.
-	hasInstanceType := spec.GetInstanceType() != ""
-
-	// Apply cores/memory_gib defaults only when NOT on the instance_type path.
-	if !hasInstanceType {
-		if !spec.HasCores() && defaults.HasCores() {
-			spec.SetCores(defaults.GetCores())
-		}
-		if !spec.HasMemoryGib() && defaults.HasMemoryGib() {
-			spec.SetMemoryGib(defaults.GetMemoryGib())
-		}
 	}
 
 	if !spec.HasRunStrategy() && defaults.HasRunStrategy() {
@@ -105,8 +86,7 @@ func mergeBootDiskDefaults(spec *privatev1.ComputeInstanceSpec, defaults *privat
 }
 
 // ValidateRequiredSpecFields checks that all fields required by the Kubernetes ComputeInstance CRD
-// are present in the spec. When instance_type is set, cores and memory_gib are not required
-// because the reconciler resolves them from the instance type (TMPL-03, COMP-06).
+// are present in the spec. instance_type is always required (TMPL-03, COMP-06).
 func ValidateRequiredSpecFields(spec *privatev1.ComputeInstanceSpec) error {
 	if spec == nil {
 		return grpcstatus.Errorf(
@@ -115,15 +95,9 @@ func ValidateRequiredSpecFields(spec *privatev1.ComputeInstanceSpec) error {
 		)
 	}
 	var missing []string
-	// When instance_type is set, cores/memory_gib are resolved by the reconciler,
-	// so they are not required at the API layer during the transition period.
+	// instance_type is always required.
 	if spec.GetInstanceType() == "" {
-		if !spec.HasCores() {
-			missing = append(missing, "cores")
-		}
-		if !spec.HasMemoryGib() {
-			missing = append(missing, "memory_gib")
-		}
+		missing = append(missing, "instance_type")
 	}
 	if !spec.HasImage() {
 		missing = append(missing, "image")

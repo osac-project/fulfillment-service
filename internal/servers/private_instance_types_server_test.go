@@ -789,7 +789,7 @@ var _ = Describe("Private instance types server", func() {
 				Expect(ok).To(BeTrue())
 				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
 				Expect(status.Message()).To(ContainSubstring("cannot delete instance type"))
-				Expect(status.Message()).To(ContainSubstring("test-vm"))
+				Expect(status.Message()).ToNot(ContainSubstring("test-vm"))
 			})
 
 			It("Allows delete when no compute instances reference it", func() {

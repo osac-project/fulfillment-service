@@ -26,7 +26,9 @@ import (
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/testing"
 	"github.com/osac-project/fulfillment-service/internal/uuid"
 )
@@ -677,6 +679,230 @@ var _ = Describe("Rego authorization interceptor", func() {
 					subject := SubjectFromContext(ctx)
 					Expect(subject.User).To(Equal("my-user"))
 					Expect(subject.Tenants.Universal()).To(BeTrue())
+					handled = true
+					return nil, nil
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(handled).To(BeTrue())
+		})
+
+		It("Allows tenant admin to manage project memberships", func(ctx context.Context) {
+			token := createKeycloakUserToken("my-tenant", "my-user", jwt.MapClaims{
+				"realm_access": map[string]any{
+					"roles": []any{
+						"tenant-admin",
+					},
+				},
+			})
+			ctx = ContextWithToken(ctx, token)
+			handled := false
+			_, err := interceptor.UnaryServer(
+				ctx,
+				nil,
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Create",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					subject := SubjectFromContext(ctx)
+					Expect(subject.User).To(Equal("my-user"))
+					Expect(subject.Tenants.Finite()).To(BeTrue())
+					Expect(subject.Tenants.Inclusions()).To(ConsistOf("my-tenant"))
+					handled = true
+					return nil, nil
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(handled).To(BeTrue())
+		})
+
+		It("Denies regular user from creating project memberships", func(ctx context.Context) {
+			token := createKeycloakUserToken("my-tenant", "my-user", jwt.MapClaims{
+				"realm_access": map[string]any{
+					"roles": []any{},
+				},
+			})
+			ctx = ContextWithToken(ctx, token)
+			handled := false
+			_, err := interceptor.UnaryServer(
+				ctx,
+				nil,
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Create",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					handled = true
+					return nil, nil
+				},
+			)
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
+			Expect(handled).To(BeFalse())
+		})
+
+		It("Allows regular user to list project memberships", func(ctx context.Context) {
+			token := createKeycloakUserToken("my-tenant", "my-user", jwt.MapClaims{})
+			ctx = ContextWithToken(ctx, token)
+			handled := false
+			_, err := interceptor.UnaryServer(
+				ctx,
+				nil,
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/List",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					handled = true
+					return nil, nil
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(handled).To(BeTrue())
+		})
+
+		It("Allows project manager to create project memberships", func(ctx context.Context) {
+			token := createKeycloakUserToken("", "my-user", jwt.MapClaims{
+				"organization": map[string]any{
+					"my-tenant": map[string]any{
+						"groups": []any{
+							"/my-project/system:managers",
+						},
+					},
+				},
+			})
+			ctx = ContextWithToken(ctx, token)
+			handled := false
+			_, err := interceptor.UnaryServer(
+				ctx,
+				publicv1.ProjectMembershipsCreateRequest_builder{
+					Object: publicv1.ProjectMembership_builder{
+						Metadata: publicv1.Metadata_builder{
+							Project: "my-project",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Create",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					handled = true
+					return nil, nil
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(handled).To(BeTrue())
+		})
+
+		It("Allows project manager to get project memberships", func(ctx context.Context) {
+			pmInterceptor, err := NewGrpcAuthzInterceptor().
+				SetLogger(logger).
+				SetProjectMembershipMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					Expect(id).To(Equal("pm-100"))
+					return &ObjectMetadata{Tenant: "my-tenant", Project: "my-project"}
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			token := createKeycloakUserToken("", "my-user", jwt.MapClaims{
+				"organization": map[string]any{
+					"my-tenant": map[string]any{
+						"groups": []any{
+							"/my-project/system:managers",
+						},
+					},
+				},
+			})
+			ctx = ContextWithToken(ctx, token)
+			handled := false
+			_, err = pmInterceptor.UnaryServer(
+				ctx,
+				publicv1.ProjectMembershipsGetRequest_builder{
+					Id: "pm-100",
+				}.Build(),
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Get",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					handled = true
+					return nil, nil
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(handled).To(BeTrue())
+		})
+
+		It("Allows project manager to update project memberships", func(ctx context.Context) {
+			pmInterceptor, err := NewGrpcAuthzInterceptor().
+				SetLogger(logger).
+				SetProjectMembershipMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					Expect(id).To(Equal("pm-200"))
+					return &ObjectMetadata{Tenant: "my-tenant", Project: "my-project"}
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			token := createKeycloakUserToken("", "my-user", jwt.MapClaims{
+				"organization": map[string]any{
+					"my-tenant": map[string]any{
+						"groups": []any{
+							"/my-project/system:managers",
+						},
+					},
+				},
+			})
+			ctx = ContextWithToken(ctx, token)
+			handled := false
+			_, err = pmInterceptor.UnaryServer(
+				ctx,
+				publicv1.ProjectMembershipsUpdateRequest_builder{
+					Object: publicv1.ProjectMembership_builder{
+						Id: "pm-200",
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{},
+				}.Build(),
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Update",
+				},
+				func(ctx context.Context, req any) (any, error) {
+					handled = true
+					return nil, nil
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(handled).To(BeTrue())
+		})
+
+		It("Allows project manager to delete project memberships", func(ctx context.Context) {
+			pmInterceptor, err := NewGrpcAuthzInterceptor().
+				SetLogger(logger).
+				SetProjectMembershipMetadataFetcher(func(ctx context.Context, id string) *ObjectMetadata {
+					Expect(id).To(Equal("pm-300"))
+					return &ObjectMetadata{Tenant: "my-tenant", Project: "my-project"}
+				}).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			token := createKeycloakUserToken("", "my-user", jwt.MapClaims{
+				"organization": map[string]any{
+					"my-tenant": map[string]any{
+						"groups": []any{
+							"/my-project/system:managers",
+						},
+					},
+				},
+			})
+			ctx = ContextWithToken(ctx, token)
+			handled := false
+			_, err = pmInterceptor.UnaryServer(
+				ctx,
+				publicv1.ProjectMembershipsDeleteRequest_builder{
+					Id: "pm-300",
+				}.Build(),
+				&grpc.UnaryServerInfo{
+					FullMethod: "/osac.public.v1.ProjectMemberships/Delete",
+				},
+				func(ctx context.Context, req any) (any, error) {
 					handled = true
 					return nil, nil
 				},

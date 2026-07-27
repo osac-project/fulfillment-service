@@ -25,7 +25,7 @@ imports:
 
 # Pull request settings.
 pr:
-  draft: true
+  draft: false
   title_prefix: "[AI]"
   labels:
     - ai-pr

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -208,6 +209,12 @@ func (s *PrivateBareMetalInstancesServer) validateSpec(bmi *privatev1.BareMetalI
 		}
 	}
 
+	if spec.HasImage() {
+		if err := s.validateBareMetalInstanceImage(spec.GetImage()); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -280,6 +287,8 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyTemplateParameters(ctx
 	}
 	template := getResponse.GetObject()
 
+	s.applyBareMetalInstanceSpecDefaults(bmi.GetSpec(), template.GetSpecDefaults())
+
 	if len(template.GetParameters()) == 0 && len(providedParams) == 0 {
 		return nil
 	}
@@ -297,8 +306,8 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyTemplateParameters(ctx
 	return nil
 }
 
-// validateImmutability ensures catalog_item, ssh_public_key, user_data, and template_parameters
-// cannot be changed after creation.
+// validateImmutability ensures catalog_item, ssh_public_key, user_data, template_parameters,
+// image, and auto_external_ip_attachment cannot be changed after creation.
 func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Context,
 	request *privatev1.BareMetalInstancesUpdateRequest) error {
 	mask := request.GetUpdateMask()
@@ -306,13 +315,15 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 	updatingSshKey := updateIncludesField(mask, "spec.ssh_public_key")
 	updatingUserData := updateIncludesField(mask, "spec.user_data")
 	updatingTemplateParams := updateIncludesField(mask, "spec.template_parameters")
+	updatingImage := updateIncludesField(mask, "spec.image")
+	updatingAutoExternalIP := updateIncludesField(mask, "spec.auto_external_ip_attachment")
 
 	bmi := request.GetObject()
 	if bmi == nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "bare metal instance is mandatory")
 	}
 	newSpec := bmi.GetSpec()
-	if newSpec == nil && (updatingCatalogItem || updatingSshKey || updatingUserData || updatingTemplateParams) {
+	if newSpec == nil && (updatingCatalogItem || updatingSshKey || updatingUserData || updatingTemplateParams || updatingImage || updatingAutoExternalIP) {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "bare metal instance spec is mandatory")
 	}
 	id := bmi.GetId()
@@ -362,5 +373,57 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 		}
 	}
 
+	if updatingImage && !proto.Equal(existingSpec.GetImage(), newSpec.GetImage()) {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"cannot change spec.image: image is immutable after creation")
+	}
+
+	if updatingAutoExternalIP && existingSpec.GetAutoExternalIpAttachment() != newSpec.GetAutoExternalIpAttachment() {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"cannot change spec.auto_external_ip_attachment: auto_external_ip_attachment is immutable after creation")
+	}
+
+	return nil
+}
+
+func (s *PrivateBareMetalInstancesServer) applyBareMetalInstanceSpecDefaults(spec *privatev1.BareMetalInstanceSpec, defaults *privatev1.BareMetalInstanceTemplateSpecDefaults) {
+	if spec == nil || defaults == nil {
+		return
+	}
+	if !defaults.HasImage() {
+		return
+	}
+	if !spec.HasImage() {
+		spec.SetImage(proto.Clone(defaults.GetImage()).(*privatev1.BareMetalInstanceImage))
+		return
+	}
+	img := spec.GetImage()
+	defImg := defaults.GetImage()
+	if img.GetSourceType() == "" && defImg.GetSourceType() != "" {
+		img.SetSourceType(defImg.GetSourceType())
+	}
+	if img.GetSourceRef() == "" && defImg.GetSourceRef() != "" {
+		img.SetSourceRef(defImg.GetSourceRef())
+	}
+}
+
+func (s *PrivateBareMetalInstancesServer) validateBareMetalInstanceImage(image *privatev1.BareMetalInstanceImage) error {
+	if image == nil {
+		return nil
+	}
+	var missing []string
+	if image.GetSourceType() == "" {
+		missing = append(missing, "image.source_type")
+	}
+	if image.GetSourceRef() == "" {
+		missing = append(missing, "image.source_ref")
+	}
+	if len(missing) > 0 {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"the following required image fields are missing: %s",
+			strings.Join(missing, ", "),
+		)
+	}
 	return nil
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstancecatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/cluster"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/clustercatalogitem"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/clusterversion"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/computeinstance"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/computeinstancecatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/hub"
@@ -44,6 +45,7 @@ var _ = Describe("Create command", func() {
 		Entry("baremetalinstancecatalogitem", baremetalinstancecatalogitem.Cmd, (*publicv1.BareMetalInstanceCatalogItem)(nil)),
 		Entry("cluster", cluster.Cmd, (*publicv1.Cluster)(nil)),
 		Entry("clustercatalogitem", clustercatalogitem.Cmd, (*publicv1.ClusterCatalogItem)(nil)),
+		Entry("clusterversion", clusterversion.Cmd, (*privatev1.ClusterVersion)(nil)),
 		Entry("computeinstance", computeinstance.Cmd, (*publicv1.ComputeInstance)(nil)),
 		Entry("computeinstancecatalogitem", computeinstancecatalogitem.Cmd, (*publicv1.ComputeInstanceCatalogItem)(nil)),
 		Entry("hub", hub.Cmd, (*privatev1.Hub)(nil)),
@@ -63,7 +65,7 @@ var _ = Describe("Create command", func() {
 				subcommandNames = append(subcommandNames, subcmd.Name())
 			}
 
-			Expect(subcommandNames).To(ContainElements("baremetalinstancecatalogitem", "cluster", "clustercatalogitem", "computeinstance", "computeinstancecatalogitem", "hub", "publicip", "publicipattachment", "virtualnetwork", "subnet", "securitygroup"))
+			Expect(subcommandNames).To(ContainElements("baremetalinstancecatalogitem", "cluster", "clustercatalogitem", "clusterversion", "computeinstance", "computeinstancecatalogitem", "hub", "publicip", "publicipattachment", "virtualnetwork", "subnet", "securitygroup"))
 		})
 	})
 })

@@ -131,14 +131,12 @@ message ComputeInstanceSpec {
   // VM image configuration.
   optional ComputeInstanceImage image = 4;
 
-  // Number of CPU cores.
-  optional int32 cores = 5;
-
-  // Memory size in GiB.
-  optional int32 memory_gib = 6;
+  // Reserved field numbers for removed fields (do not reuse).
+  reserved 5, 6;
+  reserved "cores", "memory_gib";
 
   // SSH public key.
-  optional string ssh_key = 7;
+  optional string ssh_public_key = 7;
 
   // Boot disk configuration.
   optional ComputeInstanceDisk boot_disk = 8;
@@ -181,9 +179,9 @@ message ComputeInstanceSpec {
   //
   optional bool is_windows = 16;
 
-  // Reference to an instance type by name. The API validates that the instance type exists and is
-  // not OBSOLETE, but does NOT resolve cores/memory_gib — resolution happens in the reconciler.
-  // Mutually exclusive with direct cores/memory_gib fields.
+  // Reference to an instance type by name. Specifies the compute configuration (cores, memory)
+  // for this instance. The API validates that the instance type exists and is not OBSOLETE;
+  // resolution of cores/memory_gib happens in the reconciler.
   optional string instance_type = 17;
 }
 
@@ -257,8 +255,8 @@ message ComputeInstanceStatus {
   //
   optional google.protobuf.Timestamp last_restarted_at = 4;
 
-  // Public IP address attached to the compute instance.
-  string public_ip_address = 5;
+  // External IP address attached to the compute instance.
+  string external_ip_address = 5;
 }
 
 // Represents the overall state of a compute instance.

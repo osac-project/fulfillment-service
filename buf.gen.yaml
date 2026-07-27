@@ -21,6 +21,7 @@ managed:
   disable:
   - module: buf.build/googleapis/googleapis
   - module: buf.build/grpc-ecosystem/grpc-gateway
+  - module: buf.build/bufbuild/protovalidate
 
 inputs:
 

@@ -18,7 +18,6 @@ package osac.private.v1;
 import "google/api/field_behavior.proto";
 import "osac/private/v1/ip_family_type.proto";
 import "osac/private/v1/metadata_type.proto";
-import "osac/private/v1/public_ip_pool_type.proto";
 
 // Represents a public IP address allocated from a PublicIPPool.
 //

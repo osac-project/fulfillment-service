@@ -28,12 +28,14 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/externalippool"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/kubeconfig"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/password"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/publicippool"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/get/token"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
+	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/rendering"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
@@ -61,7 +63,9 @@ func Cmd() *cobra.Command {
 		Short:                 shortHelp,
 		Long:                  longHelp,
 		RunE:                  runner.run,
+		ValidArgsFunction:     completeObjectTypes,
 	}
+	result.AddCommand(externalippool.Cmd())
 	result.AddCommand(kubeconfig.Cmd())
 	result.AddCommand(password.Cmd())
 	result.AddCommand(publicippool.Cmd())
@@ -143,6 +147,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		SetLogger(c.logger).
 		SetConnection(c.conn).
 		AddPackages(cfg.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -302,6 +307,13 @@ func (c *runnerContext) encodeObject(object proto.Message) (result any, err erro
 	}
 	err = json.Unmarshal(data, &result)
 	return
+}
+
+func completeObjectTypes(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return reflection.ObjectTypeNames(packages.Public...), cobra.ShellCompDirectiveNoFileComp
 }
 
 const shortHelp = `Get objects`

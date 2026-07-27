@@ -135,26 +135,29 @@ func (r *function) run(ctx context.Context, computeInstance *privatev1.ComputeIn
 		r:               r,
 		computeInstance: computeInstance,
 	}
-	var err error
+	var reconcileErr error
 	if computeInstance.HasMetadata() && computeInstance.GetMetadata().HasDeletionTimestamp() {
-		err = t.delete(ctx)
+		reconcileErr = t.delete(ctx)
 	} else {
-		err = t.update(ctx)
+		reconcileErr = t.update(ctx)
 	}
-	if err != nil {
-		return err
+	if reconcileErr != nil {
+		t.setReconciliationFailed(reconcileErr)
 	}
 	// Calculate which fields the reconciler actually modified and use a field mask
 	// to update only those fields. This prevents overwriting concurrent user changes.
 	updateMask := r.maskCalculator.Calculate(oldComputeInstance, computeInstance)
 
 	// Only send an update if there are actual changes
-	_, err = r.computeInstancesClient.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+	_, updateErr := r.computeInstancesClient.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
 		Object:     computeInstance,
 		UpdateMask: updateMask,
 	}.Build())
 
-	return err
+	if reconcileErr != nil {
+		return reconcileErr
+	}
+	return updateErr
 }
 
 func (t *task) update(ctx context.Context) error {
@@ -524,6 +527,19 @@ func (t *task) updateCondition(conditionType privatev1.ComputeInstanceConditionT
 	t.computeInstance.GetStatus().SetConditions(conditions)
 }
 
+func (t *task) setReconciliationFailed(err error) {
+	if !t.computeInstance.HasStatus() {
+		t.computeInstance.SetStatus(&privatev1.ComputeInstanceStatus{})
+	}
+	t.computeInstance.GetStatus().SetState(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED)
+	t.updateCondition(
+		privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED,
+		privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+		"ReconciliationFailed",
+		err.Error(),
+	)
+}
+
 // buildSpec constructs the spec for the Kubernetes ComputeInstance object based on the
 // compute instance from the database.
 func (t *task) buildSpec(ctx context.Context) (osacv1alpha1.ComputeInstanceSpec, error) {
@@ -632,32 +648,27 @@ func (t *task) buildSpecNetworkAttachments(ctx context.Context, spec *osacv1alph
 func (t *task) addExplicitFields(ctx context.Context, spec *osacv1alpha1.ComputeInstanceSpec) error {
 	ciSpec := t.computeInstance.GetSpec()
 
-	if instanceTypeName := ciSpec.GetInstanceType(); instanceTypeName != "" {
-		// Instance type path: resolve instance_type name to cores/memory_gib via gRPC lookup.
-		// Per D-05: do NOT check InstanceType state. The OBSOLETE check was done at API creation time.
-		response, err := t.r.instanceTypesClient.Get(ctx, privatev1.InstanceTypesGetRequest_builder{
-			Id: instanceTypeName,
-		}.Build())
-		if err != nil {
-			return fmt.Errorf("failed to resolve instance type '%s': %w", instanceTypeName, err)
-		}
-		itSpec := response.GetObject().GetSpec()
-		spec.Cores = itSpec.GetCores()
-		spec.MemoryGiB = itSpec.GetMemoryGib()
-	} else {
-		// Legacy path: use cores/memory_gib directly from the compute instance spec.
-		if ciSpec.HasCores() {
-			spec.Cores = ciSpec.GetCores()
-		}
-		if ciSpec.HasMemoryGib() {
-			spec.MemoryGiB = ciSpec.GetMemoryGib()
-		}
+	instanceTypeName := ciSpec.GetInstanceType()
+	if instanceTypeName == "" {
+		return fmt.Errorf(
+			"compute instance '%s' has no instance_type set; cannot resolve compute resources",
+			t.computeInstance.GetId(),
+		)
 	}
+	response, err := t.r.instanceTypesClient.Get(ctx, privatev1.InstanceTypesGetRequest_builder{
+		Id: instanceTypeName,
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to resolve instance type '%s': %w", instanceTypeName, err)
+	}
+	itSpec := response.GetObject().GetSpec()
+	spec.Cores = itSpec.GetCores()
+	spec.MemoryGiB = itSpec.GetMemoryGib()
 	if ciSpec.HasRunStrategy() {
 		spec.RunStrategy = osacv1alpha1.RunStrategyType(ciSpec.GetRunStrategy())
 	}
-	if ciSpec.HasSshKey() {
-		spec.SSHKey = ciSpec.GetSshKey()
+	if ciSpec.HasSshPublicKey() {
+		spec.SSHKey = ciSpec.GetSshPublicKey()
 	}
 	if t.userDataSecretName != "" {
 		spec.UserDataSecretRef = &corev1.LocalObjectReference{

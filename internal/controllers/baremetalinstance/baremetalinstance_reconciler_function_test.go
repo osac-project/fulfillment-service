@@ -199,6 +199,51 @@ var _ = Describe("mutateBMI", func() {
 		Expect(obj.Spec.RunStrategy).To(Equal(bmfov1alpha1.RunStrategyUnspecified))
 	})
 
+	It("should propagate restart_trigger to CR spec", func() {
+		catalogItemsClient := defaultFakeCatalogItemsClient()
+
+		t := &task{
+			r: &function{
+				logger:                              logger,
+				bareMetalInstanceCatalogItemsClient: catalogItemsClient,
+			},
+			bareMetalInstance: privatev1.BareMetalInstance_builder{
+				Id: "bmi-test",
+				Spec: privatev1.BareMetalInstanceSpec_builder{
+					CatalogItem:    "catalog-1",
+					RestartTrigger: 42,
+				}.Build(),
+			}.Build(),
+		}
+
+		var obj bmfov1alpha1.BareMetalInstance
+		err := t.mutateBMI(ctx, &obj)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(obj.Spec.RestartTrigger).To(Equal(int64(42)))
+	})
+
+	It("should leave restart_trigger as zero when not set", func() {
+		catalogItemsClient := defaultFakeCatalogItemsClient()
+
+		t := &task{
+			r: &function{
+				logger:                              logger,
+				bareMetalInstanceCatalogItemsClient: catalogItemsClient,
+			},
+			bareMetalInstance: privatev1.BareMetalInstance_builder{
+				Id: "bmi-test",
+				Spec: privatev1.BareMetalInstanceSpec_builder{
+					CatalogItem: "catalog-1",
+				}.Build(),
+			}.Build(),
+		}
+
+		var obj bmfov1alpha1.BareMetalInstance
+		err := t.mutateBMI(ctx, &obj)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(obj.Spec.RestartTrigger).To(Equal(int64(0)))
+	})
+
 	It("should include sshPublicKey and userDataSecret in templateParameters", func() {
 		catalogItemsClient := defaultFakeCatalogItemsClient()
 
@@ -394,6 +439,128 @@ var _ = Describe("mutateBMI", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("failed to get catalog item"))
 		Expect(err.Error()).To(ContainSubstring("missing-catalog"))
+	})
+
+	It("should include imageURL in templateParameters when image is set", func() {
+		catalogItemsClient := defaultFakeCatalogItemsClient()
+
+		t := &task{
+			r: &function{
+				logger:                              logger,
+				bareMetalInstanceCatalogItemsClient: catalogItemsClient,
+			},
+			bareMetalInstance: privatev1.BareMetalInstance_builder{
+				Id: "bmi-test",
+				Spec: privatev1.BareMetalInstanceSpec_builder{
+					CatalogItem: "catalog-1",
+					Image: privatev1.BareMetalInstanceImage_builder{
+						SourceType: "registry",
+						SourceRef:  "quay.io/org/rhel9:latest",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}
+
+		var obj bmfov1alpha1.BareMetalInstance
+		err := t.mutateBMI(ctx, &obj)
+		Expect(err).ToNot(HaveOccurred())
+
+		var params map[string]string
+		Expect(json.Unmarshal([]byte(obj.Spec.TemplateParameters), &params)).To(Succeed())
+		Expect(params["imageURL"]).To(Equal("quay.io/org/rhel9:latest"))
+	})
+
+	It("should not include imageURL in templateParameters when image is not set", func() {
+		catalogItemsClient := defaultFakeCatalogItemsClient()
+
+		t := &task{
+			r: &function{
+				logger:                              logger,
+				bareMetalInstanceCatalogItemsClient: catalogItemsClient,
+			},
+			bareMetalInstance: privatev1.BareMetalInstance_builder{
+				Id: "bmi-test",
+				Spec: privatev1.BareMetalInstanceSpec_builder{
+					CatalogItem:  "catalog-1",
+					SshPublicKey: new("ssh-ed25519 AAAA... test@example.com"),
+				}.Build(),
+			}.Build(),
+		}
+
+		var obj bmfov1alpha1.BareMetalInstance
+		err := t.mutateBMI(ctx, &obj)
+		Expect(err).ToNot(HaveOccurred())
+
+		var params map[string]string
+		Expect(json.Unmarshal([]byte(obj.Spec.TemplateParameters), &params)).To(Succeed())
+		Expect(params).ToNot(HaveKey("imageURL"))
+	})
+
+	It("should let system imageURL override user-provided template_parameters value", func() {
+		catalogItemsClient := defaultFakeCatalogItemsClient()
+
+		userImageParam, err := anypb.New(wrapperspb.String("user-provided-image"))
+		Expect(err).ToNot(HaveOccurred())
+
+		t := &task{
+			r: &function{
+				logger:                              logger,
+				bareMetalInstanceCatalogItemsClient: catalogItemsClient,
+			},
+			bareMetalInstance: privatev1.BareMetalInstance_builder{
+				Id: "bmi-test",
+				Spec: privatev1.BareMetalInstanceSpec_builder{
+					CatalogItem:        "catalog-1",
+					TemplateParameters: map[string]*anypb.Any{"imageURL": userImageParam},
+					Image: privatev1.BareMetalInstanceImage_builder{
+						SourceType: "registry",
+						SourceRef:  "quay.io/org/rhel9:latest",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+		}
+
+		var obj bmfov1alpha1.BareMetalInstance
+		err = t.mutateBMI(ctx, &obj)
+		Expect(err).ToNot(HaveOccurred())
+
+		var params map[string]any
+		Expect(json.Unmarshal([]byte(obj.Spec.TemplateParameters), &params)).To(Succeed())
+		Expect(params["imageURL"]).To(Equal("quay.io/org/rhel9:latest"),
+			"system imageURL must override user-provided template_parameters value")
+	})
+
+	It("should include imageURL alongside sshPublicKey in templateParameters", func() {
+		catalogItemsClient := defaultFakeCatalogItemsClient()
+
+		t := &task{
+			r: &function{
+				logger:                              logger,
+				bareMetalInstanceCatalogItemsClient: catalogItemsClient,
+			},
+			bareMetalInstance: privatev1.BareMetalInstance_builder{
+				Id: "bmi-test",
+				Spec: privatev1.BareMetalInstanceSpec_builder{
+					CatalogItem:  "catalog-1",
+					SshPublicKey: new("ssh-ed25519 AAAA... test@example.com"),
+					Image: privatev1.BareMetalInstanceImage_builder{
+						SourceType: "registry",
+						SourceRef:  "quay.io/org/fedora:latest",
+					}.Build(),
+				}.Build(),
+			}.Build(),
+			userDataSecretName: "bmi-test-user-data",
+		}
+
+		var obj bmfov1alpha1.BareMetalInstance
+		err := t.mutateBMI(ctx, &obj)
+		Expect(err).ToNot(HaveOccurred())
+
+		var params map[string]string
+		Expect(json.Unmarshal([]byte(obj.Spec.TemplateParameters), &params)).To(Succeed())
+		Expect(params["imageURL"]).To(Equal("quay.io/org/fedora:latest"))
+		Expect(params["sshPublicKey"]).To(Equal("ssh-ed25519 AAAA... test@example.com"))
+		Expect(params["userDataSecret"]).To(Equal("bmi-test-user-data"))
 	})
 })
 
@@ -1008,7 +1175,7 @@ var _ = Describe("syncStatus", func() {
 		t := newTask(0)
 		object := &bmfov1alpha1.BareMetalInstance{
 			Spec: bmfov1alpha1.BareMetalInstanceSpec{
-				TemplateID: "some-template",
+				TemplateID: "some_template",
 			},
 			Status: bmfov1alpha1.BareMetalInstanceStatus{
 				Conditions: []metav1.Condition{

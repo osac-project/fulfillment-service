@@ -113,12 +113,22 @@ func (s *PrivateClusterCatalogItemsServer) Get(ctx context.Context,
 
 func (s *PrivateClusterCatalogItemsServer) Create(ctx context.Context,
 	request *privatev1.ClusterCatalogItemsCreateRequest) (response *privatev1.ClusterCatalogItemsCreateResponse, err error) {
+	if object := request.GetObject(); object != nil {
+		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
+			return
+		}
+	}
 	err = s.generic.Create(ctx, request, &response)
 	return
 }
 
 func (s *PrivateClusterCatalogItemsServer) Update(ctx context.Context,
 	request *privatev1.ClusterCatalogItemsUpdateRequest) (response *privatev1.ClusterCatalogItemsUpdateResponse, err error) {
+	if object := request.GetObject(); object != nil {
+		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
+			return
+		}
+	}
 	err = s.generic.Update(ctx, request, &response)
 	return
 }

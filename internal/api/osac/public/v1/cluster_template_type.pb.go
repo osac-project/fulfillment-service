@@ -38,6 +38,8 @@ const (
 
 // A cluster template defines a type of cluster that can be created by the user. Note that the user doesn't create these
 // templates: the system provides a collection of them, and the user chooses one.
+//
+// buf:lint:ignore OSAC_OBJECT_SHAPE
 type ClusterTemplate struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
 	// Unique identifier of the template.

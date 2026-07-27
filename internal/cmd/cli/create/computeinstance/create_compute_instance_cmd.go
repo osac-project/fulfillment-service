@@ -90,18 +90,6 @@ func Cmd() *cobra.Command {
 		[]string{},
 		templateParameterFileFlagHelp,
 	)
-	flags.Int32Var(
-		&runner.args.cores,
-		"cores",
-		0,
-		coresFlagHelp,
-	)
-	flags.Int32Var(
-		&runner.args.memoryGiB,
-		"memory-gib",
-		0,
-		memoryFlagHelp,
-	)
 	flags.StringVar(
 		&runner.args.instanceType,
 		"instance-type",
@@ -121,10 +109,10 @@ func Cmd() *cobra.Command {
 		imageSourceTypeFlagHelp,
 	)
 	flags.StringVar(
-		&runner.args.sshKey,
-		"ssh-key",
+		&runner.args.sshPublicKey,
+		"ssh-public-key",
 		"",
-		sshKeyFlagHelp,
+		sshPublicKeyFlagHelp,
 	)
 	flags.Int32Var(
 		&runner.args.bootDiskSizeGiB,
@@ -165,8 +153,6 @@ func Cmd() *cobra.Command {
 
 	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
 	result.MarkFlagsOneRequired("catalog-item", "template")
-	result.MarkFlagsMutuallyExclusive("instance-type", "cores")
-	result.MarkFlagsMutuallyExclusive("instance-type", "memory-gib")
 	return result
 }
 
@@ -177,12 +163,10 @@ type runnerContext struct {
 		catalogItem             string
 		templateParameterValues []string
 		templateParameterFiles  []string
-		cores                   int32
-		memoryGiB               int32
 		instanceType            string
 		imageSourceRef          string
 		imageSourceType         string
-		sshKey                  string
+		sshPublicKey            string
 		bootDiskSizeGiB         int32
 		additionalDisks         []string
 		runStrategy             string
@@ -192,6 +176,7 @@ type runnerContext struct {
 	}
 	logger                 *slog.Logger
 	console                *terminal.Console
+	settings               *config.Settings
 	templatesClient        publicv1.ComputeInstanceTemplatesClient
 	computeInstancesClient publicv1.ComputeInstancesClient
 }
@@ -227,13 +212,13 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the configuration:
-	cfg := config.SettingsFromContext(ctx)
-	if !cfg.Armed() {
+	c.settings = config.SettingsFromContext(ctx)
+	if !c.settings.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
 	// Create the gRPC connection from the configuration:
-	conn, err := cfg.Connect(ctx, cmd.Flags())
+	conn, err := c.settings.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
@@ -243,7 +228,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	helper, err := reflection.NewHelper().
 		SetLogger(c.logger).
 		SetConnection(conn).
-		AddPackages(cfg.Packages()).
+		AddPackages(c.settings.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -264,7 +250,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		computeInstance := publicv1.ComputeInstance_builder{
 			Metadata: publicv1.Metadata_builder{
 				Name:   c.args.name,
-				Tenant: config.TenantFromContext(ctx),
+				Tenant: c.settings.Tenant(),
 			}.Build(),
 			Spec: specResult,
 		}.Build()
@@ -352,8 +338,8 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Comp
 		c.args.template,
 	)
 	response, err := c.templatesClient.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{
-		Filter: new(filter),
-		Limit:  new(int32(10)),
+		Filter: proto.String(filter),
+		Limit:  proto.Int32(10),
 	}.Build())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
@@ -380,7 +366,7 @@ func (c *runnerContext) findTemplate(ctx context.Context) (result *publicv1.Comp
 
 	// If we are here then no matches were found, we will show to the user some of the available templates:
 	response, err = c.templatesClient.List(ctx, publicv1.ComputeInstanceTemplatesListRequest_builder{
-		Limit: new(int32(10)),
+		Limit: proto.Int32(10),
 	}.Build())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
@@ -722,17 +708,11 @@ func (c *runnerContext) buildSpec(templateID string,
 			SourceRef:  c.args.imageSourceRef,
 		}.Build()
 	}
-	if c.args.cores > 0 {
-		spec.Cores = new(c.args.cores)
-	}
-	if c.args.memoryGiB > 0 {
-		spec.MemoryGib = new(c.args.memoryGiB)
-	}
 	if c.args.instanceType != "" {
-		spec.InstanceType = new(c.args.instanceType)
+		spec.InstanceType = proto.String(c.args.instanceType)
 	}
-	if c.args.sshKey != "" {
-		spec.SshKey = new(c.args.sshKey)
+	if c.args.sshPublicKey != "" {
+		spec.SshPublicKey = proto.String(c.args.sshPublicKey)
 	}
 	if c.args.bootDiskSizeGiB > 0 {
 		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
@@ -747,13 +727,13 @@ func (c *runnerContext) buildSpec(templateID string,
 		spec.AdditionalDisks = disks
 	}
 	if c.args.runStrategy != "" {
-		spec.RunStrategy = new(c.args.runStrategy)
+		spec.RunStrategy = proto.String(c.args.runStrategy)
 	}
 	if c.args.userData != "" {
-		spec.UserData = new(c.args.userData)
+		spec.UserData = proto.String(c.args.userData)
 	}
 	if c.args.windows {
-		spec.IsWindows = new(true)
+		spec.IsWindows = proto.Bool(true)
 	}
 	if err := c.applyNetworkingFlags(&spec); err != nil {
 		return nil, err
@@ -874,17 +854,11 @@ func (c *runnerContext) buildSpecFromCatalogItem(catalogItemID string) (*publicv
 			SourceRef:  c.args.imageSourceRef,
 		}.Build()
 	}
-	if c.args.cores > 0 {
-		spec.Cores = new(c.args.cores)
-	}
-	if c.args.memoryGiB > 0 {
-		spec.MemoryGib = new(c.args.memoryGiB)
-	}
 	if c.args.instanceType != "" {
-		spec.InstanceType = new(c.args.instanceType)
+		spec.InstanceType = proto.String(c.args.instanceType)
 	}
-	if c.args.sshKey != "" {
-		spec.SshKey = new(c.args.sshKey)
+	if c.args.sshPublicKey != "" {
+		spec.SshPublicKey = proto.String(c.args.sshPublicKey)
 	}
 	if c.args.bootDiskSizeGiB > 0 {
 		spec.BootDisk = publicv1.ComputeInstanceDisk_builder{
@@ -899,13 +873,13 @@ func (c *runnerContext) buildSpecFromCatalogItem(catalogItemID string) (*publicv
 		spec.AdditionalDisks = disks
 	}
 	if c.args.runStrategy != "" {
-		spec.RunStrategy = new(c.args.runStrategy)
+		spec.RunStrategy = proto.String(c.args.runStrategy)
 	}
 	if c.args.userData != "" {
-		spec.UserData = new(c.args.userData)
+		spec.UserData = proto.String(c.args.userData)
 	}
 	if c.args.windows {
-		spec.IsWindows = new(true)
+		spec.IsWindows = proto.Bool(true)
 	}
 	if err := c.applyNetworkingFlags(&spec); err != nil {
 		return nil, err
@@ -1015,17 +989,9 @@ format {{ bt }}name=filename{{ bt }}. Can be specified multiple
 times.
 `
 
-const coresFlagHelp = `
-_COUNT_ - Number of CPU cores.
-`
-
-const memoryFlagHelp = `
-_SIZE_ - Memory size in GiB.
-`
-
 const instanceTypeFlagHelp = `
-_NAME_ - Instance type name. Mutually exclusive with
-{{ bt }}--cores{{ bt }} and {{ bt }}--memory-gib{{ bt }}.
+_NAME_ - Instance type name. Specifies the compute resource
+configuration for this instance.
 `
 
 const imageFlagHelp = `
@@ -1036,7 +1002,7 @@ const imageSourceTypeFlagHelp = `
 _TYPE_ - Image source type.
 `
 
-const sshKeyFlagHelp = `
+const sshPublicKeyFlagHelp = `
 _KEY_ - SSH public key.
 `
 

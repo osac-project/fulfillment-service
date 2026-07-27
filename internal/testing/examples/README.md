@@ -2,7 +2,7 @@
 
 This directory contains YAML examples of CRDs used by the testing framework to
 verify that CRDs are properly available after installations of components with
-_Helm_ or _Kustomize_.
+_Helm_.
 
 The `waitForCrd` method of the `Kind` type uses these example objects to perform
 dry run operations against the Kubernetes API server, ensuring that the CRD is

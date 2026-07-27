@@ -164,16 +164,16 @@ var _ = Describe("Settings", func() {
 		})
 
 		It("Skips save when tokens have not changed", func(ctx context.Context) {
-			cfg, err := NewSettings().
+			settings, err := NewSettings().
 				SetLogger(logger).
 				SetDir(tmp).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
-			cfg.SetAccessToken("access-abc")
-			cfg.SetRefreshToken("refresh-xyz")
-			cfg.SetTokenExpiry(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+			settings.SetAccessToken("access-abc")
+			settings.SetRefreshToken("refresh-xyz")
+			settings.SetTokenExpiry(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
 
-			store := cfg.TokenStore()
+			store := settings.TokenStore()
 			err = store.Save(ctx, &auth.Token{
 				Access:  "access-abc",
 				Refresh: "refresh-xyz",

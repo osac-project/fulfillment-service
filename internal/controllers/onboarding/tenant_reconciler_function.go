@@ -15,6 +15,7 @@ language governing permissions and limitations under the License.
 package onboarding
 
 //go:generate mockgen -source=../../api/osac/private/v1/tenants_service_grpc.pb.go -destination=tenants_client_mock.go -package=onboarding TenantsClient
+//go:generate mockgen -source=../../api/osac/private/v1/projects_service_grpc.pb.go -destination=projects_client_mock.go -package=onboarding ProjectsClient
 
 import (
 	"context"
@@ -29,6 +30,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clnt "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	osacv1alpha1 "github.com/osac-project/osac-operator/api/v1alpha1"
 
@@ -49,6 +51,7 @@ type function struct {
 	logger         *slog.Logger
 	hubCache       controllers.HubCache
 	tenantsClient  privatev1.TenantsClient
+	projectsClient privatev1.ProjectsClient
 	hubsClient     privatev1.HubsClient
 	maskCalculator *masks.Calculator
 }
@@ -94,6 +97,7 @@ func (b *FunctionBuilder) Build() (result controllers.ReconcilerFunction[*privat
 	object := &function{
 		logger:         b.logger,
 		tenantsClient:  privatev1.NewTenantsClient(b.connection),
+		projectsClient: privatev1.NewProjectsClient(b.connection),
 		hubsClient:     privatev1.NewHubsClient(b.connection),
 		hubCache:       b.hubCache,
 		maskCalculator: masks.NewCalculator().Build(),
@@ -114,15 +118,15 @@ func (r *function) run(ctx context.Context, tenant *privatev1.Tenant) error {
 	} else {
 		err = t.update(ctx)
 	}
-	if err != nil {
-		return err
-	}
 	updateMask := r.maskCalculator.Calculate(oldTenant, tenant)
 	if len(updateMask.GetPaths()) > 0 {
-		_, err = r.tenantsClient.Update(ctx, privatev1.TenantsUpdateRequest_builder{
+		_, updateErr := r.tenantsClient.Update(ctx, privatev1.TenantsUpdateRequest_builder{
 			Object:     tenant,
 			UpdateMask: updateMask,
 		}.Build())
+		if err == nil {
+			err = updateErr
+		}
 	}
 	return err
 }
@@ -150,46 +154,59 @@ func (t *task) update(ctx context.Context) error {
 		}
 
 		if err := t.createOrUpdateOnHub(ctx, hub.GetId(), hubEntry); err != nil {
+			t.r.logger.ErrorContext(ctx, "Failed to sync tenant to hub",
+				slog.String("hub_id", hub.GetId()),
+				slog.String("tenant_id", t.tenant.GetId()),
+				slog.String("error", err.Error()),
+			)
+			t.setFailed(fmt.Sprintf(
+				"Failed to sync tenant to hub '%s'", hub.GetId(),
+			))
 			return err
 		}
 	}
 
+	t.clearFailed()
 	return nil
 }
 
-func (t *task) createOrUpdateOnHub(ctx context.Context, hubId string, hubEntry *controllers.HubEntry) error {
-	existing, err := t.getKubeObject(ctx, hubEntry)
-	if err != nil {
-		return err
+func (t *task) clearFailed() {
+	if !t.tenant.HasStatus() {
+		return
 	}
+	if t.tenant.GetStatus().GetState() == privatev1.TenantState_TENANT_STATE_FAILED {
+		if t.tenant.GetStatus().GetIdpTenantName() != "" {
+			t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_SYNCED)
+		} else {
+			t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_PENDING)
+		}
+		t.tenant.GetStatus().ClearMessage()
+	}
+}
 
+func (t *task) createOrUpdateOnHub(ctx context.Context, hubId string, hubEntry *controllers.HubEntry) error {
 	tenantName := t.tenant.GetMetadata().GetName()
-	if existing == nil {
-		object := &osacv1alpha1.Tenant{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: hubEntry.Namespace,
-				Name:      tenantName,
-				Labels: map[string]string{
-					labels.TenantUuid: tenantName,
-				},
-			},
-		}
-		err = hubEntry.Client.Create(ctx, object)
-		if err != nil {
-			return fmt.Errorf("failed to create tenant on hub %s: %w", hubId, err)
-		}
-		t.r.logger.DebugContext(ctx, "Created tenant",
-			slog.String("hub_id", hubId),
-			slog.String("namespace", object.GetNamespace()),
-			slog.String("name", object.GetName()),
-		)
-	} else {
-		t.r.logger.DebugContext(ctx, "Tenant already exists on hub",
-			slog.String("hub_id", hubId),
-			slog.String("namespace", existing.GetNamespace()),
-			slog.String("name", existing.GetName()),
-		)
+	object := &osacv1alpha1.Tenant{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: hubEntry.Namespace,
+			Name:      tenantName,
+		},
 	}
+	result, err := controllerutil.CreateOrPatch(ctx, hubEntry.Client, object, func() error {
+		if object.Labels == nil {
+			object.Labels = make(map[string]string)
+		}
+		object.Labels[labels.TenantUuid] = tenantName
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create or patch tenant on hub %s: %w", hubId, err)
+	}
+	t.r.logger.DebugContext(ctx, fmt.Sprintf("%s tenant", result),
+		slog.String("hub_id", hubId),
+		slog.String("namespace", object.GetNamespace()),
+		slog.String("name", object.GetName()),
+	)
 
 	if err := t.ensureNamespaceOnHub(ctx, hubId, hubEntry); err != nil {
 		return err
@@ -200,33 +217,23 @@ func (t *task) createOrUpdateOnHub(ctx context.Context, hubId string, hubEntry *
 
 func (t *task) ensureNamespaceOnHub(ctx context.Context, hubId string, hubEntry *controllers.HubEntry) error {
 	tenantName := t.tenant.GetMetadata().GetName()
-	ns := &corev1.Namespace{}
-	err := hubEntry.Client.Get(ctx, clnt.ObjectKey{Name: tenantName}, ns)
-	if err == nil {
-		t.r.logger.DebugContext(ctx, "Tenant namespace already exists on hub",
-			slog.String("hub_id", hubId),
-			slog.String("name", tenantName),
-		)
-		return nil
-	}
-	if !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get namespace on hub %s: %w", hubId, err)
-	}
-
-	ns = &corev1.Namespace{
+	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: tenantName,
-			Labels: map[string]string{
-				labels.TenantRef: tenantName,
-				labels.Project:   hubEntry.Namespace,
-			},
 		},
 	}
-	err = hubEntry.Client.Create(ctx, ns)
+	result, err := controllerutil.CreateOrPatch(ctx, hubEntry.Client, ns, func() error {
+		if ns.Labels == nil {
+			ns.Labels = make(map[string]string)
+		}
+		ns.Labels[labels.TenantRef] = tenantName
+		ns.Labels[labels.Project] = hubEntry.Namespace
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to create namespace on hub %s: %w", hubId, err)
+		return fmt.Errorf("failed to create or patch namespace on hub %s: %w", hubId, err)
 	}
-	t.r.logger.DebugContext(ctx, "Created tenant namespace",
+	t.r.logger.DebugContext(ctx, fmt.Sprintf("%s tenant namespace", result),
 		slog.String("hub_id", hubId),
 		slog.String("name", tenantName),
 	)
@@ -283,6 +290,20 @@ func (t *task) delete(ctx context.Context) error {
 		}
 
 		return nil
+	}
+
+	// Wait for all projects to be archived before removing the finalizer —
+	// otherwise the DAO archive hits FK violations from the projects table.
+	listFilter := fmt.Sprintf("this.metadata.tenant == %q", t.tenant.GetMetadata().GetName())
+	listResp, err := t.r.projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+		Filter: new(listFilter),
+		Limit:  new(int32(0)),
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to query for remaining projects: %w", err)
+	}
+	if listResp.GetTotal() > 0 {
+		return fmt.Errorf("tenant still has %d project(s) pending deletion", listResp.GetTotal())
 	}
 
 	t.removeFinalizer()
@@ -379,4 +400,12 @@ func (t *task) removeFinalizer() {
 		})
 		t.tenant.GetMetadata().SetFinalizers(list)
 	}
+}
+
+func (t *task) setFailed(message string) {
+	if !t.tenant.HasStatus() {
+		t.tenant.SetStatus(&privatev1.TenantStatus{})
+	}
+	t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_FAILED)
+	t.tenant.GetStatus().SetMessage(message)
 }

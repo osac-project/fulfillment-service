@@ -32,14 +32,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	IdentityProviders_Create_FullMethodName        = "/osac.public.v1.IdentityProviders/Create"
-	IdentityProviders_List_FullMethodName          = "/osac.public.v1.IdentityProviders/List"
-	IdentityProviders_ListAvailable_FullMethodName = "/osac.public.v1.IdentityProviders/ListAvailable"
-	IdentityProviders_Get_FullMethodName           = "/osac.public.v1.IdentityProviders/Get"
-	IdentityProviders_Update_FullMethodName        = "/osac.public.v1.IdentityProviders/Update"
-	IdentityProviders_Delete_FullMethodName        = "/osac.public.v1.IdentityProviders/Delete"
-	IdentityProviders_Assign_FullMethodName        = "/osac.public.v1.IdentityProviders/Assign"
-	IdentityProviders_Unassign_FullMethodName      = "/osac.public.v1.IdentityProviders/Unassign"
+	IdentityProviders_Create_FullMethodName = "/osac.public.v1.IdentityProviders/Create"
+	IdentityProviders_List_FullMethodName   = "/osac.public.v1.IdentityProviders/List"
+	IdentityProviders_Get_FullMethodName    = "/osac.public.v1.IdentityProviders/Get"
+	IdentityProviders_Update_FullMethodName = "/osac.public.v1.IdentityProviders/Update"
+	IdentityProviders_Delete_FullMethodName = "/osac.public.v1.IdentityProviders/Delete"
 )
 
 // IdentityProvidersClient is the client API for IdentityProviders service.
@@ -56,20 +53,12 @@ type IdentityProvidersClient interface {
 	// Lists identity providers assigned to a tenant.
 	// Use filter with metadata.tenant to scope to a specific tenant.
 	List(ctx context.Context, in *IdentityProvidersListRequest, opts ...grpc.CallOption) (*IdentityProvidersListResponse, error)
-	// Lists all identity providers available.
-	ListAvailable(ctx context.Context, in *IdentityProvidersListAvailableRequest, opts ...grpc.CallOption) (*IdentityProvidersListAvailableResponse, error)
 	// Retrieves an identity provider by ID.
 	Get(ctx context.Context, in *IdentityProvidersGetRequest, opts ...grpc.CallOption) (*IdentityProvidersGetResponse, error)
 	// Updates an existing identity provider.
 	Update(ctx context.Context, in *IdentityProvidersUpdateRequest, opts ...grpc.CallOption) (*IdentityProvidersUpdateResponse, error)
 	// Deletes an identity provider.
 	Delete(ctx context.Context, in *IdentityProvidersDeleteRequest, opts ...grpc.CallOption) (*IdentityProvidersDeleteResponse, error)
-	// Assigns an identity provider to a tenant.
-	// The tenant is specified in metadata.tenant.
-	Assign(ctx context.Context, in *IdentityProvidersAssignRequest, opts ...grpc.CallOption) (*IdentityProvidersAssignResponse, error)
-	// Unassigns an identity provider from a tenant.
-	// The tenant is specified in metadata.tenant.
-	Unassign(ctx context.Context, in *IdentityProvidersUnassignRequest, opts ...grpc.CallOption) (*IdentityProvidersUnassignResponse, error)
 }
 
 type identityProvidersClient struct {
@@ -94,16 +83,6 @@ func (c *identityProvidersClient) List(ctx context.Context, in *IdentityProvider
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IdentityProvidersListResponse)
 	err := c.cc.Invoke(ctx, IdentityProviders_List_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *identityProvidersClient) ListAvailable(ctx context.Context, in *IdentityProvidersListAvailableRequest, opts ...grpc.CallOption) (*IdentityProvidersListAvailableResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentityProvidersListAvailableResponse)
-	err := c.cc.Invoke(ctx, IdentityProviders_ListAvailable_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -140,26 +119,6 @@ func (c *identityProvidersClient) Delete(ctx context.Context, in *IdentityProvid
 	return out, nil
 }
 
-func (c *identityProvidersClient) Assign(ctx context.Context, in *IdentityProvidersAssignRequest, opts ...grpc.CallOption) (*IdentityProvidersAssignResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentityProvidersAssignResponse)
-	err := c.cc.Invoke(ctx, IdentityProviders_Assign_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *identityProvidersClient) Unassign(ctx context.Context, in *IdentityProvidersUnassignRequest, opts ...grpc.CallOption) (*IdentityProvidersUnassignResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentityProvidersUnassignResponse)
-	err := c.cc.Invoke(ctx, IdentityProviders_Unassign_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // IdentityProvidersServer is the server API for IdentityProviders service.
 // All implementations must embed UnimplementedIdentityProvidersServer
 // for forward compatibility.
@@ -174,20 +133,12 @@ type IdentityProvidersServer interface {
 	// Lists identity providers assigned to a tenant.
 	// Use filter with metadata.tenant to scope to a specific tenant.
 	List(context.Context, *IdentityProvidersListRequest) (*IdentityProvidersListResponse, error)
-	// Lists all identity providers available.
-	ListAvailable(context.Context, *IdentityProvidersListAvailableRequest) (*IdentityProvidersListAvailableResponse, error)
 	// Retrieves an identity provider by ID.
 	Get(context.Context, *IdentityProvidersGetRequest) (*IdentityProvidersGetResponse, error)
 	// Updates an existing identity provider.
 	Update(context.Context, *IdentityProvidersUpdateRequest) (*IdentityProvidersUpdateResponse, error)
 	// Deletes an identity provider.
 	Delete(context.Context, *IdentityProvidersDeleteRequest) (*IdentityProvidersDeleteResponse, error)
-	// Assigns an identity provider to a tenant.
-	// The tenant is specified in metadata.tenant.
-	Assign(context.Context, *IdentityProvidersAssignRequest) (*IdentityProvidersAssignResponse, error)
-	// Unassigns an identity provider from a tenant.
-	// The tenant is specified in metadata.tenant.
-	Unassign(context.Context, *IdentityProvidersUnassignRequest) (*IdentityProvidersUnassignResponse, error)
 	mustEmbedUnimplementedIdentityProvidersServer()
 }
 
@@ -204,9 +155,6 @@ func (UnimplementedIdentityProvidersServer) Create(context.Context, *IdentityPro
 func (UnimplementedIdentityProvidersServer) List(context.Context, *IdentityProvidersListRequest) (*IdentityProvidersListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
 }
-func (UnimplementedIdentityProvidersServer) ListAvailable(context.Context, *IdentityProvidersListAvailableRequest) (*IdentityProvidersListAvailableResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ListAvailable not implemented")
-}
 func (UnimplementedIdentityProvidersServer) Get(context.Context, *IdentityProvidersGetRequest) (*IdentityProvidersGetResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
 }
@@ -215,12 +163,6 @@ func (UnimplementedIdentityProvidersServer) Update(context.Context, *IdentityPro
 }
 func (UnimplementedIdentityProvidersServer) Delete(context.Context, *IdentityProvidersDeleteRequest) (*IdentityProvidersDeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
-}
-func (UnimplementedIdentityProvidersServer) Assign(context.Context, *IdentityProvidersAssignRequest) (*IdentityProvidersAssignResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Assign not implemented")
-}
-func (UnimplementedIdentityProvidersServer) Unassign(context.Context, *IdentityProvidersUnassignRequest) (*IdentityProvidersUnassignResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Unassign not implemented")
 }
 func (UnimplementedIdentityProvidersServer) mustEmbedUnimplementedIdentityProvidersServer() {}
 func (UnimplementedIdentityProvidersServer) testEmbeddedByValue()                           {}
@@ -279,24 +221,6 @@ func _IdentityProviders_List_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _IdentityProviders_ListAvailable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentityProvidersListAvailableRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(IdentityProvidersServer).ListAvailable(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: IdentityProviders_ListAvailable_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(IdentityProvidersServer).ListAvailable(ctx, req.(*IdentityProvidersListAvailableRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _IdentityProviders_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentityProvidersGetRequest)
 	if err := dec(in); err != nil {
@@ -351,42 +275,6 @@ func _IdentityProviders_Delete_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _IdentityProviders_Assign_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentityProvidersAssignRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(IdentityProvidersServer).Assign(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: IdentityProviders_Assign_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(IdentityProvidersServer).Assign(ctx, req.(*IdentityProvidersAssignRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _IdentityProviders_Unassign_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentityProvidersUnassignRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(IdentityProvidersServer).Unassign(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: IdentityProviders_Unassign_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(IdentityProvidersServer).Unassign(ctx, req.(*IdentityProvidersUnassignRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // IdentityProviders_ServiceDesc is the grpc.ServiceDesc for IdentityProviders service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -403,10 +291,6 @@ var IdentityProviders_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _IdentityProviders_List_Handler,
 		},
 		{
-			MethodName: "ListAvailable",
-			Handler:    _IdentityProviders_ListAvailable_Handler,
-		},
-		{
 			MethodName: "Get",
 			Handler:    _IdentityProviders_Get_Handler,
 		},
@@ -417,14 +301,6 @@ var IdentityProviders_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _IdentityProviders_Delete_Handler,
-		},
-		{
-			MethodName: "Assign",
-			Handler:    _IdentityProviders_Assign_Handler,
-		},
-		{
-			MethodName: "Unassign",
-			Handler:    _IdentityProviders_Unassign_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

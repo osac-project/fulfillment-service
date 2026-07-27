@@ -19,8 +19,6 @@ import (
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
-	grpccodes "google.golang.org/grpc/codes"
-	grpcstatus "google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -128,9 +126,11 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Get(ctx context.Context,
 
 func (s *PrivateComputeInstanceCatalogItemsServer) Create(ctx context.Context,
 	request *privatev1.ComputeInstanceCatalogItemsCreateRequest) (response *privatev1.ComputeInstanceCatalogItemsCreateResponse, err error) {
-	// Validate instance type in field_definitions before creating.
 	var warnings []string
 	if request.GetObject() != nil {
+		if err = validateFieldDefinitions(request.GetObject().GetFieldDefinitions()); err != nil {
+			return
+		}
 		warnings, err = s.validateFieldDefinitionsInstanceType(ctx, request.GetObject().GetFieldDefinitions())
 		if err != nil {
 			return
@@ -148,9 +148,11 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Create(ctx context.Context,
 
 func (s *PrivateComputeInstanceCatalogItemsServer) Update(ctx context.Context,
 	request *privatev1.ComputeInstanceCatalogItemsUpdateRequest) (response *privatev1.ComputeInstanceCatalogItemsUpdateResponse, err error) {
-	// Validate instance type in field_definitions before updating.
 	var warnings []string
 	if request.GetObject() != nil {
+		if err = validateFieldDefinitions(request.GetObject().GetFieldDefinitions()); err != nil {
+			return
+		}
 		warnings, err = s.validateFieldDefinitionsInstanceType(ctx, request.GetObject().GetFieldDefinitions())
 		if err != nil {
 			return
@@ -179,32 +181,21 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Signal(ctx context.Context,
 }
 
 // validateFieldDefinitionsInstanceType validates instance_type constraints in field_definitions.
-// Rejects mutual exclusivity violations (D-19): field_definitions cannot control both
-// spec.instance_type and spec.cores/spec.memory_gib. Rejects OBSOLETE instance types, warns on DEPRECATED.
+// Rejects OBSOLETE instance types, warns on DEPRECATED.
 func (s *PrivateComputeInstanceCatalogItemsServer) validateFieldDefinitionsInstanceType(
 	ctx context.Context,
 	fieldDefinitions []*privatev1.FieldDefinition,
 ) ([]string, error) {
-	// Scan field_definitions once to check mutual exclusivity (D-19) and extract
-	// the spec.instance_type default value.
-	var hasInstanceTypePath, hasCoresOrMemoryPath bool
+	// Scan field_definitions to extract the spec.instance_type default value.
 	var instanceTypeName string
 	for _, fd := range fieldDefinitions {
-		switch fd.GetPath() {
-		case "spec.instance_type":
-			hasInstanceTypePath = true
+		if fd.GetPath() == "spec.instance_type" {
 			defaultValue := fd.GetDefault()
 			if defaultValue != nil {
 				instanceTypeName = defaultValue.GetStringValue()
 			}
-		case "spec.cores", "spec.memory_gib":
-			hasCoresOrMemoryPath = true
+			break
 		}
-	}
-	if hasInstanceTypePath && hasCoresOrMemoryPath {
-		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"field_definitions cannot control both spec.instance_type and spec.cores/spec.memory_gib: "+
-				"they are mutually exclusive")
 	}
 
 	if instanceTypeName == "" {

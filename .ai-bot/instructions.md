@@ -3,7 +3,7 @@
 This is the fulfillment-service: a gRPC server with REST gateway for managing
 infrastructure resources (clusters, hosts, compute instances, networking). It
 uses PostgreSQL for storage, OPA for authorization, and supports Kubernetes
-deployment via Helm/Kustomize.
+deployment via Helm.
 
 Two binaries: `fulfillment-service` (server) and `osac` (CLI).
 

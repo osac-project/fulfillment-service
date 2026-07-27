@@ -37,6 +37,8 @@ const (
 
 // A compute instance catalog item defines a curated infrastructure offering that references an underlying compute
 // instance template.
+//
+// buf:lint:ignore OSAC_OBJECT_SHAPE
 type ComputeInstanceCatalogItem struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
 	// Unique identifier of the catalog item.

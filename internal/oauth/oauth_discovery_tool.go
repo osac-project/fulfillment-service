@@ -35,6 +35,7 @@ import (
 type ServerMetadata struct {
 	AuthorizationEndpoint       string   `json:"authorization_endpoint,omitempty"`
 	DeviceAuthorizationEndpoint string   `json:"device_authorization_endpoint,omitempty"`
+	EndSessionEndpoint          string   `json:"end_session_endpoint,omitempty"`
 	Issuer                      string   `json:"issuer,omitempty"`
 	ScopesSupported             []string `json:"scopes_supported,omitempty"`
 	TokenEndpoint               string   `json:"token_endpoint,omitempty"`

@@ -36,7 +36,7 @@ import (
 type FunctionBuilder struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
-	idpClient  idp.Client
+	idpClient  idp.ClientInterface
 }
 
 // NewFunction creates a builder that can be used to configure and create reconciler functions.
@@ -57,7 +57,7 @@ func (b *FunctionBuilder) SetConnection(value *grpc.ClientConn) *FunctionBuilder
 }
 
 // SetIdpClient sets the IDP client that the reconciler will use to manage identity providers.
-func (b *FunctionBuilder) SetIdpClient(value idp.Client) *FunctionBuilder {
+func (b *FunctionBuilder) SetIdpClient(value idp.ClientInterface) *FunctionBuilder {
 	b.idpClient = value
 	return b
 }
@@ -90,7 +90,7 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 type function struct {
 	logger                  *slog.Logger
 	identityProvidersClient privatev1.IdentityProvidersClient
-	idpClient               idp.Client
+	idpClient               idp.ClientInterface
 	maskCalculator          *masks.Calculator
 }
 
@@ -207,9 +207,6 @@ func (t *task) syncToIDP(ctx context.Context) error {
 // determineProviderTypeFromIdp returns the provider type based on which config is set.
 func (t *task) determineProviderTypeFromIdp(idp *privatev1.IdentityProvider) string {
 	spec := idp.GetSpec()
-	if spec.HasLdap() {
-		return "ldap"
-	}
 	if spec.HasOidc() {
 		return "oidc"
 	}
@@ -220,13 +217,6 @@ func (t *task) determineProviderTypeFromIdp(idp *privatev1.IdentityProvider) str
 func (t *task) buildConfigFromIdp(idp *privatev1.IdentityProvider) map[string]string {
 	config := make(map[string]string)
 	spec := idp.GetSpec()
-
-	if ldap := spec.GetLdap(); ldap != nil {
-		config["connectionUrl"] = ldap.GetConnectionUrl()
-		config["bindDn"] = ldap.GetBindDn()
-		config["bindCredential"] = ldap.GetBindCredential()
-		config["usersDn"] = ldap.GetUsersDn()
-	}
 
 	if oidc := spec.GetOidc(); oidc != nil {
 		config["authorizationUrl"] = oidc.GetAuthorizationUrl()

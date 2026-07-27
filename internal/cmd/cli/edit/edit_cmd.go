@@ -35,6 +35,7 @@ import (
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
+	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -60,6 +61,7 @@ func Cmd() *cobra.Command {
 		Short:                 shortHelp,
 		Long:                  longHelp,
 		RunE:                  runner.run,
+		ValidArgsFunction:     completeObjectTypes,
 	}
 	flags := result.Flags()
 	flags.StringVarP(
@@ -115,6 +117,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		SetLogger(c.logger).
 		SetConnection(c.conn).
 		AddPackages(cfg.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -364,6 +367,13 @@ var editorEnvVars = []string{
 
 // defualtEditor is the editor used when the environment variables don't indicate any other editor.
 const defaultEditor = "vi"
+
+func completeObjectTypes(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return reflection.ObjectTypeNames(packages.Public...), cobra.ShellCompDirectiveNoFileComp
+}
 
 const shortHelp = `Edit objects`
 

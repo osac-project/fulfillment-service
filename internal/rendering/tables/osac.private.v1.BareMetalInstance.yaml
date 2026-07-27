@@ -24,6 +24,9 @@ columns:
   type: osac.private.v1.BareMetalInstanceCatalogItem
   lookup: true
 
+- header: IMAGE
+  value: "has(this.spec.image) && has(this.spec.image.source_ref)? this.spec.image.source_ref: '-'"
+
 - header: STATE
   value: this.status.state
   type: osac.private.v1.BareMetalInstanceState

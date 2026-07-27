@@ -11,6 +11,8 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 */
 
+//go:generate mockgen -source=../../api/osac/private/v1/projects_service_grpc.pb.go -destination=projects_client_mock.go -package=tenant ProjectsClient
+
 package tenant
 
 import (
@@ -78,6 +80,7 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 	result = &function{
 		logger:         b.logger,
 		tenantsClient:  privatev1.NewTenantsClient(b.connection),
+		projectsClient: privatev1.NewProjectsClient(b.connection),
 		idpManager:     b.idpManager,
 		maskCalculator: masks.NewCalculator().Build(),
 	}
@@ -88,6 +91,7 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 type function struct {
 	logger         *slog.Logger
 	tenantsClient  privatev1.TenantsClient
+	projectsClient privatev1.ProjectsClient
 	idpManager     *idp.TenantManager
 	maskCalculator *masks.Calculator
 }
@@ -160,13 +164,20 @@ func (t *task) update(ctx context.Context) error {
 
 // syncToIDP synchronizes the tenant to the identity provider.
 func (t *task) syncToIDP(ctx context.Context) error {
+	if t.tenant.GetStatus().GetIdpTenantName() != "" {
+		t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_SYNCED)
+		t.tenant.GetStatus().ClearMessage()
+		return nil
+	}
+
 	t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_PENDING)
 
 	tenantName := t.tenant.GetMetadata().GetName()
 	config := &idp.TenantConfig{
-		Name:    tenantName,
-		Enabled: new(!t.isBuiltin()),
-		Domains: t.tenant.GetSpec().GetDomains(),
+		Name:               tenantName,
+		Enabled:            new(!t.isBuiltin()),
+		Domains:            t.tenant.GetSpec().GetDomains(),
+		BreakGlassPassword: t.tenant.GetStatus().GetBreakGlassCredentials().GetPassword(),
 	}
 
 	credentials, err := t.r.idpManager.CreateTenant(ctx, config)
@@ -179,12 +190,7 @@ func (t *task) syncToIDP(ctx context.Context) error {
 	t.tenant.GetStatus().SetState(privatev1.TenantState_TENANT_STATE_SYNCED)
 	t.tenant.GetStatus().SetIdpTenantName(config.Name)
 	t.tenant.GetStatus().SetBreakGlassUserId(credentials.UserID)
-
-	breakGlassCredentials := privatev1.BreakGlassCredentials_builder{
-		Username: credentials.Username,
-		Password: credentials.Password,
-	}.Build()
-	t.tenant.GetStatus().SetBreakGlassCredentials(breakGlassCredentials)
+	t.tenant.GetStatus().ClearBreakGlassCredentials()
 
 	t.r.logger.DebugContext(ctx, "Tenant synced to IDP",
 		slog.String("tenant_id", t.tenant.GetId()),
@@ -275,6 +281,19 @@ func (t *task) isBuiltin() bool {
 
 // delete performs the deletion cleanup for a tenant.
 func (t *task) delete(ctx context.Context) error {
+	// Block until all projects are deleted by the administrator.
+	remaining, err := t.countRemainingProjects(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to query remaining projects: %w", err)
+	}
+	if remaining > 0 {
+		t.r.logger.InfoContext(ctx, "Waiting for projects to be deleted before tenant can be removed",
+			slog.String("tenant_id", t.tenant.GetId()),
+			slog.Int("remaining_projects", int(remaining)),
+		)
+		return fmt.Errorf("tenant still has %d project(s) pending deletion", remaining)
+	}
+
 	// Skip if not synced to IDP yet
 	if t.tenant.GetStatus().GetState() != privatev1.TenantState_TENANT_STATE_SYNCED {
 		t.removeFinalizer()
@@ -288,7 +307,7 @@ func (t *task) delete(ctx context.Context) error {
 		return nil
 	}
 
-	err := t.r.idpManager.DeleteTenant(ctx, tenantName)
+	err = t.r.idpManager.DeleteTenant(ctx, tenantName)
 	if err != nil {
 		return fmt.Errorf("failed to delete IDP tenant: %w", err)
 	}
@@ -300,4 +319,19 @@ func (t *task) delete(ctx context.Context) error {
 
 	t.removeFinalizer()
 	return nil
+}
+
+// countRemainingProjects returns the number of projects that still belong to
+// this tenant. The tenant reconciler blocks deletion until this returns 0 —
+// it is the administrator's responsibility to delete all projects first.
+func (t *task) countRemainingProjects(ctx context.Context) (int32, error) {
+	listFilter := fmt.Sprintf("this.metadata.tenant == %q", t.tenant.GetMetadata().GetName())
+	listResp, err := t.r.projectsClient.List(ctx, privatev1.ProjectsListRequest_builder{
+		Filter: new(listFilter),
+		Limit:  new(int32(0)),
+	}.Build())
+	if err != nil {
+		return 0, err
+	}
+	return listResp.GetTotal(), nil
 }

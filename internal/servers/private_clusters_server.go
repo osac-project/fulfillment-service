@@ -229,6 +229,10 @@ func (s *PrivateClustersServer) Update(ctx context.Context,
 	if err != nil {
 		return
 	}
+	err = s.validateNetworkAttachmentImmutability(ctx, request)
+	if err != nil {
+		return
+	}
 	if err = utils.ValidateClusterSpecFields(request.GetObject().GetSpec()); err != nil {
 		return
 	}
@@ -542,6 +546,47 @@ func (s *PrivateClustersServer) validateTemplateImmutability(ctx context.Context
 	return nil
 }
 
+// validateNetworkAttachmentImmutability ensures that the subnet field within
+// network_attachment cannot be changed after cluster creation.
+func (s *PrivateClustersServer) validateNetworkAttachmentImmutability(ctx context.Context,
+	request *privatev1.ClustersUpdateRequest) error {
+	updateMask := request.GetUpdateMask()
+
+	subnetMayChange := false
+	if updateMask != nil {
+		for _, path := range updateMask.GetPaths() {
+			if path == "spec.network_attachment" || path == "spec.network_attachment.subnet" {
+				subnetMayChange = true
+				break
+			}
+		}
+	}
+	if !subnetMayChange {
+		return nil
+	}
+
+	existingCluster, found, err := s.getExistingCluster(ctx, request)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
+	existingSubnet := existingCluster.GetSpec().GetNetworkAttachment().GetSubnet()
+	newSubnet := request.GetObject().GetSpec().GetNetworkAttachment().GetSubnet()
+
+	if existingSubnet != newSubnet {
+		return grpcstatus.Errorf(
+			grpccodes.InvalidArgument,
+			"cannot change spec.network_attachment.subnet from '%s' to '%s': subnet is immutable",
+			existingSubnet, newSubnet,
+		)
+	}
+
+	return nil
+}
+
 func (s *PrivateClustersServer) validateAndTransformCluster(ctx context.Context, cluster *privatev1.Cluster) error {
 	// Check that the template is specified and that refers to a existing template. If the reference was a name
 	// then we replace it with the identifier.
@@ -758,16 +803,58 @@ func (s *PrivateClustersServer) validateAndTransformCatalogItem(ctx context.Cont
 	}
 
 	templateRef := catalogItem.GetTemplate()
-	if templateRef != "" {
-		cluster.GetSpec().SetTemplate(templateRef)
+	if templateRef == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "catalog item '%s' has no template", catalogItemRef)
 	}
+	cluster.GetSpec().SetTemplate(templateRef)
 
 	if err := applyFieldDefinitions(cluster.GetSpec(), catalogItem.GetFieldDefinitions()); err != nil {
 		return err
 	}
 
+	// Look up the template to apply spec defaults, node sets, and parameter validation:
+	template, err := s.lookupTemplate(ctx, templateRef)
+	if err != nil {
+		return err
+	}
+	if template.GetMetadata().HasDeletionTimestamp() {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "template '%s' has been deleted", templateRef)
+	}
+
+	utils.ApplyClusterSpecDefaults(cluster.GetSpec(), template.GetSpecDefaults())
+
 	if err := utils.ValidateClusterSpecFields(cluster.GetSpec()); err != nil {
 		return err
+	}
+
+	hostTypes, err := s.lookupAndIndexHostTypes(ctx, template)
+	if err != nil {
+		return err
+	}
+
+	templateNodeSets := template.GetNodeSets()
+	clusterNodeSets := cluster.GetSpec().GetNodeSets()
+	if err := s.validateNodeSets(clusterNodeSets, templateNodeSets, hostTypes, templateRef); err != nil {
+		return err
+	}
+
+	mergeNodeSetsWithTemplate(cluster, templateNodeSets, clusterNodeSets)
+
+	clusterParameters := cluster.GetSpec().GetTemplateParameters()
+	if err := utils.ValidateClusterTemplateParameters(template, clusterParameters); err != nil {
+		return err
+	}
+
+	actualClusterParameters := utils.ProcessTemplateParametersWithDefaults(
+		utils.ClusterTemplateAdapter{ClusterTemplate: template},
+		clusterParameters,
+	)
+	cluster.GetSpec().SetTemplateParameters(actualClusterParameters)
+
+	for _, clusterNodeSet := range cluster.GetSpec().GetNodeSets() {
+		hostTypeRef := clusterNodeSet.GetHostType()
+		hostType := hostTypes[hostTypeRef]
+		clusterNodeSet.SetHostType(hostType.GetId())
 	}
 
 	return nil

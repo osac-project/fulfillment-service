@@ -172,7 +172,7 @@ var _ = Describe("IDP Sync", func() {
 	var (
 		ctx        context.Context
 		ctrl       *gomock.Controller
-		mockClient *idp.MockClient
+		mockClient *idp.MockClientInterface
 		idpManager *idp.TenantManager
 		reconciler *function
 	)
@@ -181,7 +181,7 @@ var _ = Describe("IDP Sync", func() {
 		var err error
 		ctx = context.Background()
 		ctrl = gomock.NewController(GinkgoT())
-		mockClient = idp.NewMockClient(ctrl)
+		mockClient = idp.NewMockClientInterface(ctrl)
 
 		idpManager, err = idp.NewTenantManager().
 			SetLogger(logger).
@@ -203,6 +203,12 @@ var _ = Describe("IDP Sync", func() {
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
 			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: "test-org-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
+			}.Build(),
 		}.Build()
 
 		mockClient.EXPECT().
@@ -222,6 +228,8 @@ var _ = Describe("IDP Sync", func() {
 			DoAndReturn(func(ctx context.Context, orgName string, user *idp.User) (*idp.User, error) {
 				Expect(user.Username).To(Equal("test-org-osac-break-glass"))
 				Expect(user.Email).To(Equal("break-glass@test-org.osac.local"))
+				Expect(user.Credentials).To(HaveLen(1))
+				Expect(user.Credentials[0].Value).To(Equal("pre-generated-password"))
 				user.ID = "user-123"
 				return user, nil
 			}).
@@ -243,8 +251,7 @@ var _ = Describe("IDP Sync", func() {
 		Expect(tenant.GetStatus().GetState()).To(Equal(privatev1.TenantState_TENANT_STATE_SYNCED))
 		Expect(tenant.GetStatus().GetIdpTenantName()).To(Equal("test-org"))
 		Expect(tenant.GetStatus().GetBreakGlassUserId()).To(Equal("user-123"))
-		Expect(tenant.GetStatus().HasBreakGlassCredentials()).To(BeTrue())
-		Expect(tenant.GetStatus().GetBreakGlassCredentials().GetUsername()).To(Equal("test-org-osac-break-glass"))
+		Expect(tenant.GetStatus().HasBreakGlassCredentials()).To(BeFalse())
 	})
 
 	It("should set state to PENDING before sync", func() {
@@ -253,6 +260,12 @@ var _ = Describe("IDP Sync", func() {
 				Name:       "test-org",
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: "test-org-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
 			}.Build(),
 		}.Build()
 
@@ -343,6 +356,12 @@ var _ = Describe("IDP Sync", func() {
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
 			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: auth.SharedTenant + "-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
+			}.Build(),
 		}.Build()
 
 		mockClient.EXPECT().
@@ -385,6 +404,12 @@ var _ = Describe("IDP Sync", func() {
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     "tenant-1",
 			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: auth.SystemTenant + "-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
+			}.Build(),
 		}.Build()
 
 		mockClient.EXPECT().
@@ -419,6 +444,36 @@ var _ = Describe("IDP Sync", func() {
 		Expect(tenant.GetStatus().GetState()).To(Equal(privatev1.TenantState_TENANT_STATE_SYNCED))
 	})
 
+	It("should restore SYNCED without re-creating when IDP tenant already exists", func() {
+		tenant := privatev1.Tenant_builder{
+			Id: "org-123",
+			Metadata: privatev1.Metadata_builder{
+				Name:       "test-org",
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     "tenant-1",
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				State:            privatev1.TenantState_TENANT_STATE_PENDING,
+				IdpTenantName:    "test-org",
+				BreakGlassUserId: "user-123",
+				Message:          new("previous hub sync failure"),
+			}.Build(),
+		}.Build()
+
+		task := &task{
+			r:      reconciler,
+			tenant: tenant,
+		}
+
+		err := task.update(ctx)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(tenant.GetStatus().GetState()).To(Equal(privatev1.TenantState_TENANT_STATE_SYNCED))
+		Expect(tenant.GetStatus().HasMessage()).To(BeFalse())
+		Expect(tenant.GetStatus().GetIdpTenantName()).To(Equal("test-org"))
+		Expect(tenant.GetStatus().GetBreakGlassUserId()).To(Equal("user-123"))
+	})
+
 	It("should pass domains to IDP during initial sync", func() {
 		tenant := privatev1.Tenant_builder{
 			Id: "org-domains",
@@ -434,6 +489,12 @@ var _ = Describe("IDP Sync", func() {
 					"example.com",
 					"corp.example.org",
 				},
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				BreakGlassCredentials: privatev1.BreakGlassCredentials_builder{
+					Username: "domain-org-osac-break-glass",
+					Password: "pre-generated-password",
+				}.Build(),
 			}.Build(),
 		}.Build()
 
@@ -569,18 +630,20 @@ var _ = Describe("Builtin Tenant Detection", func() {
 
 var _ = Describe("Deletion", func() {
 	var (
-		ctx        context.Context
-		ctrl       *gomock.Controller
-		mockClient *idp.MockClient
-		idpManager *idp.TenantManager
-		reconciler *function
+		ctx                context.Context
+		ctrl               *gomock.Controller
+		mockClient         *idp.MockClientInterface
+		mockProjectsClient *MockProjectsClient
+		idpManager         *idp.TenantManager
+		reconciler         *function
 	)
 
 	BeforeEach(func() {
 		var err error
 		ctx = context.Background()
 		ctrl = gomock.NewController(GinkgoT())
-		mockClient = idp.NewMockClient(ctrl)
+		mockClient = idp.NewMockClientInterface(ctrl)
+		mockProjectsClient = NewMockProjectsClient(ctrl)
 
 		idpManager, err = idp.NewTenantManager().
 			SetLogger(logger).
@@ -589,8 +652,9 @@ var _ = Describe("Deletion", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		reconciler = &function{
-			logger:     logger,
-			idpManager: idpManager,
+			logger:         logger,
+			projectsClient: mockProjectsClient,
+			idpManager:     idpManager,
 		}
 	})
 
@@ -609,6 +673,11 @@ var _ = Describe("Deletion", func() {
 				BreakGlassUserId: "user-123",
 			}.Build(),
 		}.Build()
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			Times(1)
 
 		mockClient.EXPECT().
 			DeleteTenant(gomock.Any(), "test-org").
@@ -639,6 +708,11 @@ var _ = Describe("Deletion", func() {
 			}.Build(),
 		}.Build()
 
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			Times(1)
+
 		task := &task{
 			r:      reconciler,
 			tenant: tenant,
@@ -663,6 +737,11 @@ var _ = Describe("Deletion", func() {
 				IdpTenantName: "",
 			}.Build(),
 		}.Build()
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			Times(1)
 
 		task := &task{
 			r:      reconciler,
@@ -690,6 +769,11 @@ var _ = Describe("Deletion", func() {
 			}.Build(),
 		}.Build()
 
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{Total: 0}.Build(), nil).
+			Times(1)
+
 		mockClient.EXPECT().
 			DeleteTenant(gomock.Any(), "test-org").
 			Return(fmt.Errorf("IDP connection timeout")).
@@ -704,6 +788,72 @@ var _ = Describe("Deletion", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("failed to delete IDP tenant"))
 		Expect(err.Error()).To(ContainSubstring("IDP connection timeout"))
+		Expect(tenant.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+	})
+
+	It("should block deletion when projects remain", func() {
+		deletionTimestamp := timestamppb.New(time.Now())
+		tenant := privatev1.Tenant_builder{
+			Id: "org-123",
+			Metadata: privatev1.Metadata_builder{
+				Name:              "test-org",
+				Finalizers:        []string{finalizers.Controller},
+				DeletionTimestamp: deletionTimestamp,
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				State:            privatev1.TenantState_TENANT_STATE_SYNCED,
+				IdpTenantName:    "test-org",
+				BreakGlassUserId: "user-123",
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(privatev1.ProjectsListResponse_builder{
+				Total: 2,
+			}.Build(), nil).
+			Times(1)
+
+		task := &task{
+			r:      reconciler,
+			tenant: tenant,
+		}
+
+		err := task.delete(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("project(s) pending deletion"))
+		Expect(tenant.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+	})
+
+	It("should return error when project query fails during deletion", func() {
+		deletionTimestamp := timestamppb.New(time.Now())
+		tenant := privatev1.Tenant_builder{
+			Id: "org-123",
+			Metadata: privatev1.Metadata_builder{
+				Name:              "test-org",
+				Finalizers:        []string{finalizers.Controller},
+				DeletionTimestamp: deletionTimestamp,
+			}.Build(),
+			Status: privatev1.TenantStatus_builder{
+				State:            privatev1.TenantState_TENANT_STATE_SYNCED,
+				IdpTenantName:    "test-org",
+				BreakGlassUserId: "user-123",
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(nil, fmt.Errorf("connection refused")).
+			Times(1)
+
+		task := &task{
+			r:      reconciler,
+			tenant: tenant,
+		}
+
+		err := task.delete(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to query remaining projects"))
 		Expect(tenant.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
 	})
 
@@ -743,7 +893,7 @@ var _ = Describe("Deletion", func() {
 var _ = Describe("Skip Reconciliation", func() {
 	It("should call updateIDP for synced tenants", func() {
 		ctrl := gomock.NewController(GinkgoT())
-		mockClient := idp.NewMockClient(ctrl)
+		mockClient := idp.NewMockClientInterface(ctrl)
 
 		idpManager, err := idp.NewTenantManager().
 			SetLogger(logger).

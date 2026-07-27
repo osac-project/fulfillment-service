@@ -20,9 +20,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	grpccodes "google.golang.org/grpc/codes"
-	grpcstatus "google.golang.org/grpc/status"
-
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
@@ -185,8 +182,7 @@ func (s *PrivateComputeInstanceTemplatesServer) Signal(ctx context.Context,
 }
 
 // validateSpecDefaultsInstanceType validates the instance_type field in template spec_defaults.
-// Rejects OBSOLETE instance types (D-17), warns on DEPRECATED (D-14), and enforces
-// mutual exclusivity with cores/memory_gib (D-14).
+// Rejects OBSOLETE instance types (D-17) and warns on DEPRECATED (D-14).
 func (s *PrivateComputeInstanceTemplatesServer) validateSpecDefaultsInstanceType(
 	ctx context.Context,
 	specDefaults *privatev1.ComputeInstanceTemplateSpecDefaults,
@@ -196,13 +192,6 @@ func (s *PrivateComputeInstanceTemplatesServer) validateSpecDefaultsInstanceType
 	}
 
 	instanceTypeName := specDefaults.GetInstanceType()
-
-	// Check mutual exclusivity (D-14): spec_defaults cannot contain both
-	// instance_type and cores/memory_gib.
-	if specDefaults.HasCores() || specDefaults.HasMemoryGib() {
-		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"spec_defaults cannot contain both instance_type and cores/memory_gib: they are mutually exclusive")
-	}
 
 	// Look up the instance type and validate its state.
 	return validateInstanceTypeState(ctx, s.instanceTypesDao, instanceTypeName, " in spec_defaults")

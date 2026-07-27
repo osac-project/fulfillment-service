@@ -172,24 +172,6 @@ spec:
 .
 ```
 
-## Install the Authorino operator
-
-The service uses Authorino for authentication and authorization of API requests. Install the
-operator by applying the upstream manifests:
-
-```shell
-oc apply -f https://raw.githubusercontent.com/Kuadrant/authorino-operator/refs/tags/v0.24.0/config/deploy/manifests.yaml
-```
-
-Wait for the operator to be ready before continuing:
-
-```shell
-oc rollout status deployment authorino-operator -n authorino-operator --timeout=120s
-```
-
-If you prefer, the Authorino operator is also available via OLM from the `redhat-operators` catalog
-on OpenShift.
-
 ## Install the PostgreSQL operator
 
 The service requires a PostgreSQL 18+ database. This guide presents three options for deploying

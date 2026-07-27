@@ -45,13 +45,9 @@ var _ = Describe("Public Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &publicv1.UserSpec{
-					Username:      "testuser",
-					Email:         "test@example.com",
-					EmailVerified: true,
-					Enabled:       true,
-					FirstName:     "Test",
-					LastName:      "User",
-					Tenant:        "tenant-123",
+					Username: "testuser",
+					Email:    "test@example.com",
+					Enabled:  true,
 				},
 			},
 		}
@@ -64,7 +60,6 @@ var _ = Describe("Public Users Server", func() {
 		Expect(response.Object.Id).ToNot(BeEmpty())
 		Expect(response.Object.Metadata.Name).To(Equal("test-user"))
 		Expect(response.Object.Spec.Username).To(Equal("testuser"))
-		Expect(response.Object.Spec.Tenant).To(Equal("tenant-123"))
 	})
 
 	It("Prunes credentials from created user", func() {
@@ -167,9 +162,8 @@ var _ = Describe("Public Users Server", func() {
 					Name: "test-user",
 				},
 				Spec: &publicv1.UserSpec{
-					Username:  "testuser",
-					Email:     "test@example.com",
-					FirstName: "Original",
+					Username: "testuser",
+					Email:    "test@example.com",
 				},
 			},
 		}
@@ -181,13 +175,13 @@ var _ = Describe("Public Users Server", func() {
 			Object: &publicv1.User{
 				Id: createResp.Object.Id,
 				Spec: &publicv1.UserSpec{
-					FirstName: "Updated",
+					Email: "updated@example.com",
 				},
 			},
 		}
 		updateResp, err := publicServer.Update(ctx, updateReq)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(updateResp.Object.Spec.FirstName).To(Equal("Updated"))
+		Expect(updateResp.Object.Spec.Email).To(Equal("updated@example.com"))
 	})
 
 	It("Prunes credentials from listed users", func() {
@@ -264,7 +258,7 @@ var _ = Describe("Public Users Server", func() {
 			Object: &publicv1.User{
 				Id: createResp.Object.Id,
 				Spec: &publicv1.UserSpec{
-					FirstName: "Updated",
+					Email: "updated@example.com",
 					Credentials: &publicv1.UserCredentials{
 						Password: &password,
 					},
@@ -275,18 +269,17 @@ var _ = Describe("Public Users Server", func() {
 		Expect(updateResp.Object.Spec.HasCredentials()).To(BeFalse())
 	})
 
-	It("Lists users filtered by tenant", func() {
-		// Create users in two different tenants:
+	It("Lists users filtered by username", func() {
+		// Create users with different username prefixes:
 		for i := range 2 {
 			_, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
 				Object: &publicv1.User{
 					Metadata: &publicv1.Metadata{
-						Name: fmt.Sprintf("tenant-a-user-%d", i),
+						Name: fmt.Sprintf("group-a-user-%d", i),
 					},
 					Spec: &publicv1.UserSpec{
-						Username: fmt.Sprintf("tenant-a-user-%d", i),
-						Email:    fmt.Sprintf("user-%d@tenant-a.com", i),
-						Tenant:   "tenant-a",
+						Username: fmt.Sprintf("groupa-user-%d", i),
+						Email:    fmt.Sprintf("user-%d@group-a.com", i),
 					},
 				},
 			})
@@ -296,38 +289,37 @@ var _ = Describe("Public Users Server", func() {
 			_, err := publicServer.Create(ctx, &publicv1.UsersCreateRequest{
 				Object: &publicv1.User{
 					Metadata: &publicv1.Metadata{
-						Name: fmt.Sprintf("tenant-b-user-%d", i),
+						Name: fmt.Sprintf("group-b-user-%d", i),
 					},
 					Spec: &publicv1.UserSpec{
-						Username: fmt.Sprintf("tenant-b-user-%d", i),
-						Email:    fmt.Sprintf("user-%d@tenant-b.com", i),
-						Tenant:   "tenant-b",
+						Username: fmt.Sprintf("groupb-user-%d", i),
+						Email:    fmt.Sprintf("user-%d@group-b.com", i),
 					},
 				},
 			})
 			Expect(err).ToNot(HaveOccurred())
 		}
 
-		// List users filtering by tenant "tenant-a":
+		// List users filtering by username prefix "groupa-":
 		listResp, err := publicServer.List(ctx, publicv1.UsersListRequest_builder{
-			Filter: new("this.spec.tenant == 'tenant-a'"),
+			Filter: new("this.spec.username.startsWith('groupa-')"),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.GetSize()).To(Equal(int32(2)))
 		Expect(listResp.GetItems()).To(HaveLen(2))
 		for _, item := range listResp.GetItems() {
-			Expect(item.GetSpec().GetTenant()).To(Equal("tenant-a"))
+			Expect(item.GetSpec().GetUsername()).To(HavePrefix("groupa-"))
 		}
 
-		// List users filtering by tenant "tenant-b":
+		// List users filtering by username prefix "groupb-":
 		listResp, err = publicServer.List(ctx, publicv1.UsersListRequest_builder{
-			Filter: new("this.spec.tenant == 'tenant-b'"),
+			Filter: new("this.spec.username.startsWith('groupb-')"),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listResp.GetSize()).To(Equal(int32(3)))
 		Expect(listResp.GetItems()).To(HaveLen(3))
 		for _, item := range listResp.GetItems() {
-			Expect(item.GetSpec().GetTenant()).To(Equal("tenant-b"))
+			Expect(item.GetSpec().GetUsername()).To(HavePrefix("groupb-"))
 		}
 	})
 })

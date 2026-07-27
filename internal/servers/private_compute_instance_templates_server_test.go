@@ -540,28 +540,6 @@ var _ = Describe("Private compute instance templates server", func() {
 				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
 			})
 
-			It("Rejects spec_defaults with both instance_type and cores", func() {
-				createInstanceTypeWithState("active-type",
-					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE)
-
-				response, err := server.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
-					Object: privatev1.ComputeInstanceTemplate_builder{
-						Title:       "Template with conflicting defaults",
-						Description: "Template with both instance_type and cores.",
-						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-							InstanceType: new("active-type"),
-							Cores:        new(int32(4)),
-						}.Build(),
-					}.Build(),
-				}.Build())
-				Expect(err).To(HaveOccurred())
-				Expect(response).To(BeNil())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("mutually exclusive"))
-			})
-
 			It("Returns no warnings when spec_defaults references an ACTIVE instance type", func() {
 				createInstanceTypeWithState("active-default",
 					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE)

@@ -7,7 +7,6 @@ This Helm chart deploys the complete fulfillment service.
 - Kubernetes cluster (_Kind_ or _OpenShift_).
 - _cert-manager_ operator installed.
 - _trust-manager_ operator installed (optional, but highly recommended).
-- _Authorino_ operator installed.
 
 ## Installation
 

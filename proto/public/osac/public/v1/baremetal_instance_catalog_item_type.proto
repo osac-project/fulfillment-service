@@ -20,6 +20,8 @@ import "osac/public/v1/metadata_type.proto";
 
 // A bare metal instance catalog item defines a curated hardware offering that references an underlying bare metal
 // instance template.
+//
+// buf:lint:ignore OSAC_OBJECT_SHAPE
 message BareMetalInstanceCatalogItem {
   // Unique identifier of the catalog item.
   string id = 1;

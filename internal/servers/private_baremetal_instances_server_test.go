@@ -16,6 +16,7 @@ package servers
 import (
 	"strings"
 
+	"buf.build/go/protovalidate"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -398,6 +399,289 @@ var _ = Describe("Private bare metal instances server", func() {
 			Expect(status.Message()).To(ContainSubstring("user_data is immutable"))
 		})
 
+		It("Rejects PATCH that changes image", func() {
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceType: "registry",
+							SourceRef:  "quay.io/test:latest",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			_, err = server.Update(ctx, privatev1.BareMetalInstancesUpdateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Id: object.GetId(),
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceType: "registry",
+							SourceRef:  "quay.io/other:latest",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"spec.image"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("image is immutable"))
+		})
+
+		It("Creates object with image and persists it", func() {
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceType: "registry",
+							SourceRef:  "quay.io/test:latest",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			Expect(object.GetSpec().GetImage().GetSourceType()).To(Equal("registry"))
+			Expect(object.GetSpec().GetImage().GetSourceRef()).To(Equal("quay.io/test:latest"))
+
+			getResponse, err := server.Get(ctx, privatev1.BareMetalInstancesGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			fetched := getResponse.GetObject()
+			Expect(fetched.GetSpec().GetImage().GetSourceType()).To(Equal("registry"))
+			Expect(fetched.GetSpec().GetImage().GetSourceRef()).To(Equal("quay.io/test:latest"))
+		})
+
+		It("Rejects image with missing source_type", func() {
+			_, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceRef: "quay.io/test:latest",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("image.source_type"))
+		})
+
+		It("Rejects image with missing source_ref", func() {
+			_, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceType: "registry",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("image.source_ref"))
+		})
+
+		It("Applies image defaults from template spec_defaults", func() {
+			templatesDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceTemplate]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			template := privatev1.BareMetalInstanceTemplate_builder{
+				Id:          "image-default-template",
+				Title:       "Template with image default",
+				Description: "Has default image in spec_defaults",
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				SpecDefaults: privatev1.BareMetalInstanceTemplateSpecDefaults_builder{
+					Image: privatev1.BareMetalInstanceImage_builder{
+						SourceType: "registry",
+						SourceRef:  "quay.io/default:latest",
+					}.Build(),
+				}.Build(),
+			}.Build()
+
+			_, err = templatesDao.Create().SetObject(template).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			catResp, err := catalogServer.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:     "Catalog with image default",
+					Template:  "image-default-template",
+					Published: true,
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			catID := catResp.GetObject().GetId()
+
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catID,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			spec := createResponse.GetObject().GetSpec()
+			Expect(spec.GetImage().GetSourceType()).To(Equal("registry"))
+			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/default:latest"))
+		})
+
+		It("User-provided image overrides template default", func() {
+			templatesDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceTemplate]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			template := privatev1.BareMetalInstanceTemplate_builder{
+				Id:          "image-override-template",
+				Title:       "Template with image default",
+				Description: "Has default image in spec_defaults",
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				SpecDefaults: privatev1.BareMetalInstanceTemplateSpecDefaults_builder{
+					Image: privatev1.BareMetalInstanceImage_builder{
+						SourceType: "registry",
+						SourceRef:  "quay.io/default:latest",
+					}.Build(),
+				}.Build(),
+			}.Build()
+
+			_, err = templatesDao.Create().SetObject(template).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			catResp, err := catalogServer.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:     "Catalog with image default override",
+					Template:  "image-override-template",
+					Published: true,
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			catID := catResp.GetObject().GetId()
+
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceType: "registry",
+							SourceRef:  "quay.io/user-chosen:v2",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			spec := createResponse.GetObject().GetSpec()
+			Expect(spec.GetImage().GetSourceType()).To(Equal("registry"))
+			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/user-chosen:v2"))
+		})
+
+		It("Merges user-provided source_type with template default source_ref", func() {
+			templatesDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceTemplate]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			template := privatev1.BareMetalInstanceTemplate_builder{
+				Id:          "image-partial-merge-template",
+				Title:       "Template with image default",
+				Description: "Has default image in spec_defaults",
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+				SpecDefaults: privatev1.BareMetalInstanceTemplateSpecDefaults_builder{
+					Image: privatev1.BareMetalInstanceImage_builder{
+						SourceType: "registry",
+						SourceRef:  "quay.io/default:latest",
+					}.Build(),
+				}.Build(),
+			}.Build()
+
+			_, err = templatesDao.Create().SetObject(template).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			catResp, err := catalogServer.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:     "Catalog with partial merge",
+					Template:  "image-partial-merge-template",
+					Published: true,
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			catID := catResp.GetObject().GetId()
+
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceType: "custom-source",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			spec := createResponse.GetObject().GetSpec()
+			Expect(spec.GetImage().GetSourceType()).To(Equal("custom-source"))
+			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/default:latest"))
+		})
+
+		It("Allows PATCH with same image value", func() {
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceType: "registry",
+							SourceRef:  "quay.io/test:latest",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			_, err = server.Update(ctx, privatev1.BareMetalInstancesUpdateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Id: object.GetId(),
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem: catalogItemID,
+						Image: privatev1.BareMetalInstanceImage_builder{
+							SourceType: "registry",
+							SourceRef:  "quay.io/test:latest",
+						}.Build(),
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"spec.image"},
+				},
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		It("Allows PATCH that does not touch immutable fields", func() {
 			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
@@ -708,7 +992,7 @@ var _ = Describe("Private bare metal instances server", func() {
 			Expect(response.GetObject().GetSpec().GetTemplateParameters()).To(HaveKey("os_version"))
 		})
 
-		It("Overrides non-editable field_definition alongside template_parameters", func() {
+		It("Rejects user value for non-editable field_definition alongside template_parameters", func() {
 			createTemplate("override-combo-template", []*privatev1.BareMetalInstanceTemplateParameterDefinition{
 				{Name: "os_version", Required: true, Type: "type.googleapis.com/google.protobuf.StringValue"},
 			})
@@ -734,7 +1018,7 @@ var _ = Describe("Private bare metal instances server", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			userKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUserProvidedKeyThatShouldBeOverridden user@test"
-			response, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+			_, err = server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
 				Object: privatev1.BareMetalInstance_builder{
 					Spec: privatev1.BareMetalInstanceSpec_builder{
 						CatalogItem:        catID,
@@ -743,9 +1027,11 @@ var _ = Describe("Private bare metal instances server", func() {
 					}.Build(),
 				}.Build(),
 			}.Build())
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response.GetObject().GetSpec().GetSshPublicKey()).To(Equal(testSSHPublicKey))
-			Expect(response.GetObject().GetSpec().GetTemplateParameters()).To(HaveKey("os_version"))
+			Expect(err).To(HaveOccurred())
+			st, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(st.Message()).To(ContainSubstring("not editable"))
 		})
 
 		It("Accepts editable field_definition alongside template_parameters", func() {
@@ -862,6 +1148,55 @@ var _ = Describe("Private bare metal instances server", func() {
 			Expect(status.Message()).To(ContainSubstring("os_version"))
 		})
 
+		It("Creates object with auto_external_ip_attachment and persists it", func() {
+			response, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem:              catalogItemID,
+						AutoExternalIpAttachment: true,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(response.GetObject().GetSpec().GetAutoExternalIpAttachment()).To(BeTrue())
+
+			getResponse, err := server.Get(ctx, privatev1.BareMetalInstancesGetRequest_builder{
+				Id: response.GetObject().GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getResponse.GetObject().GetSpec().GetAutoExternalIpAttachment()).To(BeTrue())
+		})
+
+		It("Rejects PATCH that changes auto_external_ip_attachment", func() {
+			createResponse, err := server.Create(ctx, privatev1.BareMetalInstancesCreateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						CatalogItem:              catalogItemID,
+						AutoExternalIpAttachment: true,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+
+			_, err = server.Update(ctx, privatev1.BareMetalInstancesUpdateRequest_builder{
+				Object: privatev1.BareMetalInstance_builder{
+					Id: object.GetId(),
+					Spec: privatev1.BareMetalInstanceSpec_builder{
+						AutoExternalIpAttachment: false,
+					}.Build(),
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"spec.auto_external_ip_attachment"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("auto_external_ip_attachment is immutable"))
+		})
+
 		It("Rejects template_parameters when catalog item has no template", func() {
 			noTemplateResp, err := catalogServer.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
 				Object: privatev1.BareMetalInstanceCatalogItem_builder{
@@ -888,6 +1223,144 @@ var _ = Describe("Private bare metal instances server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(ContainSubstring("no template"))
+		})
+	})
+
+	Describe("Network attachment primary validation", func() {
+		var validator protovalidate.Validator
+
+		BeforeEach(func() {
+			var err error
+			validator, err = protovalidate.New()
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		boolPtr := func(v bool) *bool { return &v }
+
+		It("Accepts no network attachments", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Accepts single attachment without primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-1",
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Accepts single attachment with primary true", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-1",
+						Primary: boolPtr(true),
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Accepts multiple attachments with exactly one primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-1",
+						Primary: boolPtr(true),
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-2",
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Rejects multiple attachments with no primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-1",
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-2",
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("primary"))
+		})
+
+		It("Rejects multiple attachments with more than one primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-1",
+						Primary: boolPtr(true),
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-2",
+						Primary: boolPtr(true),
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("primary"))
+		})
+
+		It("Rejects three attachments with zero primary", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-1",
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-2",
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet: "subnet-3",
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("primary"))
+		})
+
+		It("Accepts multiple attachments with primary false on non-primary NICs", func() {
+			spec := privatev1.BareMetalInstanceSpec_builder{
+				CatalogItem: "some-catalog-item",
+				NetworkAttachments: []*privatev1.BareMetalNetworkAttachment{
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-1",
+						Primary: boolPtr(true),
+					}.Build(),
+					privatev1.BareMetalNetworkAttachment_builder{
+						Subnet:  "subnet-2",
+						Primary: boolPtr(false),
+					}.Build(),
+				},
+			}.Build()
+			err := validator.Validate(spec)
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 })

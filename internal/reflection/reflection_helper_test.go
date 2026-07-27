@@ -128,6 +128,7 @@ var _ = Describe("Reflection helper", func() {
 				SetLogger(logger).
 				SetConnection(connection).
 				AddPackage(packages.PublicV1, 1).
+				SetTenantFunc(config.TenantFromContext).
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -140,6 +141,7 @@ var _ = Describe("Reflection helper", func() {
 				"cluster",
 				"clustercatalogitem",
 				"clustertemplate",
+				"clusterversion",
 				"computeinstance",
 				"computeinstancecatalogitem",
 				"computeinstancetemplate",
@@ -148,6 +150,7 @@ var _ = Describe("Reflection helper", func() {
 				"hosttype",
 				"identityprovider",
 				"instancetype",
+				"natgateway",
 				"networkclass",
 				"project",
 				"projectmembership",
@@ -155,6 +158,7 @@ var _ = Describe("Reflection helper", func() {
 				"publicipattachment",
 				"role",
 				"rolebinding",
+				"secret",
 				"securitygroup",
 				"subnet",
 				"tenant",
@@ -171,6 +175,7 @@ var _ = Describe("Reflection helper", func() {
 				"clusters",
 				"clustercatalogitems",
 				"clustertemplates",
+				"clusterversions",
 				"computeinstances",
 				"computeinstancecatalogitems",
 				"computeinstancetemplates",
@@ -179,6 +184,7 @@ var _ = Describe("Reflection helper", func() {
 				"hosttypes",
 				"identityproviders",
 				"instancetypes",
+				"natgateways",
 				"networkclasses",
 				"projectmemberships",
 				"projects",
@@ -186,6 +192,7 @@ var _ = Describe("Reflection helper", func() {
 				"publicips",
 				"roles",
 				"rolebindings",
+				"secrets",
 				"securitygroups",
 				"subnets",
 				"tenants",

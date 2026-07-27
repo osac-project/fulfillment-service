@@ -242,16 +242,17 @@ func (t *task) validateTenant() error {
 }
 
 func (t *task) delete(ctx context.Context) (err error) {
-	t.bareMetalInstance.GetStatus().SetState(privatev1.BareMetalInstanceState_BARE_METAL_INSTANCE_STATE_DELETING)
-	t.updateCondition(
-		privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_READY,
-		privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
-
+	// Do nothing if we don't know the hub yet:
 	t.hubId = t.bareMetalInstance.GetStatus().GetHub()
 	if t.hubId == "" {
 		t.removeFinalizer()
 		return nil
 	}
+
+	t.bareMetalInstance.GetStatus().SetState(privatev1.BareMetalInstanceState_BARE_METAL_INSTANCE_STATE_DELETING)
+	t.updateCondition(
+		privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_READY,
+		privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
 	err = t.getHub(ctx)
 	if err != nil {
 		if errors.Is(err, controllers.ErrHubNotFound) {
@@ -571,6 +572,7 @@ func (t *task) mutateBMI(ctx context.Context, object *bmfov1alpha1.BareMetalInst
 	object.Spec.TemplateID = catalogItemResp.GetObject().GetTemplate()
 	object.Spec.TemplateParameters = ""
 	object.Spec.RunStrategy = bmfov1alpha1.RunStrategyUnspecified
+	object.Spec.RestartTrigger = t.bareMetalInstance.GetSpec().GetRestartTrigger()
 
 	params := map[string]any{}
 
@@ -590,6 +592,9 @@ func (t *task) mutateBMI(ctx context.Context, object *bmfov1alpha1.BareMetalInst
 	}
 	if t.userDataSecretName != "" {
 		params["userDataSecret"] = t.userDataSecretName
+	}
+	if t.bareMetalInstance.GetSpec().HasImage() {
+		params["imageURL"] = t.bareMetalInstance.GetSpec().GetImage().GetSourceRef()
 	}
 	if len(params) > 0 {
 		paramsJSON, err := json.Marshal(params)

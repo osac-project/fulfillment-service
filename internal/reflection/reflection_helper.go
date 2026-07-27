@@ -29,8 +29,6 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	"github.com/osac-project/fulfillment-service/internal/config"
-
 	// This is needed to ensure that the types and services are loaded into the protocol buffers registry, otherwise
 	// they will be visible only if they are explicitly used in some part of the code.
 	_ "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -88,6 +86,7 @@ type HelperBuilder struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
 	packages   map[string]int
+	tenantFunc any
 }
 
 // helper is the default implementation of the Helper interface.
@@ -97,6 +96,7 @@ type helper struct {
 	packages   map[protoreflect.FullName]int
 	scanOnce   *sync.Once
 	helpers    []objectHelper
+	tenantFunc func(context.Context) (string, error)
 }
 
 // NewHelper creates a builder that can then be used to configure a reflection helper.
@@ -138,6 +138,21 @@ func (b *HelperBuilder) AddPackages(values map[string]int) *HelperBuilder {
 	return b
 }
 
+// SetTenantFunc sets the function that returns the tenant. When this is set the helper will call the function to obtain
+// the tenant, and if it isn't empty, it will use it to automatically filter the results by tenant, as well as to set
+// automatically the tenant on new objects. The function can be of the following types:
+//
+//   - func() string
+//   - func(context.Context) string
+//   - func() (string, error)
+//   - func(context.Context) (string, error)
+//
+// The Build method will verify that the function matches one of these signatures.
+func (b *HelperBuilder) SetTenantFunc(value any) *HelperBuilder {
+	b.tenantFunc = value
+	return b
+}
+
 // Build uses the data stored in the builder to create a new reflection helper.
 func (b *HelperBuilder) Build() (result Helper, err error) {
 	// Check the parameters:
@@ -154,6 +169,15 @@ func (b *HelperBuilder) Build() (result Helper, err error) {
 		return
 	}
 
+	// Normalize the tenant function to a canonical signature:
+	var tenantFunc func(context.Context) (string, error)
+	if b.tenantFunc != nil {
+		tenantFunc, err = NormalizeFunc[string](b.tenantFunc)
+		if err != nil {
+			return
+		}
+	}
+
 	// Prepare the set of packages:
 	packages := make(map[protoreflect.FullName]int, len(b.packages))
 	for name, order := range b.packages {
@@ -167,6 +191,7 @@ func (b *HelperBuilder) Build() (result Helper, err error) {
 		connection: b.connection,
 		scanOnce:   &sync.Once{},
 		helpers:    []objectHelper{},
+		tenantFunc: tenantFunc,
 	}
 	return
 }
@@ -633,14 +658,20 @@ type ListResult struct {
 func (h *objectHelper) List(ctx context.Context, options ListOptions) (result ListResult, err error) {
 	filter := options.Filter
 
-	// Inject tenant filter from context if present:
-	tenant := config.TenantFromContext(ctx)
-	if tenant != "" && h.tenantScoped {
-		tenantFilter := fmt.Sprintf("this.metadata.tenant == %q", tenant)
-		if filter != "" {
-			filter = fmt.Sprintf("%s && (%s)", tenantFilter, filter)
-		} else {
-			filter = tenantFilter
+	// Inject tenant filter from tenant function if needed:
+	if h.IsTenantScoped() && h.parent.tenantFunc != nil {
+		var tenant string
+		tenant, err = h.parent.tenantFunc(ctx)
+		if err != nil {
+			return
+		}
+		if tenant != "" {
+			tenantFilter := fmt.Sprintf("this.metadata.tenant == %q", tenant)
+			if filter != "" {
+				filter = fmt.Sprintf("%s && (%s)", tenantFilter, filter)
+			} else {
+				filter = tenantFilter
+			}
 		}
 	}
 
@@ -789,6 +820,7 @@ const (
 // by short message name so that public and private API variants are handled automatically.
 var platformScopedTypes = map[protoreflect.Name]bool{
 	"Capabilities":     true,
+	"ClusterVersion":   true,
 	"ConsoleSession":   true,
 	"ExternalIPPool":   true,
 	"HostType":         true,
@@ -799,6 +831,7 @@ var platformScopedTypes = map[protoreflect.Name]bool{
 	"PublicIPPool":     true,
 	"Role":             true,
 	"StorageBackend":   true,
+	"StorageTier":      true,
 	"Tenant":           true,
 	"User":             true,
 }

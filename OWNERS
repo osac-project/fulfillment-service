@@ -13,6 +13,12 @@ filters:
     - rgolangh
     - ygalblum
     - eliorerz
+    - sk-ilya
+    - vladikr
+    - rccrdpccl
+    - ori-amizur
+    - danmanor
+    - CrystalChun
     reviewers:
     - jhernand
     - adriengentil
@@ -26,3 +32,9 @@ filters:
     - rgolangh
     - ygalblum
     - eliorerz
+    - sk-ilya
+    - vladikr
+    - rccrdpccl
+    - ori-amizur
+    - danmanor
+    - CrystalChun

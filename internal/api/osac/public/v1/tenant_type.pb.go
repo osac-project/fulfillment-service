@@ -36,6 +36,8 @@ const (
 )
 
 // A tenant groups resources and users for a customer or business unit.
+//
+// buf:lint:ignore OSAC_OBJECT_SHAPE
 type Tenant struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
 	// Unique identifier of the tenant.

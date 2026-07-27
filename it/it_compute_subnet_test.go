@@ -35,12 +35,14 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		networkClassesClient           privatev1.NetworkClassesClient
 		computeInstancesClient         publicv1.ComputeInstancesClient
 		computeInstanceTemplatesClient privatev1.ComputeInstanceTemplatesClient
+		instanceTypesClient            privatev1.InstanceTypesClient
 
 		networkClassId            string
 		virtualNetworkId          string
 		subnetId                  string
 		computeInstanceId         string
 		computeInstanceTemplateId string
+		instanceTypeId            string
 	)
 
 	BeforeEach(func() {
@@ -52,10 +54,26 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		networkClassesClient = privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
 		computeInstancesClient = publicv1.NewComputeInstancesClient(tool.ExternalView().UserConn())
 		computeInstanceTemplatesClient = privatev1.NewComputeInstanceTemplatesClient(tool.InternalView().AdminConn())
+		instanceTypesClient = privatev1.NewInstanceTypesClient(tool.InternalView().AdminConn())
+
+		// Create InstanceType
+		instanceTypeId = fmt.Sprintf("test-it-%s", uuid.New())
+		_, err := instanceTypesClient.Create(ctx, privatev1.InstanceTypesCreateRequest_builder{
+			Object: privatev1.InstanceType_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name: instanceTypeId,
+				}.Build(),
+				Spec: privatev1.InstanceTypeSpec_builder{
+					Cores:     2,
+					MemoryGib: 4,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
 
 		// Create ComputeInstanceTemplate
 		computeInstanceTemplateId = fmt.Sprintf("test-ci-template-%s", uuid.New())
-		_, err := computeInstanceTemplatesClient.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
+		_, err = computeInstanceTemplatesClient.Create(ctx, privatev1.ComputeInstanceTemplatesCreateRequest_builder{
 			Object: privatev1.ComputeInstanceTemplate_builder{
 				Id:          computeInstanceTemplateId,
 				Title:       "Test CI Template",
@@ -69,6 +87,7 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 			Object: privatev1.NetworkClass_builder{
 				Title:                  "Test CUDN Network Class",
 				ImplementationStrategy: "cudn",
+				FabricManager:          "netris",
 			}.Build(),
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
@@ -191,6 +210,13 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 				Id: computeInstanceTemplateId,
 			}.Build())
 		}
+
+		// Clean up InstanceType
+		if instanceTypeId != "" {
+			instanceTypesClient.Delete(ctx, privatev1.InstanceTypesDeleteRequest_builder{
+				Id: instanceTypeId,
+			}.Build())
+		}
 	})
 
 	It("creates ComputeInstance with network attachments", func() {
@@ -200,10 +226,9 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 			Object: publicv1.ComputeInstance_builder{
 				Id: computeInstanceId,
 				Spec: publicv1.ComputeInstanceSpec_builder{
-					Template:    computeInstanceTemplateId,
-					Cores:       new(int32(2)),
-					MemoryGib:   new(int32(4)),
-					RunStrategy: new("Always"),
+					Template:     computeInstanceTemplateId,
+					InstanceType: new(instanceTypeId),
+					RunStrategy:  new("Always"),
 					BootDisk: publicv1.ComputeInstanceDisk_builder{
 						SizeGib: 20,
 					}.Build(),
@@ -238,10 +263,9 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 			Object: publicv1.ComputeInstance_builder{
 				Id: computeInstanceId,
 				Spec: publicv1.ComputeInstanceSpec_builder{
-					Template:    computeInstanceTemplateId,
-					Cores:       new(int32(2)),
-					MemoryGib:   new(int32(4)),
-					RunStrategy: new("Always"),
+					Template:     computeInstanceTemplateId,
+					InstanceType: new(instanceTypeId),
+					RunStrategy:  new("Always"),
 					BootDisk: publicv1.ComputeInstanceDisk_builder{
 						SizeGib: 20,
 					}.Build(),

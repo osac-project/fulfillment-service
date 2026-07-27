@@ -75,8 +75,9 @@ type runnerContext struct {
 		ipv4Cidr       string
 		ipv6Cidr       string
 	}
-	logger  *slog.Logger
-	console *terminal.Console
+	logger   *slog.Logger
+	console  *terminal.Console
+	settings *config.Settings
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -85,8 +86,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.logger = logging.LoggerFromContext(ctx)
 	c.console = terminal.ConsoleFromContext(ctx)
 
-	cfg := config.SettingsFromContext(ctx)
-	if !cfg.Armed() {
+	c.settings = config.SettingsFromContext(ctx)
+	if !c.settings.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -97,7 +98,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	conn, err := cfg.Connect(ctx, cmd.Flags())
+	conn, err := c.settings.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
@@ -130,8 +131,11 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		spec.Ipv6Cidr = &c.args.ipv6Cidr
 	}
 	subnet := publicv1.Subnet_builder{
-		Metadata: publicv1.Metadata_builder{Name: c.args.name, Tenant: config.TenantFromContext(ctx)}.Build(),
-		Spec:     spec.Build(),
+		Metadata: publicv1.Metadata_builder{
+			Name:   c.args.name,
+			Tenant: c.settings.Tenant(),
+		}.Build(),
+		Spec: spec.Build(),
 	}.Build()
 
 	response, err := client.Create(ctx, publicv1.SubnetsCreateRequest_builder{Object: subnet}.Build())

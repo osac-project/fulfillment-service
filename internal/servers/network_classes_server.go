@@ -94,11 +94,17 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 		return
 	}
 
-	// Find the is_default field so that we can configure the inMapper to ignore it.
-	// This prevents public API callers from directly setting is_default.
-	isDefaultField := new(publicv1.NetworkClass).ProtoReflect().Descriptor().Fields().ByName("is_default")
+	// Find OUTPUT_ONLY fields so that we can configure the inMapper to ignore them.
+	// This prevents public API callers from directly setting these fields.
+	ncDescriptor := new(publicv1.NetworkClass).ProtoReflect().Descriptor()
+	isDefaultField := ncDescriptor.Fields().ByName("is_default")
 	if isDefaultField == nil {
-		err = fmt.Errorf("failed to find the is_default field of type '%s'", new(publicv1.NetworkClass).ProtoReflect().Descriptor().FullName())
+		err = fmt.Errorf("failed to find the is_default field of type '%s'", ncDescriptor.FullName())
+		return
+	}
+	specField := ncDescriptor.Fields().ByName("spec")
+	if specField == nil {
+		err = fmt.Errorf("failed to find the spec field of type '%s'", ncDescriptor.FullName())
 		return
 	}
 
@@ -106,7 +112,7 @@ func (b *NetworkClassesServerBuilder) Build() (result *NetworkClassesServer, err
 	inMapper, err := NewGenericMapper[*publicv1.NetworkClass, *privatev1.NetworkClass]().
 		SetLogger(b.logger).
 		SetStrict(true).
-		AddIgnoredFields(isDefaultField.FullName()).
+		AddIgnoredFields(isDefaultField.FullName(), specField.FullName()).
 		Build()
 	if err != nil {
 		return

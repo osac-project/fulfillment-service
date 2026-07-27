@@ -282,15 +282,16 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.cores",
-							DisplayName:      "CPU cores",
+							Path:             "spec.ssh_public_key",
+							DisplayName:      "SSH Key",
 							Editable:         true,
-							ValidationSchema: `{"type":"number","minimum":1,"maximum":128}`,
+							ValidationSchema: `{"type":"string","minLength":1}`,
 						}.Build(),
 						privatev1.FieldDefinition_builder{
-							Path:        "spec.memory_gib",
-							DisplayName: "Memory (GiB)",
+							Path:        "spec.run_strategy",
+							DisplayName: "Run Strategy",
 							Editable:    false,
+							Default:     structpb.NewNumberValue(16),
 						}.Build(),
 					},
 				}.Build(),
@@ -312,15 +313,17 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			Expect(fetched.GetFieldDefinitions()).To(HaveLen(2))
 
 			fd0 := fetched.GetFieldDefinitions()[0]
-			Expect(fd0.GetPath()).To(Equal("spec.cores"))
-			Expect(fd0.GetDisplayName()).To(Equal("CPU cores"))
+			Expect(fd0.GetPath()).To(Equal("spec.ssh_public_key"))
+			Expect(fd0.GetDisplayName()).To(Equal("SSH Key"))
 			Expect(fd0.GetEditable()).To(BeTrue())
-			Expect(fd0.GetValidationSchema()).To(Equal(`{"type":"number","minimum":1,"maximum":128}`))
+			Expect(fd0.GetValidationSchema()).To(Equal(`{"type":"string","minLength":1}`))
 
 			fd1 := fetched.GetFieldDefinitions()[1]
-			Expect(fd1.GetPath()).To(Equal("spec.memory_gib"))
-			Expect(fd1.GetDisplayName()).To(Equal("Memory (GiB)"))
+			Expect(fd1.GetPath()).To(Equal("spec.run_strategy"))
+			Expect(fd1.GetDisplayName()).To(Equal("Run Strategy"))
 			Expect(fd1.GetEditable()).To(BeFalse())
+			Expect(fd1.GetDefault()).ToNot(BeNil())
+			Expect(fd1.GetDefault().GetNumberValue()).To(Equal(16.0))
 		})
 
 		It("Delete object", func() {
@@ -480,6 +483,263 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.AlreadyExists))
 			Expect(status.Message()).To(ContainSubstring("first-item"))
+		})
+
+		It("Rejects non-editable field definition without default value", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Bad CI catalog item",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.pull_secret",
+							Editable: false,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("pull_secret"))
+			Expect(status.Message()).To(ContainSubstring("default value"))
+		})
+
+		It("Accepts non-editable field definition with default value", func() {
+			response, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Good CI catalog item",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.pull_secret",
+							Editable: false,
+							Default:  structpb.NewStringValue("my-secret"),
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := response.GetObject()
+			Expect(object).ToNot(BeNil())
+			DeferCleanup(func() {
+				_, err := server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
+					Id: object.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+
+		It("Accepts editable field definition without default value", func() {
+			response, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Editable no default",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.pull_secret",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := response.GetObject()
+			Expect(object).ToNot(BeNil())
+			DeferCleanup(func() {
+				_, err := server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
+					Id: object.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+
+		It("Rejects non-editable field definition without default when not first in list", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Bad catalog item",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.cores",
+							Editable: true,
+						}.Build(),
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.memory_gib",
+							Editable: false,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("memory_gib"))
+		})
+
+		It("Rejects field definition with invalid validation_schema JSON", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Bad schema catalog item",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:             "spec.cores",
+							Editable:         true,
+							ValidationSchema: "{not valid json}",
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("cores"))
+			Expect(status.Message()).To(ContainSubstring("invalid validation_schema"))
+		})
+
+		It("Accepts field definition with valid validation_schema JSON", func() {
+			response, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Valid schema catalog item",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:             "spec.cores",
+							Editable:         true,
+							ValidationSchema: `{"type":"number","minimum":1}`,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := response.GetObject()
+			Expect(object).ToNot(BeNil())
+			DeferCleanup(func() {
+				_, err := server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
+					Id: object.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+
+		It("Rejects update that introduces non-editable field without default", func() {
+			createResponse, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Valid catalog item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			id := createResponse.GetObject().GetId()
+			DeferCleanup(func() {
+				_, err := server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
+					Id: id,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			_, err = server.Update(ctx, privatev1.ComputeInstanceCatalogItemsUpdateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Id: id,
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.cores",
+							Editable: false,
+						}.Build(),
+					},
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"field_definitions"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("cores"))
+			Expect(status.Message()).To(ContainSubstring("default value"))
+		})
+
+		It("Rejects update that introduces invalid validation_schema", func() {
+			createResponse, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Valid catalog item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			id := createResponse.GetObject().GetId()
+			DeferCleanup(func() {
+				_, err := server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
+					Id: id,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			_, err = server.Update(ctx, privatev1.ComputeInstanceCatalogItemsUpdateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Id: id,
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:             "spec.cores",
+							Editable:         true,
+							ValidationSchema: "{bad json}",
+						}.Build(),
+					},
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"field_definitions"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("invalid validation_schema"))
+		})
+
+		It("Accepts update with valid field definitions", func() {
+			createResponse, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Valid catalog item",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			id := createResponse.GetObject().GetId()
+			DeferCleanup(func() {
+				_, err := server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
+					Id: id,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			updateResponse, err := server.Update(ctx, privatev1.ComputeInstanceCatalogItemsUpdateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Id: id,
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "spec.cores",
+							Editable: false,
+							Default:  structpb.NewNumberValue(4),
+						}.Build(),
+						privatev1.FieldDefinition_builder{
+							Path:             "spec.memory_gib",
+							Editable:         true,
+							ValidationSchema: `{"type":"number"}`,
+						}.Build(),
+					},
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"field_definitions"},
+				},
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updateResponse.GetObject().GetFieldDefinitions()).To(HaveLen(2))
 		})
 
 		It("Allows empty name without conflict", func() {
@@ -709,7 +969,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.cores",
+								Path:     "spec.ssh_public_key",
 								Editable: true,
 							}.Build(),
 						},
@@ -719,100 +979,6 @@ var _ = Describe("Private compute instance catalog items server", func() {
 				Expect(response.GetWarnings()).To(BeEmpty())
 			})
 
-			It("Rejects Create when field_definitions control both instance_type and cores (D-19)", func() {
-				createInstanceTypeWithState("active-type-d19",
-					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE)
-
-				_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
-					Object: privatev1.ComputeInstanceCatalogItem_builder{
-						Title:    "Catalog item with mutual exclusivity violation",
-						Template: "my-ci-template-id",
-						FieldDefinitions: []*privatev1.FieldDefinition{
-							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
-								Editable: true,
-								Default:  structpb.NewStringValue("active-type-d19"),
-							}.Build(),
-							privatev1.FieldDefinition_builder{
-								Path:     "spec.cores",
-								Editable: true,
-							}.Build(),
-						},
-					}.Build(),
-				}.Build())
-				Expect(err).To(HaveOccurred())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("mutually exclusive"))
-			})
-
-			It("Rejects Create when field_definitions control both instance_type and memory_gib (D-19)", func() {
-				createInstanceTypeWithState("active-type-d19-mem",
-					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE)
-
-				_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
-					Object: privatev1.ComputeInstanceCatalogItem_builder{
-						Title:    "Catalog item with mutual exclusivity violation",
-						Template: "my-ci-template-id",
-						FieldDefinitions: []*privatev1.FieldDefinition{
-							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
-								Editable: true,
-								Default:  structpb.NewStringValue("active-type-d19-mem"),
-							}.Build(),
-							privatev1.FieldDefinition_builder{
-								Path:     "spec.memory_gib",
-								Editable: true,
-							}.Build(),
-						},
-					}.Build(),
-				}.Build())
-				Expect(err).To(HaveOccurred())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("mutually exclusive"))
-			})
-
-			It("Rejects Update when field_definitions control both instance_type and cores (D-19)", func() {
-				// Create a catalog item first.
-				createResponse, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
-					Object: privatev1.ComputeInstanceCatalogItem_builder{
-						Title:    "Catalog item for D-19 update test",
-						Template: "my-ci-template-id",
-					}.Build(),
-				}.Build())
-				Expect(err).ToNot(HaveOccurred())
-				catalogItemId := createResponse.GetObject().GetId()
-
-				createInstanceTypeWithState("active-type-d19-upd",
-					privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE)
-
-				_, err = server.Update(ctx, privatev1.ComputeInstanceCatalogItemsUpdateRequest_builder{
-					Object: privatev1.ComputeInstanceCatalogItem_builder{
-						Id:       catalogItemId,
-						Title:    "Catalog item for D-19 update test",
-						Template: "my-ci-template-id",
-						FieldDefinitions: []*privatev1.FieldDefinition{
-							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
-								Editable: true,
-								Default:  structpb.NewStringValue("active-type-d19-upd"),
-							}.Build(),
-							privatev1.FieldDefinition_builder{
-								Path:     "spec.cores",
-								Editable: true,
-							}.Build(),
-						},
-					}.Build(),
-				}.Build())
-				Expect(err).To(HaveOccurred())
-				status, ok := grpcstatus.FromError(err)
-				Expect(ok).To(BeTrue())
-				Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-				Expect(status.Message()).To(ContainSubstring("mutually exclusive"))
-			})
 		})
 	})
 })

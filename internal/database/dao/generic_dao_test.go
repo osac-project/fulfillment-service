@@ -2313,6 +2313,78 @@ var _ = Describe("Generic DAO", func() {
 			Expect(items[0].GetMetadata().GetName()).To(Equal("without-label"))
 		})
 
+		It("Filters by integer in repeated int32 field", func() {
+			_, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "with-int",
+						}.Build(),
+						MyInt32List: []int32{42, 100},
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "without-int",
+						}.Build(),
+						MyInt32List: []int32{99},
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			response, err := objectsDao.List().
+				SetFilter("42 in this.my_int32_list").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("with-int"))
+		})
+
+		It("Filters by field reference in repeated string field", func() {
+			_, err := objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "match",
+						}.Build(),
+						MyString:     "hello",
+						MyStringList: []string{"hello", "world"},
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = objectsDao.Create().
+				SetObject(
+					testsv1.Object_builder{
+						Metadata: testsv1.Metadata_builder{
+							Tenant: "my-tenant",
+							Name:   "no-match",
+						}.Build(),
+						MyString:     "other",
+						MyStringList: []string{"hello", "world"},
+					}.Build(),
+				).
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			response, err := objectsDao.List().
+				SetFilter("this.my_string in this.my_string_list").
+				Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			items := response.GetItems()
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].GetMetadata().GetName()).To(Equal("match"))
+		})
+
 		It("Filters by enum field", func() {
 			_, err := objectsDao.Create().
 				SetObject(

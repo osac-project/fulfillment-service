@@ -28,17 +28,24 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"gopkg.in/yaml.v3"
 
+	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstance"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/baremetalinstancecatalogitem"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/cluster"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/clustercatalogitem"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/clusterversion"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/computeinstance"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/computeinstancecatalogitem"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/externalip"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/externalipattachment"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/hub"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/instancetype"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/natgateway"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/publicip"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/publicipattachment"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/securitygroup"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/storagebackend"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/storagetier"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/subnet"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/virtualnetwork"
 	"github.com/osac-project/fulfillment-service/internal/config"
@@ -60,15 +67,21 @@ func Cmd() *cobra.Command {
 	result.AddCommand(baremetalinstancecatalogitem.Cmd())
 	result.AddCommand(cluster.Cmd())
 	result.AddCommand(clustercatalogitem.Cmd())
+	result.AddCommand(clusterversion.Cmd())
 	result.AddCommand(computeinstance.Cmd())
 	result.AddCommand(computeinstancecatalogitem.Cmd())
+	result.AddCommand(externalip.Cmd())
+	result.AddCommand(externalipattachment.Cmd())
 	result.AddCommand(hub.Cmd())
 	result.AddCommand(instancetype.Cmd())
+	result.AddCommand(natgateway.Cmd())
 	result.AddCommand(publicip.Cmd())
 	result.AddCommand(publicipattachment.Cmd())
 	result.AddCommand(virtualnetwork.Cmd())
 	result.AddCommand(subnet.Cmd())
 	result.AddCommand(securitygroup.Cmd())
+	result.AddCommand(storagebackend.Cmd())
+	result.AddCommand(storagetier.Cmd())
 	flags := result.Flags()
 	flags.StringVarP(
 		&runner.args.file,
@@ -84,9 +97,10 @@ type runnerContext struct {
 	args struct {
 		file string
 	}
-	logger  *slog.Logger
-	console *terminal.Console
-	conn    *grpc.ClientConn
+	logger   *slog.Logger
+	console  *terminal.Console
+	settings *config.Settings
+	conn     *grpc.ClientConn
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -98,14 +112,14 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.console = terminal.ConsoleFromContext(ctx)
 
 	// Get the configuration:
-	cfg := config.SettingsFromContext(ctx)
-	if !cfg.Armed() {
+	c.settings = config.SettingsFromContext(ctx)
+	if !c.settings.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
 	// Create the gRPC connection from the configuration:
 	var err error
-	c.conn, err = cfg.Connect(ctx, cmd.Flags())
+	c.conn, err = c.settings.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
@@ -115,7 +129,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	helper, err := reflection.NewHelper().
 		SetLogger(c.logger).
 		SetConnection(c.conn).
-		AddPackages(cfg.Packages()).
+		AddPackages(c.settings.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -184,6 +199,17 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 				"Created %s with identifier '%s'.\n",
 				objectSingular, objectId,
 			)
+		}
+		if tenant, ok := object.(*privatev1.Tenant); ok {
+			if tenant.HasStatus() && tenant.GetStatus().HasBreakGlassCredentials() {
+				creds := tenant.GetStatus().GetBreakGlassCredentials()
+				c.console.Infof(ctx, "\n")
+				c.console.Infof(ctx, "Break-glass account credentials (shown only once, save them now):\n")
+				c.console.Infof(ctx, "  Username: %s\n", creds.GetUsername())
+				c.console.Infof(ctx, "  Password: %s\n", creds.GetPassword())
+				c.console.Infof(ctx, "\n")
+				c.console.Infof(ctx, "This is a temporary password that must be changed on first login.\n")
+			}
 		}
 	}
 

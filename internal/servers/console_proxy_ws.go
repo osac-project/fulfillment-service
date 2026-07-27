@@ -89,6 +89,11 @@ func (h *ConsoleProxyWSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	backend, sessionCtx, err := h.core.ConnectBackend(ctx, ticket)
 	if err != nil {
 		h.core.logger.ErrorContext(ctx, "Failed to connect backend", slog.Any("error", err))
+		var sessionErr *console.ErrSessionExists
+		if errors.As(err, &sessionErr) {
+			http.Error(w, "console session already active", http.StatusConflict)
+			return
+		}
 		http.Error(w, "failed to connect to console backend", http.StatusBadGateway)
 		return
 	}

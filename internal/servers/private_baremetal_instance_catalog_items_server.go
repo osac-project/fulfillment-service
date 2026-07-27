@@ -143,12 +143,22 @@ func (s *PrivateBareMetalInstanceCatalogItemsServer) Get(ctx context.Context,
 
 func (s *PrivateBareMetalInstanceCatalogItemsServer) Create(ctx context.Context,
 	request *privatev1.BareMetalInstanceCatalogItemsCreateRequest) (response *privatev1.BareMetalInstanceCatalogItemsCreateResponse, err error) {
+	if object := request.GetObject(); object != nil {
+		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
+			return
+		}
+	}
 	err = s.generic.Create(ctx, request, &response)
 	return
 }
 
 func (s *PrivateBareMetalInstanceCatalogItemsServer) Update(ctx context.Context,
 	request *privatev1.BareMetalInstanceCatalogItemsUpdateRequest) (response *privatev1.BareMetalInstanceCatalogItemsUpdateResponse, err error) {
+	if object := request.GetObject(); object != nil {
+		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
+			return
+		}
+	}
 	err = s.generic.Update(ctx, request, &response)
 	return
 }

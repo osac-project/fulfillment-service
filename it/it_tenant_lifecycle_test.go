@@ -702,3 +702,252 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 		verifyTenantRemovedFromKeycloak(ctx, name)
 	})
 })
+
+var _ = Describe("Multi-tenant resource isolation", func() {
+	var (
+		tenantsClient        privatev1.TenantsClient
+		networkClassesClient privatev1.NetworkClassesClient
+		vnAdminClient        privatev1.VirtualNetworksClient
+		networkClassId       string
+	)
+
+	BeforeEach(func(ctx context.Context) {
+		tenantsClient = privatev1.NewTenantsClient(tool.InternalView().AdminConn())
+		networkClassesClient = privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
+		vnAdminClient = privatev1.NewVirtualNetworksClient(tool.InternalView().AdminConn())
+
+		By("Creating a shared NetworkClass prerequisite")
+		ncResp, err := networkClassesClient.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+			Object: privatev1.NetworkClass_builder{
+				Title:                  "Phase 4 Isolation Test",
+				ImplementationStrategy: "cudn",
+				FabricManager:          "netris",
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		networkClassId = ncResp.GetObject().GetId()
+		DeferCleanup(func() {
+			_, _ = networkClassesClient.Delete(ctx, privatev1.NetworkClassesDeleteRequest_builder{
+				Id: networkClassId,
+			}.Build())
+		})
+	})
+
+	It("Resources created by tenant-A are not visible to tenant-B", func(ctx context.Context) {
+		By("Creating tenant-A")
+		nameA := fmt.Sprintf("test-%s", uuid.New())
+		idA := createTenant(ctx, tenantsClient, nameA)
+
+		By("Creating tenant-B")
+		nameB := fmt.Sprintf("test-%s", uuid.New())
+		idB := createTenant(ctx, tenantsClient, nameB)
+
+		By("Logging in as break-glass user for tenant-A")
+		_, tokenSourceA := loginAsBreakGlass(ctx, tenantsClient, nameA, idA)
+		extConnA, err := tool.makeGrpcConn(externalServiceAddr, tokenSourceA)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() { _ = extConnA.Close() })
+
+		By("Logging in as break-glass user for tenant-B")
+		_, tokenSourceB := loginAsBreakGlass(ctx, tenantsClient, nameB, idB)
+		extConnB, err := tool.makeGrpcConn(externalServiceAddr, tokenSourceB)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() { _ = extConnB.Close() })
+
+		By("Tenant-A creates a VirtualNetwork via the public API")
+		vnClientA := publicv1.NewVirtualNetworksClient(extConnA)
+		ipv4Cidr := "10.200.0.0/16"
+		createResp, err := vnClientA.Create(ctx, publicv1.VirtualNetworksCreateRequest_builder{
+			Object: publicv1.VirtualNetwork_builder{
+				Metadata: publicv1.Metadata_builder{
+					Name: fmt.Sprintf("vn-%s", uuid.New()),
+				}.Build(),
+				Spec: publicv1.VirtualNetworkSpec_builder{
+					NetworkClass: networkClassId,
+					Ipv4Cidr:     &ipv4Cidr,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		vnId := createResp.GetObject().GetId()
+		DeferCleanup(func() {
+			_, _ = vnAdminClient.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vnId,
+			}.Build())
+		})
+
+		By("Verifying tenant-A can see their own VirtualNetwork")
+		getResp, err := vnClientA.Get(ctx, publicv1.VirtualNetworksGetRequest_builder{
+			Id: vnId,
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getResp.GetObject().GetId()).To(Equal(vnId))
+
+		By("Verifying tenant-B cannot see tenant-A's VirtualNetwork via List")
+		vnClientB := publicv1.NewVirtualNetworksClient(extConnB)
+		listLimit := int32(1000)
+		listResp, err := vnClientB.List(ctx, publicv1.VirtualNetworksListRequest_builder{
+			Limit: &listLimit,
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		for _, item := range listResp.GetItems() {
+			Expect(item.GetId()).ToNot(Equal(vnId),
+				"tenant-B should not see tenant-A's VirtualNetwork in list")
+		}
+
+		By("Verifying tenant-B cannot Get tenant-A's VirtualNetwork by ID")
+		_, err = vnClientB.Get(ctx, publicv1.VirtualNetworksGetRequest_builder{
+			Id: vnId,
+		}.Build())
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.NotFound))
+	})
+
+	It("Tenant-B cannot delete tenant-A's resources", func(ctx context.Context) {
+		By("Creating tenant-A and tenant-B")
+		nameA := fmt.Sprintf("test-%s", uuid.New())
+		idA := createTenant(ctx, tenantsClient, nameA)
+		nameB := fmt.Sprintf("test-%s", uuid.New())
+		idB := createTenant(ctx, tenantsClient, nameB)
+
+		By("Logging in as break-glass users")
+		_, tokenSourceA := loginAsBreakGlass(ctx, tenantsClient, nameA, idA)
+		extConnA, err := tool.makeGrpcConn(externalServiceAddr, tokenSourceA)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() { _ = extConnA.Close() })
+
+		_, tokenSourceB := loginAsBreakGlass(ctx, tenantsClient, nameB, idB)
+		extConnB, err := tool.makeGrpcConn(externalServiceAddr, tokenSourceB)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() { _ = extConnB.Close() })
+
+		By("Tenant-A creates a VirtualNetwork")
+		vnClientA := publicv1.NewVirtualNetworksClient(extConnA)
+		ipv4Cidr := "10.201.0.0/16"
+		createResp, err := vnClientA.Create(ctx, publicv1.VirtualNetworksCreateRequest_builder{
+			Object: publicv1.VirtualNetwork_builder{
+				Metadata: publicv1.Metadata_builder{
+					Name: fmt.Sprintf("vn-%s", uuid.New()),
+				}.Build(),
+				Spec: publicv1.VirtualNetworkSpec_builder{
+					NetworkClass: networkClassId,
+					Ipv4Cidr:     &ipv4Cidr,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		vnId := createResp.GetObject().GetId()
+		DeferCleanup(func() {
+			_, _ = vnAdminClient.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vnId,
+			}.Build())
+		})
+
+		By("Verifying tenant-B cannot delete tenant-A's VirtualNetwork")
+		vnClientB := publicv1.NewVirtualNetworksClient(extConnB)
+		_, err = vnClientB.Delete(ctx, publicv1.VirtualNetworksDeleteRequest_builder{
+			Id: vnId,
+		}.Build())
+		Expect(err).To(HaveOccurred())
+		status, ok := grpcstatus.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(status.Code()).To(Equal(grpccodes.NotFound))
+
+		By("Verifying tenant-A's VirtualNetwork still exists")
+		getResp, err := vnClientA.Get(ctx, publicv1.VirtualNetworksGetRequest_builder{
+			Id: vnId,
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(getResp.GetObject().GetId()).To(Equal(vnId))
+	})
+
+	It("Each tenant sees only their own resources in List", func(ctx context.Context) {
+		By("Creating tenant-A and tenant-B")
+		nameA := fmt.Sprintf("test-%s", uuid.New())
+		idA := createTenant(ctx, tenantsClient, nameA)
+		nameB := fmt.Sprintf("test-%s", uuid.New())
+		idB := createTenant(ctx, tenantsClient, nameB)
+
+		By("Logging in as break-glass users")
+		_, tokenSourceA := loginAsBreakGlass(ctx, tenantsClient, nameA, idA)
+		extConnA, err := tool.makeGrpcConn(externalServiceAddr, tokenSourceA)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() { _ = extConnA.Close() })
+
+		_, tokenSourceB := loginAsBreakGlass(ctx, tenantsClient, nameB, idB)
+		extConnB, err := tool.makeGrpcConn(externalServiceAddr, tokenSourceB)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() { _ = extConnB.Close() })
+
+		By("Tenant-A creates a VirtualNetwork")
+		vnClientA := publicv1.NewVirtualNetworksClient(extConnA)
+		ipv4CidrA := "10.210.0.0/16"
+		createRespA, err := vnClientA.Create(ctx, publicv1.VirtualNetworksCreateRequest_builder{
+			Object: publicv1.VirtualNetwork_builder{
+				Metadata: publicv1.Metadata_builder{
+					Name: fmt.Sprintf("vn-a-%s", uuid.New()),
+				}.Build(),
+				Spec: publicv1.VirtualNetworkSpec_builder{
+					NetworkClass: networkClassId,
+					Ipv4Cidr:     &ipv4CidrA,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		vnIdA := createRespA.GetObject().GetId()
+		DeferCleanup(func() {
+			_, _ = vnAdminClient.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vnIdA,
+			}.Build())
+		})
+
+		By("Tenant-B creates a VirtualNetwork")
+		vnClientB := publicv1.NewVirtualNetworksClient(extConnB)
+		ipv4CidrB := "10.211.0.0/16"
+		createRespB, err := vnClientB.Create(ctx, publicv1.VirtualNetworksCreateRequest_builder{
+			Object: publicv1.VirtualNetwork_builder{
+				Metadata: publicv1.Metadata_builder{
+					Name: fmt.Sprintf("vn-b-%s", uuid.New()),
+				}.Build(),
+				Spec: publicv1.VirtualNetworkSpec_builder{
+					NetworkClass: networkClassId,
+					Ipv4Cidr:     &ipv4CidrB,
+				}.Build(),
+			}.Build(),
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		vnIdB := createRespB.GetObject().GetId()
+		DeferCleanup(func() {
+			_, _ = vnAdminClient.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: vnIdB,
+			}.Build())
+		})
+
+		By("Verifying tenant-A's List contains only their network")
+		listLimit := int32(1000)
+		listRespA, err := vnClientA.List(ctx, publicv1.VirtualNetworksListRequest_builder{
+			Limit: &listLimit,
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		idsA := make([]string, len(listRespA.GetItems()))
+		for i, item := range listRespA.GetItems() {
+			idsA[i] = item.GetId()
+		}
+		Expect(idsA).To(ContainElement(vnIdA))
+		Expect(idsA).ToNot(ContainElement(vnIdB))
+
+		By("Verifying tenant-B's List contains only their network")
+		listRespB, err := vnClientB.List(ctx, publicv1.VirtualNetworksListRequest_builder{
+			Limit: &listLimit,
+		}.Build())
+		Expect(err).ToNot(HaveOccurred())
+		idsB := make([]string, len(listRespB.GetItems()))
+		for i, item := range listRespB.GetItems() {
+			idsB[i] = item.GetId()
+		}
+		Expect(idsB).To(ContainElement(vnIdB))
+		Expect(idsB).ToNot(ContainElement(vnIdA))
+	})
+})

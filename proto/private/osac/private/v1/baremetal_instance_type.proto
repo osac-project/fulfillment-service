@@ -15,11 +15,21 @@ syntax = "proto3";
 
 package osac.private.v1;
 
+import "buf/validate/validate.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "osac/private/v1/condition_status_type.proto";
 import "osac/private/v1/metadata_type.proto";
+
+// Contains the image configuration for a bare metal instance.
+message BareMetalInstanceImage {
+  // Image source type (e.g. "registry").
+  string source_type = 1;
+
+  // Image reference (e.g. OCI image URL).
+  string source_ref = 2;
+}
 
 // Contains the details of a bare metal instance.
 //
@@ -34,8 +44,33 @@ message BareMetalInstance {
   BareMetalInstanceStatus status = 4;
 }
 
+// Network attachment for a bare metal instance NIC.
+// Groups a subnet with security groups and a physical interface binding.
+message BareMetalNetworkAttachment {
+  // Fulfillment Subnet ID. Must reference a Subnet in READY state.
+  string subnet = 1;
+
+  // Fulfillment SecurityGroup IDs applied on this NIC.
+  // Each must be READY and belong to the same VirtualNetwork as the subnet.
+  repeated string security_groups = 2;
+
+  // Physical interface name from the HostType's NetworkInterface list.
+  // When omitted on a single-attachment instance, the system selects the first fabric-role interface.
+  optional string interface = 3;
+
+  // Designates this attachment as the default gateway for multi-NIC instances.
+  // When omitted on a single-attachment instance, that attachment is implicitly primary.
+  optional bool primary = 4;
+}
+
 // The spec contains the details of a bare metal instance as desired by the user.
 message BareMetalInstanceSpec {
+  option (buf.validate.message).cel = {
+    id: "baremetal_instance_primary_attachment"
+    message: "when multiple network attachments are specified, exactly one must have primary set to true"
+    expression: "this.network_attachments.size() <= 1 || this.network_attachments.filter(a, a.primary == true).size() == 1"
+  };
+
   // Reference to the BareMetalInstanceCatalogItem. Required on create; immutable after creation.
   string catalog_item = 1 [(google.api.field_behavior) = IMMUTABLE];
 
@@ -58,6 +93,19 @@ message BareMetalInstanceSpec {
   int64 restart_trigger = 5;
 
   map<string, google.protobuf.Any> template_parameters = 6 [(google.api.field_behavior) = IMMUTABLE];
+
+  // OS base image configuration.
+  optional BareMetalInstanceImage image = 7 [(google.api.field_behavior) = IMMUTABLE];
+
+  // Network attachments for the bare metal instance. One entry per physical NIC.
+  // The list structure is immutable after creation (entries cannot be added or removed),
+  // but security_groups within each entry can be updated.
+  repeated BareMetalNetworkAttachment network_attachments = 8;
+
+  // When true, the system auto-selects an ExternalIPPool and creates an ExternalIP
+  // with an ExternalIPAttachment for this instance atomically during creation.
+  // Immutable after creation.
+  bool auto_external_ip_attachment = 9 [(google.api.field_behavior) = IMMUTABLE];
 }
 
 // The status contains the details of the bare metal instance provided by the system.

@@ -24,6 +24,7 @@ import (
 
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/logging"
+	"github.com/osac-project/fulfillment-service/internal/packages"
 	"github.com/osac-project/fulfillment-service/internal/reflection"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -40,6 +41,7 @@ func Cmd() *cobra.Command {
 		Short:                 shortHelp,
 		Long:                  longHelp,
 		RunE:                  runner.run,
+		ValidArgsFunction:     completeObjectTypes,
 	}
 	return result
 }
@@ -85,6 +87,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		SetLogger(c.logger).
 		SetConnection(c.conn).
 		AddPackages(cfg.Packages()).
+		SetTenantFunc(config.TenantFromContext).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create reflection tool: %w", err)
@@ -204,6 +207,13 @@ func (c *runnerContext) applyLabelOperations(metadata reflection.Metadata, opera
 	if len(labels) > 0 || metadata.GetLabels() != nil {
 		metadata.SetLabels(labels)
 	}
+}
+
+func completeObjectTypes(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return reflection.ObjectTypeNames(packages.Public...), cobra.ShellCompDirectiveNoFileComp
 }
 
 const shortHelp = `Add or remove labels from objects`

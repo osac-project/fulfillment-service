@@ -47,6 +47,8 @@ var _ = Describe("buildSpec", func() {
 	Describe("RestartRequestedAt field", func() {
 		It("Includes restartRequestedAt in spec map when present", func() {
 			ctx := context.Background()
+			ctrl := gomock.NewController(GinkgoT())
+			DeferCleanup(ctrl.Finish)
 			requestedAt := time.Date(2026, 1, 28, 13, 27, 0, 0, time.UTC)
 			cpuCores, err := anypb.New(wrapperspb.String("2"))
 			Expect(err).ToNot(HaveOccurred())
@@ -72,12 +74,25 @@ var _ = Describe("buildSpec", func() {
 				WithObjects(subnetCR).
 				Build()
 
+			mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+			mockInstanceTypesClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(privatev1.InstanceTypesGetResponse_builder{
+					Object: privatev1.InstanceType_builder{
+						Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+					}.Build(),
+				}.Build(), nil)
+
 			task := &task{
-				r: &function{logger: logger},
+				r: &function{
+					logger:              logger,
+					instanceTypesClient: mockInstanceTypesClient,
+				},
 				computeInstance: privatev1.ComputeInstance_builder{
 					Id: "test-instance-123",
 					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template: template,
+						Template:     template,
+						InstanceType: new("test-type"),
 						TemplateParameters: map[string]*anypb.Any{
 							"cpu_cores": cpuCores,
 							"memory":    memory,
@@ -107,6 +122,8 @@ var _ = Describe("buildSpec", func() {
 
 		It("Includes explicit fields in spec map when present", func() {
 			ctx := context.Background()
+			ctrl := gomock.NewController(GinkgoT())
+			DeferCleanup(ctrl.Finish)
 			template := "osac.templates.ocp_virt_vm"
 
 			// Set up fake client with subnet CR
@@ -127,16 +144,31 @@ var _ = Describe("buildSpec", func() {
 				WithObjects(subnetCR).
 				Build()
 
+			mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+			mockInstanceTypesClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(privatev1.InstanceTypesGetResponse_builder{
+					Object: privatev1.InstanceType_builder{
+						Id: "standard-4-8",
+						Spec: privatev1.InstanceTypeSpec_builder{
+							Cores:     4,
+							MemoryGib: 8,
+						}.Build(),
+					}.Build(),
+				}.Build(), nil)
+
 			task := &task{
-				r: &function{logger: logger},
+				r: &function{
+					logger:              logger,
+					instanceTypesClient: mockInstanceTypesClient,
+				},
 				computeInstance: privatev1.ComputeInstance_builder{
 					Id: "test-explicit-fields",
 					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template:    template,
-						Cores:       new(int32(4)),
-						MemoryGib:   new(int32(8)),
-						RunStrategy: new("Always"),
-						SshKey:      new("ssh-rsa AAAA..."),
+						Template:     template,
+						InstanceType: new("standard-4-8"),
+						RunStrategy:  new("Always"),
+						SshPublicKey: new("ssh-rsa AAAA..."),
 						Image: privatev1.ComputeInstanceImage_builder{
 							SourceType: "registry",
 							SourceRef:  "quay.io/fedora/fedora:latest",
@@ -186,6 +218,8 @@ var _ = Describe("buildSpec", func() {
 		Describe("Guest OS Family Mapping", func() {
 			It("Maps is_windows=true to GuestOSFamily='windows'", func() {
 				ctx := context.Background()
+				ctrl := gomock.NewController(GinkgoT())
+				DeferCleanup(ctrl.Finish)
 				template := "osac.templates.ocp_virt_vm"
 
 				// Set up fake client with subnet CR
@@ -206,15 +240,28 @@ var _ = Describe("buildSpec", func() {
 					WithObjects(subnetCR).
 					Build()
 
+				mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+				mockInstanceTypesClient.EXPECT().
+					Get(gomock.Any(), gomock.Any()).
+					Return(privatev1.InstanceTypesGetResponse_builder{
+						Object: privatev1.InstanceType_builder{
+							Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+						}.Build(),
+					}.Build(), nil)
+
 				// Create task with is_windows=true
 				isWindows := true
 				task := &task{
-					r: &function{logger: logger},
+					r: &function{
+						logger:              logger,
+						instanceTypesClient: mockInstanceTypesClient,
+					},
 					computeInstance: privatev1.ComputeInstance_builder{
 						Id: "test-windows-vm",
 						Spec: privatev1.ComputeInstanceSpec_builder{
-							Template:  template,
-							IsWindows: &isWindows,
+							Template:     template,
+							InstanceType: new("test-type"),
+							IsWindows:    &isWindows,
 							NetworkAttachments: []*privatev1.NetworkAttachment{
 								privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
 							},
@@ -231,6 +278,8 @@ var _ = Describe("buildSpec", func() {
 
 			It("Maps is_windows=false to GuestOSFamily='linux'", func() {
 				ctx := context.Background()
+				ctrl := gomock.NewController(GinkgoT())
+				DeferCleanup(ctrl.Finish)
 				template := "osac.templates.ocp_virt_vm"
 
 				// Set up fake client with subnet CR
@@ -251,15 +300,28 @@ var _ = Describe("buildSpec", func() {
 					WithObjects(subnetCR).
 					Build()
 
+				mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+				mockInstanceTypesClient.EXPECT().
+					Get(gomock.Any(), gomock.Any()).
+					Return(privatev1.InstanceTypesGetResponse_builder{
+						Object: privatev1.InstanceType_builder{
+							Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+						}.Build(),
+					}.Build(), nil)
+
 				// Create task with is_windows=false
 				isWindows := false
 				task := &task{
-					r: &function{logger: logger},
+					r: &function{
+						logger:              logger,
+						instanceTypesClient: mockInstanceTypesClient,
+					},
 					computeInstance: privatev1.ComputeInstance_builder{
 						Id: "test-linux-vm",
 						Spec: privatev1.ComputeInstanceSpec_builder{
-							Template:  template,
-							IsWindows: &isWindows,
+							Template:     template,
+							InstanceType: new("test-type"),
+							IsWindows:    &isWindows,
 							NetworkAttachments: []*privatev1.NetworkAttachment{
 								privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
 							},
@@ -276,6 +338,8 @@ var _ = Describe("buildSpec", func() {
 
 			It("Maps is_windows not set (omitted) to GuestOSFamily='linux'", func() {
 				ctx := context.Background()
+				ctrl := gomock.NewController(GinkgoT())
+				DeferCleanup(ctrl.Finish)
 				template := "osac.templates.ocp_virt_vm"
 
 				// Set up fake client with subnet CR
@@ -296,13 +360,26 @@ var _ = Describe("buildSpec", func() {
 					WithObjects(subnetCR).
 					Build()
 
+				mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+				mockInstanceTypesClient.EXPECT().
+					Get(gomock.Any(), gomock.Any()).
+					Return(privatev1.InstanceTypesGetResponse_builder{
+						Object: privatev1.InstanceType_builder{
+							Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+						}.Build(),
+					}.Build(), nil)
+
 				// Create task WITHOUT is_windows field (omitted entirely)
 				task := &task{
-					r: &function{logger: logger},
+					r: &function{
+						logger:              logger,
+						instanceTypesClient: mockInstanceTypesClient,
+					},
 					computeInstance: privatev1.ComputeInstance_builder{
 						Id: "test-default-linux-vm",
 						Spec: privatev1.ComputeInstanceSpec_builder{
-							Template: template,
+							Template:     template,
+							InstanceType: new("test-type"),
 							// IsWindows is NOT set - omitted
 							NetworkAttachments: []*privatev1.NetworkAttachment{
 								privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
@@ -321,6 +398,8 @@ var _ = Describe("buildSpec", func() {
 
 		It("Excludes explicit fields from spec map when not set", func() {
 			ctx := context.Background()
+			ctrl := gomock.NewController(GinkgoT())
+			DeferCleanup(ctrl.Finish)
 			template := "osac.templates.ocp_virt_vm"
 
 			// Set up fake client with subnet CR
@@ -341,12 +420,25 @@ var _ = Describe("buildSpec", func() {
 				WithObjects(subnetCR).
 				Build()
 
+			mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+			mockInstanceTypesClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(privatev1.InstanceTypesGetResponse_builder{
+					Object: privatev1.InstanceType_builder{
+						Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+					}.Build(),
+				}.Build(), nil)
+
 			task := &task{
-				r: &function{logger: logger},
+				r: &function{
+					logger:              logger,
+					instanceTypesClient: mockInstanceTypesClient,
+				},
 				computeInstance: privatev1.ComputeInstance_builder{
 					Id: "test-no-explicit-fields",
 					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template: template,
+						Template:     template,
+						InstanceType: new("test-type"),
 						NetworkAttachments: []*privatev1.NetworkAttachment{
 							privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
 						},
@@ -371,6 +463,8 @@ var _ = Describe("buildSpec", func() {
 
 		It("Excludes restartRequestedAt from spec map when not set", func() {
 			ctx := context.Background()
+			ctrl := gomock.NewController(GinkgoT())
+			DeferCleanup(ctrl.Finish)
 			cpuCores, err := anypb.New(wrapperspb.String("1"))
 			Expect(err).ToNot(HaveOccurred())
 			memory, err := anypb.New(wrapperspb.String("2Gi"))
@@ -395,12 +489,25 @@ var _ = Describe("buildSpec", func() {
 				WithObjects(subnetCR).
 				Build()
 
+			mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+			mockInstanceTypesClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(privatev1.InstanceTypesGetResponse_builder{
+					Object: privatev1.InstanceType_builder{
+						Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+					}.Build(),
+				}.Build(), nil)
+
 			task := &task{
-				r: &function{logger: logger},
+				r: &function{
+					logger:              logger,
+					instanceTypesClient: mockInstanceTypesClient,
+				},
 				computeInstance: privatev1.ComputeInstance_builder{
 					Id: "test-instance-456",
 					Spec: privatev1.ComputeInstanceSpec_builder{
-						Template: template,
+						Template:     template,
+						InstanceType: new("test-type"),
 						TemplateParameters: map[string]*anypb.Any{
 							"cpu_cores": cpuCores,
 							"memory":    memory,
@@ -839,11 +946,24 @@ var _ = Describe("buildSpec with subnetRef", func() {
 	)
 
 	var (
-		ctx context.Context
+		ctx                     context.Context
+		mockCtrl                *gomock.Controller
+		mockInstanceTypesClient *MockInstanceTypesClient
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
+		mockCtrl = gomock.NewController(GinkgoT())
+		DeferCleanup(mockCtrl.Finish)
+		mockInstanceTypesClient = NewMockInstanceTypesClient(mockCtrl)
+		mockInstanceTypesClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(privatev1.InstanceTypesGetResponse_builder{
+				Object: privatev1.InstanceType_builder{
+					Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+				}.Build(),
+			}.Build(), nil).
+			AnyTimes()
 	})
 
 	// Legacy subnet test cases removed - these fields are no longer supported
@@ -868,11 +988,15 @@ var _ = Describe("buildSpec with subnetRef", func() {
 
 		template := "osac.templates.ocp_virt_vm"
 		t := &task{
-			r: &function{logger: logger},
+			r: &function{
+				logger:              logger,
+				instanceTypesClient: mockInstanceTypesClient,
+			},
 			computeInstance: privatev1.ComputeInstance_builder{
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template: template,
+					Template:     template,
+					InstanceType: new("test-type"),
 					NetworkAttachments: []*privatev1.NetworkAttachment{
 						privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
 					},
@@ -917,11 +1041,15 @@ var _ = Describe("buildSpec with subnetRef", func() {
 
 		template := "osac.templates.ocp_virt_vm"
 		t := &task{
-			r: &function{logger: logger},
+			r: &function{
+				logger:              logger,
+				instanceTypesClient: mockInstanceTypesClient,
+			},
 			computeInstance: privatev1.ComputeInstance_builder{
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template: template,
+					Template:     template,
+					InstanceType: new("test-type"),
 					NetworkAttachments: []*privatev1.NetworkAttachment{
 						privatev1.NetworkAttachment_builder{Subnet: sid1}.Build(),
 						privatev1.NetworkAttachment_builder{Subnet: sid2}.Build(),
@@ -968,11 +1096,15 @@ var _ = Describe("buildSpec with subnetRef", func() {
 
 		template := "osac.templates.ocp_virt_vm"
 		t := &task{
-			r: &function{logger: logger},
+			r: &function{
+				logger:              logger,
+				instanceTypesClient: mockInstanceTypesClient,
+			},
 			computeInstance: privatev1.ComputeInstance_builder{
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template: template,
+					Template:     template,
+					InstanceType: new("test-type"),
 					NetworkAttachments: []*privatev1.NetworkAttachment{
 						privatev1.NetworkAttachment_builder{
 							Subnet:         sid,
@@ -1022,11 +1154,15 @@ var _ = Describe("buildSpec with subnetRef", func() {
 
 		template := "osac.templates.ocp_virt_vm"
 		t := &task{
-			r: &function{logger: logger},
+			r: &function{
+				logger:              logger,
+				instanceTypesClient: mockInstanceTypesClient,
+			},
 			computeInstance: privatev1.ComputeInstance_builder{
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template: template,
+					Template:     template,
+					InstanceType: new("test-type"),
 					NetworkAttachments: []*privatev1.NetworkAttachment{
 						privatev1.NetworkAttachment_builder{
 							Subnet:         "subnet-id",
@@ -1065,11 +1201,15 @@ var _ = Describe("buildSpec with subnetRef", func() {
 
 		template := "osac.templates.ocp_virt_vm"
 		t := &task{
-			r: &function{logger: logger},
+			r: &function{
+				logger:              logger,
+				instanceTypesClient: mockInstanceTypesClient,
+			},
 			computeInstance: privatev1.ComputeInstance_builder{
 				Id: "test-instance",
 				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template: template,
+					Template:     template,
+					InstanceType: new("test-type"),
 					NetworkAttachments: []*privatev1.NetworkAttachment{
 						privatev1.NetworkAttachment_builder{
 							Subnet:         "subnet-id",
@@ -1242,6 +1382,92 @@ var _ = Describe("ensureUserDataSecret", func() {
 	})
 })
 
+var _ = Describe("setReconciliationFailed", func() {
+	It("should set state to FAILED and update PROVISIONED condition", func() {
+		ci := privatev1.ComputeInstance_builder{
+			Id: "test-ci-fail",
+			Status: privatev1.ComputeInstanceStatus_builder{
+				State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+			}.Build(),
+		}.Build()
+
+		t := &task{
+			r:               &function{logger: logger},
+			computeInstance: ci,
+		}
+
+		reconcileErr := errors.New("spec.runStrategy: Unsupported value: \"\": supported values: \"Always\", \"Halted\"")
+		t.setReconciliationFailed(reconcileErr)
+
+		Expect(ci.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED))
+
+		var provisionedCondition *privatev1.ComputeInstanceCondition
+		for _, c := range ci.GetStatus().GetConditions() {
+			if c.GetType() == privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED {
+				provisionedCondition = c
+				break
+			}
+		}
+		Expect(provisionedCondition).ToNot(BeNil())
+		Expect(provisionedCondition.GetStatus()).To(Equal(privatev1.ConditionStatus_CONDITION_STATUS_FALSE))
+		Expect(provisionedCondition.GetReason()).To(Equal("ReconciliationFailed"))
+		Expect(provisionedCondition.GetMessage()).To(ContainSubstring("runStrategy"))
+	})
+
+	It("should create status if not present", func() {
+		ci := privatev1.ComputeInstance_builder{
+			Id: "test-ci-no-status",
+		}.Build()
+
+		t := &task{
+			r:               &function{logger: logger},
+			computeInstance: ci,
+		}
+
+		t.setReconciliationFailed(errors.New("hub not found"))
+
+		Expect(ci.HasStatus()).To(BeTrue())
+		Expect(ci.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED))
+	})
+
+	It("should update existing PROVISIONED condition rather than creating duplicate", func() {
+		reason := "WaitingForVM"
+		message := "initial state"
+		ci := privatev1.ComputeInstance_builder{
+			Id: "test-ci-existing-condition",
+			Status: privatev1.ComputeInstanceStatus_builder{
+				State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+				Conditions: []*privatev1.ComputeInstanceCondition{
+					privatev1.ComputeInstanceCondition_builder{
+						Type:    privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED,
+						Status:  privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+						Reason:  &reason,
+						Message: &message,
+					}.Build(),
+				},
+			}.Build(),
+		}.Build()
+
+		t := &task{
+			r:               &function{logger: logger},
+			computeInstance: ci,
+		}
+
+		t.setReconciliationFailed(errors.New("create failed"))
+
+		conditions := ci.GetStatus().GetConditions()
+		provisionedCount := 0
+		for _, c := range conditions {
+			if c.GetType() == privatev1.ComputeInstanceConditionType_COMPUTE_INSTANCE_CONDITION_TYPE_PROVISIONED {
+				provisionedCount++
+				Expect(c.GetReason()).To(Equal("ReconciliationFailed"))
+				Expect(c.GetMessage()).To(ContainSubstring("create failed"))
+			}
+		}
+		Expect(provisionedCount).To(Equal(1))
+	})
+})
+
 var _ = Describe("hub persistence", func() {
 	const (
 		computeInstanceID = "test-ci-hub"
@@ -1350,6 +1576,12 @@ var _ = Describe("hub persistence", func() {
 			}, nil)
 
 		computeInstancesClient := NewMockComputeInstancesClient(ctrl)
+		computeInstancesClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.ComputeInstancesUpdateRequest, opts ...grpc.CallOption) (*privatev1.ComputeInstancesUpdateResponse, error) {
+				return &privatev1.ComputeInstancesUpdateResponse{Object: req.GetObject()}, nil
+			}).
+			AnyTimes()
 
 		computeInstance := privatev1.ComputeInstance_builder{
 			Id: computeInstanceID,
@@ -1375,6 +1607,9 @@ var _ = Describe("hub persistence", func() {
 		err := f.run(ctx, computeInstance)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("there are no hubs"))
+
+		// Verify status was set to FAILED with error details
+		Expect(computeInstance.GetStatus().GetState()).To(Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED))
 
 		// Verify ComputeInstance was NOT created
 		list := &osacv1alpha1.ComputeInstanceList{}
@@ -1416,13 +1651,25 @@ var _ = Describe("hub persistence", func() {
 			}).
 			AnyTimes()
 
+		mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+		mockInstanceTypesClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(privatev1.InstanceTypesGetResponse_builder{
+				Object: privatev1.InstanceType_builder{
+					Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+				}.Build(),
+			}.Build(), nil).
+			AnyTimes()
+
 		computeInstance := privatev1.ComputeInstance_builder{
 			Id: computeInstanceID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     tenantName,
 			}.Build(),
-			Spec: privatev1.ComputeInstanceSpec_builder{}.Build(),
+			Spec: privatev1.ComputeInstanceSpec_builder{
+				InstanceType: new("test-type"),
+			}.Build(),
 			Status: privatev1.ComputeInstanceStatus_builder{
 				State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 				Hub:   hubID, // Hub already set
@@ -1434,6 +1681,7 @@ var _ = Describe("hub persistence", func() {
 			hubCache:               hubCache,
 			computeInstancesClient: computeInstancesClient,
 			hubsClient:             hubsClient,
+			instanceTypesClient:    mockInstanceTypesClient,
 			maskCalculator:         nil,
 		}
 
@@ -1484,13 +1732,25 @@ var _ = Describe("hub persistence", func() {
 			}).
 			AnyTimes()
 
+		mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+		mockInstanceTypesClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(privatev1.InstanceTypesGetResponse_builder{
+				Object: privatev1.InstanceType_builder{
+					Spec: privatev1.InstanceTypeSpec_builder{}.Build(),
+				}.Build(),
+			}.Build(), nil).
+			AnyTimes()
+
 		computeInstance := privatev1.ComputeInstance_builder{
 			Id: computeInstanceID,
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.Controller},
 				Tenant:     tenantName,
 			}.Build(),
-			Spec: privatev1.ComputeInstanceSpec_builder{}.Build(),
+			Spec: privatev1.ComputeInstanceSpec_builder{
+				InstanceType: new("test-type"),
+			}.Build(),
 			Status: privatev1.ComputeInstanceStatus_builder{
 				State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
 				Hub:   "", // Empty initially
@@ -1502,6 +1762,7 @@ var _ = Describe("hub persistence", func() {
 			hubCache:               hubCache,
 			computeInstancesClient: computeInstancesClient,
 			hubsClient:             hubsClient,
+			instanceTypesClient:    mockInstanceTypesClient,
 			maskCalculator:         nil,
 		}
 
@@ -1601,6 +1862,29 @@ var _ = Describe("instance_type resolution in reconciler", func() {
 		Expect(spec.MemoryGiB).To(Equal(int32(8)))
 	})
 
+	It("returns error when instance_type is empty", func() {
+		t := &task{
+			r: &function{
+				logger: logger,
+			},
+			computeInstance: privatev1.ComputeInstance_builder{
+				Id: "test-empty-it",
+				Spec: privatev1.ComputeInstanceSpec_builder{
+					Template: "osac.templates.ocp_virt_vm",
+					NetworkAttachments: []*privatev1.NetworkAttachment{
+						privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
+					},
+				}.Build(),
+			}.Build(),
+			hubNamespace: hubNamespace,
+			hubClient:    fakeClient,
+		}
+
+		_, err := t.buildSpec(ctx)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("no instance_type set"))
+	})
+
 	It("sets osac.io/instance-type-name label on CR when instance_type is set", func() {
 		mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
 		mockInstanceTypesClient.EXPECT().
@@ -1673,65 +1957,6 @@ var _ = Describe("instance_type resolution in reconciler", func() {
 		Expect(list.Items[0].Labels).To(HaveKeyWithValue(labels.InstanceTypeName, "test-type"))
 	})
 
-	It("does NOT set osac.io/instance-type-name label on legacy path", func() {
-		hubCache := controllers.NewMockHubCache(ctrl)
-		hubCache.EXPECT().
-			Get(gomock.Any(), "test-hub").
-			Return(&controllers.HubEntry{
-				Namespace: hubNamespace,
-				Client:    fakeClient,
-			}, nil).
-			AnyTimes()
-
-		hubsClient := controllers.NewMockHubsClient(ctrl)
-
-		computeInstancesClient := NewMockComputeInstancesClient(ctrl)
-		computeInstancesClient.EXPECT().
-			Update(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, req *privatev1.ComputeInstancesUpdateRequest, opts ...grpc.CallOption) (*privatev1.ComputeInstancesUpdateResponse, error) {
-				return &privatev1.ComputeInstancesUpdateResponse{Object: req.GetObject()}, nil
-			}).
-			AnyTimes()
-
-		computeInstance := privatev1.ComputeInstance_builder{
-			Id: "test-instance-legacy",
-			Metadata: privatev1.Metadata_builder{
-				Finalizers: []string{finalizers.Controller},
-				Tenant:     "test-tenant",
-			}.Build(),
-			Spec: privatev1.ComputeInstanceSpec_builder{
-				Template:  "osac.templates.ocp_virt_vm",
-				Cores:     new(int32(4)),
-				MemoryGib: new(int32(8)),
-				NetworkAttachments: []*privatev1.NetworkAttachment{
-					privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
-				},
-			}.Build(),
-			Status: privatev1.ComputeInstanceStatus_builder{
-				State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
-				Hub:   "test-hub",
-			}.Build(),
-		}.Build()
-
-		f := &function{
-			logger:                 logger,
-			hubCache:               hubCache,
-			computeInstancesClient: computeInstancesClient,
-			hubsClient:             hubsClient,
-			maskCalculator:         nil,
-		}
-
-		err := f.run(ctx, computeInstance)
-		Expect(err).ToNot(HaveOccurred())
-
-		// Verify the CR was created WITHOUT the instance-type-name label
-		list := &osacv1alpha1.ComputeInstanceList{}
-		err = fakeClient.List(ctx, list)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(list.Items).To(HaveLen(1))
-		Expect(list.Items[0].Labels).ToNot(HaveKey(labels.InstanceTypeName))
-	})
-
 	It("returns error when InstanceType lookup fails (triggers requeue)", func() {
 		mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
 		mockInstanceTypesClient.EXPECT().
@@ -1763,34 +1988,4 @@ var _ = Describe("instance_type resolution in reconciler", func() {
 		Expect(err.Error()).To(ContainSubstring("connection refused"))
 	})
 
-	It("uses legacy cores/memory_gib directly when instance_type is empty", func() {
-		// No instanceTypesClient mock expectation — Get should NOT be called
-		mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
-
-		t := &task{
-			r: &function{
-				logger:              logger,
-				instanceTypesClient: mockInstanceTypesClient,
-			},
-			computeInstance: privatev1.ComputeInstance_builder{
-				Id: "test-instance-legacy-spec",
-				Spec: privatev1.ComputeInstanceSpec_builder{
-					Template:  "osac.templates.ocp_virt_vm",
-					Cores:     new(int32(2)),
-					MemoryGib: new(int32(4)),
-					NetworkAttachments: []*privatev1.NetworkAttachment{
-						privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
-					},
-				}.Build(),
-			}.Build(),
-			hubNamespace: hubNamespace,
-			hubClient:    fakeClient,
-		}
-
-		spec, err := t.buildSpec(ctx)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(spec.Cores).To(Equal(int32(2)))
-		Expect(spec.MemoryGiB).To(Equal(int32(4)))
-		// Verify instanceTypesClient.Get was NOT called (gomock will enforce — no EXPECT set)
-	})
 })

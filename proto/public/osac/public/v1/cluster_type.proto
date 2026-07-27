@@ -158,6 +158,17 @@ message ClusterSpec {
   // Reference to a cluster catalog item. Mutually exclusive with template during the migration period.
   // When set, the server fetches the catalog item and applies its field definitions.
   string catalog_item = 8;
+
+  // Network attachment connecting this cluster to a tenant subnet.
+  //
+  // When provided, all node sets of the cluster will be connected to the specified subnet. Only one network attachment
+  // is supported per cluster.
+  //
+  // When not provided, the system will populate this field with the tenant's default subnet and security groups during
+  // cluster creation.
+  //
+  // The `subnet` field is immutable after creation. The `security_groups` field can be updated.
+  ClusterNetworkAttachment network_attachment = 9;
 }
 
 // Networking configuration for a cluster.
@@ -233,6 +244,22 @@ message ClusterStatus {
   //
   // The key of the map is the unique identifier of the node set for this cluster.
   map<string, ClusterNodeSet> node_sets = 5;
+
+  // Internal API server VIP allocated by MetalLB for the cluster.
+  //
+  // This is the cluster-internal address used as the DNAT target for external access. It differs from `api_url`, which
+  // is the external URL used by clients to reach the API server.
+  //
+  // This will be empty until the CaaS template discovers the MetalLB-allocated VIP during cluster provisioning.
+  string api_endpoint = 6;
+
+  // Internal ingress VIP allocated by MetalLB for the cluster.
+  //
+  // This is the cluster-internal address used as the DNAT target for external access. It differs from `console_url`,
+  // which is the external URL for the cluster console.
+  //
+  // This will be empty until the CaaS template discovers the MetalLB-allocated VIP during cluster provisioning.
+  string ingress_endpoint = 7;
 }
 
 // Represents the overall state of a cluster.
@@ -248,6 +275,17 @@ enum ClusterState {
 
   // Indicates indicates that the cluster is unusable.
   CLUSTER_STATE_FAILED = 3;
+
+  // The cluster is being deprovisioned.
+  //
+  // The cluster will be archived once deletion completes successfully.
+  CLUSTER_STATE_DELETING = 4;
+
+  // The cluster deletion has failed.
+  //
+  // The deprovision operation encountered an error and could not complete.
+  // The status conditions will contain specific error details.
+  CLUSTER_STATE_DELETE_FAILED = 5;
 }
 
 // Contains the details of a condition that describes the status of a cluster.
@@ -296,6 +334,26 @@ enum ClusterConditionType {
 
   // Indicates that the cluster is degraded.
   CLUSTER_CONDITION_TYPE_DEGRADED = 4;
+}
+
+// Defines the network attachment for a cluster, connecting it to a tenant subnet with optional security groups.
+//
+// Unlike compute instances, which support multiple network attachments (one per virtual NIC), a cluster has a single
+// network attachment shared by all node sets. The fabric interface for each node set is resolved automatically by the
+// system from the node set's host type.
+message ClusterNetworkAttachment {
+  // Identifier of the subnet to connect the cluster to.
+  //
+  // Must be the value of the `id` field of an existing subnet. The subnet must be in `READY` state at creation time.
+  //
+  // This can't be modified after the cluster is created.
+  string subnet = 1;
+
+  // Identifiers of the security groups to apply to the cluster's network attachment.
+  //
+  // Each value must be the `id` field of an existing security group. All security groups must belong to the same
+  // virtual network as the subnet.
+  repeated string security_groups = 2;
 }
 
 // Defines a set of nodes that are part of the cluster, all of them of the same type of host.

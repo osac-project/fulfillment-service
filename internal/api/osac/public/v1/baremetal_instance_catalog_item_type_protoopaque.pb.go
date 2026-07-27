@@ -37,6 +37,8 @@ const (
 
 // A bare metal instance catalog item defines a curated hardware offering that references an underlying bare metal
 // instance template.
+//
+// buf:lint:ignore OSAC_OBJECT_SHAPE
 type BareMetalInstanceCatalogItem struct {
 	state                       protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Id               string                 `protobuf:"bytes,1,opt,name=id,proto3"`

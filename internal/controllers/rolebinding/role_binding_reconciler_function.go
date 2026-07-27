@@ -33,7 +33,7 @@ import (
 type FunctionBuilder struct {
 	logger     *slog.Logger
 	connection *grpc.ClientConn
-	idpClient  idp.Client
+	idpClient  idp.ClientInterface
 }
 
 // NewFunction creates a builder that can be used to configure and create reconciler functions.
@@ -54,7 +54,7 @@ func (b *FunctionBuilder) SetConnection(value *grpc.ClientConn) *FunctionBuilder
 }
 
 // SetIdpClient sets the IDP client that the reconciler will use to assign roles to users.
-func (b *FunctionBuilder) SetIdpClient(value idp.Client) *FunctionBuilder {
+func (b *FunctionBuilder) SetIdpClient(value idp.ClientInterface) *FunctionBuilder {
 	b.idpClient = value
 	return b
 }
@@ -92,7 +92,7 @@ type function struct {
 	roleBindingsClient privatev1.RoleBindingsClient
 	rolesClient        privatev1.RolesClient
 	usersClient        privatev1.UsersClient
-	idpClient          idp.Client
+	idpClient          idp.ClientInterface
 	maskCalculator     *masks.Calculator
 }
 

@@ -19,6 +19,7 @@ import "google/protobuf/any.proto";
 import "osac/private/v1/compute_instance_type.proto";
 import "osac/private/v1/metadata_type.proto";
 
+// buf:lint:ignore OSAC_OBJECT_SHAPE
 message ComputeInstanceTemplate {
   // Public data.
   string id = 1;
@@ -45,11 +46,9 @@ message ComputeInstanceTemplateParameterDefinition {
 
 // Default values for compute instance spec fields.
 message ComputeInstanceTemplateSpecDefaults {
-  // Default number of CPU cores.
-  optional int32 cores = 1;
-
-  // Default memory size in GiB.
-  optional int32 memory_gib = 2;
+  // Reserved field numbers for removed fields (do not reuse).
+  reserved 1, 2;
+  reserved "cores", "memory_gib";
 
   // Default image configuration.
   optional ComputeInstanceImage image = 3;
@@ -60,7 +59,8 @@ message ComputeInstanceTemplateSpecDefaults {
   // Default run strategy.
   optional string run_strategy = 5;
 
-  // Default instance type name. Mutually exclusive with cores/memory_gib defaults.
+  // Default instance type name. Specifies the default compute configuration for instances
+  // created from this template.
   optional string instance_type = 6;
 
   // Default guest OS type. When true, the VM runs Windows. When false or omitted, the VM runs Linux.

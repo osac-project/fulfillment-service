@@ -91,6 +91,93 @@ var _ = Describe("Host types server", func() {
 			Expect(object.GetId()).ToNot(BeEmpty())
 		})
 
+		It("Creates object with interfaces", func() {
+			interfaces := []*publicv1.NetworkInterface{
+				publicv1.NetworkInterface_builder{
+					Name:        "data-0",
+					Role:        "fabric",
+					Description: "100GbE data interface",
+				}.Build(),
+				publicv1.NetworkInterface_builder{
+					Name:        "data-1",
+					Role:        "fabric",
+					Description: "100GbE data interface",
+				}.Build(),
+				publicv1.NetworkInterface_builder{
+					Name:        "mgmt-0",
+					Role:        "management",
+					Description: "1GbE management interface",
+				}.Build(),
+			}
+			createResponse, err := server.Create(ctx, publicv1.HostTypesCreateRequest_builder{
+				Object: publicv1.HostType_builder{
+					Title:      "BM host type",
+					Interfaces: interfaces,
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			Expect(object.GetInterfaces()).To(HaveLen(3))
+			Expect(object.GetInterfaces()[0].GetName()).To(Equal("data-0"))
+			Expect(object.GetInterfaces()[0].GetRole()).To(Equal("fabric"))
+			Expect(object.GetInterfaces()[0].GetDescription()).To(Equal("100GbE data interface"))
+			Expect(object.GetInterfaces()[1].GetName()).To(Equal("data-1"))
+			Expect(object.GetInterfaces()[2].GetName()).To(Equal("mgmt-0"))
+			Expect(object.GetInterfaces()[2].GetRole()).To(Equal("management"))
+
+			getResponse, err := server.Get(ctx, publicv1.HostTypesGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(proto.Equal(createResponse.GetObject(), getResponse.GetObject())).To(BeTrue())
+		})
+
+		It("Creates object without interfaces", func() {
+			createResponse, err := server.Create(ctx, publicv1.HostTypesCreateRequest_builder{
+				Object: publicv1.HostType_builder{
+					Title: "VM host type",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			Expect(object.GetInterfaces()).To(BeEmpty())
+		})
+
+		It("Updates object interfaces", func() {
+			createResponse, err := server.Create(ctx, publicv1.HostTypesCreateRequest_builder{
+				Object: publicv1.HostType_builder{
+					Title: "BM host type",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			object := createResponse.GetObject()
+			Expect(object.GetInterfaces()).To(BeEmpty())
+
+			updateResponse, err := server.Update(ctx, publicv1.HostTypesUpdateRequest_builder{
+				Object: publicv1.HostType_builder{
+					Id:    object.GetId(),
+					Title: "BM host type",
+					Interfaces: []*publicv1.NetworkInterface{
+						publicv1.NetworkInterface_builder{
+							Name:        "data-0",
+							Role:        "fabric",
+							Description: "100GbE data interface",
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updateResponse.GetObject().GetInterfaces()).To(HaveLen(1))
+			Expect(updateResponse.GetObject().GetInterfaces()[0].GetName()).To(Equal("data-0"))
+
+			getResponse, err := server.Get(ctx, publicv1.HostTypesGetRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(getResponse.GetObject().GetInterfaces()).To(HaveLen(1))
+			Expect(getResponse.GetObject().GetInterfaces()[0].GetName()).To(Equal("data-0"))
+		})
+
 		It("List objects", func() {
 			// Create a few objects:
 			const count = 10

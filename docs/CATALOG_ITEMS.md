@@ -26,10 +26,12 @@ in two ways:
 
 - `osac create cluster --template <id>` — direct template access, no field restrictions. Supports
   `--template-parameter` to pass custom values (e.g., `vpc_id`, `vlan`) that AAP uses for
-  provisioning
+  provisioning.
 - `osac create cluster --catalog-item <id>` — the server resolves the template from the catalog
   item and applies `field_definitions` to enforce defaults and validation. Only the fixed set of
-  known fields can be controlled; custom template parameters are not supported
+  known fields can be controlled; custom template parameters cannot be passed via the CLI yet
+  (`--template-parameter` flag — support is planned), but they can be passed through the
+  gRPC/REST API directly.
 
 Both templates and catalog items are created and managed by the platform admin through the private
 API. The distinction is not one of roles but of purpose: templates define what infrastructure
@@ -44,18 +46,20 @@ Catalog items control a **fixed set of known fields** on the resource (e.g., `pu
 flags (`--pull-secret`, `--ssh-public-key`, `--pod-cidr`).
 
 **You cannot define custom parameters in a catalog item.** For example, you cannot create a
-`field_definition` with `path: vlan` or `path: vpc_id` and expect AAP to receive it. If a path
-does not correspond to a known field, the value is silently discarded by the server — it has no
-effect on provisioning.
+`field_definition` with `path: vlan` or `path: vpc_id` and expect AAP to receive it. Paths must
+correspond to known fields in the resource spec — unknown paths have no effect on provisioning.
 
 Custom provisioning parameters (like `vpc_id`, `ip_block_id`, `ssh_key_group_id`) are defined as
-**template parameters**, which are a separate mechanism. Template parameters are passed by the user
-with `--template-parameter` and forwarded to AAP as extra variables. However, `--template-parameter`
-is **not supported with `--catalog-item`**, which means:
+**template parameters**, which are a separate mechanism. Template parameters are forwarded to AAP as
+extra variables. The OSAC CLI does not yet support `--template-parameter` with `--catalog-item`
+(support is planned), but the
+gRPC/REST API accepts `template_parameters` on any create request regardless of whether it uses a
+template or a catalog item. This means:
 
-- Catalog items work well with templates that only need the standard spec fields
-- Templates that require custom parameters (e.g., `osac.templates.ocp_4_20_small_nico`) cannot be
-  fully used through catalog items — users must use `--template` directly instead
+- Catalog items work well with templates that only need the standard spec fields.
+- Templates that require custom parameters (e.g., `osac.templates.ocp_virt_vm`) can be used
+  through catalog items when creating resources via the API with `template_parameters`. Through the
+  CLI, users must use `--template` directly instead.
 
 ## Creating Catalog Items
 
@@ -74,11 +78,10 @@ Cluster Catalog Items are based on Cluster Templates, you can list the ones avai
 ```bash
 $ osac get clustertemplates
 ID                                    NAME  TITLE
-ocp_4_17_small                        -     OpenShift 4.17 small
-osac.templates.ocp_4_17_small         -     Simple OpenShift 4.17 Cluster
-osac.templates.ocp_4_17_small_github  -     OpenShift 4.17 Cluster + GitHub
-osac.templates.ocp_4_20_small_nico    -     OpenShift 4.20 Cluster on NICo Bare Metal
+osac.templates.ocp_small              -     OpenShift Small Cluster
 osac.templates.ocp_ci_small           -     CI OpenShift Cluster
+osac.templates.ocp_4_20_ai_maas       -     OpenShift AI 4.20 Cluster with MaaS
+osac.templates.ocp_4_20_small_nico    -     OpenShift 4.20 Cluster on NICo Bare Metal
 ```
 
 ### ClusterCatalogItem
@@ -89,7 +92,7 @@ metadata:
   name: dev-sandbox
 title: Dev Sandbox Cluster
 description: Small development cluster with locked-down defaults.
-template: "osac.templates.ocp_4_17_small"
+template: "osac.templates.ocp_small"
 published: true
 field_definitions:
   - path: ssh_public_key
@@ -137,13 +140,42 @@ template: "osac.templates.ocp_virt_vm"
 published: true
 field_definitions:
   - path: ssh_public_key
-    display_name: SSH Public Key
+    display_name: SSH Key
     editable: true
     default: "ssh-ed25519 AAAA..."
-  - path: host_type
-    display_name: Host Type
+  - path: image.source_type
+    default: registry
+    display_name: Image Source Type
+  - path: image.source_ref
+    default: quay.io/containerdisks/fedora:latest
+    display_name: Image Reference
+  - path: boot_disk.size_gib
+    default: 20
+    display_name: Boot Disk Size (GiB)
     editable: true
-    default: "fc430"
+  - path: instance_type
+    display_name: Instance Type
+    editable: true
+  - path: run_strategy
+    display_name: Run Strategy
+    editable: true
+  - path: network_attachments
+    display_name: Network Attachments
+    editable: true
+```
+> IMPORTANT: Notice that ComputeInstanceCatalogItem uses instance type. So, in order to use it you'll need to have an instance type. For example:
+
+```yaml
+'@type': type.googleapis.com/osac.private.v1.InstanceType
+id: simple-1-2
+metadata:
+  creator: system
+  name: simple-1-2
+  tenant: shared
+spec:
+  cores: 1
+  memory_gib: 2
+  state: INSTANCE_TYPE_STATE_ACTIVE
 ```
 
 ### Create the catalog item
@@ -171,8 +203,9 @@ default, optionally constrained by a `validation_schema`.
 
 ### Available Paths
 
-The following paths can be used in `field_definitions`. These are the only values that have an
-effect — any other path is silently ignored.
+The following paths can be used in `field_definitions`. When a user creates a resource from a
+catalog item, the server rejects any spec field not listed in `field_definitions` with an
+`InvalidArgument` error.
 
 **ClusterCatalogItem** paths:
 
@@ -190,9 +223,8 @@ effect — any other path is silently ignored.
 
 | Path | Description |
 |------|-------------|
-| `ssh_key` | SSH public key |
-| `cores` | Number of CPU cores |
-| `memory_gib` | Memory in GiB |
+| `ssh_public_key` | SSH public key |
+| `instance_type` | Instance Type includes number of CPU cores, memory, etc. |
 | `run_strategy` | VM run strategy (e.g., `Always`, `Halted`) |
 | `user_data` | Cloud-init or ignition user data |
 | `image.source_type` | Image source type (e.g., `registry`) |
@@ -223,8 +255,11 @@ osac create cluster --catalog-item dev-sandbox \
   --pod-cidr "10.128.0.0/14"
 ```
 
-> **Note:** `--template-parameter` is not supported with `--catalog-item`. For templates that
-> require custom parameters, use `--template` directly (see
+> **Note:** The CLI does not yet support `--template-parameter` with `--catalog-item` (support is
+> planned). To pass custom
+> template parameters with a catalog item, use the gRPC/REST API directly (the
+> `template_parameters` field is accepted on all create requests). Alternatively, use `--template`
+> with the CLI (see
 > [What field_definitions can and cannot do](#what-field_definitions-can-and-cannot-do)).
 
 ### How CLI flags interact with field_definitions
@@ -232,14 +267,16 @@ osac create cluster --catalog-item dev-sandbox \
 CLI flags like `--pull-secret` and `--ssh-public-key` set values in the resource spec. However,
 the server applies `field_definitions` **after** receiving the request, which means:
 
-- If a field is **non-editable** in the catalog item, the CLI flag value is **overridden** by the
-  catalog item's default — the user's value is silently discarded.
+- If a field is **not listed** in `field_definitions`, the server **rejects** the request with
+  `InvalidArgument`.
+- If a field is **non-editable** in the catalog item and the user provides a value, the server
+  **rejects** the request with `InvalidArgument`.
 - If a field is **editable**, the CLI flag value is accepted and validated against
   `validation_schema` if one is defined.
 - If an editable field is **not provided** by the user, the catalog item's default is applied.
 
-For example, given a catalog item with `ssh_public_key` set as non-editable with a fixed default,
-running `--ssh-public-key "my-key"` has no effect — the catalog item's default is always used.
+For example, given a catalog item with `release_image` set as non-editable with a fixed default,
+running `--release-image "quay.io/user1/ocp-release:4.12.0"` results in an error — the user cannot override locked fields.
 
 ### Server-side processing
 
@@ -248,7 +285,8 @@ When the server processes the request, it:
 1. Looks up the catalog item and verifies it is published
 2. Sets the resource's `spec.template` to the template referenced by the catalog item
 3. Applies `field_definitions`:
-   - **Non-editable fields**: the default value is enforced, overriding any user-provided value
+   - **Unlisted fields**: any spec field not in `field_definitions` is rejected (`InvalidArgument`)
+   - **Non-editable fields**: rejects if the user provided a value; otherwise applies the default
    - **Editable fields with a user value**: validated against `validation_schema` if present
    - **Editable fields without a user value**: the default is applied
 4. Validates the resulting spec and creates the resource

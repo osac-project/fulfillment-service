@@ -37,6 +37,8 @@ const (
 
 // A cluster catalog item defines a curated infrastructure offering that references an underlying cluster template.
 // Admins control which fields users can set, enforce defaults, and validate input via JSON Schema.
+//
+// buf:lint:ignore OSAC_OBJECT_SHAPE
 type ClusterCatalogItem struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
 	// Unique identifier of the catalog item.

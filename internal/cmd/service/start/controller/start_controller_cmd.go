@@ -44,9 +44,14 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/baremetalinstance"
 	"github.com/osac-project/fulfillment-service/internal/controllers/cluster"
 	"github.com/osac-project/fulfillment-service/internal/controllers/computeinstance"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalip"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalipattachment"
+	"github.com/osac-project/fulfillment-service/internal/controllers/externalippool"
 	"github.com/osac-project/fulfillment-service/internal/controllers/identityprovider"
+	"github.com/osac-project/fulfillment-service/internal/controllers/natgateway"
 	"github.com/osac-project/fulfillment-service/internal/controllers/onboarding"
 	"github.com/osac-project/fulfillment-service/internal/controllers/project"
+	"github.com/osac-project/fulfillment-service/internal/controllers/projectmembership"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicip"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicipattachment"
 	"github.com/osac-project/fulfillment-service/internal/controllers/publicippool"
@@ -55,10 +60,10 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/controllers/securitygroup"
 	"github.com/osac-project/fulfillment-service/internal/controllers/subnet"
 	"github.com/osac-project/fulfillment-service/internal/controllers/tenant"
+	"github.com/osac-project/fulfillment-service/internal/controllers/user"
 	"github.com/osac-project/fulfillment-service/internal/controllers/virtualnetwork"
 	internalhealth "github.com/osac-project/fulfillment-service/internal/health"
 	"github.com/osac-project/fulfillment-service/internal/idp"
-	"github.com/osac-project/fulfillment-service/internal/idp/keycloak"
 	hubscheme "github.com/osac-project/fulfillment-service/internal/kubernetes/scheme"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/network"
@@ -124,9 +129,10 @@ func Cmd() *cobra.Command {
 	flags.StringVar(
 		&runner.args.idpProvider,
 		"idp-provider",
-		idp.ProviderKeycloak,
+		"",
 		idpProviderFlagHelp,
 	)
+	_ = flags.MarkDeprecated("idp-provider", "This flag is deprecated and ignored. Only Keycloak is supported as the identity provider.")
 	flags.StringVar(
 		&runner.args.idpURL,
 		"idp-url",
@@ -368,14 +374,14 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return fmt.Errorf("failed to create IDP tenant manager: %w", err)
 	}
 
-	// Create the IDP resource manager:
-	r.logger.InfoContext(ctx, "Creating IDP resource manager")
-	resourceManager, err := idp.NewResourceManager().
+	// Create the IDP project group manager:
+	r.logger.InfoContext(ctx, "Creating IDP project group manager")
+	projectGroupManager, err := idp.NewProjectGroupManager().
 		SetLogger(r.logger).
 		SetClient(idpClient).
 		Build()
 	if err != nil {
-		return fmt.Errorf("failed to create IDP resource manager: %w", err)
+		return fmt.Errorf("failed to create IDP project group manager: %w", err)
 	}
 
 	// Create the cluster reconciler:
@@ -711,6 +717,154 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		}
 	}()
 
+	// Create the external IP pool reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP pool reconciler")
+	externalIPPoolReconcilerFunction, err := externalippool.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP pool reconciler function: %w", err)
+	}
+	externalIPPoolReconciler, err := controllers.NewReconciler[*privatev1.ExternalIPPool]().
+		SetLogger(r.logger).
+		SetName("external_ip_pool").
+		SetClient(r.client).
+		SetFunction(externalIPPoolReconcilerFunction).
+		SetEventFilter("has(event.external_ip_pool) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP pool reconciler: %w", err)
+	}
+
+	// Start the external IP pool reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP pool reconciler")
+	go func() {
+		err := externalIPPoolReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP pool reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP pool reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the external IP reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP reconciler")
+	externalIPReconcilerFunction, err := externalip.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP reconciler function: %w", err)
+	}
+	externalIPReconciler, err := controllers.NewReconciler[*privatev1.ExternalIP]().
+		SetLogger(r.logger).
+		SetName("external_ip").
+		SetClient(r.client).
+		SetFunction(externalIPReconcilerFunction).
+		SetEventFilter("has(event.external_ip) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP reconciler: %w", err)
+	}
+
+	// Start the external IP reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP reconciler")
+	go func() {
+		err := externalIPReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the external IP attachment reconciler:
+	r.logger.InfoContext(ctx, "Creating external IP attachment reconciler")
+	externalIPAttachmentReconcilerFunction, err := externalipattachment.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP attachment reconciler function: %w", err)
+	}
+	externalIPAttachmentReconciler, err := controllers.NewReconciler[*privatev1.ExternalIPAttachment]().
+		SetLogger(r.logger).
+		SetName("external_ip_attachment").
+		SetClient(r.client).
+		SetFunction(externalIPAttachmentReconcilerFunction).
+		SetEventFilter("has(event.external_ip_attachment) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create external IP attachment reconciler: %w", err)
+	}
+
+	// Start the external IP attachment reconciler:
+	r.logger.InfoContext(ctx, "Starting external IP attachment reconciler")
+	go func() {
+		err := externalIPAttachmentReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "External IP attachment reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"External IP attachment reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the NAT gateway reconciler:
+	r.logger.InfoContext(ctx, "Creating NAT gateway reconciler")
+	natGatewayReconcilerFunction, err := natgateway.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetHubCache(hubCache).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create NAT gateway reconciler function: %w", err)
+	}
+	natGatewayReconciler, err := controllers.NewReconciler[*privatev1.NATGateway]().
+		SetLogger(r.logger).
+		SetName("nat_gateway").
+		SetClient(r.client).
+		SetFunction(natGatewayReconcilerFunction).
+		SetEventFilter("has(event.nat_gateway) || (has(event.hub) && event.type == EVENT_TYPE_OBJECT_CREATED)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create NAT gateway reconciler: %w", err)
+	}
+
+	// Start the NAT gateway reconciler:
+	r.logger.InfoContext(ctx, "Starting NAT gateway reconciler")
+	go func() {
+		err := natGatewayReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "NAT gateway reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"NAT gateway reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
 	// Create the role reconciler:
 	r.logger.InfoContext(ctx, "Creating role reconciler")
 	roleReconcilerFunction, err := role.NewFunction().
@@ -821,6 +975,43 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		}
 	}()
 
+	// Create the user reconciler:
+	r.logger.InfoContext(ctx, "Creating user reconciler")
+	userReconcilerFunction, err := user.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create user reconciler function: %w", err)
+	}
+	userReconciler, err := controllers.NewReconciler[*privatev1.User]().
+		SetLogger(r.logger).
+		SetName("user").
+		SetClient(r.client).
+		SetFunction(userReconcilerFunction.Run).
+		SetEventFilter("has(event.user)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create user reconciler: %w", err)
+	}
+
+	// Start the user reconciler:
+	r.logger.InfoContext(ctx, "Starting user reconciler")
+	go func() {
+		err := userReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "User reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"User reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
 	// Create the onboarding reconciler:
 	r.logger.InfoContext(ctx, "Creating onboarding reconciler")
 	onboardingReconcilerFunction, err := onboarding.NewFunction().
@@ -863,7 +1054,7 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	projectReconcilerFunction, err := project.NewFunction().
 		SetLogger(r.logger).
 		SetConnection(r.client).
-		SetResourceManager(resourceManager).
+		SetProjectGroupManager(projectGroupManager).
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create project reconciler function: %w", err)
@@ -890,6 +1081,43 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 			r.logger.InfoContext(
 				ctx,
 				"Project reconciler failed",
+				slog.Any("error", err),
+			)
+		}
+	}()
+
+	// Create the project membership reconciler:
+	r.logger.InfoContext(ctx, "Creating project membership reconciler")
+	projectMembershipReconcilerFunction, err := projectmembership.NewFunction().
+		SetLogger(r.logger).
+		SetConnection(r.client).
+		SetIdpClient(idpClient).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build project membership reconciler function: %w", err)
+	}
+	projectMembershipReconciler, err := controllers.NewReconciler[*privatev1.ProjectMembership]().
+		SetLogger(r.logger).
+		SetName("project_membership").
+		SetClient(r.client).
+		SetFunction(projectMembershipReconcilerFunction.Run).
+		SetEventFilter("has(event.project_membership)").
+		SetHealthReporter(healthAggregator).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build project membership reconciler: %w", err)
+	}
+
+	// Start the project membership reconciler:
+	r.logger.InfoContext(ctx, "Starting project membership reconciler")
+	go func() {
+		err := projectMembershipReconciler.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			r.logger.InfoContext(ctx, "Project membership reconciler finished")
+		} else {
+			r.logger.InfoContext(
+				ctx,
+				"Project membership reconciler failed",
 				slog.Any("error", err),
 			)
 		}
@@ -1074,7 +1302,7 @@ func (r *runnerContext) createTokenSource(ctx context.Context, caPool *x509.Cert
 }
 
 // createIDPClient creates the IDP client. The IDP URL and credentials are mandatory.
-func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPool) (idp.Client, error) {
+func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPool) (*idp.Client, error) {
 	if r.args.idpURL == "" {
 		return nil, fmt.Errorf("flag '--idp-url' is required")
 	}
@@ -1155,28 +1383,20 @@ func (r *runnerContext) createIDPClient(ctx context.Context, caPool *x509.CertPo
 		return nil, fmt.Errorf("failed to create IDP token source: %w", err)
 	}
 
-	// Create IDP client based on provider type
-	r.logger.InfoContext(ctx, "Creating IDP client",
-		slog.String("provider", r.args.idpProvider),
-	)
+	// Create Keycloak IDP client:
+	r.logger.InfoContext(ctx, "Creating Keycloak IDP client")
 
-	var idpClient idp.Client
-	switch r.args.idpProvider {
-	case idp.ProviderKeycloak:
-		idpClient, err = keycloak.NewClient().
-			SetLogger(r.logger).
-			SetBaseURL(r.args.idpURL).
-			SetTokenSource(idpTokenSource).
-			SetCaPool(caPool).
-			Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported IDP provider: %s (supported: %s)", r.args.idpProvider, strings.Join(idp.ValidProviders, ", "))
+	idpClient, err := idp.NewClient().
+		SetLogger(r.logger).
+		SetBaseURL(r.args.idpURL).
+		SetTokenSource(idpTokenSource).
+		SetCaPool(caPool).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Keycloak client: %w", err)
 	}
 
-	r.logger.InfoContext(ctx, "IDP client created successfully")
+	r.logger.InfoContext(ctx, "Keycloak IDP client created successfully")
 	return idpClient, nil
 }
 
@@ -1237,7 +1457,8 @@ authentication with the API. Mutually exclusive with
 `
 
 const idpProviderFlagHelp = `
-_PROVIDER_ - Identity provider type. Valid values are {{ bt }}keycloak{{ bt }}.
+_DEPRECATED_ - This flag is deprecated and no longer has any effect.
+Only Keycloak is supported as the identity provider.
 `
 
 const idpUrlFlagHelp = `

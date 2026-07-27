@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
@@ -30,14 +29,17 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/events"
 )
 
-// defaultInstanceTypeStateFilter is the default CEL filter applied to public List requests.
-// It hides OBSOLETE instance types unless the user explicitly filters by state.
-// Uses numeric enum values because CEL types proto enums as int.
-var defaultInstanceTypeStateFilter = fmt.Sprintf(
-	"this.spec.state == %d || this.spec.state == %d",
-	int32(privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE),
-	int32(privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_DEPRECATED),
-)
+// instanceTypeFilterDefaults defines per-field default predicates for public List requests.
+// Each default is applied independently: if the user's filter references a field, that field's
+// default is skipped. Uses numeric enum values because CEL types proto enums as int.
+var instanceTypeFilterDefaults = []filterDefault{
+	{
+		field: "this.spec.state",
+		predicate: fmt.Sprintf("(this.spec.state == %d || this.spec.state == %d)",
+			int32(privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE),
+			int32(privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_DEPRECATED)),
+	},
+}
 
 type InstanceTypesServerBuilder struct {
 	logger            *slog.Logger
@@ -152,9 +154,9 @@ func (s *InstanceTypesServer) List(ctx context.Context,
 	privateRequest := &privatev1.InstanceTypesListRequest{}
 	privateRequest.SetOffset(request.GetOffset())
 	privateRequest.SetLimit(request.GetLimit())
-	composedFilter, err := s.addDefaultStateFilter(request.GetFilter())
+	composedFilter, err := composeFilterDefaults(request.GetFilter(), instanceTypeFilterDefaults)
 	if err != nil {
-		return nil, err
+		return nil, grpcstatus.Errorf(grpccodes.InvalidArgument, "%v", err)
 	}
 	privateRequest.SetFilter(composedFilter)
 	privateRequest.SetOrder(request.GetOrder())
@@ -188,23 +190,6 @@ func (s *InstanceTypesServer) List(ctx context.Context,
 	response.SetTotal(privateResponse.GetTotal())
 	response.SetItems(publicItems)
 	return
-}
-
-// addDefaultStateFilter composes the default state filter with the user-provided filter.
-// If the user provides no filter, returns the default (ACTIVE + DEPRECATED only).
-// If the user explicitly filters by this.spec.state, the default is not applied (allowing OBSOLETE opt-in).
-// Otherwise, the user filter is composed with the default using AND.
-func (s *InstanceTypesServer) addDefaultStateFilter(filter string) (string, error) {
-	if filter == "" {
-		return defaultInstanceTypeStateFilter, nil
-	}
-	if err := validateCELSyntax(filter); err != nil {
-		return "", grpcstatus.Errorf(grpccodes.InvalidArgument, "invalid filter: %v", err)
-	}
-	if strings.Contains(filter, "this.spec.state") {
-		return filter, nil
-	}
-	return "(" + filter + ") && (" + defaultInstanceTypeStateFilter + ")", nil
 }
 
 func (s *InstanceTypesServer) Get(ctx context.Context,

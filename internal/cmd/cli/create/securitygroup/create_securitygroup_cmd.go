@@ -78,8 +78,9 @@ type runnerContext struct {
 		ingressRules   []string
 		egressRules    []string
 	}
-	logger  *slog.Logger
-	console *terminal.Console
+	logger   *slog.Logger
+	console  *terminal.Console
+	settings *config.Settings
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -88,8 +89,8 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	c.logger = logging.LoggerFromContext(ctx)
 	c.console = terminal.ConsoleFromContext(ctx)
 
-	cfg := config.SettingsFromContext(ctx)
-	if !cfg.Armed() {
+	c.settings = config.SettingsFromContext(ctx)
+	if !c.settings.Armed() {
 		return fmt.Errorf("there is no configuration, run the 'login' command")
 	}
 
@@ -106,7 +107,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid egress rule: %w", err)
 	}
 
-	conn, err := cfg.Connect(ctx, cmd.Flags())
+	conn, err := c.settings.Connect(ctx, cmd.Flags())
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC connection: %w", err)
 	}
@@ -130,7 +131,10 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	client := publicv1.NewSecurityGroupsClient(conn)
 
 	sg := publicv1.SecurityGroup_builder{
-		Metadata: publicv1.Metadata_builder{Name: c.args.name, Tenant: config.TenantFromContext(ctx)}.Build(),
+		Metadata: publicv1.Metadata_builder{
+			Name:   c.args.name,
+			Tenant: c.settings.Tenant(),
+		}.Build(),
 		Spec: publicv1.SecurityGroupSpec_builder{
 			VirtualNetwork: vn.GetId(),
 			Ingress:        ingress,

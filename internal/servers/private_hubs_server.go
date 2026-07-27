@@ -84,11 +84,17 @@ func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error
 		return
 	}
 
+	// Create the server early so that we can use its functions to set up other objects:
+	s := &PrivateHubsServer{
+		logger: b.logger,
+	}
+
 	// Create the generic server:
-	generic, err := NewGenericServer[*privatev1.Hub]().
+	s.generic, err = NewGenericServer[*privatev1.Hub]().
 		SetLogger(b.logger).
 		SetService(privatev1.Hubs_ServiceDesc.ServiceName).
 		SetNotifier(b.notifier).
+		SetRedactFunc(s.redact).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
@@ -97,12 +103,18 @@ func (b *PrivateHubsServerBuilder) Build() (result *PrivateHubsServer, err error
 		return
 	}
 
-	// Create and populate the object:
-	result = &PrivateHubsServer{
-		logger:  b.logger,
-		generic: generic,
-	}
+	// Return the server:
+	result = s
 	return
+}
+
+// redact clears sensitive fields from the hub before it is included in event notification payloads.
+func (s *PrivateHubsServer) redact(object *privatev1.Hub) *privatev1.Hub {
+	spec := object.GetSpec()
+	if spec != nil {
+		spec.SetKubeconfig(nil)
+	}
+	return object
 }
 
 func (s *PrivateHubsServer) List(ctx context.Context,

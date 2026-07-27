@@ -92,6 +92,113 @@ var _ = Describe("extractTicket", func() {
 	})
 })
 
+// succeedingOpener is a ticketOpener stub that returns a fixed ticket.
+type succeedingOpener struct {
+	ticket *console.Ticket
+}
+
+func (s *succeedingOpener) Open(_ context.Context, _ string) (*console.Ticket, error) {
+	return s.ticket, nil
+}
+
+var _ = Describe("ServeHTTP ConnectBackend error handling", func() {
+	It("should return 409 when backend reports an active session", func() {
+		backend := &mockBackendForServer{conn: newMockConn("")}
+		manager, err := console.NewManager().
+			SetLogger(logger).
+			AddBackend("compute_instance", backend).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+
+		ticket := &console.Ticket{
+			User:        "user-a",
+			ClientID:    "client-1",
+			ConsoleType: "vnc",
+			TargetURI:   "wss://hub:6443/test/vnc",
+			TargetToken: "tok",
+		}
+
+		// Occupy the session so the next connect gets ErrSessionExists.
+		target := console.Target{
+			ResourceType: console.ResourceTypeComputeInstance,
+			BackendURI:   ticket.TargetURI,
+			BackendToken: ticket.TargetToken,
+		}
+		result, err := manager.Connect(context.Background(), target, "user-a", "client-1")
+		Expect(err).NotTo(HaveOccurred())
+		defer result.Conn.Close()
+
+		core, err := NewConsoleProxyCore().
+			SetLogger(logger).
+			SetOpener(console.NewTicketOpener(nil)).
+			SetManager(manager).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+		core.opener = &succeedingOpener{ticket: ticket}
+
+		handler := &ConsoleProxyWSHandler{
+			core:           core,
+			allowedOrigins: []string{"*"},
+		}
+
+		// Second connect with different clientID triggers ErrSessionExists.
+		secondTicket := &console.Ticket{
+			User:        "user-b",
+			ClientID:    "client-2",
+			ConsoleType: "vnc",
+			TargetURI:   "wss://hub:6443/test/vnc",
+			TargetToken: "tok",
+		}
+		core.opener = &succeedingOpener{ticket: secondTicket}
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer some-ticket")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		Expect(w.Code).To(Equal(http.StatusConflict))
+		Expect(w.Body.String()).To(ContainSubstring("console session already active"))
+	})
+
+	It("should return 502 for generic backend errors", func() {
+		backend := &mockBackendForServer{
+			connErr: errors.New("dial backend failed"),
+		}
+		manager, err := console.NewManager().
+			SetLogger(logger).
+			AddBackend("compute_instance", backend).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+
+		ticket := &console.Ticket{
+			User:        "user-a",
+			ClientID:    "client-1",
+			ConsoleType: "vnc",
+			TargetURI:   "wss://hub:6443/test/vnc",
+			TargetToken: "tok",
+		}
+
+		core, err := NewConsoleProxyCore().
+			SetLogger(logger).
+			SetOpener(console.NewTicketOpener(nil)).
+			SetManager(manager).
+			Build()
+		Expect(err).NotTo(HaveOccurred())
+		core.opener = &succeedingOpener{ticket: ticket}
+
+		handler := &ConsoleProxyWSHandler{
+			core:           core,
+			allowedOrigins: []string{"*"},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer some-ticket")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		Expect(w.Code).To(Equal(http.StatusBadGateway))
+		Expect(w.Body.String()).To(ContainSubstring("failed to connect to console backend"))
+	})
+})
+
 var _ = Describe("ServeHTTP Origin enforcement", func() {
 	It("should return 403 for cookie auth without Origin header", func() {
 		handler := &ConsoleProxyWSHandler{

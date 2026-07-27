@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
+	grpcmetadata "google.golang.org/grpc/metadata"
 
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database"
@@ -122,3 +123,8 @@ var _ = BeforeEach(func() {
 	})
 	ctx = database.TxIntoContext(ctx, tx)
 })
+
+func dryRunCtx() context.Context {
+	md := grpcmetadata.Pairs(DryRunMetadataKey, "true")
+	return grpcmetadata.NewIncomingContext(ctx, md)
+}

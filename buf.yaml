@@ -17,12 +17,16 @@ version: v2
 lint:
   use:
   - STANDARD
+  - OSAC_OBJECT_SHAPE
   except:
   - SERVICE_SUFFIX
 
 breaking:
   use:
   - FILE
+
+plugins:
+- plugin: bin/buf-plugin-osac-lint
 
 modules:
 
@@ -35,3 +39,4 @@ modules:
 deps:
 - buf.build/googleapis/googleapis
 - buf.build/grpc-ecosystem/grpc-gateway
+- buf.build/bufbuild/protovalidate

@@ -18,17 +18,56 @@ import logging
 import click
 
 from . import commands
+from . import dirs
 from . import setup
 
 
-@click.command()
-def lint() -> None:
+@click.group(invoke_without_command=True)
+@click.pass_context
+def lint(ctx) -> None:
     """
-    Runs the linter.
+    Runs the linters. When no sub-command is specified it runs all of them.
     """
-    logging.info("Running linter")
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(go)
+        ctx.invoke(proto)
+
+
+@lint.command()
+def go() -> None:
+    """
+    Runs the Go linter.
+    """
+    logging.info("Running Go linter")
     setup.install_golangci_lint()
     commands.run(
         args=["golangci-lint", "run"],
+        check=True,
+    )
+
+
+@lint.command()
+def proto() -> None:
+    """
+    Runs the Protobuf linter.
+    """
+    project_dir = dirs.project()
+    bin_dir = dirs.bin()
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    plugin_file = bin_dir / "buf-plugin-osac-lint"
+
+    logging.info("Building 'buf-plugin-osac-lint'")
+    commands.run(
+        args=[
+            "go", "build",
+            "-o", f"{plugin_file.relative_to(project_dir)}",
+            "./cmd/buf-plugin-osac-lint",
+        ],
+        check=True,
+    )
+
+    logging.info("Running Protobuf linter")
+    commands.run(
+        args=["buf", "lint"],
         check=True,
     )

@@ -15,6 +15,7 @@ package projectmembership
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -109,16 +110,16 @@ var _ = Describe("Default Values", func() {
 })
 
 var _ = Describe("Role to Group Suffix Mapping", func() {
-	It("should map VIEWER role to viewers suffix", func() {
+	It("should map VIEWER role to system:viewers suffix", func() {
 		t := &task{}
 		suffix := t.mapRoleToGroupSuffix(privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER)
-		Expect(suffix).To(Equal("viewers"))
+		Expect(suffix).To(Equal("system:viewers"))
 	})
 
-	It("should map MANAGER role to managers suffix", func() {
+	It("should map MANAGER role to system:managers suffix", func() {
 		t := &task{}
 		suffix := t.mapRoleToGroupSuffix(privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER)
-		Expect(suffix).To(Equal("managers"))
+		Expect(suffix).To(Equal("system:managers"))
 	})
 
 	It("should return empty string for unspecified role", func() {
@@ -134,7 +135,7 @@ var _ = Describe("Project Group Path Building", func() {
 		mockProjectsClient           *MockProjectsClient
 		mockProjectMembershipsClient *MockProjectMembershipsClient
 		mockUsersClient              *MockUsersClient
-		mockIdpClient                *idp.MockClient
+		mockIdpClient                *idp.MockClientInterface
 		ctx                          context.Context
 		functionObj                  *function
 	)
@@ -144,7 +145,7 @@ var _ = Describe("Project Group Path Building", func() {
 		mockProjectsClient = NewMockProjectsClient(ctrl)
 		mockProjectMembershipsClient = NewMockProjectMembershipsClient(ctrl)
 		mockUsersClient = NewMockUsersClient(ctrl)
-		mockIdpClient = idp.NewMockClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
 		functionObj = &function{
@@ -173,9 +174,9 @@ var _ = Describe("Project Group Path Building", func() {
 				r: functionObj,
 			}
 
-			path, err := task.buildProjectGroupPath(ctx, project, "managers")
+			path, err := task.buildProjectGroupPath(ctx, project, "system:managers")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(path).To(Equal("/my-project/managers"))
+			Expect(path).To(Equal("/my-project/system:managers"))
 		})
 
 		It("should build path with viewers suffix", func() {
@@ -190,9 +191,9 @@ var _ = Describe("Project Group Path Building", func() {
 				r: functionObj,
 			}
 
-			path, err := task.buildProjectGroupPath(ctx, project, "viewers")
+			path, err := task.buildProjectGroupPath(ctx, project, "system:viewers")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(path).To(Equal("/my-project/viewers"))
+			Expect(path).To(Equal("/my-project/system:viewers"))
 		})
 	})
 
@@ -221,9 +222,9 @@ var _ = Describe("Project Group Path Building", func() {
 				r: functionObj,
 			}
 
-			path, err := task.buildProjectGroupPath(ctx, childProject, "managers")
+			path, err := task.buildProjectGroupPath(ctx, childProject, "system:managers")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(path).To(Equal("/parent/child/managers"))
+			Expect(path).To(Equal("/parent/child/system:managers"))
 		})
 
 		It("should build hierarchical path for two-level nesting", func() {
@@ -264,9 +265,9 @@ var _ = Describe("Project Group Path Building", func() {
 				r: functionObj,
 			}
 
-			path, err := task.buildProjectGroupPath(ctx, childProject, "viewers")
+			path, err := task.buildProjectGroupPath(ctx, childProject, "system:viewers")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(path).To(Equal("/root/parent/child/viewers"))
+			Expect(path).To(Equal("/root/parent/child/system:viewers"))
 		})
 
 		It("should build hierarchical path for three-level nesting", func() {
@@ -320,9 +321,9 @@ var _ = Describe("Project Group Path Building", func() {
 				r: functionObj,
 			}
 
-			path, err := task.buildProjectGroupPath(ctx, componentProject, "managers")
+			path, err := task.buildProjectGroupPath(ctx, componentProject, "system:managers")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(path).To(Equal("/org/team/product/component/managers"))
+			Expect(path).To(Equal("/org/team/product/component/system:managers"))
 		})
 	})
 
@@ -377,7 +378,7 @@ var _ = Describe("Project Group Path Building", func() {
 				r: functionObj,
 			}
 
-			path, err := task.buildProjectGroupPath(ctx, deepProject, "managers")
+			path, err := task.buildProjectGroupPath(ctx, deepProject, "system:managers")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("exceeded maximum depth"))
 			Expect(err.Error()).To(ContainSubstring("circular reference"))
@@ -392,7 +393,7 @@ var _ = Describe("Synchronization", func() {
 		mockProjectsClient           *MockProjectsClient
 		mockProjectMembershipsClient *MockProjectMembershipsClient
 		mockUsersClient              *MockUsersClient
-		mockIdpClient                *idp.MockClient
+		mockIdpClient                *idp.MockClientInterface
 		ctx                          context.Context
 		functionObj                  *function
 	)
@@ -402,7 +403,7 @@ var _ = Describe("Synchronization", func() {
 		mockProjectsClient = NewMockProjectsClient(ctrl)
 		mockProjectMembershipsClient = NewMockProjectMembershipsClient(ctrl)
 		mockUsersClient = NewMockUsersClient(ctrl)
-		mockIdpClient = idp.NewMockClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
 		functionObj = &function{
@@ -438,10 +439,12 @@ var _ = Describe("Synchronization", func() {
 			}.Build()
 
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("user-id"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "project-id",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					Users: []string{"user-id"},
+					Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
@@ -457,7 +460,7 @@ var _ = Describe("Synchronization", func() {
 				Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
 
 			mockIdpClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "acme", "/my-project/managers").
+				GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:managers").
 				Return("group-id", nil)
 
 			mockIdpClient.EXPECT().
@@ -473,6 +476,7 @@ var _ = Describe("Synchronization", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(membership.GetStatus().GetState()).To(Equal(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY))
 			Expect(membership.GetStatus().GetMessage()).To(Equal(""))
+			Expect(membership.GetStatus().GetUsers()).To(Equal([]string{"user-id"}))
 		})
 	})
 
@@ -504,10 +508,12 @@ var _ = Describe("Synchronization", func() {
 			}.Build()
 
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("user-id"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "child-project-id",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					Users: []string{"user-id"},
+					Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
@@ -528,7 +534,7 @@ var _ = Describe("Synchronization", func() {
 				Return(&privatev1.ProjectsGetResponse{Object: parentProject}, nil)
 
 			mockIdpClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "acme", "/parent/child/viewers").
+				GetGroupIDByPath(gomock.Any(), "acme", "/parent/child/system:viewers").
 				Return("group-id", nil)
 
 			mockIdpClient.EXPECT().
@@ -543,21 +549,40 @@ var _ = Describe("Synchronization", func() {
 			err := task.syncProjectMembership(ctx)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(membership.GetStatus().GetState()).To(Equal(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY))
+			Expect(membership.GetStatus().GetUsers()).To(Equal([]string{"user-id"}))
 		})
 	})
 
 	Context("Error handling", func() {
 		It("should fail when user does not exist", func() {
+			project := privatev1.Project_builder{
+				Metadata: privatev1.Metadata_builder{
+					Name:   "my-project",
+					Tenant: "acme",
+				}.Build(),
+				Spec: privatev1.ProjectSpec_builder{}.Build(),
+			}.Build()
+
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("nonexistent-user"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "project-id",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					Users: []string{"nonexistent-user"},
+					Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
 				}.Build(),
 			}.Build()
+
+			mockProjectsClient.EXPECT().
+				Get(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
+
+			mockIdpClient.EXPECT().
+				GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:managers").
+				Return("group-id", nil)
 
 			mockUsersClient.EXPECT().
 				Get(gomock.Any(), gomock.Any()).
@@ -571,35 +596,23 @@ var _ = Describe("Synchronization", func() {
 			err := task.syncProjectMembership(ctx)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(membership.GetStatus().GetState()).To(Equal(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED))
-			Expect(membership.GetStatus().GetMessage()).To(ContainSubstring("Failed to fetch user"))
+			Expect(membership.GetStatus().GetMessage()).To(ContainSubstring("failed to fetch user"))
 		})
 
 		It("should fail when project does not exist", func() {
-			user := privatev1.User_builder{
-				Spec: privatev1.UserSpec_builder{
-					Username: "alice",
-				}.Build(),
-				Status: privatev1.UserStatus_builder{
-					KeycloakUserId: "keycloak-alice-id",
-				}.Build(),
-			}.Build()
-
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("user-id"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "nonexistent-project",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					Users: []string{"user-id"},
+					Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
 				}.Build(),
 			}.Build()
 
-			mockUsersClient.EXPECT().
-				Get(gomock.Any(), gomock.Any()).
-				Return(&privatev1.UsersGetResponse{Object: user}, nil)
-
-			// getProjectByNameOrID will try Get first, then List
 			mockProjectsClient.EXPECT().
 				Get(gomock.Any(), gomock.Any()).
 				Return(nil, status.Error(codes.NotFound, "project not found"))
@@ -620,15 +633,6 @@ var _ = Describe("Synchronization", func() {
 		})
 
 		It("should fail when authorization group does not exist", func() {
-			user := privatev1.User_builder{
-				Spec: privatev1.UserSpec_builder{
-					Username: "alice",
-				}.Build(),
-				Status: privatev1.UserStatus_builder{
-					KeycloakUserId: "keycloak-alice-id",
-				}.Build(),
-			}.Build()
-
 			project := privatev1.Project_builder{
 				Metadata: privatev1.Metadata_builder{
 					Name:   "my-project",
@@ -638,26 +642,24 @@ var _ = Describe("Synchronization", func() {
 			}.Build()
 
 			membership := privatev1.ProjectMembership_builder{
-				Spec: privatev1.ProjectMembershipSpec_builder{
-					User:    new("user-id"),
+				Metadata: privatev1.Metadata_builder{
 					Project: "project-id",
-					Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				}.Build(),
+				Spec: privatev1.ProjectMembershipSpec_builder{
+					Users: []string{"user-id"},
+					Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
 				}.Build(),
 				Status: privatev1.ProjectMembershipStatus_builder{
 					State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING,
 				}.Build(),
 			}.Build()
 
-			mockUsersClient.EXPECT().
-				Get(gomock.Any(), gomock.Any()).
-				Return(&privatev1.UsersGetResponse{Object: user}, nil)
-
 			mockProjectsClient.EXPECT().
 				Get(gomock.Any(), gomock.Any()).
 				Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
 
 			mockIdpClient.EXPECT().
-				GetGroupIDByPath(gomock.Any(), "acme", "/my-project/managers").
+				GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:managers").
 				Return("", status.Error(codes.NotFound, "group not found"))
 
 			task := &task{
@@ -679,7 +681,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		mockProjectsClient           *MockProjectsClient
 		mockProjectMembershipsClient *MockProjectMembershipsClient
 		mockUsersClient              *MockUsersClient
-		mockIdpClient                *idp.MockClient
+		mockIdpClient                *idp.MockClientInterface
 		ctx                          context.Context
 		functionObj                  *function
 	)
@@ -689,7 +691,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		mockProjectsClient = NewMockProjectsClient(ctrl)
 		mockProjectMembershipsClient = NewMockProjectMembershipsClient(ctrl)
 		mockUsersClient = NewMockUsersClient(ctrl)
-		mockIdpClient = idp.NewMockClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
 		functionObj = &function{
@@ -705,7 +707,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		ctrl.Finish()
 	})
 
-	It("should remove user from authorization group on deletion", func() {
+	It("should remove users from authorization group on deletion", func() {
 		user := privatev1.User_builder{
 			Spec: privatev1.UserSpec_builder{
 				Username: "alice",
@@ -726,25 +728,28 @@ var _ = Describe("Deletion Cleanup", func() {
 		membership := privatev1.ProjectMembership_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "project-id",
 			}.Build(),
 			Spec: privatev1.ProjectMembershipSpec_builder{
-				User:    new("user-id"),
-				Project: "project-id",
-				Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				Users: []string{"user-id"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				Users: []string{"user-id"},
 			}.Build(),
 		}.Build()
-
-		mockUsersClient.EXPECT().
-			Get(gomock.Any(), gomock.Any()).
-			Return(&privatev1.UsersGetResponse{Object: user}, nil)
 
 		mockProjectsClient.EXPECT().
 			Get(gomock.Any(), gomock.Any()).
 			Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
 
 		mockIdpClient.EXPECT().
-			GetGroupIDByPath(gomock.Any(), "acme", "/my-project/managers").
+			GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:managers").
 			Return("group-id", nil)
+
+		mockUsersClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.UsersGetResponse{Object: user}, nil)
 
 		mockIdpClient.EXPECT().
 			RemoveUserFromGroup(gomock.Any(), "acme", "keycloak-alice-id", "group-id").
@@ -760,7 +765,7 @@ var _ = Describe("Deletion Cleanup", func() {
 		Expect(membership.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.ProjectMembershipFinalizer))
 	})
 
-	It("should remove user from nested project authorization group on deletion", func() {
+	It("should remove users from nested project authorization group on deletion", func() {
 		user := privatev1.User_builder{
 			Spec: privatev1.UserSpec_builder{
 				Username: "alice",
@@ -789,30 +794,32 @@ var _ = Describe("Deletion Cleanup", func() {
 		membership := privatev1.ProjectMembership_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "child-project-id",
 			}.Build(),
 			Spec: privatev1.ProjectMembershipSpec_builder{
-				User:    new("user-id"),
-				Project: "child-project-id",
-				Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
+				Users: []string{"user-id"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				Users: []string{"user-id"},
 			}.Build(),
 		}.Build()
-
-		mockUsersClient.EXPECT().
-			Get(gomock.Any(), gomock.Any()).
-			Return(&privatev1.UsersGetResponse{Object: user}, nil)
 
 		mockProjectsClient.EXPECT().
 			Get(gomock.Any(), gomock.Any()).
 			Return(&privatev1.ProjectsGetResponse{Object: childProject}, nil)
 
-		// buildProjectGroupPath will fetch parent
 		mockProjectsClient.EXPECT().
 			Get(gomock.Any(), gomock.Any()).
 			Return(&privatev1.ProjectsGetResponse{Object: parentProject}, nil)
 
 		mockIdpClient.EXPECT().
-			GetGroupIDByPath(gomock.Any(), "acme", "/parent/child/viewers").
+			GetGroupIDByPath(gomock.Any(), "acme", "/parent/child/system:viewers").
 			Return("group-id", nil)
+
+		mockUsersClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.UsersGetResponse{Object: user}, nil)
 
 		mockIdpClient.EXPECT().
 			RemoveUserFromGroup(gomock.Any(), "acme", "keycloak-alice-id", "group-id").
@@ -828,17 +835,388 @@ var _ = Describe("Deletion Cleanup", func() {
 		Expect(membership.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.ProjectMembershipFinalizer))
 	})
 
-	It("should remove finalizer even if cleanup fails", func() {
+	It("should remove finalizer when project not found during cleanup", func() {
 		membership := privatev1.ProjectMembership_builder{
 			Metadata: privatev1.Metadata_builder{
 				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "project-id",
 			}.Build(),
 			Spec: privatev1.ProjectMembershipSpec_builder{
-				User:    new("user-id"),
-				Project: "project-id",
-				Role:    privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+				Users: []string{"user-id"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				Users: []string{"user-id"},
 			}.Build(),
 		}.Build()
+
+		mockProjectsClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(nil, status.Error(codes.NotFound, "project not found"))
+
+		mockProjectsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectsListResponse{Items: []*privatev1.Project{}}, nil)
+
+		task := &task{
+			r:          functionObj,
+			membership: membership,
+		}
+
+		err := task.delete(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(membership.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.ProjectMembershipFinalizer))
+	})
+
+	It("should handle group not found during cleanup with gRPC status code", func() {
+		project := privatev1.Project_builder{
+			Metadata: privatev1.Metadata_builder{
+				Name:   "my-project",
+				Tenant: "acme",
+			}.Build(),
+			Spec: privatev1.ProjectSpec_builder{}.Build(),
+		}.Build()
+
+		membership := privatev1.ProjectMembership_builder{
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "project-id",
+			}.Build(),
+			Spec: privatev1.ProjectMembershipSpec_builder{
+				Users: []string{"user-id"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				Users: []string{"user-id"},
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
+
+		mockIdpClient.EXPECT().
+			GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:managers").
+			Return("", status.Error(codes.NotFound, "group not found"))
+
+		task := &task{
+			r:          functionObj,
+			membership: membership,
+		}
+
+		err := task.delete(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(membership.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.ProjectMembershipFinalizer))
+	})
+
+	It("should handle group not found during cleanup with wrapped error message", func() {
+		project := privatev1.Project_builder{
+			Metadata: privatev1.Metadata_builder{
+				Name:   "my-project",
+				Tenant: "acme",
+			}.Build(),
+			Spec: privatev1.ProjectSpec_builder{}.Build(),
+		}.Build()
+
+		membership := privatev1.ProjectMembership_builder{
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.ProjectMembershipFinalizer},
+				Project:    "project-id",
+			}.Build(),
+			Spec: privatev1.ProjectMembershipSpec_builder{
+				Users: []string{"user-id"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				Users: []string{"user-id"},
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
+
+		mockIdpClient.EXPECT().
+			GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:viewers").
+			Return("", fmt.Errorf("wrapped error: group not found in keycloak"))
+
+		task := &task{
+			r:          functionObj,
+			membership: membership,
+		}
+
+		err := task.delete(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(membership.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.ProjectMembershipFinalizer))
+	})
+})
+
+var _ = Describe("User List Change Handling", func() {
+	var (
+		ctrl                         *gomock.Controller
+		mockProjectsClient           *MockProjectsClient
+		mockProjectMembershipsClient *MockProjectMembershipsClient
+		mockUsersClient              *MockUsersClient
+		mockIdpClient                *idp.MockClientInterface
+		ctx                          context.Context
+		functionObj                  *function
+	)
+
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		mockProjectsClient = NewMockProjectsClient(ctrl)
+		mockProjectMembershipsClient = NewMockProjectMembershipsClient(ctrl)
+		mockUsersClient = NewMockUsersClient(ctrl)
+		mockIdpClient = idp.NewMockClientInterface(ctrl)
+		ctx = context.Background()
+
+		functionObj = &function{
+			logger:                   logger,
+			projectMembershipsClient: mockProjectMembershipsClient,
+			projectsClient:           mockProjectsClient,
+			usersClient:              mockUsersClient,
+			idpClient:                mockIdpClient,
+		}
+	})
+
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
+	It("should add new users when spec.users grows", func() {
+		newUser := privatev1.User_builder{
+			Status: privatev1.UserStatus_builder{
+				KeycloakUserId: "keycloak-new-id",
+			}.Build(),
+		}.Build()
+
+		project := privatev1.Project_builder{
+			Metadata: privatev1.Metadata_builder{
+				Name:   "my-project",
+				Tenant: "acme",
+			}.Build(),
+			Spec: privatev1.ProjectSpec_builder{}.Build(),
+		}.Build()
+
+		membership := privatev1.ProjectMembership_builder{
+			Metadata: privatev1.Metadata_builder{
+				Project: "project-id",
+			}.Build(),
+			Spec: privatev1.ProjectMembershipSpec_builder{
+				Users: []string{"existing-user", "new-user"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY,
+				Users: []string{"existing-user"},
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
+
+		mockIdpClient.EXPECT().
+			GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:managers").
+			Return("group-id", nil)
+
+		mockUsersClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.UsersGetResponse{Object: newUser}, nil)
+
+		mockIdpClient.EXPECT().
+			AddUserToGroup(gomock.Any(), "acme", "keycloak-new-id", "group-id").
+			Return(nil)
+
+		task := &task{
+			r:          functionObj,
+			membership: membership,
+		}
+
+		err := task.handleUserListChange(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(membership.GetStatus().GetUsers()).To(Equal([]string{"existing-user", "new-user"}))
+	})
+
+	It("should remove users when spec.users shrinks", func() {
+		removedUser := privatev1.User_builder{
+			Status: privatev1.UserStatus_builder{
+				KeycloakUserId: "keycloak-removed-id",
+			}.Build(),
+		}.Build()
+
+		project := privatev1.Project_builder{
+			Metadata: privatev1.Metadata_builder{
+				Name:   "my-project",
+				Tenant: "acme",
+			}.Build(),
+			Spec: privatev1.ProjectSpec_builder{}.Build(),
+		}.Build()
+
+		membership := privatev1.ProjectMembership_builder{
+			Metadata: privatev1.Metadata_builder{
+				Project: "project-id",
+			}.Build(),
+			Spec: privatev1.ProjectMembershipSpec_builder{
+				Users: []string{"remaining-user"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY,
+				Users: []string{"remaining-user", "removed-user"},
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
+
+		mockIdpClient.EXPECT().
+			GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:managers").
+			Return("group-id", nil)
+
+		mockUsersClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.UsersGetResponse{Object: removedUser}, nil)
+
+		mockIdpClient.EXPECT().
+			RemoveUserFromGroup(gomock.Any(), "acme", "keycloak-removed-id", "group-id").
+			Return(nil)
+
+		task := &task{
+			r:          functionObj,
+			membership: membership,
+		}
+
+		err := task.handleUserListChange(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(membership.GetStatus().GetUsers()).To(Equal([]string{"remaining-user"}))
+	})
+
+	It("should add and remove users simultaneously", func() {
+		newUser := privatev1.User_builder{
+			Status: privatev1.UserStatus_builder{
+				KeycloakUserId: "keycloak-new-id",
+			}.Build(),
+		}.Build()
+
+		removedUser := privatev1.User_builder{
+			Status: privatev1.UserStatus_builder{
+				KeycloakUserId: "keycloak-removed-id",
+			}.Build(),
+		}.Build()
+
+		project := privatev1.Project_builder{
+			Metadata: privatev1.Metadata_builder{
+				Name:   "my-project",
+				Tenant: "acme",
+			}.Build(),
+			Spec: privatev1.ProjectSpec_builder{}.Build(),
+		}.Build()
+
+		membership := privatev1.ProjectMembership_builder{
+			Metadata: privatev1.Metadata_builder{
+				Project: "project-id",
+			}.Build(),
+			Spec: privatev1.ProjectMembershipSpec_builder{
+				Users: []string{"kept-user", "new-user"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_VIEWER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY,
+				Users: []string{"kept-user", "removed-user"},
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
+
+		mockIdpClient.EXPECT().
+			GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:viewers").
+			Return("group-id", nil)
+
+		mockUsersClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.UsersGetResponse{Object: removedUser}, nil)
+
+		mockIdpClient.EXPECT().
+			RemoveUserFromGroup(gomock.Any(), "acme", "keycloak-removed-id", "group-id").
+			Return(nil)
+
+		mockUsersClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.UsersGetResponse{Object: newUser}, nil)
+
+		mockIdpClient.EXPECT().
+			AddUserToGroup(gomock.Any(), "acme", "keycloak-new-id", "group-id").
+			Return(nil)
+
+		task := &task{
+			r:          functionObj,
+			membership: membership,
+		}
+
+		err := task.handleUserListChange(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(membership.GetStatus().GetUsers()).To(Equal([]string{"kept-user", "new-user"}))
+	})
+
+	It("should be a no-op when user lists are identical", func() {
+		membership := privatev1.ProjectMembership_builder{
+			Metadata: privatev1.Metadata_builder{
+				Project: "project-id",
+			}.Build(),
+			Spec: privatev1.ProjectMembershipSpec_builder{
+				Users: []string{"user-a", "user-b"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY,
+				Users: []string{"user-a", "user-b"},
+			}.Build(),
+		}.Build()
+
+		task := &task{
+			r:          functionObj,
+			membership: membership,
+		}
+
+		err := task.handleUserListChange(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(membership.GetStatus().GetState()).To(Equal(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY))
+	})
+
+	It("should set FAILED state when adding a user fails", func() {
+		project := privatev1.Project_builder{
+			Metadata: privatev1.Metadata_builder{
+				Name:   "my-project",
+				Tenant: "acme",
+			}.Build(),
+			Spec: privatev1.ProjectSpec_builder{}.Build(),
+		}.Build()
+
+		membership := privatev1.ProjectMembership_builder{
+			Metadata: privatev1.Metadata_builder{
+				Project: "project-id",
+			}.Build(),
+			Spec: privatev1.ProjectMembershipSpec_builder{
+				Users: []string{"existing-user", "failing-user"},
+				Role:  privatev1.ProjectMembershipRole_PROJECT_MEMBERSHIP_ROLE_MANAGER,
+			}.Build(),
+			Status: privatev1.ProjectMembershipStatus_builder{
+				State: privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY,
+				Users: []string{"existing-user"},
+			}.Build(),
+		}.Build()
+
+		mockProjectsClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectsGetResponse{Object: project}, nil)
+
+		mockIdpClient.EXPECT().
+			GetGroupIDByPath(gomock.Any(), "acme", "/my-project/system:managers").
+			Return("group-id", nil)
 
 		mockUsersClient.EXPECT().
 			Get(gomock.Any(), gomock.Any()).
@@ -849,8 +1227,9 @@ var _ = Describe("Deletion Cleanup", func() {
 			membership: membership,
 		}
 
-		err := task.delete(ctx)
+		err := task.handleUserListChange(ctx)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(membership.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.ProjectMembershipFinalizer))
+		Expect(membership.GetStatus().GetState()).To(Equal(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED))
+		Expect(membership.GetStatus().GetMessage()).To(ContainSubstring("Failed to sync user changes"))
 	})
 })

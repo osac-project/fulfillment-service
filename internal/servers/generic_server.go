@@ -22,8 +22,10 @@ import (
 	"strings"
 	"sync"
 
+	"buf.build/go/protovalidate"
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
+	grpcmetadata "google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -46,7 +48,7 @@ type GenericServerBuilder[O dao.Object] struct {
 	table             string
 	ignoredFields     []any
 	notifier          events.Notifier
-	nameValidator     func(context.Context, string) error
+	redactFunc        func(O) O
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
@@ -58,7 +60,6 @@ type GenericServer[O dao.Object] struct {
 	logger           *slog.Logger
 	service          string
 	dao              *dao.GenericDAO[O]
-	nameValidator    func(context.Context, string) error
 	attributionLogic auth.AttributionLogic
 	tenancyLogic     auth.TenancyLogic
 	template         proto.Message
@@ -76,9 +77,12 @@ type GenericServer[O dao.Object] struct {
 	signalRequest    proto.Message
 	signalResponse   proto.Message
 	notifier         events.Notifier
+	redactFunc       func(O) O
+	payloadField     protoreflect.FieldDescriptor
 	pathCompiler     *masks.PathCompiler[O]
 	pathCache        map[string]*masks.Path[O]
 	pathCacheLock    *sync.Mutex
+	validator        protovalidate.Validator
 }
 
 type metadataIface interface {
@@ -141,10 +145,11 @@ func (b *GenericServerBuilder[O]) SetNotifier(value events.Notifier) *GenericSer
 	return b
 }
 
-// SetNameValidator sets the validator that will be used to validate the name of objects. This is optional. If not set,
-// the default DNS label validation will be used.
-func (b *GenericServerBuilder[O]) SetNameValidator(value func(context.Context, string) error) *GenericServerBuilder[O] {
-	b.nameValidator = value
+// SetRedactFunc sets a function that will be called to redact sensitive fields from objects before they are included in
+// event notification payloads. The function receives a clone of the object and should return it with the sensitive
+// fields cleared. This is optional.
+func (b *GenericServerBuilder[O]) SetRedactFunc(value func(O) O) *GenericServerBuilder[O] {
+	b.redactFunc = value
 	return b
 }
 
@@ -197,6 +202,13 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		return
 	}
 
+	// Create the protovalidate validator:
+	validator, err := protovalidate.New()
+	if err != nil {
+		err = fmt.Errorf("failed to create protovalidate validator: %w", err)
+		return
+	}
+
 	// Create the object early so that we can use its methods as callbacks:
 	s := &GenericServer[O]{
 		logger:           b.logger,
@@ -207,14 +219,11 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		pathCompiler:     pathCompiler,
 		pathCache:        map[string]*masks.Path[O]{},
 		pathCacheLock:    &sync.Mutex{},
+		validator:        validator,
 	}
 
-	// Prepare the name validator:
-	if b.nameValidator != nil {
-		s.nameValidator = b.nameValidator
-	} else {
-		s.nameValidator = s.validateName
-	}
+	// Set the redact function:
+	s.redactFunc = b.redactFunc
 
 	// Create the DAO:
 	daoBuilder := dao.NewGenericDAO[O]()
@@ -282,6 +291,12 @@ func (b *GenericServerBuilder[O]) Build() (result *GenericServer[O], err error) 
 		return
 	}
 
+	// Find the payload field in the event message:
+	s.payloadField, err = b.findPayloadField()
+	if err != nil {
+		return
+	}
+
 	result = s
 	return
 }
@@ -305,16 +320,6 @@ func (b *GenericServerBuilder[O]) findService() (result protoreflect.ServiceDesc
 	}
 	return
 }
-
-// Names of gRPC methods:
-const (
-	listMethod   = "List"
-	getMethod    = "Get"
-	createMethod = "Create"
-	updateMethod = "Update"
-	deleteMethod = "Delete"
-	signalMethod = "Signal"
-)
 
 // findRequestAndResponse finds the request and response message types for the given method.
 func (b *GenericServerBuilder[O]) findRequestAndResponse(service protoreflect.ServiceDescriptor,
@@ -345,6 +350,30 @@ func (b *GenericServerBuilder[O]) findRequestAndResponse(service protoreflect.Se
 	return
 }
 
+// findPayloadField finds the field in the event message that corresponds to this object type. This is used later to
+// set the payload of event notifications without having to iterate the oneof fields every time. Returns nil if there
+// is no such field.
+func (b *GenericServerBuilder[O]) findPayloadField() (result protoreflect.FieldDescriptor, err error) {
+	var objectTempl O
+	objectDesc := objectTempl.ProtoReflect().Descriptor()
+	var eventTempl *privatev1.Event
+	eventDesc := eventTempl.ProtoReflect().Descriptor()
+	oneofDesc := eventDesc.Oneofs().ByName(eventPayloadField)
+	if oneofDesc == nil {
+		err = fmt.Errorf("failed to find the 'payload' field of the event type '%s'", eventDesc.FullName())
+		return
+	}
+	oneofFields := oneofDesc.Fields()
+	for i := range oneofFields.Len() {
+		payloadField := oneofFields.Get(i)
+		if payloadField.Message() != nil && payloadField.Message() == objectDesc {
+			result = payloadField
+			break
+		}
+	}
+	return
+}
+
 func (s *GenericServer[O]) List(ctx context.Context, request any, response any) error {
 	// Extract the request message:
 	type requestIface interface {
@@ -364,6 +393,10 @@ func (s *GenericServer[O]) List(ctx context.Context, request any, response any) 
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
 			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+		}
+		var deadlockErr *dao.ErrDeadlock
+		if errors.As(err, &deadlockErr) {
+			return grpcstatus.Errorf(grpccodes.Aborted, "%s", deadlockErr.Error())
 		}
 		s.logger.ErrorContext(
 			ctx,
@@ -412,6 +445,10 @@ func (s *GenericServer[O]) Get(ctx context.Context, request any, response any) e
 		if errors.As(err, &deniedErr) {
 			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
 		}
+		var deadlockErr *dao.ErrDeadlock
+		if errors.As(err, &deadlockErr) {
+			return grpcstatus.Errorf(grpccodes.Aborted, "%s", deadlockErr.Error())
+		}
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to get",
@@ -434,40 +471,16 @@ func (s *GenericServer[O]) Get(ctx context.Context, request any, response any) e
 }
 
 func (s *GenericServer[O]) Create(ctx context.Context, request any, response any) error {
-	// Extract the object from the request message:
-	type requestIface interface {
-		GetObject() O
-	}
-	requestMsg := request.(requestIface)
-	requestObject := requestMsg.GetObject()
-	if s.isNil(requestObject) {
-		requestObject = proto.Clone(s.template).(O)
-	} else {
-		requestMetadata := s.getMetadata(requestObject)
-		if requestMetadata != nil {
-			err := s.validateMetadata(ctx, requestMetadata)
-			if err != nil {
-				return err
-			}
-		}
+	// Route dry-run requests to skip persistence and event emission. Resource-specific
+	// validation (template resolution, catalog item field definitions, spec defaults)
+	// runs in the calling server before reaching GenericServer. The dry-run flag is
+	// carried as gRPC metadata (HTTP header X-Dry-Run: true) rather than a proto field
+	// to keep request messages purely declarative.
+	if isDryRun(ctx) {
+		return s.createDryRun(ctx, request, response)
 	}
 
-	// Calculate the assigned creator:
-	assignedCreator, err := s.determineAssignedCreator(ctx)
-	if err != nil {
-		return err
-	}
-	err = s.setCreator(ctx, requestObject, assignedCreator)
-	if err != nil {
-		return err
-	}
-
-	// Calculate the assigned tenant:
-	assignedTenant, err := s.determineAssignedTenant(ctx, requestObject, requestObject)
-	if err != nil {
-		return err
-	}
-	err = s.setTenant(ctx, requestObject, assignedTenant)
+	requestObject, err := s.prepareForCreate(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -493,6 +506,10 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 		if errors.As(err, &referenceErr) {
 			return grpcstatus.Errorf(grpccodes.InvalidArgument, "%s", referenceErr.Error())
 		}
+		var deadlockErr *dao.ErrDeadlock
+		if errors.As(err, &deadlockErr) {
+			return grpcstatus.Errorf(grpccodes.Aborted, "%s", deadlockErr.Error())
+		}
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to create",
@@ -511,6 +528,80 @@ func (s *GenericServer[O]) Create(ctx context.Context, request any, response any
 	s.setPointer(response, responseMsg)
 
 	return nil
+}
+
+func (s *GenericServer[O]) prepareForCreate(ctx context.Context, request any) (O, error) {
+	var nilObject O
+
+	type requestIface interface {
+		GetObject() O
+	}
+	requestMsg := request.(requestIface)
+	requestObject := requestMsg.GetObject()
+	if s.isNil(requestObject) {
+		requestObject = proto.Clone(s.template).(O)
+	} else {
+		requestMetadata := s.getMetadata(requestObject)
+		if requestMetadata != nil {
+			if err := s.validateMetadata(ctx, requestMetadata); err != nil {
+				return nilObject, err
+			}
+		}
+	}
+
+	assignedCreator, err := s.determineAssignedCreator(ctx)
+	if err != nil {
+		return nilObject, err
+	}
+	if err = s.setCreator(ctx, requestObject, assignedCreator); err != nil {
+		return nilObject, err
+	}
+
+	assignedTenant, err := s.determineAssignedTenant(ctx, requestObject, requestObject)
+	if err != nil {
+		return nilObject, err
+	}
+	if err = s.setTenant(ctx, requestObject, assignedTenant); err != nil {
+		return nilObject, err
+	}
+
+	return requestObject, nil
+}
+
+func (s *GenericServer[O]) createDryRun(ctx context.Context, request any, response any) error {
+	requestObject, err := s.prepareForCreate(ctx, request)
+	if err != nil {
+		return err
+	}
+
+	type responseIface interface {
+		SetObject(O)
+	}
+	responseMsg := proto.Clone(s.createResponse).(responseIface)
+	responseMsg.SetObject(requestObject)
+	s.setPointer(response, responseMsg)
+
+	return nil
+}
+
+// DryRunHTTPHeader is the HTTP header name REST clients use to request dry-run mode.
+// The REST gateway forwards it as gRPC metadata with key DryRunMetadataKey.
+const DryRunHTTPHeader = "X-Dry-Run"
+
+const DryRunMetadataKey = "x-dry-run"
+
+func isDryRun(ctx context.Context) bool {
+	md, ok := grpcmetadata.FromIncomingContext(ctx)
+	if !ok {
+		return false
+	}
+	values := md.Get(DryRunMetadataKey)
+	for _, v := range values {
+		if strings.EqualFold(v, "true") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *GenericServer[O]) Update(ctx context.Context, request any, response any) error {
@@ -547,6 +638,10 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
 			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+		}
+		var deadlockErr *dao.ErrDeadlock
+		if errors.As(err, &deadlockErr) {
+			return grpcstatus.Errorf(grpccodes.Aborted, "%s", deadlockErr.Error())
 		}
 		s.logger.ErrorContext(
 			ctx,
@@ -609,6 +704,15 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 		tmpObject = requestObject
 	}
 
+	// Validate the merged object using protovalidate.
+	// This ensures all validation constraints are checked after applying the update mask,
+	// avoiding false positives from partial request objects.
+	err = s.validator.Validate(tmpObject)
+	if err != nil {
+		s.logger.DebugContext(ctx, "Object validation failed after mask merge", "error", err.Error())
+		return grpcstatus.Errorf(grpccodes.InvalidArgument, "validation failed: %s", err.Error())
+	}
+
 	// Validate the resulting metadata:
 	tmpMetadata := s.getMetadata(tmpObject)
 	if tmpMetadata != nil {
@@ -658,6 +762,10 @@ func (s *GenericServer[O]) Update(ctx context.Context, request any, response any
 			var immutableErr *dao.ErrImmutable
 			if errors.As(err, &immutableErr) {
 				return grpcstatus.Errorf(grpccodes.InvalidArgument, "%s", immutableErr.Error())
+			}
+			var deadlockErr *dao.ErrDeadlock
+			if errors.As(err, &deadlockErr) {
+				return grpcstatus.Errorf(grpccodes.Aborted, "%s", deadlockErr.Error())
 			}
 			s.logger.ErrorContext(
 				ctx,
@@ -746,6 +854,9 @@ func (s *GenericServer[O]) Delete(ctx context.Context, request any, response any
 		if ok {
 			return grpcstatus.Errorf(grpccodes.FailedPrecondition, "%s", inUseErr.Error())
 		}
+		if _, ok := errors.AsType[*dao.ErrDeadlock](err); ok {
+			return grpcstatus.Errorf(grpccodes.Aborted, "concurrent modification detected, please retry")
+		}
 		s.logger.ErrorContext(
 			ctx,
 			"Failed to delete object",
@@ -793,6 +904,10 @@ func (s *GenericServer[O]) Signal(ctx context.Context, request any, response any
 		var deniedErr *dao.ErrDenied
 		if errors.As(err, &deniedErr) {
 			return grpcstatus.Errorf(grpccodes.PermissionDenied, "%s", deniedErr.Reason)
+		}
+		var deadlockErr *dao.ErrDeadlock
+		if errors.As(err, &deadlockErr) {
+			return grpcstatus.Errorf(grpccodes.Aborted, "%s", deadlockErr.Error())
 		}
 		s.logger.ErrorContext(
 			ctx,
@@ -857,96 +972,16 @@ func (s *GenericServer[O]) notifyEvent(ctx context.Context, e dao.Event) error {
 	return s.notifier.Notify(ctx, event)
 }
 
-func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Message) error { //nolint:gocyclo
-	// TODO: This is the only part of the generic server that depends on specific object types. Is there a way
-	// to avoid that?
-	switch object := object.(type) {
-	case *privatev1.ClusterTemplate:
-		event.SetClusterTemplate(object)
-	case *privatev1.Cluster:
-		event.SetCluster(object)
-	case *privatev1.HostType:
-		event.SetHostType(object)
-	case *privatev1.Hub:
-		// TODO: We need to remove the Kubeconfig from the payload of the notification because that usually
-		// exceeds the default limit of 8000 bytes of the PostgreSQL notification mechanism. A better way to
-		// do this would be to store the payloads in a separate table. We will do that later.
-		object = proto.Clone(object).(*privatev1.Hub)
-		spec := object.GetSpec()
-		if spec != nil {
-			spec.SetKubeconfig(nil)
-		}
-		event.SetHub(object)
-	case *privatev1.InstanceType:
-		event.SetInstanceType(object)
-	case *privatev1.ComputeInstanceTemplate:
-		event.SetComputeInstanceTemplate(object)
-	case *privatev1.ComputeInstance:
-		event.SetComputeInstance(object)
-	case *privatev1.NetworkClass:
-		event.SetNetworkClass(object)
-	case *privatev1.VirtualNetwork:
-		event.SetVirtualNetwork(object)
-	case *privatev1.Subnet:
-		event.SetSubnet(object)
-	case *privatev1.SecurityGroup:
-		event.SetSecurityGroup(object)
-	case *privatev1.PublicIPPool:
-		event.SetPublicIpPool(object)
-	case *privatev1.PublicIP:
-		event.SetPublicIp(object)
-	case *privatev1.PublicIPAttachment:
-		event.SetPublicIpAttachment(object)
-	case *privatev1.ExternalIPPool:
-		// Event proto does not yet have ExternalIPPool payload fields; skip notification payload.
-	case *privatev1.ExternalIP:
-		// Event proto does not yet have ExternalIP payload fields; skip notification payload.
-	case *privatev1.ExternalIPAttachment:
-		// Event proto does not yet have ExternalIPAttachment payload fields; skip notification payload.
-	case *privatev1.Tenant:
-		event.SetTenant(object)
-	case *privatev1.User:
-		event.SetUser(object)
-	case *privatev1.Role:
-		event.SetRole(object)
-	case *privatev1.RoleBinding:
-		event.SetRoleBinding(object)
-	case *privatev1.Project:
-		event.SetProject(object)
-	case *privatev1.ProjectMembership:
-		event.SetProjectMembership(object)
-	case *privatev1.ClusterCatalogItem:
-		event.SetClusterCatalogItem(object)
-	case *privatev1.ComputeInstanceCatalogItem:
-		event.SetComputeInstanceCatalogItem(object)
-	case *privatev1.BareMetalInstance:
-		event.SetBareMetalInstance(object)
-	case *privatev1.BareMetalInstanceTemplate:
-		event.SetBareMetalInstanceTemplate(object)
-	case *privatev1.BareMetalInstanceCatalogItem:
-		event.SetBareMetalInstanceCatalogItem(object)
-	case *privatev1.StorageBackend:
-		object = proto.Clone(object).(*privatev1.StorageBackend)
-		if object.GetSpec().GetCredentials() != nil {
-			object.GetSpec().GetCredentials().SetPassword("")
-		}
-		event.SetStorageBackend(object)
-	case *privatev1.IdentityProvider:
-		// Redact sensitive fields before publishing - controller will fetch them separately via API
-		object = proto.Clone(object).(*privatev1.IdentityProvider)
-		spec := object.GetSpec()
-		if spec != nil {
-			if oidc := spec.GetOidc(); oidc != nil {
-				oidc.SetClientSecret("")
-			}
-			if ldap := spec.GetLdap(); ldap != nil {
-				ldap.SetBindCredential("")
-			}
-		}
-		event.SetIdentityProvider(object)
-	default:
-		return fmt.Errorf("unknown object type '%T'", object)
+// setPayload sets the payload of the event message. If the payload field is not found the event is left unchanged. If a
+// redact function has been configured, the object is cloned and redacted before being set.
+func (s *GenericServer[O]) setPayload(event *privatev1.Event, object proto.Message) error {
+	if s.payloadField == nil {
+		return nil
 	}
+	if s.redactFunc != nil {
+		object = s.redactFunc(proto.Clone(object).(O))
+	}
+	event.ProtoReflect().Set(s.payloadField, protoreflect.ValueOfMessage(object.ProtoReflect()))
 	return nil
 }
 
@@ -959,13 +994,9 @@ func (s *GenericServer[O]) setPointer(pointer any, value any) {
 }
 
 func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metadataIface) error {
-	name := metadata.GetName()
-	if name != "" {
-		err := s.nameValidator(ctx, name)
-		if err != nil {
-			return err
-		}
-	}
+	// Note: Name validation is handled by protovalidate annotations and the validation interceptor.
+	// No need to re-validate here.
+
 	labels := metadata.GetLabels()
 	if len(labels) > 0 {
 		err := s.validateLabels(labels)
@@ -983,53 +1014,15 @@ func (s *GenericServer[O]) validateMetadata(ctx context.Context, metadata metada
 	return nil
 }
 
-// validateName validates that the 'metadata.name' field follows DNS label restrictions as defined in RFC 1035:
+// validateLabels validates label keys and values according to Kubernetes label naming conventions.
 //
-// - Must be between 1 and 63 characters long
-// - Must only contain lowercase letters (a-z), digits (0-9) and hyphens (-)
-// - Cannot start or end with a hyphen
-func (s *GenericServer[O]) validateName(ctx context.Context, name string) error {
-	// Max length:
-	if len(name) > 63 {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' must be at most 63 characters long, but it has %d characters",
-			len(name),
-		)
-	}
-
-	// Validate characters, only a-z, 0-9, and hyphen:
-	for i, c := range name {
-		isLower := c >= 'a' && c <= 'z'
-		isDigit := c >= '0' && c <= '9'
-		isHyphen := c == '-'
-		if !isLower && !isDigit && !isHyphen {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"field 'metadata.name' must only contain lowercase letters (a-z), digits (0-9) and "+
-					"hyphens (-), but contains '%c' at position %d",
-				c, i,
-			)
-		}
-	}
-
-	// Cannot start or end with hyphen:
-	if strings.HasPrefix(name, "-") {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' cannot start with a hyphen",
-		)
-	}
-	if strings.HasSuffix(name, "-") {
-		return grpcstatus.Errorf(
-			grpccodes.InvalidArgument,
-			"field 'metadata.name' cannot end with a hyphen",
-		)
-	}
-
-	return nil
-}
-
+// This validation complements protovalidate annotations on the Metadata message:
+// - Proto annotations enforce length constraints (keys: 1-316 chars, values: max 63 chars)
+// - This Go code enforces complex DNS subdomain rules that cannot be expressed in simple regex:
+//   - Prefix/name structure (optional "prefix/" followed by name)
+//   - Each dot-separated segment must be a valid DNS label
+//   - Character restrictions (alphanumeric, hyphens, underscores, dots)
+//   - Alphanumeric start/end requirements
 func (s *GenericServer[O]) validateLabels(labels map[string]string) error {
 	for key, value := range labels {
 		err := s.validateLabelKey("metadata.labels", key)
@@ -1409,3 +1402,18 @@ func (s *GenericServer[O]) equivalentMetadata(x, y protoreflect.Message) bool {
 	}
 	return true
 }
+
+// Names of gRPC methods:
+const (
+	listMethod   = "List"
+	getMethod    = "Get"
+	createMethod = "Create"
+	updateMethod = "Update"
+	deleteMethod = "Delete"
+	signalMethod = "Signal"
+)
+
+// Names of fields:
+const (
+	eventPayloadField = "payload"
+)

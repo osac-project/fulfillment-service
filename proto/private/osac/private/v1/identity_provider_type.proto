@@ -54,10 +54,15 @@ message IdentityProviderSpec {
   oneof config {
     // Configuration for OpenID Connect providers.
     OidcConfig oidc = 4;
-
-    // Configuration for LDAP providers.
-    LdapConfig ldap = 5;
   }
+
+  // This field is used to trigger a health check of the identity provider.
+  // The user can write any value here; the actual value doesn't matter.
+  // The only important thing is that when it changes, the system will eventually
+  // initiate a health check and report the result in the status.
+  // The user can set this to any string (e.g., a timestamp or random value) to request a new check.
+  // Common pattern: use a timestamp or increment a counter when requesting a check.
+  optional string health_check_trigger = 6;
 }
 
 // OidcConfig contains configuration for OpenID Connect identity providers.
@@ -107,71 +112,6 @@ message OidcConfig {
   optional string logout_url = 10;
 }
 
-// LdapConfig contains configuration for LDAP identity providers.
-message LdapConfig {
-  // Connection URL for the LDAP server.
-  // Supports ldap:// and ldaps:// (SSL/TLS) protocols.
-  // Example: "ldap://ldap.example.com:389" or "ldaps://ldap.example.com:636"
-  string connection_url = 1;
-
-  // Distinguished Name (DN) of the user to bind as for authenticating to the LDAP server.
-  // This user must have permissions to search for users in the directory.
-  // Example: "cn=admin,dc=example,dc=com"
-  string bind_dn = 2;
-
-  // Password for the bind DN user.
-  // This field is write-only and will never be returned in API responses.
-  string bind_credential = 3;
-
-  // Base Distinguished Name where user entries are located in the LDAP directory.
-  // All user searches will be performed under this DN.
-  // Example: "ou=users,dc=example,dc=com"
-  string users_dn = 4;
-
-  // LDAP attribute to use as the username for authentication.
-  // Common values: "uid", "cn", "sAMAccountName" (Active Directory)
-  // Default: "uid"
-  optional string username_ldap_attribute = 5;
-
-  // LDAP attribute containing the user's RDN (Relative Distinguished Name).
-  // Used to construct the full DN when authenticating users.
-  // Common values: "uid", "cn"
-  // Default: "uid"
-  optional string rdn_ldap_attribute = 6;
-
-  // LDAP attribute containing the user's unique identifier.
-  // Maps to the user ID in the application.
-  // Common values: "uid", "entryUUID", "objectGUID" (Active Directory)
-  // Default: "uid"
-  optional string uuid_ldap_attribute = 7;
-
-  // LDAP filter to apply when searching for users.
-  // Must return users to be allowed to authenticate.
-  // Example: "(objectClass=person)"
-  optional string user_object_classes = 8;
-
-  // Authentication type to use when binding.
-  // Valid values: "simple" (username/password), "none" (anonymous)
-  // Default: "simple"
-  optional string auth_type = 9;
-
-  // LDAP server vendor for vendor-specific optimizations.
-  // Valid values: "ad" (Active Directory), "rhds" (Red Hat Directory Server),
-  // "tivoli" (IBM Tivoli), "edirectory" (Novell eDirectory), "other"
-  // Default: "other"
-  optional string vendor = 10;
-
-  // Whether to use STARTTLS to upgrade the connection to TLS.
-  // Only applicable for ldap:// URLs (not ldaps://).
-  // Default: false
-  optional bool use_truststore_spi = 11;
-
-  // Whether to enable pagination when searching for users.
-  // Useful for large directories to avoid timeouts.
-  // Default: true
-  optional bool pagination = 12;
-}
-
 // IdentityProviderPhase represents the current phase of an identity provider.
 enum IdentityProviderPhase {
   // IDENTITY_PROVIDER_PHASE_UNSPECIFIED is the default value.
@@ -197,6 +137,16 @@ message IdentityProviderStatus {
 
   // Conditions represent specific aspects of the identity provider's status.
   repeated IdentityProviderCondition conditions = 3;
+
+  // This is used by the system to track when the spec.health_check_trigger has changed
+  // and to acknowledge that the health check process has started.
+  // The system will update it to match spec.health_check_trigger when the check begins.
+  // Users can compare this to spec.health_check_trigger to see if their check request has been acknowledged.
+  optional string health_check_trigger = 4;
+
+  // Health check results from the last health check that completed.
+  // This is populated after a health check triggered by spec.health_check_trigger completes.
+  optional IdentityProviderHealth health = 5;
 }
 
 // IdentityProviderCondition represents a specific condition of the identity provider.

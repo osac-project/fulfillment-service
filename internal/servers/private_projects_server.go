@@ -104,7 +104,6 @@ func (b *PrivateProjectsServerBuilder) Build() (result *PrivateProjectsServer, e
 		SetLogger(b.logger).
 		SetService(privatev1.Projects_ServiceDesc.ServiceName).
 		SetNotifier(b.notifier).
-		SetNameValidator(s.validateName).
 		SetAttributionLogic(b.attributionLogic).
 		SetTenancyLogic(b.tenancyLogic).
 		SetMetricsRegisterer(b.metricsRegisterer).
@@ -182,6 +181,7 @@ func (s *PrivateProjectsServer) Create(ctx context.Context,
 
 func (s *PrivateProjectsServer) Update(ctx context.Context,
 	request *privatev1.ProjectsUpdateRequest) (response *privatev1.ProjectsUpdateResponse, err error) {
+
 	err = s.generic.Update(ctx, request, &response)
 	return
 }
@@ -196,22 +196,4 @@ func (s *PrivateProjectsServer) Signal(ctx context.Context,
 	request *privatev1.ProjectsSignalRequest) (response *privatev1.ProjectsSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)
 	return
-}
-
-func (s *PrivateProjectsServer) validateName(ctx context.Context, name string) error {
-	// Split the name into its component and validate each one:
-	parts := strings.Split(name, ".")
-	for _, part := range parts {
-		if part == "" {
-			return grpcstatus.Errorf(
-				grpccodes.InvalidArgument,
-				"project 'metadata.name' must not contain empty segments",
-			)
-		}
-		err := s.generic.validateName(ctx, part)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }

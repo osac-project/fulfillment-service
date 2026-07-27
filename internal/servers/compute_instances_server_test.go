@@ -126,6 +126,29 @@ var _ = Describe("Compute instances server", func() {
 
 			_, err = subnetsDao.Create().SetObject(subnet).Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
+
+			// Create a default InstanceType for tests that need it:
+			instanceTypesDao, err := dao.NewGenericDAO[*privatev1.InstanceType]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = instanceTypesDao.Create().SetObject(
+				privatev1.InstanceType_builder{
+					Id: "standard-4-16",
+					Metadata: privatev1.Metadata_builder{
+						Name:   "standard-4-16",
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.InstanceTypeSpec_builder{
+						Cores:     4,
+						MemoryGib: 16,
+						State:     privatev1.InstanceTypeState_INSTANCE_TYPE_STATE_ACTIVE,
+					}.Build(),
+				}.Build(),
+			).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		// Helper function to create a template
@@ -169,8 +192,7 @@ var _ = Describe("Compute instances server", func() {
 					},
 				},
 				SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-					Cores:     new(int32(2)),
-					MemoryGib: new(int32(2)),
+					InstanceType: new("standard-4-16"),
 					Image: privatev1.ComputeInstanceImage_builder{
 						SourceType: "registry",
 						SourceRef:  "quay.io/containerdisks/fedora:latest",
@@ -376,10 +398,9 @@ var _ = Describe("Compute instances server", func() {
 			createResponse, err := server.Create(ctx, publicv1.ComputeInstancesCreateRequest_builder{
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
-						Template:    "general.small",
-						Cores:       new(int32(4)),
-						MemoryGib:   new(int32(8)),
-						RunStrategy: new("Always"),
+						Template:     "general.small",
+						InstanceType: new("standard-4-16"),
+						RunStrategy:  new("Always"),
 						Image: publicv1.ComputeInstanceImage_builder{
 							SourceType: "registry",
 							SourceRef:  "quay.io/test:latest",
@@ -425,8 +446,7 @@ var _ = Describe("Compute instances server", func() {
 
 			// Verify explicit fields were preserved:
 			Expect(object.GetSpec().GetTemplate()).To(Equal("general.small"))
-			Expect(object.GetSpec().GetCores()).To(BeNumerically("==", 4))
-			Expect(object.GetSpec().GetMemoryGib()).To(BeNumerically("==", 8))
+			Expect(object.GetSpec().GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(object.GetSpec().GetRunStrategy()).To(Equal("Always"))
 			Expect(object.GetSpec().GetImage().GetSourceRef()).To(Equal("quay.io/test:latest"))
 			Expect(object.GetSpec().GetBootDisk().GetSizeGib()).To(BeNumerically("==", 20))
@@ -437,8 +457,7 @@ var _ = Describe("Compute instances server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			fetched := getResponse.GetObject()
-			Expect(fetched.GetSpec().GetCores()).To(BeNumerically("==", 4))
-			Expect(fetched.GetSpec().GetMemoryGib()).To(BeNumerically("==", 8))
+			Expect(fetched.GetSpec().GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(fetched.GetSpec().GetRunStrategy()).To(Equal("Always"))
 			Expect(fetched.GetSpec().GetImage().GetSourceRef()).To(Equal("quay.io/test:latest"))
 			Expect(fetched.GetSpec().GetBootDisk().GetSizeGib()).To(BeNumerically("==", 20))
@@ -532,8 +551,6 @@ var _ = Describe("Compute instances server", func() {
 				Object: publicv1.ComputeInstance_builder{
 					Spec: publicv1.ComputeInstanceSpec_builder{
 						Template:    "mapping-template",
-						Cores:       new(int32(8)),
-						MemoryGib:   new(int32(16)),
 						RunStrategy: new("Halted"),
 						NetworkAttachments: []*publicv1.NetworkAttachment{
 							publicv1.NetworkAttachment_builder{
@@ -548,10 +565,9 @@ var _ = Describe("Compute instances server", func() {
 
 			spec := response.GetObject().GetSpec()
 			// User-provided values preserved through mapping:
-			Expect(spec.GetCores()).To(Equal(int32(8)))
-			Expect(spec.GetMemoryGib()).To(Equal(int32(16)))
 			Expect(spec.GetRunStrategy()).To(Equal("Halted"))
 			// Template defaults should be stored:
+			Expect(spec.GetInstanceType()).To(Equal("standard-4-16"))
 			Expect(spec.GetImage().GetSourceType()).To(Equal("registry"))
 			Expect(spec.GetImage().GetSourceRef()).To(Equal("quay.io/containerdisks/fedora:latest"))
 			Expect(spec.GetBootDisk().GetSizeGib()).To(Equal(int32(10)))
