@@ -180,10 +180,11 @@ The gRPC server uses chained unary interceptors (configured in `internal/cmd/ser
 1. Panic recovery
 2. Prometheus metrics
 3. Structured logging (slog)
-4. Database transaction management
-5. Authentication (JWT validation)
-6. Authorization (Rego/OPA)
-7. JIT user provisioning
+4. Validation
+5. Database transaction management
+6. Authentication (JWT validation)
+7. Authorization (Rego/OPA)
+8. JIT user provisioning
 
 ### Mock Generation
 

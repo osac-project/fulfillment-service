@@ -19,12 +19,11 @@ The API has two variants, each defined in its own directory tree:
 - `proto/private/osac/private/v1/` contains the private API, reserved for system administrators and
   controllers.
 
-The public API must always be a strict subset of the private API. The private API may contain
+The public API must be a strict subset of the private API. The private API may contain
 services, methods, messages, and fields that do not appear in the public API, but the reverse is
-never allowed. Public protos must never import private protos, and vice versa.
-
-Exceptions: `console_proxy_service`, `console_service`, `json_web_key_set_service`, and
-`openapi_options` exist only in the public API (no private counterpart).
+never allowed except for documented exceptions: `console_proxy_service`, `console_service`,
+`json_web_key_set_service`, and `openapi_options` exist only in the public API (no private
+counterpart). Public protos must never import private protos, and vice versa.
 
 Both APIs must be documented with documentation comments in the `.proto` files. The documentation in
 both should be identical for the parts they share. The private API has not been documented
