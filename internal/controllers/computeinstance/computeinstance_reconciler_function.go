@@ -155,12 +155,21 @@ func (r *function) run(ctx context.Context, computeInstance *privatev1.ComputeIn
 	updateMask := r.maskCalculator.Calculate(oldComputeInstance, computeInstance)
 
 	// Only send an update if there are actual changes
-	_, updateErr := r.computeInstancesClient.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
-		Object:     computeInstance,
-		UpdateMask: updateMask,
-	}.Build())
+	var updateErr error
+	if len(updateMask.GetPaths()) > 0 {
+		_, updateErr = r.computeInstancesClient.Update(ctx, privatev1.ComputeInstancesUpdateRequest_builder{
+			Object:     computeInstance,
+			UpdateMask: updateMask,
+		}.Build())
+	}
 
 	if reconcileErr != nil {
+		if updateErr != nil {
+			r.logger.WarnContext(ctx, "Failed to persist status after reconciliation error",
+				slog.String("reconcile_error", reconcileErr.Error()),
+				slog.String("update_error", updateErr.Error()),
+			)
+		}
 		return reconcileErr
 	}
 	return updateErr
