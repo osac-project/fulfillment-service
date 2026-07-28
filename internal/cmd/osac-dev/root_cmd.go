@@ -23,6 +23,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/cache"
 	"github.com/osac-project/fulfillment-service/internal/cmd/cli/help"
 	"github.com/osac-project/fulfillment-service/internal/cmd/osac-dev/generate"
+	"github.com/osac-project/fulfillment-service/internal/cmd/osac-dev/seedcatalogitems"
 	"github.com/osac-project/fulfillment-service/internal/logging"
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
@@ -63,6 +64,7 @@ func Root() (result *cobra.Command, err error) {
 
 	// Add commands:
 	result.AddCommand(generate.Cmd())
+	result.AddCommand(seedcatalogitems.Cmd())
 
 	// Configure the root command, and therefore all its subcommands, to use Markdown for their help output:
 	help.Setup(result)
