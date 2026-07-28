@@ -1057,6 +1057,20 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	privatev1.RegisterSecretsServer(grpcServer, privateSecretsServer)
 
+	// Create the public secrets server:
+	c.logger.InfoContext(ctx, "Creating public secrets server")
+	publicSecretsServer, err := servers.NewSecretsServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(publicAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create public secrets server: %w", err)
+	}
+	publicv1.RegisterSecretsServer(grpcServer, publicSecretsServer)
+
 	// Create the storage backends DAO for cross-resource validation in the storage tiers server:
 	storageBackendsDAO, err := dao.NewGenericDAO[*privatev1.StorageBackend]().
 		SetLogger(c.logger).
