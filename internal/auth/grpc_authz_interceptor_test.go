@@ -604,6 +604,69 @@ var _ = Describe("Rego authorization interceptor", func() {
 			),
 		)
 
+		DescribeTable(
+			"Allows Keycloak users on the public Secrets API",
+			func(ctx context.Context, method string) {
+				token := createKeycloakUserToken("my-tenant", "my-user", nil)
+				ctx = ContextWithToken(ctx, token)
+				handled := false
+				_, err := interceptor.UnaryServer(
+					ctx,
+					nil,
+					&grpc.UnaryServerInfo{
+						FullMethod: method,
+					},
+					func(ctx context.Context, req any) (any, error) {
+						subject := SubjectFromContext(ctx)
+						Expect(subject.User).To(Equal("my-user"))
+						Expect(subject.Tenants.Finite()).To(BeTrue())
+						Expect(subject.Tenants.Inclusions()).To(ConsistOf("my-tenant"))
+						handled = true
+						return nil, nil
+					},
+				)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(handled).To(BeTrue())
+			},
+			Entry("List", "/osac.public.v1.Secrets/List"),
+			Entry("Get", "/osac.public.v1.Secrets/Get"),
+			Entry("Create", "/osac.public.v1.Secrets/Create"),
+			Entry("Update", "/osac.public.v1.Secrets/Update"),
+			Entry("Delete", "/osac.public.v1.Secrets/Delete"),
+		)
+
+		DescribeTable(
+			"Denies Keycloak users on the private Secrets API",
+			func(ctx context.Context, method string) {
+				token := createKeycloakUserToken("my-tenant", "my-user", nil)
+				ctx = ContextWithToken(ctx, token)
+				handled := false
+				_, err := interceptor.UnaryServer(
+					ctx,
+					nil,
+					&grpc.UnaryServerInfo{
+						FullMethod: method,
+					},
+					func(ctx context.Context, req any) (any, error) {
+						handled = true
+						return nil, nil
+					},
+				)
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.PermissionDenied))
+				Expect(status.Message()).To(Equal("permission denied"))
+				Expect(handled).To(BeFalse())
+			},
+			Entry("List", "/osac.private.v1.Secrets/List"),
+			Entry("Get", "/osac.private.v1.Secrets/Get"),
+			Entry("Create", "/osac.private.v1.Secrets/Create"),
+			Entry("Update", "/osac.private.v1.Secrets/Update"),
+			Entry("Delete", "/osac.private.v1.Secrets/Delete"),
+			Entry("Signal", "/osac.private.v1.Secrets/Signal"),
+		)
+
 		It("Allows tenant admin to manage users", func(ctx context.Context) {
 			token := createKeycloakUserToken("my-tenant", "my-user", jwt.MapClaims{
 				"realm_access": map[string]any{

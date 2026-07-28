@@ -255,6 +255,11 @@ allow if {
     "/osac.public.v1.Roles/List",
     "/osac.public.v1.RoleBindings/Get",
     "/osac.public.v1.RoleBindings/List",
+    "/osac.public.v1.Secrets/Create",
+    "/osac.public.v1.Secrets/Delete",
+    "/osac.public.v1.Secrets/Get",
+    "/osac.public.v1.Secrets/List",
+    "/osac.public.v1.Secrets/Update",
   }
 }
 
