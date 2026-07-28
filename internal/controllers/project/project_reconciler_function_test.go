@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/controllers/finalizers"
@@ -875,19 +876,21 @@ var _ = Describe("Validation and Activation", func() {
 
 var _ = Describe("Deletion Cleanup", func() {
 	var (
-		ctrl              *gomock.Controller
-		mockClient        *MockProjectsClient
-		mockTenantsClient *MockTenantsClient
-		mockIdpClient     *idp.MockClientInterface
-		resourceManager   *idp.ProjectGroupManager
-		ctx               context.Context
-		functionObj       *function
+		ctrl                         *gomock.Controller
+		mockClient                   *MockProjectsClient
+		mockTenantsClient            *MockTenantsClient
+		mockProjectMembershipsClient *MockProjectMembershipsClient
+		mockIdpClient                *idp.MockClientInterface
+		resourceManager              *idp.ProjectGroupManager
+		ctx                          context.Context
+		functionObj                  *function
 	)
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockClient = NewMockProjectsClient(ctrl)
 		mockTenantsClient = NewMockTenantsClient(ctrl)
+		mockProjectMembershipsClient = NewMockProjectMembershipsClient(ctrl)
 		mockIdpClient = idp.NewMockClientInterface(ctrl)
 		ctx = context.Background()
 
@@ -899,10 +902,11 @@ var _ = Describe("Deletion Cleanup", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		functionObj = &function{
-			logger:              logger,
-			projectsClient:      mockClient,
-			tenantsClient:       mockTenantsClient,
-			projectGroupManager: resourceManager,
+			logger:                   logger,
+			projectsClient:           mockClient,
+			tenantsClient:            mockTenantsClient,
+			projectMembershipsClient: mockProjectMembershipsClient,
+			projectGroupManager:      resourceManager,
 		}
 	})
 
@@ -957,6 +961,11 @@ var _ = Describe("Deletion Cleanup", func() {
 				Size: 0,
 			}, nil)
 
+		// Expect query for project memberships (returns 0)
+		mockProjectMembershipsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectMembershipsListResponse{}, nil)
+
 		// Expect parent project group ID lookup
 		mockIdpClient.EXPECT().
 			GetGroupIDByPath(gomock.Any(), "acme", "/test-project").
@@ -994,6 +1003,11 @@ var _ = Describe("Deletion Cleanup", func() {
 				Size: 0,
 			}, nil)
 
+		// Expect query for project memberships (returns 0)
+		mockProjectMembershipsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectMembershipsListResponse{}, nil)
+
 		// Group already deleted — DeleteProjectGroups swallows "not found" internally
 		mockIdpClient.EXPECT().
 			GetGroupIDByPath(gomock.Any(), "acme", "/test-project").
@@ -1025,6 +1039,11 @@ var _ = Describe("Deletion Cleanup", func() {
 			Return(&privatev1.ProjectsListResponse{
 				Size: 0,
 			}, nil)
+
+		// Expect query for project memberships (returns 0)
+		mockProjectMembershipsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectMembershipsListResponse{}, nil)
 
 		// Transient failure — should NOT swallow
 		mockIdpClient.EXPECT().
@@ -1059,6 +1078,11 @@ var _ = Describe("Deletion Cleanup", func() {
 				Size: 0,
 			}, nil)
 
+		// Expect query for project memberships (returns 0)
+		mockProjectMembershipsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectMembershipsListResponse{}, nil)
+
 		task := &task{
 			r:       functionObj,
 			project: project,
@@ -1086,6 +1110,11 @@ var _ = Describe("Deletion Cleanup", func() {
 			Return(&privatev1.ProjectsListResponse{
 				Size: 0,
 			}, nil)
+
+		// Expect query for project memberships (returns 0)
+		mockProjectMembershipsClient.EXPECT().
+			List(gomock.Any(), gomock.Any()).
+			Return(&privatev1.ProjectMembershipsListResponse{}, nil)
 
 		// Root project goes through Keycloak cleanup — group at "/" not found, swallowed
 		mockIdpClient.EXPECT().
@@ -1139,5 +1168,275 @@ var _ = Describe("Deletion Cleanup", func() {
 		Expect(err.Error()).To(ContainSubstring("failed to query for child projects"))
 		// Finalizer should NOT be removed on error
 		Expect(project.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+	})
+
+	Context("Cascade deletion of ProjectMemberships", func() {
+		It("should cascade-delete memberships and wait for removal", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:       "test-project",
+					Tenant:     "acme",
+					Finalizers: []string{finalizers.Controller},
+				}.Build(),
+			}.Build()
+
+			membership := privatev1.ProjectMembership_builder{
+				Id: "membership-1",
+				Metadata: privatev1.Metadata_builder{
+					Project: "test-project",
+					Tenant:  "acme",
+				}.Build(),
+			}.Build()
+
+			// Expect query for children (returns 0)
+			mockClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectsListResponse{Size: 0}, nil)
+
+			// Expect query for memberships (returns 1)
+			mockProjectMembershipsClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectMembershipsListResponse{
+					Items: []*privatev1.ProjectMembership{membership},
+					Total: 1,
+					Size:  1,
+				}, nil)
+
+			// Expect delete call for the membership
+			mockProjectMembershipsClient.EXPECT().
+				Delete(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, req *privatev1.ProjectMembershipsDeleteRequest, _ ...grpc.CallOption) (*privatev1.ProjectMembershipsDeleteResponse, error) {
+					Expect(req.GetId()).To(Equal("membership-1"))
+					return &privatev1.ProjectMembershipsDeleteResponse{}, nil
+				})
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.delete(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("project still has 1 project membership(s) pending deletion"))
+			Expect(project.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+		})
+
+		It("should proceed with deletion when all memberships are gone", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:       "test-project",
+					Tenant:     "acme",
+					Finalizers: []string{finalizers.Controller},
+				}.Build(),
+			}.Build()
+
+			// Expect query for children (returns 0)
+			mockClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectsListResponse{Size: 0}, nil)
+
+			// Expect query for memberships (returns 0 — all previously deleted)
+			mockProjectMembershipsClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectMembershipsListResponse{}, nil)
+
+			// Expect Keycloak cleanup
+			mockIdpClient.EXPECT().
+				GetGroupIDByPath(gomock.Any(), "acme", "/test-project").
+				Return("project-group-id", nil)
+			mockIdpClient.EXPECT().
+				DeleteGroup(gomock.Any(), "acme", "project-group-id").
+				Return(nil)
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.delete(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(project.GetMetadata().GetFinalizers()).ToNot(ContainElement(finalizers.Controller))
+		})
+
+		It("should skip already-deleting memberships", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:       "test-project",
+					Tenant:     "acme",
+					Finalizers: []string{finalizers.Controller},
+				}.Build(),
+			}.Build()
+
+			alreadyDeleting := privatev1.ProjectMembership_builder{
+				Id: "membership-1",
+				Metadata: privatev1.Metadata_builder{
+					Project:           "test-project",
+					Tenant:            "acme",
+					DeletionTimestamp: timestamppb.Now(),
+				}.Build(),
+			}.Build()
+
+			// Expect query for children (returns 0)
+			mockClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectsListResponse{Size: 0}, nil)
+
+			// Expect query for memberships (returns 1 already-deleting)
+			mockProjectMembershipsClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectMembershipsListResponse{
+					Items: []*privatev1.ProjectMembership{alreadyDeleting},
+					Total: 1,
+					Size:  1,
+				}, nil)
+
+			// Should NOT call Delete (already deleting)
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.delete(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("project still has 1 project membership(s) pending deletion"))
+		})
+
+		It("should return error when querying for memberships fails", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:       "test-project",
+					Tenant:     "acme",
+					Finalizers: []string{finalizers.Controller},
+				}.Build(),
+			}.Build()
+
+			// Expect query for children (returns 0)
+			mockClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectsListResponse{Size: 0}, nil)
+
+			// Expect query for memberships to fail
+			mockProjectMembershipsClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(nil, status.Error(codes.Unavailable, "database unavailable"))
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.delete(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to query for project memberships"))
+			Expect(project.GetMetadata().GetFinalizers()).To(ContainElement(finalizers.Controller))
+		})
+
+		It("should cascade-delete multiple memberships", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:       "test-project",
+					Tenant:     "acme",
+					Finalizers: []string{finalizers.Controller},
+				}.Build(),
+			}.Build()
+
+			membership1 := privatev1.ProjectMembership_builder{
+				Id: "membership-1",
+				Metadata: privatev1.Metadata_builder{
+					Project: "test-project",
+					Tenant:  "acme",
+				}.Build(),
+			}.Build()
+
+			membership2 := privatev1.ProjectMembership_builder{
+				Id: "membership-2",
+				Metadata: privatev1.Metadata_builder{
+					Project: "test-project",
+					Tenant:  "acme",
+				}.Build(),
+			}.Build()
+
+			// Expect query for children (returns 0)
+			mockClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectsListResponse{Size: 0}, nil)
+
+			// Expect query for memberships (returns 2)
+			mockProjectMembershipsClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectMembershipsListResponse{
+					Items: []*privatev1.ProjectMembership{membership1, membership2},
+					Total: 2,
+					Size:  2,
+				}, nil)
+
+			// Expect delete calls for both memberships
+			mockProjectMembershipsClient.EXPECT().
+				Delete(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectMembershipsDeleteResponse{}, nil).
+				Times(2)
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.delete(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("project still has 2 project membership(s) pending deletion"))
+		})
+
+		It("should handle NotFound during membership deletion gracefully", func() {
+			project := privatev1.Project_builder{
+				Id: "project-1",
+				Metadata: privatev1.Metadata_builder{
+					Name:       "test-project",
+					Tenant:     "acme",
+					Finalizers: []string{finalizers.Controller},
+				}.Build(),
+			}.Build()
+
+			membership := privatev1.ProjectMembership_builder{
+				Id: "membership-1",
+				Metadata: privatev1.Metadata_builder{
+					Project: "test-project",
+					Tenant:  "acme",
+				}.Build(),
+			}.Build()
+
+			// Expect query for children (returns 0)
+			mockClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectsListResponse{Size: 0}, nil)
+
+			// Expect query for memberships (returns 1)
+			mockProjectMembershipsClient.EXPECT().
+				List(gomock.Any(), gomock.Any()).
+				Return(&privatev1.ProjectMembershipsListResponse{
+					Items: []*privatev1.ProjectMembership{membership},
+					Total: 1,
+					Size:  1,
+				}, nil)
+
+			// Delete returns NotFound (already deleted between list and delete)
+			mockProjectMembershipsClient.EXPECT().
+				Delete(gomock.Any(), gomock.Any()).
+				Return(nil, status.Error(codes.NotFound, "not found"))
+
+			task := &task{
+				r:       functionObj,
+				project: project,
+			}
+
+			err := task.delete(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("project still has 1 project membership(s) pending deletion"))
+		})
 	})
 })

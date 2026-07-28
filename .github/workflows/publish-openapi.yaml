@@ -12,6 +12,8 @@
 #
 
 # This workflow generates the OpenAPI specification and uploads it to the GitHub pages of the project.
+# The published docs reflect the latest successfully deployed output from 'main' and are NOT release-versioned.
+# See docs/OPENAPI.md for details on why tag-triggered publishing is intentionally excluded.
 
 name: Publish OpenAPI
 

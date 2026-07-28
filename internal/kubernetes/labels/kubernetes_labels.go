@@ -39,17 +39,8 @@ var VirtualNetworkUuid = fmt.Sprintf("%s/%s", group, "virtualnetwork-uuid")
 // NetworkClassUuid is the label where the fulfillment API will write the identifier of the network class.
 var NetworkClassUuid = fmt.Sprintf("%s/%s", group, "networkclass-uuid")
 
-// PublicIPPoolUuid is the label where the fulfillment API will write the identifier of the public IP pool.
-var PublicIPPoolUuid = fmt.Sprintf("%s/%s", group, "publicippool-uuid")
-
 // SecurityGroupUuid is the label where the fulfillment API will write the identifier of the security group.
 var SecurityGroupUuid = fmt.Sprintf("%s/%s", group, "securitygroup-uuid")
-
-// PublicIPUuid is the label where the fulfillment API will write the identifier of the public IP.
-var PublicIPUuid = fmt.Sprintf("%s/%s", group, "publicip-uuid")
-
-// PublicIPAttachmentUuid is the label where the fulfillment API will write the identifier of the public IP attachment.
-var PublicIPAttachmentUuid = fmt.Sprintf("%s/%s", group, "publicipattachment-uuid")
 
 // BareMetalInstanceUuid is the label where the fulfillment API will write the identifier of the bare metal instance.
 var BareMetalInstanceUuid = fmt.Sprintf("%s/%s", group, "baremetalinstance-uuid")

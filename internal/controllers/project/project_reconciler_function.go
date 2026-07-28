@@ -14,6 +14,7 @@ language governing permissions and limitations under the License.
 //go:generate mockgen -source=../../api/osac/private/v1/projects_service_grpc.pb.go -destination=projects_client_mock.go -package=project ProjectsClient
 //go:generate mockgen -source=../../api/osac/private/v1/tenants_service_grpc.pb.go -destination=tenants_client_mock.go -package=project TenantsClient
 //go:generate mockgen -source=../../api/osac/private/v1/users_service_grpc.pb.go -destination=users_client_mock.go -package=project UsersClient
+//go:generate mockgen -source=../../api/osac/private/v1/project_memberships_service_grpc.pb.go -destination=project_memberships_client_mock.go -package=project ProjectMembershipsClient
 
 package project
 
@@ -94,24 +95,26 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 	}
 
 	result = &function{
-		logger:              b.logger,
-		projectsClient:      privatev1.NewProjectsClient(b.connection),
-		tenantsClient:       privatev1.NewTenantsClient(b.connection),
-		usersClient:         usersClient,
-		projectGroupManager: b.projectGroupManager,
-		maskCalculator:      masks.NewCalculator().Build(),
+		logger:                   b.logger,
+		projectsClient:           privatev1.NewProjectsClient(b.connection),
+		tenantsClient:            privatev1.NewTenantsClient(b.connection),
+		usersClient:              usersClient,
+		projectMembershipsClient: privatev1.NewProjectMembershipsClient(b.connection),
+		projectGroupManager:      b.projectGroupManager,
+		maskCalculator:           masks.NewCalculator().Build(),
 	}
 	return
 }
 
 // function is the implementation of the reconciler function.
 type function struct {
-	logger              *slog.Logger
-	projectsClient      privatev1.ProjectsClient
-	tenantsClient       privatev1.TenantsClient
-	usersClient         privatev1.UsersClient
-	projectGroupManager *idp.ProjectGroupManager
-	maskCalculator      *masks.Calculator
+	logger                   *slog.Logger
+	projectsClient           privatev1.ProjectsClient
+	tenantsClient            privatev1.TenantsClient
+	usersClient              privatev1.UsersClient
+	projectMembershipsClient privatev1.ProjectMembershipsClient
+	projectGroupManager      *idp.ProjectGroupManager
+	maskCalculator           *masks.Calculator
 }
 
 // Run executes the reconciliation logic for the given project.
@@ -365,6 +368,11 @@ func (t *task) delete(ctx context.Context) error {
 		return nil
 	}
 
+	// Cascade-delete ProjectMemberships scoped to this project
+	if err := t.deleteProjectMemberships(ctx); err != nil {
+		return err
+	}
+
 	// Clean up Keycloak groups
 	err = t.r.projectGroupManager.DeleteProjectGroups(ctx,
 		t.project.GetMetadata().GetTenant(),
@@ -385,6 +393,47 @@ func (t *task) delete(ctx context.Context) error {
 	// so it re-reconciles and can proceed with its own deletion.
 	if t.project.GetMetadata().GetName() == "" {
 		t.signalTenant(ctx)
+	}
+
+	return nil
+}
+
+// deleteProjectMemberships lists all ProjectMemberships scoped to this project, marks each for
+// deletion, and waits for them to be fully removed before returning. This prevents orphaned
+// memberships and ensures the project can complete its own deletion.
+func (t *task) deleteProjectMemberships(ctx context.Context) error {
+	projectName := t.project.GetMetadata().GetName()
+	tenant := t.project.GetMetadata().GetTenant()
+
+	membershipFilter := fmt.Sprintf(
+		"this.metadata.tenant == %q && this.metadata.project == %q",
+		tenant, projectName,
+	)
+	listResp, err := t.r.projectMembershipsClient.List(ctx, privatev1.ProjectMembershipsListRequest_builder{
+		Filter: new(membershipFilter),
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to query for project memberships: %w", err)
+	}
+
+	for _, membership := range listResp.GetItems() {
+		if membership.HasMetadata() && membership.GetMetadata().HasDeletionTimestamp() {
+			continue
+		}
+		t.r.logger.InfoContext(ctx, "Cascade-deleting project membership",
+			slog.String("project_id", t.project.GetId()),
+			slog.String("membership_id", membership.GetId()),
+		)
+		_, err := t.r.projectMembershipsClient.Delete(ctx, privatev1.ProjectMembershipsDeleteRequest_builder{
+			Id: membership.GetId(),
+		}.Build())
+		if err != nil && status.Code(err) != codes.NotFound {
+			return fmt.Errorf("failed to delete project membership %s: %w", membership.GetId(), err)
+		}
+	}
+
+	if listResp.GetTotal() > 0 {
+		return fmt.Errorf("project still has %d project membership(s) pending deletion", listResp.GetTotal())
 	}
 
 	return nil
