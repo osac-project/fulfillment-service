@@ -2333,4 +2333,120 @@ var _ = Describe("Kubernetes validation error handling", func() {
 			Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING),
 		)
 	})
+
+	It("should recover from FAILED state when spec is corrected and Create succeeds", func() {
+		subnetCR := &osacv1alpha1.Subnet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hubNamespace,
+				Name:      "test-sn",
+				Labels:    map[string]string{labels.SubnetUuid: subnetID},
+			},
+		}
+
+		scheme := runtime.NewScheme()
+		Expect(osacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+		rejectCreate := true
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(subnetCR).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(ctx context.Context, client clnt.WithWatch, obj clnt.Object, opts ...clnt.CreateOption) error {
+					if _, ok := obj.(*osacv1alpha1.ComputeInstance); ok && rejectCreate {
+						return apierrors.NewInvalid(
+							schema.GroupKind{Group: "osac.openshift.io", Kind: "ComputeInstance"},
+							"vm-test",
+							field.ErrorList{
+								field.Invalid(
+									field.NewPath("spec", "cores"),
+									150,
+									"spec.cores in body should be less than or equal to 128",
+								),
+							},
+						)
+					}
+					return client.Create(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		hubCache := controllers.NewMockHubCache(ctrl)
+		hubCache.EXPECT().
+			Get(gomock.Any(), hubID).
+			Return(&controllers.HubEntry{
+				Namespace: hubNamespace,
+				Client:    fakeClient,
+			}, nil).
+			AnyTimes()
+
+		hubsClient := controllers.NewMockHubsClient(ctrl)
+
+		mockInstanceTypesClient := NewMockInstanceTypesClient(ctrl)
+		mockInstanceTypesClient.EXPECT().
+			Get(gomock.Any(), gomock.Any()).
+			Return(privatev1.InstanceTypesGetResponse_builder{
+				Object: privatev1.InstanceType_builder{
+					Spec: privatev1.InstanceTypeSpec_builder{
+						Cores:     4,
+						MemoryGib: 2,
+					}.Build(),
+				}.Build(),
+			}.Build(), nil).
+			AnyTimes()
+
+		computeInstancesClient := NewMockComputeInstancesClient(ctrl)
+		computeInstancesClient.EXPECT().
+			Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, req *privatev1.ComputeInstancesUpdateRequest, opts ...grpc.CallOption) (*privatev1.ComputeInstancesUpdateResponse, error) {
+				return &privatev1.ComputeInstancesUpdateResponse{Object: req.GetObject()}, nil
+			}).
+			AnyTimes()
+
+		computeInstance := privatev1.ComputeInstance_builder{
+			Id: computeInstanceID,
+			Metadata: privatev1.Metadata_builder{
+				Finalizers: []string{finalizers.Controller},
+				Tenant:     tenantName,
+			}.Build(),
+			Spec: privatev1.ComputeInstanceSpec_builder{
+				Template:     "osac.templates.ocp_virt_vm",
+				InstanceType: new("test-type"),
+				NetworkAttachments: []*privatev1.NetworkAttachment{
+					privatev1.NetworkAttachment_builder{Subnet: subnetID}.Build(),
+				},
+			}.Build(),
+			Status: privatev1.ComputeInstanceStatus_builder{
+				State: privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_STARTING,
+				Hub:   hubID,
+			}.Build(),
+		}.Build()
+
+		f := &function{
+			logger:                 logger,
+			hubCache:               hubCache,
+			computeInstancesClient: computeInstancesClient,
+			hubsClient:             hubsClient,
+			instanceTypesClient:    mockInstanceTypesClient,
+			maskCalculator:         nil,
+		}
+
+		// First reconcile: K8s rejects Create with Invalid error → FAILED
+		err := f.run(ctx, computeInstance)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(computeInstance.GetStatus().GetState()).To(
+			Equal(privatev1.ComputeInstanceState_COMPUTE_INSTANCE_STATE_FAILED),
+		)
+
+		// Second reconcile: spec corrected, Create succeeds → CR created
+		rejectCreate = false
+		err = f.run(ctx, computeInstance)
+		Expect(err).ToNot(HaveOccurred())
+
+		list := &osacv1alpha1.ComputeInstanceList{}
+		err = fakeClient.List(ctx, list)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(list.Items).To(HaveLen(1))
+		Expect(list.Items[0].Namespace).To(Equal(hubNamespace))
+	})
 })
