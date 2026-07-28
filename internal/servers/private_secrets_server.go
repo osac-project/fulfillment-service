@@ -24,7 +24,9 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/events"
+	"github.com/osac-project/fulfillment-service/internal/vault"
 )
 
 type PrivateSecretsServerBuilder struct {
@@ -33,6 +35,7 @@ type PrivateSecretsServerBuilder struct {
 	attributionLogic  auth.AttributionLogic
 	tenancyLogic      auth.TenancyLogic
 	metricsRegisterer prometheus.Registerer
+	secretStore       vault.SecretStore
 }
 
 var _ privatev1.SecretsServer = (*PrivateSecretsServer)(nil)
@@ -40,8 +43,10 @@ var _ privatev1.SecretsServer = (*PrivateSecretsServer)(nil)
 type PrivateSecretsServer struct {
 	privatev1.UnimplementedSecretsServer
 
-	logger  *slog.Logger
-	generic *GenericServer[*privatev1.Secret]
+	logger       *slog.Logger
+	generic      *GenericServer[*privatev1.Secret]
+	secretStore  vault.SecretStore
+	tenancyLogic auth.TenancyLogic
 }
 
 func NewPrivateSecretsServer() *PrivateSecretsServerBuilder {
@@ -73,6 +78,11 @@ func (b *PrivateSecretsServerBuilder) SetMetricsRegisterer(value prometheus.Regi
 	return b
 }
 
+func (b *PrivateSecretsServerBuilder) SetSecretStore(value vault.SecretStore) *PrivateSecretsServerBuilder {
+	b.secretStore = value
+	return b
+}
+
 func (b *PrivateSecretsServerBuilder) Build() (result *PrivateSecretsServer, err error) {
 	if b.logger == nil {
 		err = errors.New("logger is mandatory")
@@ -84,7 +94,9 @@ func (b *PrivateSecretsServerBuilder) Build() (result *PrivateSecretsServer, err
 	}
 
 	s := &PrivateSecretsServer{
-		logger: b.logger,
+		logger:       b.logger,
+		secretStore:  b.secretStore,
+		tenancyLogic: b.tenancyLogic,
 	}
 
 	s.generic, err = NewGenericServer[*privatev1.Secret]().
@@ -126,8 +138,29 @@ func (s *PrivateSecretsServer) List(ctx context.Context,
 func (s *PrivateSecretsServer) Get(ctx context.Context,
 	request *privatev1.SecretsGetRequest) (response *privatev1.SecretsGetResponse, err error) {
 	err = s.generic.Get(ctx, request, &response)
+	if err != nil {
+		return
+	}
 
-	// TODO: Fetch secret data from the storage backend.
+	obj := response.GetObject()
+	if s.secretStore != nil && obj.GetSpec().GetBackend() == privatev1.SecretBackend_SECRET_BACKEND_VAULT {
+		tenant := obj.GetMetadata().GetTenant()
+		project := obj.GetMetadata().GetProject()
+		name := obj.GetMetadata().GetName()
+
+		data, fetchErr := s.secretStore.Fetch(ctx, tenant, project, name)
+		if fetchErr != nil {
+			err = vault.ToGrpcError(fetchErr)
+			return
+		}
+
+		status := obj.GetStatus()
+		if status == nil {
+			status = privatev1.SecretStatus_builder{}.Build()
+			obj.SetStatus(status)
+		}
+		status.SetResolvedData(data)
+	}
 
 	return
 }
@@ -149,10 +182,25 @@ func (s *PrivateSecretsServer) Create(ctx context.Context,
 		secret.GetSpec().SetBackend(privatev1.SecretBackend_SECRET_BACKEND_VAULT)
 	}
 
-	// TODO: Store secret data in the storage backend.
+	if s.secretStore != nil && secret.GetSpec().GetBackend() == privatev1.SecretBackend_SECRET_BACKEND_VAULT {
+		tenant, tenantErr := s.determineTenant(ctx, secret)
+		if tenantErr != nil {
+			err = tenantErr
+			return
+		}
+		project := secret.GetMetadata().GetProject()
+		name := secret.GetMetadata().GetName()
+
+		err = s.secretStore.Store(ctx, tenant, project, name, secret.GetSpec().GetData())
+		if err != nil {
+			err = vault.ToGrpcError(err)
+			return
+		}
+
+		secret.GetSpec().SetData(nil)
+	}
 
 	err = s.generic.Create(ctx, request, &response)
-
 	return
 }
 
@@ -179,7 +227,22 @@ func (s *PrivateSecretsServer) Update(ctx context.Context,
 		return
 	}
 
-	// TODO: Update secret data in the storage backend.
+	if s.secretStore != nil &&
+		existingSecret.GetSpec().GetBackend() == privatev1.SecretBackend_SECRET_BACKEND_VAULT &&
+		len(request.GetObject().GetSpec().GetData()) > 0 {
+
+		tenant := existingSecret.GetMetadata().GetTenant()
+		project := existingSecret.GetMetadata().GetProject()
+		name := existingSecret.GetMetadata().GetName()
+
+		err = s.secretStore.Store(ctx, tenant, project, name, request.GetObject().GetSpec().GetData())
+		if err != nil {
+			err = vault.ToGrpcError(err)
+			return
+		}
+
+		request.GetObject().GetSpec().SetData(nil)
+	}
 
 	err = s.generic.Update(ctx, request, &response)
 	return
@@ -187,7 +250,41 @@ func (s *PrivateSecretsServer) Update(ctx context.Context,
 
 func (s *PrivateSecretsServer) Delete(ctx context.Context,
 	request *privatev1.SecretsDeleteRequest) (response *privatev1.SecretsDeleteResponse, err error) {
+	// Report errors to the transaction so that post-DB failures (e.g. Vault delete) trigger rollback.
+	tx, txErr := database.TxFromContext(ctx)
+	if txErr == nil {
+		defer tx.ReportError(&err)
+	}
+
+	var obj *privatev1.Secret
+	if s.secretStore != nil {
+		getRequest := &privatev1.SecretsGetRequest{}
+		getRequest.SetId(request.GetId())
+		var getResponse *privatev1.SecretsGetResponse
+		err = s.generic.Get(ctx, getRequest, &getResponse)
+		if err != nil {
+			return
+		}
+		obj = getResponse.GetObject()
+	}
+
 	err = s.generic.Delete(ctx, request, &response)
+	if err != nil {
+		return
+	}
+
+	if obj != nil && obj.GetSpec().GetBackend() == privatev1.SecretBackend_SECRET_BACKEND_VAULT {
+		tenant := obj.GetMetadata().GetTenant()
+		project := obj.GetMetadata().GetProject()
+		name := obj.GetMetadata().GetName()
+
+		deleteErr := s.secretStore.Delete(ctx, tenant, project, name)
+		if deleteErr != nil {
+			err = vault.ToGrpcError(deleteErr)
+			return
+		}
+	}
+
 	return
 }
 
@@ -237,6 +334,17 @@ func (s *PrivateSecretsServer) validateHubSecretCreate(spec *privatev1.SecretSpe
 			"field 'spec.data' must be empty when backend is HUB")
 	}
 	return nil
+}
+
+func (s *PrivateSecretsServer) determineTenant(ctx context.Context, secret *privatev1.Secret) (string, error) {
+	if t := secret.GetMetadata().GetTenant(); t != "" {
+		return t, nil
+	}
+	t, err := s.tenancyLogic.DetermineDefaultTenant(ctx)
+	if err != nil {
+		return "", grpcstatus.Errorf(grpccodes.Internal, "failed to determine tenant: %v", err)
+	}
+	return t, nil
 }
 
 func (s *PrivateSecretsServer) validateSecretUpdate(_ context.Context,
