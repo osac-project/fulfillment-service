@@ -50,9 +50,9 @@ var _ = Describe("Public bare metal instance types", func() {
 				Spec: privatev1.BareMetalInstanceTypeSpec_builder{
 					Hardware: privatev1.BareMetalHardwareSpec_builder{
 						Cpu: privatev1.BareMetalCPUSpec_builder{
-							Cores:           cores,
-							Architecture:    "x86_64",
-							ThreadsPerCore:  2,
+							Cores:          cores,
+							Architecture:   "x86_64",
+							ThreadsPerCore: 2,
 						}.Build(),
 						Memory: privatev1.BareMetalMemorySpec_builder{
 							TotalGb: memoryGb,
@@ -60,7 +60,7 @@ var _ = Describe("Public bare metal instance types", func() {
 					}.Build(),
 					HostLabelSelector: privatev1.BareMetalLabelSelector_builder{
 						MatchLabels: map[string]string{
-							"hardware.example.com/cpu-cores":  fmt.Sprintf("%d", cores),
+							"hardware.example.com/cpu-cores": fmt.Sprintf("%d", cores),
 							"hardware.example.com/memory-gb": fmt.Sprintf("%d", memoryGb),
 						},
 					}.Build(),
