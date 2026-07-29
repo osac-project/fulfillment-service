@@ -107,8 +107,9 @@ var _ = Describe("Public bare metal instance types", func() {
 		id2 := createViaPrivate("filter2", 16, 32)
 
 		// Test filter by specific ID
+		idFilter := fmt.Sprintf("this.id == '%s'", id1)
 		response, err := publicClient.List(ctx, publicv1.BareMetalInstanceTypesListRequest_builder{
-			Filter: fmt.Sprintf("this.id == '%s'", id1),
+			Filter: &idFilter,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response).ToNot(BeNil())
@@ -116,8 +117,9 @@ var _ = Describe("Public bare metal instance types", func() {
 		Expect(response.GetItems()[0].GetId()).To(Equal(id1))
 
 		// Test filter by name pattern
+		nameFilter := "this.metadata.name.contains('filter')"
 		response, err = publicClient.List(ctx, publicv1.BareMetalInstanceTypesListRequest_builder{
-			Filter: "this.metadata.name.contains('filter')",
+			Filter: &nameFilter,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response).ToNot(BeNil())
@@ -134,9 +136,11 @@ var _ = Describe("Public bare metal instance types", func() {
 		createViaPrivate("page3", 12, 24)
 
 		// Request first page with limit of 2
+		pageFilter := "this.metadata.name.contains('page')"
+		limit2 := int32(2)
 		response, err := publicClient.List(ctx, publicv1.BareMetalInstanceTypesListRequest_builder{
-			Filter: "this.metadata.name.contains('page')",
-			Limit:  2,
+			Filter: &pageFilter,
+			Limit:  &limit2,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response).ToNot(BeNil())
@@ -145,10 +149,11 @@ var _ = Describe("Public bare metal instance types", func() {
 		Expect(response.GetSize()).To(Equal(int32(2)))
 
 		// Request second page
+		offset2 := int32(2)
 		response, err = publicClient.List(ctx, publicv1.BareMetalInstanceTypesListRequest_builder{
-			Filter: "this.metadata.name.contains('page')",
-			Offset: 2,
-			Limit:  2,
+			Filter: &pageFilter,
+			Offset: &offset2,
+			Limit:  &limit2,
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response).ToNot(BeNil())
