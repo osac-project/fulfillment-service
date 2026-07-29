@@ -40,6 +40,13 @@ jobs:
       with:
         persist-credentials: false
     - uses: ./.github/actions/setup-go
+
+    - name: Create Kind cluster with OSAC infrastructure
+      uses: osac-project/osac-test-infra/.github/actions/kind-dev@main
+      with:
+        cluster-name: fulfillment-service-it
+        mode: skip-osac
+
     - run: |
         echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
         echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
