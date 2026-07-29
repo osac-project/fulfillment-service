@@ -165,6 +165,28 @@ update clusters set data = jsonb_set(
     where jsonb_typeof(kv.value->'host_type') = 'string'
   );
 
+-- cluster_templates: node_sets — same map structure as clusters.spec.node_sets.
+-- Transform host_type string → {"id": old} inside every map value.
+update cluster_templates set data = jsonb_set(
+  data, '{node_sets}',
+  (
+    select coalesce(jsonb_object_agg(
+      kv.key,
+      case
+        when jsonb_typeof(kv.value->'host_type') = 'string' then
+          jsonb_set(kv.value, '{host_type}', jsonb_build_object('id', kv.value->>'host_type'))
+        else kv.value
+      end
+    ), '{}'::jsonb)
+    from jsonb_each(data->'node_sets') as kv
+  )
+) where data->'node_sets' is not null
+  and jsonb_typeof(data->'node_sets') = 'object'
+  and exists (
+    select 1 from jsonb_each(data->'node_sets') as kv
+    where jsonb_typeof(kv.value->'host_type') = 'string'
+  );
+
 -- cluster_catalog_items: spec.template
 update cluster_catalog_items set data = jsonb_set(
   data, '{spec,template}',

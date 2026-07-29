@@ -60,6 +60,38 @@ var _ = DescribeMigration("Update triggers for typed references", func() {
 		Expect(vnObj["id"]).To(Equal("vn-old-string"))
 	})
 
+	It("Backfills cluster_templates node_sets host_type to typed reference", func(ctx context.Context) {
+		// Insert a cluster template with old-style string host_type in node_sets
+		_, err := conn.Exec(ctx,
+			`insert into cluster_templates (id, tenant, data) values ($1, $2, $3)`,
+			"ct-old-string", "shared",
+			`{"node_sets":{"control":{"host_type":"ht-bare-metal","size":3},"worker":{"host_type":"ht-vm","size":2}}}`,
+		)
+		Expect(err).ToNot(HaveOccurred())
+
+		err = tool.Migrate(ctx, 88)
+		Expect(err).ToNot(HaveOccurred())
+
+		var data json.RawMessage
+		err = conn.QueryRow(ctx,
+			`select data from cluster_templates where id = $1`, "ct-old-string",
+		).Scan(&data)
+		Expect(err).ToNot(HaveOccurred())
+
+		var parsed map[string]interface{}
+		err = json.Unmarshal(data, &parsed)
+		Expect(err).ToNot(HaveOccurred())
+
+		nodeSets := parsed["node_sets"].(map[string]interface{})
+		control := nodeSets["control"].(map[string]interface{})
+		controlHT := control["host_type"].(map[string]interface{})
+		Expect(controlHT["id"]).To(Equal("ht-bare-metal"))
+
+		worker := nodeSets["worker"].(map[string]interface{})
+		workerHT := worker["host_type"].(map[string]interface{})
+		Expect(workerHT["id"]).To(Equal("ht-vm"))
+	})
+
 	It("Skips rows already in the new format", func(ctx context.Context) {
 		// Disable the Z0002 trigger so we can insert directly with the new format
 		_, err := conn.Exec(ctx,
