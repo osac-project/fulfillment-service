@@ -179,6 +179,45 @@ var _ = Describe("Client conflict handling", func() {
 		})
 	})
 
+	Describe("AddUserToGroup", func() {
+		It("succeeds on 409 conflict (user already member of group)", func() {
+			mux.HandleFunc("GET /admin/realms/osac/organizations", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode([]keycloakOrganization{
+					{ID: "org-123", Name: "shared"},
+				})
+			})
+			mux.HandleFunc("POST /admin/realms/osac/organizations/org-123/members", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusConflict)
+			})
+			mux.HandleFunc("PUT /admin/realms/osac/organizations/org-123/groups/group-456/members/user-789", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusConflict)
+			})
+
+			err := client.AddUserToGroup(ctx, "shared", "user-789", "group-456")
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("returns an error for non-conflict failures", func() {
+			mux.HandleFunc("GET /admin/realms/osac/organizations", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode([]keycloakOrganization{
+					{ID: "org-123", Name: "shared"},
+				})
+			})
+			mux.HandleFunc("POST /admin/realms/osac/organizations/org-123/members", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusConflict)
+			})
+			mux.HandleFunc("PUT /admin/realms/osac/organizations/org-123/groups/group-456/members/user-789", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			})
+
+			err := client.AddUserToGroup(ctx, "shared", "user-789", "group-456")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to add user to organization group"))
+		})
+	})
+
 	Describe("CreateTenant end-to-end race simulation", func() {
 		It("succeeds when all IdP resources already exist from a concurrent create", func() {
 			// Simulate the race: another goroutine already created the org, user,

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -147,18 +148,37 @@ func (t *task) update(ctx context.Context) error {
 
 	state := t.membership.GetStatus().GetState()
 
-	// Skip reconciliation for terminal error state
-	if state == privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED {
-		return nil
-	}
-
 	// For READY memberships, detect user list changes and sync accordingly
 	if state == privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY {
-		return t.handleUserListChange(ctx)
+		return t.handleUserListChange(ctx, nil)
+	}
+
+	var existingProject *privatev1.Project
+
+	// For FAILED memberships, check if the failure is terminal before retrying.
+	// Terminal failures (deleted project, invalid role, missing tenant) will not
+	// resolve on their own, so we skip the retry to avoid unnecessary API calls.
+	if state == privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED {
+		terminal, reason, project := t.isTerminalFailure(ctx)
+		if terminal {
+			t.r.logger.DebugContext(ctx, "Skipping retry for terminal failure",
+				slog.String("!reason", reason),
+			)
+			t.membership.GetStatus().SetMessage(reason)
+			return nil
+		}
+		existingProject = project
+		if len(t.membership.GetStatus().GetUsers()) > 0 {
+			t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY)
+			t.membership.GetStatus().SetMessage("")
+			return t.handleUserListChange(ctx, existingProject)
+		}
+		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_PENDING)
+		t.membership.GetStatus().SetMessage("")
 	}
 
 	// Project membership is PENDING, perform initial synchronization
-	return t.syncProjectMembership(ctx)
+	return t.syncProjectMembership(ctx, existingProject)
 }
 
 // getProjectByNameOrID fetches a project by ID or name. If the provided value is not found as an ID,
@@ -194,10 +214,10 @@ func (t *task) getProjectByNameOrID(ctx context.Context, nameOrID string) (*priv
 
 	projects := listResponse.GetItems()
 	if len(projects) == 0 {
-		return nil, fmt.Errorf("project with name or ID '%s' not found", nameOrID)
+		return nil, status.Errorf(codes.NotFound, "project with name or ID '%s' not found", nameOrID)
 	}
 	if len(projects) > 1 {
-		return nil, fmt.Errorf("multiple projects found with name '%s'", nameOrID)
+		return nil, status.Errorf(codes.FailedPrecondition, "multiple projects found with name '%s'", nameOrID)
 	}
 
 	return projects[0], nil
@@ -225,7 +245,41 @@ func (t *task) setDefaults() {
 	}
 }
 
-func (t *task) syncProjectMembership(ctx context.Context) error {
+// isTerminalFailure validates preconditions that must hold for a retry to
+// succeed. Returns true with a human-readable reason when the failure cannot
+// resolve on its own (e.g. the project was deleted).
+func (t *task) isTerminalFailure(ctx context.Context) (bool, string, *privatev1.Project) {
+	projectNameOrID := t.membership.GetMetadata().GetProject()
+	if projectNameOrID == "" {
+		return true, "Project reference is required", nil
+	}
+
+	role := t.membership.GetSpec().GetRole()
+	if t.mapRoleToGroupSuffix(role) == "" {
+		return true, fmt.Sprintf("Unknown project membership role: %v", role), nil
+	}
+
+	project, err := t.getProjectByNameOrID(ctx, projectNameOrID)
+	if err != nil {
+		code := status.Code(err)
+		if code == codes.NotFound || code == codes.FailedPrecondition {
+			return true, fmt.Sprintf("Project '%s' no longer exists", projectNameOrID), nil
+		}
+		return false, "", nil
+	}
+
+	if project.GetMetadata().HasDeletionTimestamp() {
+		return true, fmt.Sprintf("Project '%s' is being deleted", projectNameOrID), nil
+	}
+
+	if project.GetMetadata().GetTenant() == "" {
+		return true, "Project has no organization tenant", nil
+	}
+
+	return false, "", project
+}
+
+func (t *task) syncProjectMembership(ctx context.Context, existingProject *privatev1.Project) error {
 	users := t.membership.GetSpec().GetUsers()
 	if len(users) == 0 {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_READY)
@@ -234,20 +288,24 @@ func (t *task) syncProjectMembership(ctx context.Context) error {
 		return nil
 	}
 
-	_, organizationName, groupID, err := t.resolveProjectGroup(ctx)
+	_, organizationName, groupID, err := t.resolveProjectGroup(ctx, existingProject)
 	if err != nil {
 		return nil
 	}
 
+	var successfulUsers []string
 	var assignmentErrors []string
 	for _, userID := range users {
 		if err := t.addUserToGroup(ctx, userID, organizationName, groupID); err != nil {
 			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: %v", userID, err))
+		} else {
+			successfulUsers = append(successfulUsers, userID)
 		}
 	}
 
 	if len(assignmentErrors) > 0 {
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetUsers(successfulUsers)
 		t.membership.GetStatus().SetMessage(fmt.Sprintf(
 			"Failed to sync %d user(s): %s", len(assignmentErrors), strings.Join(assignmentErrors, "; "),
 		))
@@ -260,7 +318,7 @@ func (t *task) syncProjectMembership(ctx context.Context) error {
 	return nil
 }
 
-func (t *task) handleUserListChange(ctx context.Context) error {
+func (t *task) handleUserListChange(ctx context.Context, existingProject *privatev1.Project) error {
 	desiredUsers := t.membership.GetSpec().GetUsers()
 	syncedUsers := t.membership.GetStatus().GetUsers()
 
@@ -291,9 +349,15 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 		return nil
 	}
 
-	_, organizationName, groupID, err := t.resolveProjectGroup(ctx)
+	_, organizationName, groupID, err := t.resolveProjectGroup(ctx, existingProject)
 	if err != nil {
 		return nil
+	}
+
+	// Track the actual synced user set so partial progress is preserved on failure.
+	actualUsers := make(map[string]bool)
+	for _, u := range syncedUsers {
+		actualUsers[u] = true
 	}
 
 	var syncErrors []string
@@ -301,17 +365,27 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 	for _, userID := range usersToRemove {
 		if err := t.removeUserFromGroup(ctx, userID, organizationName, groupID); err != nil {
 			syncErrors = append(syncErrors, fmt.Sprintf("remove user %s: %v", userID, err))
+		} else {
+			delete(actualUsers, userID)
 		}
 	}
 
 	for _, userID := range usersToAdd {
 		if err := t.addUserToGroup(ctx, userID, organizationName, groupID); err != nil {
 			syncErrors = append(syncErrors, fmt.Sprintf("add user %s: %v", userID, err))
+		} else {
+			actualUsers[userID] = true
 		}
 	}
 
 	if len(syncErrors) > 0 {
+		currentUsers := make([]string, 0, len(actualUsers))
+		for u := range actualUsers {
+			currentUsers = append(currentUsers, u)
+		}
+		sort.Strings(currentUsers)
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+		t.membership.GetStatus().SetUsers(currentUsers)
 		t.membership.GetStatus().SetMessage(fmt.Sprintf(
 			"Failed to sync user changes: %s", strings.Join(syncErrors, "; "),
 		))
@@ -327,22 +401,26 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 
 // resolveProjectGroup resolves the project, organization, and group ID for the membership.
 // On failure, it sets the membership status to FAILED and returns a non-nil error.
-func (t *task) resolveProjectGroup(ctx context.Context) (
+func (t *task) resolveProjectGroup(ctx context.Context, existingProject *privatev1.Project) (
 	project *privatev1.Project, organizationName string, groupID string, err error,
 ) {
-	projectNameOrID := t.membership.GetMetadata().GetProject()
-	if projectNameOrID == "" {
-		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
-		t.membership.GetStatus().SetMessage("Project is required")
-		err = fmt.Errorf("project is required")
-		return
-	}
+	if existingProject != nil {
+		project = existingProject
+	} else {
+		projectNameOrID := t.membership.GetMetadata().GetProject()
+		if projectNameOrID == "" {
+			t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+			t.membership.GetStatus().SetMessage("Project is required")
+			err = fmt.Errorf("project is required")
+			return
+		}
 
-	project, err = t.getProjectByNameOrID(ctx, projectNameOrID)
-	if err != nil {
-		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
-		t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch project: %v", err))
-		return
+		project, err = t.getProjectByNameOrID(ctx, projectNameOrID)
+		if err != nil {
+			t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
+			t.membership.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch project: %v", err))
+			return
+		}
 	}
 
 	role := t.membership.GetSpec().GetRole()
@@ -543,7 +621,7 @@ func (t *task) cleanupProjectMembership(ctx context.Context) error {
 
 	project, err := t.getProjectByNameOrID(ctx, projectNameOrID)
 	if err != nil {
-		if status.Code(err) == codes.NotFound || strings.Contains(err.Error(), "not found") {
+		if status.Code(err) == codes.NotFound {
 			t.r.logger.DebugContext(ctx, "Project not found during cleanup, skipping")
 			return nil
 		}

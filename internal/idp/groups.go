@@ -349,6 +349,14 @@ func (c *Client) AddUserToGroup(ctx context.Context, tenantName, idpUserID, grou
 
 	response, err := c.httpClient.DoRequest(ctx, http.MethodPut, path, nil)
 	if err != nil {
+		var apiErr *apiclient.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
+			c.logger.DebugContext(ctx, "User already member of organization group",
+				slog.String("!idpUserID", idpUserID),
+				slog.String("groupID", groupID),
+			)
+			return nil
+		}
 		return fmt.Errorf("failed to add user to organization group: %w", err)
 	}
 	defer response.Body.Close()

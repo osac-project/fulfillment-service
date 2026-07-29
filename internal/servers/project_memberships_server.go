@@ -250,7 +250,25 @@ func (s *ProjectMembershipsServer) Update(ctx context.Context,
 		return
 	}
 
-	privateProjectMembership := &privatev1.ProjectMembership{}
+	// When no update mask is provided, fetch the current private object and copy public fields
+	// into it. This preserves private-only fields (like status.users) that don't exist in the
+	// public proto. With an update mask, start from a fresh object — the generic server will
+	// handle merging with the database object using field mask semantics.
+	var privateProjectMembership *privatev1.ProjectMembership
+	updateMask := request.GetUpdateMask()
+	if len(updateMask.GetPaths()) > 0 {
+		privateProjectMembership = &privatev1.ProjectMembership{}
+		privateProjectMembership.SetId(publicProjectMembership.GetId())
+	} else {
+		getRequest := &privatev1.ProjectMembershipsGetRequest{}
+		getRequest.SetId(publicProjectMembership.GetId())
+		var getResponse *privatev1.ProjectMembershipsGetResponse
+		getResponse, err = s.delegate.Get(ctx, getRequest)
+		if err != nil {
+			return nil, err
+		}
+		privateProjectMembership = getResponse.GetObject()
+	}
 	err = s.inMapper.Copy(ctx, publicProjectMembership, privateProjectMembership)
 	if err != nil {
 		s.logger.ErrorContext(
@@ -264,7 +282,7 @@ func (s *ProjectMembershipsServer) Update(ctx context.Context,
 
 	privateRequest := &privatev1.ProjectMembershipsUpdateRequest{}
 	privateRequest.SetObject(privateProjectMembership)
-	privateRequest.SetUpdateMask(request.GetUpdateMask())
+	privateRequest.SetUpdateMask(updateMask)
 	privateRequest.SetLock(request.GetLock())
 	privateResponse, err := s.delegate.Update(ctx, privateRequest)
 	if err != nil {
