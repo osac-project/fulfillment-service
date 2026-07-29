@@ -65,9 +65,8 @@ jobs:
       fork-pr-author-association: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.author_association || '' }}
       fork-pr-author: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.user.login || '' }}
       pr-number: ${{ github.event.pull_request.number }}
-      # Checkout osac-test-infra for tests/Containerfile (not the caller repo)
-      test-infra-repository: osac-project/osac-test-infra
-      # TODO: revert to 'main' before merging
+      # TODO: revert repository to osac-project/osac-test-infra and ref to 'main' before merging
+      test-infra-repository: htayrie-rh/osac-test-infra
       test-infra-ref: ${{ inputs.test-infra-ref || 'feat/OSAC-1330-type-safe-resource-references' }}
 
   e2e:
