@@ -160,7 +160,7 @@ var _ = Describe("BareMetalInstance lifecycle", func() {
 		Expect(err).To(HaveOccurred())
 		status, ok := grpcstatus.FromError(err)
 		Expect(ok).To(BeTrue())
-		Expect(status.Code()).To(Equal(grpccodes.NotFound))
+		Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 	})
 
 	It("Creates BareMetalInstance with image and persists it", func(ctx context.Context) {

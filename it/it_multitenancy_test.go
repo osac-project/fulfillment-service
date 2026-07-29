@@ -242,7 +242,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 			DescribeTable(
 				"cross-tenant",
-				func(ctx context.Context, operation func(ctx context.Context, client publicv1.ClustersClient, clusterID string) error) {
+				func(ctx context.Context, operation func(ctx context.Context, client publicv1.ClustersClient, clusterID string) error, expectedCode grpccodes.Code) {
 					for clusterTenant, clusters := range tenantClusterMapping {
 						for user, userTenant := range ServiceAccountTenants {
 							// Skip if cluster is owned by the same tenant
@@ -262,7 +262,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 								Expect(err).To(HaveOccurred())
 								status, ok := grpcstatus.FromError(err)
 								Expect(ok).To(BeTrue())
-								Expect(status.Code()).To(Equal(grpccodes.NotFound))
+								Expect(status.Code()).To(Equal(expectedCode))
 							}
 						}
 					}
@@ -277,6 +277,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 						return err
 					},
+					grpccodes.NotFound,
 				),
 				Entry(
 					"Update is not allowed",
@@ -292,6 +293,7 @@ var _ = Describe("Multitenancy basic tenant isolation", Ordered, Label("multiten
 
 						return err
 					},
+					grpccodes.InvalidArgument,
 				),
 			)
 		})
