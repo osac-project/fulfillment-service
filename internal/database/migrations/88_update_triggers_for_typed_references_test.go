@@ -39,7 +39,7 @@ var _ = DescribeMigration("Update triggers for typed references", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Apply migration 87
-		err = tool.Migrate(ctx, 87)
+		err = tool.Migrate(ctx, 88)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the string was converted to a typed reference object
@@ -75,7 +75,7 @@ var _ = DescribeMigration("Update triggers for typed references", func() {
 		)
 		Expect(err).ToNot(HaveOccurred())
 
-		err = tool.Migrate(ctx, 87)
+		err = tool.Migrate(ctx, 88)
 		Expect(err).ToNot(HaveOccurred())
 
 		var data json.RawMessage

@@ -182,7 +182,7 @@ var _ = Describe("Private clusters server", func() {
 						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: privatev1.SubnetSpec_builder{
-						VirtualNetwork: "test-vnet",
+						VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: "test-vnet"}.Build(),
 						Ipv4Cidr:       new("10.0.0.0/24"),
 					}.Build(),
 					Status: privatev1.SubnetStatus_builder{

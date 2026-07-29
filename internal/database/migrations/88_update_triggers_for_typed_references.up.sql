@@ -271,6 +271,25 @@ update bare_metal_instances set data = jsonb_set(
            and jsonb_typeof(elem->'security_groups'->0) = 'string')
   );
 
+-- clusters: spec.network_attachment.subnet
+update clusters set data = jsonb_set(
+  data, '{spec,network_attachment,subnet}',
+  jsonb_build_object('id', data->'spec'->'network_attachment'->>'subnet')
+) where data->'spec'->'network_attachment'->>'subnet' is not null
+  and jsonb_typeof(data->'spec'->'network_attachment'->'subnet') = 'string';
+
+-- clusters: spec.network_attachment.security_groups — array of strings → array of {"id": old}
+update clusters set data = jsonb_set(
+  data, '{spec,network_attachment,security_groups}',
+  (
+    select coalesce(jsonb_agg(jsonb_build_object('id', elem #>> '{}')), '[]'::jsonb)
+    from jsonb_array_elements(data->'spec'->'network_attachment'->'security_groups') as elem
+  )
+) where data->'spec'->'network_attachment'->'security_groups' is not null
+  and jsonb_typeof(data->'spec'->'network_attachment'->'security_groups') = 'array'
+  and jsonb_array_length(data->'spec'->'network_attachment'->'security_groups') > 0
+  and jsonb_typeof(data->'spec'->'network_attachment'->'security_groups'->0) = 'string';
+
 -- bare_metal_instance_catalog_items: spec.template
 update bare_metal_instance_catalog_items set data = jsonb_set(
   data, '{spec,template}',
@@ -361,6 +380,10 @@ drop trigger if exists check_cluster_version_allowed_upgrade_refs_on_insert on c
 drop trigger if exists check_cluster_version_allowed_upgrade_refs_on_update on cluster_versions;
 drop function if exists check_cluster_version_allowed_upgrade_refs();
 
+-- From migration 87: cluster → subnet (via network_attachment)
+drop trigger if exists check_cluster_subnet_refs on clusters;
+drop function if exists check_cluster_subnet_refs();
+
 -- =============================================================================================================
 -- PART 3: UPDATE Z0003 (REVERSE REFERENCE / "NOT IN USE") TRIGGER FUNCTIONS
 -- =============================================================================================================
@@ -421,8 +444,9 @@ begin
 end;
 $$ language plpgsql;
 
--- (b) check_subnet_not_in_use — checks compute_instances via network_attachments containment.
+-- (b) check_subnet_not_in_use — checks compute_instances and clusters.
 -- Updated: containment target from {"subnet": old.id} to {"subnet": {"id": old.id}}
+-- Also includes cluster check from migration 87, updated to nested reference path.
 create or replace function check_subnet_not_in_use() returns trigger as $$
 begin
   if exists (
@@ -436,6 +460,20 @@ begin
       errcode = 'Z0003',
       message = format(
         'cannot delete subnet ''%s'': it is in use by at least one compute instance',
+        old.id
+      );
+  end if;
+
+  if exists (
+    select 1
+    from clusters
+    where deletion_timestamp = 'epoch'
+      and data->'spec'->'network_attachment'->'subnet'->>'id' = old.id
+  ) then
+    raise exception using
+      errcode = 'Z0003',
+      message = format(
+        'cannot delete subnet ''%s'': it is in use by at least one cluster',
         old.id
       );
   end if;
@@ -650,3 +688,9 @@ create unique index external_ip_attachments_one_per_baremetal_instance
   where data->'spec'->'baremetal_instance'->>'id' is not null
     and data->'spec'->'baremetal_instance'->>'id' != ''
     and deletion_timestamp = 'epoch';
+
+-- From migration 87: clusters_network_attachment_subnet
+drop index if exists clusters_network_attachment_subnet;
+create index clusters_network_attachment_subnet on clusters
+  ((data->'spec'->'network_attachment'->'subnet'->>'id'))
+  where data->'spec'->'network_attachment'->'subnet'->>'id' is not null;
