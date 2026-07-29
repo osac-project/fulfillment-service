@@ -244,7 +244,7 @@ func (p *DefaultNetworkingProvisioner) createDefaultVirtualNetwork(
 		}.Build(),
 		Spec: privatev1.VirtualNetworkSpec_builder{
 			Region:                 "default",
-			NetworkClass:           nc.GetId(),
+			NetworkClass:           privatev1.NetworkClassReference_builder{Id: nc.GetId()}.Build(),
 			ImplementationStrategy: nc.GetImplementationStrategy(),
 		}.Build(),
 		Status: privatev1.VirtualNetworkStatus_builder{
@@ -283,7 +283,7 @@ func (p *DefaultNetworkingProvisioner) createDefaultSubnet(
 			Creator: "system",
 		}.Build(),
 		Spec: privatev1.SubnetSpec_builder{
-			VirtualNetwork: vnID,
+			VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: vnID}.Build(),
 		}.Build(),
 		Status: privatev1.SubnetStatus_builder{
 			State: privatev1.SubnetState_SUBNET_STATE_PENDING,
@@ -322,7 +322,7 @@ func (p *DefaultNetworkingProvisioner) createDefaultSecurityGroup(
 			Creator: "system",
 		}.Build(),
 		Spec: privatev1.SecurityGroupSpec_builder{
-			VirtualNetwork:         vnID,
+			VirtualNetwork:         privatev1.VirtualNetworkLocalReference_builder{Id: vnID}.Build(),
 			Ingress:                defaults.GetIngressRules(),
 			Egress:                 defaults.GetEgressRules(),
 			ImplementationStrategy: "network_policy",
@@ -408,7 +408,7 @@ func (p *DefaultNetworkingProvisioner) createDefaultExternalIP(
 			Creator: "system",
 		}.Build(),
 		Spec: privatev1.ExternalIPSpec_builder{
-			Pool: poolID,
+			Pool: privatev1.ExternalIPPoolReference_builder{Id: poolID}.Build(),
 		}.Build(),
 		Status: privatev1.ExternalIPStatus_builder{
 			State: privatev1.ExternalIPState_EXTERNAL_IP_STATE_PENDING,
@@ -439,8 +439,8 @@ func (p *DefaultNetworkingProvisioner) createDefaultNATGateway(
 			Creator: "system",
 		}.Build(),
 		Spec: privatev1.NATGatewaySpec_builder{
-			VirtualNetwork: vnID,
-			ExternalIp:     externalIPID,
+			VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: vnID}.Build(),
+			ExternalIp:     privatev1.ExternalIPLocalReference_builder{Id: externalIPID}.Build(),
 		}.Build(),
 		Status: privatev1.NATGatewayStatus_builder{
 			State: privatev1.NATGatewayState_NAT_GATEWAY_STATE_PENDING,
