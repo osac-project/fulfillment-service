@@ -41,6 +41,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create VirtualNetwork DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.VirtualNetworkLocalReference", virtualNetworksDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.VirtualNetworkLocalReference", virtualNetworksDAO)
 
 	networkClassesDAO, err := dao.NewGenericDAO[*privatev1.NetworkClass]().
 		SetLogger(logger).
@@ -51,6 +52,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create NetworkClass DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.NetworkClassReference", networkClassesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.NetworkClassReference", networkClassesDAO)
 
 	subnetsDAO, err := dao.NewGenericDAO[*privatev1.Subnet]().
 		SetLogger(logger).
@@ -61,6 +63,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create Subnet DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.SubnetLocalReference", subnetsDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.SubnetLocalReference", subnetsDAO)
 
 	securityGroupsDAO, err := dao.NewGenericDAO[*privatev1.SecurityGroup]().
 		SetLogger(logger).
@@ -71,6 +74,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create SecurityGroup DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.SecurityGroupLocalReference", securityGroupsDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.SecurityGroupLocalReference", securityGroupsDAO)
 
 	externalIPsDAO, err := dao.NewGenericDAO[*privatev1.ExternalIP]().
 		SetLogger(logger).
@@ -81,6 +85,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create ExternalIP DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.ExternalIPLocalReference", externalIPsDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.ExternalIPLocalReference", externalIPsDAO)
 
 	externalIPPoolsDAO, err := dao.NewGenericDAO[*privatev1.ExternalIPPool]().
 		SetLogger(logger).
@@ -91,6 +96,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create ExternalIPPool DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.ExternalIPPoolReference", externalIPPoolsDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.ExternalIPPoolReference", externalIPPoolsDAO)
 
 	// Compute references
 	computeInstancesDAO, err := dao.NewGenericDAO[*privatev1.ComputeInstance]().
@@ -102,6 +108,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create ComputeInstance DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.ComputeInstanceLocalReference", computeInstancesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.ComputeInstanceLocalReference", computeInstancesDAO)
 
 	computeInstanceTemplatesDAO, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
 		SetLogger(logger).
@@ -112,6 +119,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create ComputeInstanceTemplate DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.ComputeInstanceTemplateReference", computeInstanceTemplatesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.ComputeInstanceTemplateReference", computeInstanceTemplatesDAO)
 
 	computeInstanceCatalogItemsDAO, err := dao.NewGenericDAO[*privatev1.ComputeInstanceCatalogItem]().
 		SetLogger(logger).
@@ -122,6 +130,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create ComputeInstanceCatalogItem DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.ComputeInstanceCatalogItemReference", computeInstanceCatalogItemsDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.ComputeInstanceCatalogItemReference", computeInstanceCatalogItemsDAO)
 
 	instanceTypesDAO, err := dao.NewGenericDAO[*privatev1.InstanceType]().
 		SetLogger(logger).
@@ -133,6 +142,8 @@ func registerReferenceLookups(
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.InstanceTypeReference", instanceTypesDAO)
 	references.RegisterDAOLookup(validator, "osac.private.v1.InstanceTypeLocalReference", instanceTypesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.InstanceTypeReference", instanceTypesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.InstanceTypeLocalReference", instanceTypesDAO)
 
 	// Cluster and bare metal references
 	clustersDAO, err := dao.NewGenericDAO[*privatev1.Cluster]().
@@ -144,6 +155,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create Cluster DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.ClusterLocalReference", clustersDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.ClusterLocalReference", clustersDAO)
 
 	clusterTemplatesDAO, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
 		SetLogger(logger).
@@ -154,6 +166,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create ClusterTemplate DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.ClusterTemplateReference", clusterTemplatesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.ClusterTemplateReference", clusterTemplatesDAO)
 
 	clusterCatalogItemsDAO, err := dao.NewGenericDAO[*privatev1.ClusterCatalogItem]().
 		SetLogger(logger).
@@ -164,6 +177,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create ClusterCatalogItem DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.ClusterCatalogItemReference", clusterCatalogItemsDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.ClusterCatalogItemReference", clusterCatalogItemsDAO)
 
 	hostTypesDAO, err := dao.NewGenericDAO[*privatev1.HostType]().
 		SetLogger(logger).
@@ -174,6 +188,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create HostType DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.HostTypeReference", hostTypesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.HostTypeReference", hostTypesDAO)
 
 	bareMetalInstancesDAO, err := dao.NewGenericDAO[*privatev1.BareMetalInstance]().
 		SetLogger(logger).
@@ -184,6 +199,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create BareMetalInstance DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.BareMetalInstanceLocalReference", bareMetalInstancesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.BareMetalInstanceLocalReference", bareMetalInstancesDAO)
 
 	bareMetalInstanceCatalogItemsDAO, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceCatalogItem]().
 		SetLogger(logger).
@@ -194,6 +210,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create BareMetalInstanceCatalogItem DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.BareMetalInstanceCatalogItemReference", bareMetalInstanceCatalogItemsDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.BareMetalInstanceCatalogItemReference", bareMetalInstanceCatalogItemsDAO)
 
 	bareMetalInstanceTemplatesDAO, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceTemplate]().
 		SetLogger(logger).
@@ -204,6 +221,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create BareMetalInstanceTemplate DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.BareMetalInstanceTemplateReference", bareMetalInstanceTemplatesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.BareMetalInstanceTemplateReference", bareMetalInstanceTemplatesDAO)
 
 	// IAM references
 	rolesDAO, err := dao.NewGenericDAO[*privatev1.Role]().
@@ -215,6 +233,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create Role DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.RoleReference", rolesDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.RoleReference", rolesDAO)
 
 	refUsersDAO, err := dao.NewGenericDAO[*privatev1.User]().
 		SetLogger(logger).
@@ -225,6 +244,7 @@ func registerReferenceLookups(
 		return fmt.Errorf("failed to create User DAO for reference lookups: %w", err)
 	}
 	references.RegisterDAOLookup(validator, "osac.private.v1.UserReference", refUsersDAO)
+	references.RegisterDAOLookup(validator, "osac.public.v1.UserReference", refUsersDAO)
 
 	return nil
 }
