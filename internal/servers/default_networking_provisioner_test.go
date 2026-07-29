@@ -144,7 +144,7 @@ var _ = Describe("Default networking provisioner", func() {
 			Expect(vn.GetMetadata().GetLabels()).To(HaveKeyWithValue("osac.openshift.io/default", "true"))
 			Expect(vn.GetSpec().GetIpv4Cidr()).To(Equal("10.0.0.0/16"))
 			Expect(vn.GetSpec().GetIpv6Cidr()).To(Equal("fd00::/48"))
-			Expect(vn.GetSpec().GetNetworkClass()).ToNot(BeEmpty())
+			Expect(vn.GetSpec().GetNetworkClass().GetId()).ToNot(BeEmpty())
 			Expect(vn.GetSpec().GetImplementationStrategy()).ToNot(BeEmpty())
 			Expect(vn.GetStatus().GetState()).To(Equal(
 				privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_PENDING))
