@@ -17,6 +17,7 @@ package osac.public.v1;
 
 import "google/api/field_behavior.proto";
 import "osac/public/v1/metadata_type.proto";
+import "osac/public/v1/reference_types.proto";
 
 // Represents a tenant-isolated virtual network.
 //
@@ -60,7 +61,7 @@ message VirtualNetworkSpec {
   //
   // If omitted on creation and a default NetworkClass is configured, the default is used;
   // otherwise creation fails. Once set, this field is immutable.
-  string network_class = 2 [
+  NetworkClassReference network_class = 2 [
     (google.api.field_behavior) = OPTIONAL,
     (google.api.field_behavior) = IMMUTABLE
   ];

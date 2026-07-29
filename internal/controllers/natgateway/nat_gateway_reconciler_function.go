@@ -275,7 +275,7 @@ func (t *task) selectHub(ctx context.Context) error {
 	t.hubId = t.natGateway.GetStatus().GetHub()
 	if t.hubId == "" {
 		vnResponse, err := t.r.virtualNetworksClient.Get(ctx, privatev1.VirtualNetworksGetRequest_builder{
-			Id: t.natGateway.GetSpec().GetVirtualNetwork(),
+			Id: refKeyStr(t.natGateway.GetSpec().GetVirtualNetwork()),
 		}.Build())
 		if err != nil {
 			return err
@@ -284,7 +284,7 @@ func (t *task) selectHub(ctx context.Context) error {
 		if vnHub == "" {
 			return fmt.Errorf(
 				"virtual network %s has no hub assigned yet, skipping",
-				t.natGateway.GetSpec().GetVirtualNetwork(),
+				refKeyStr(t.natGateway.GetSpec().GetVirtualNetwork()),
 			)
 		}
 		t.hubId = vnHub
@@ -367,9 +367,21 @@ func (t *task) removeFinalizer() {
 	}
 }
 
+type refKeyer interface {
+	GetId() string
+	GetName() string
+}
+
+func refKeyStr(ref refKeyer) string {
+	if ref.GetName() != "" {
+		return ref.GetName()
+	}
+	return ref.GetId()
+}
+
 func (t *task) buildSpec() osacv1alpha1.NATGatewaySpec {
 	return osacv1alpha1.NATGatewaySpec{
-		VirtualNetwork: t.natGateway.GetSpec().GetVirtualNetwork(),
-		ExternalIP:     t.natGateway.GetSpec().GetExternalIp(),
+		VirtualNetwork: refKeyStr(t.natGateway.GetSpec().GetVirtualNetwork()),
+		ExternalIP:     refKeyStr(t.natGateway.GetSpec().GetExternalIp()),
 	}
 }

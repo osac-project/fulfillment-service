@@ -187,11 +187,11 @@ func (s *PrivateComputeInstanceTemplatesServer) validateSpecDefaultsInstanceType
 	ctx context.Context,
 	specDefaults *privatev1.ComputeInstanceTemplateSpecDefaults,
 ) ([]string, error) {
-	if specDefaults == nil || !specDefaults.HasInstanceType() || specDefaults.GetInstanceType() == "" {
+	if specDefaults == nil || !specDefaults.HasInstanceType() || specDefaults.GetInstanceType() == nil {
 		return nil, nil
 	}
 
-	instanceTypeName := specDefaults.GetInstanceType()
+	instanceTypeName := refKey(specDefaults.GetInstanceType())
 
 	// Look up the instance type and validate its state.
 	return validateInstanceTypeState(ctx, s.instanceTypesDao, instanceTypeName, " in spec_defaults")

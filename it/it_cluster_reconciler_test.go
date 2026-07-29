@@ -93,7 +93,7 @@ var _ = Describe("Cluster reconciler", func() {
 				},
 				NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 					"my_node_set": privatev1.ClusterTemplateNodeSet_builder{
-						HostType: hostTypeId,
+						HostType: privatev1.HostTypeReference_builder{Id: hostTypeId}.Build(),
 						Size:     3,
 					}.Build(),
 				},
@@ -113,7 +113,7 @@ var _ = Describe("Cluster reconciler", func() {
 		response, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Spec: publicv1.ClusterSpec_builder{
-					Template: templateId,
+					Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 					TemplateParameters: map[string]*anypb.Any{
 						"my": makeAny(wrapperspb.String("my_value")),
 					},
@@ -166,7 +166,7 @@ var _ = Describe("Cluster reconciler", func() {
 		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Spec: publicv1.ClusterSpec_builder{
-					Template: templateId,
+					Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 					TemplateParameters: map[string]*anypb.Any{
 						"my": makeAny(wrapperspb.String("my_value")),
 					},
@@ -223,13 +223,13 @@ var _ = Describe("Cluster reconciler", func() {
 		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Spec: publicv1.ClusterSpec_builder{
-					Template: templateId,
+					Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 					TemplateParameters: map[string]*anypb.Any{
 						"my": makeAny(wrapperspb.String("my_value")),
 					},
 					NodeSets: map[string]*publicv1.ClusterNodeSet{
 						"my_node_set": publicv1.ClusterNodeSet_builder{
-							HostType: hostTypeId,
+							HostType: publicv1.HostTypeReference_builder{Id: hostTypeId}.Build(),
 							Size:     3,
 						}.Build(),
 					},
@@ -272,13 +272,13 @@ var _ = Describe("Cluster reconciler", func() {
 			Object: publicv1.Cluster_builder{
 				Id: object.GetId(),
 				Spec: publicv1.ClusterSpec_builder{
-					Template: templateId,
+					Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 					TemplateParameters: map[string]*anypb.Any{
 						"my": makeAny(wrapperspb.String("my_value")),
 					},
 					NodeSets: map[string]*publicv1.ClusterNodeSet{
 						"my_node_set": publicv1.ClusterNodeSet_builder{
-							HostType: hostTypeId,
+							HostType: publicv1.HostTypeReference_builder{Id: hostTypeId}.Build(),
 							Size:     5,
 						}.Build(),
 					},

@@ -346,7 +346,7 @@ var _ = Describe("applyFieldDefinitions rejects unlisted fields", func() {
 
 	It("always allows catalog_item without a field_definition", func() {
 		spec := privatev1.ClusterSpec_builder{
-			CatalogItem: "cat-123",
+			CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-123"}.Build(),
 		}.Build()
 		defaultVal, err := structpb.NewValue("ssh-ed25519 AAAA")
 		Expect(err).ToNot(HaveOccurred())
@@ -361,7 +361,7 @@ var _ = Describe("applyFieldDefinitions rejects unlisted fields", func() {
 
 	It("always allows template without a field_definition", func() {
 		spec := privatev1.ClusterSpec_builder{
-			Template: "my-template",
+			Template: privatev1.ClusterTemplateReference_builder{Id: "my-template"}.Build(),
 		}.Build()
 		defaultVal, err := structpb.NewValue("ssh-ed25519 AAAA")
 		Expect(err).ToNot(HaveOccurred())

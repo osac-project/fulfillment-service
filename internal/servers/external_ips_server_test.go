@@ -124,7 +124,7 @@ var _ = Describe("Public external IPs server", func() {
 			createResp, err := publicServer.Create(ctx, publicv1.ExternalIPsCreateRequest_builder{
 				Object: publicv1.ExternalIP_builder{
 					Metadata: publicv1.Metadata_builder{Tenant: auth.SharedTenant}.Build(),
-					Spec:     publicv1.ExternalIPSpec_builder{Pool: poolID}.Build(),
+					Spec:     publicv1.ExternalIPSpec_builder{Pool: publicv1.ExternalIPPoolReference_builder{Id: poolID}.Build()}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
@@ -143,7 +143,7 @@ var _ = Describe("Public external IPs server", func() {
 				_, err := publicServer.Create(ctx, publicv1.ExternalIPsCreateRequest_builder{
 					Object: publicv1.ExternalIP_builder{
 						Metadata: publicv1.Metadata_builder{Tenant: auth.SharedTenant}.Build(),
-						Spec:     publicv1.ExternalIPSpec_builder{Pool: poolID}.Build(),
+						Spec:     publicv1.ExternalIPSpec_builder{Pool: publicv1.ExternalIPPoolReference_builder{Id: poolID}.Build()}.Build(),
 					}.Build(),
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
@@ -159,7 +159,7 @@ var _ = Describe("Public external IPs server", func() {
 			createResp, err := publicServer.Create(ctx, publicv1.ExternalIPsCreateRequest_builder{
 				Object: publicv1.ExternalIP_builder{
 					Metadata: publicv1.Metadata_builder{Tenant: auth.SharedTenant}.Build(),
-					Spec:     publicv1.ExternalIPSpec_builder{Pool: poolID}.Build(),
+					Spec:     publicv1.ExternalIPSpec_builder{Pool: publicv1.ExternalIPPoolReference_builder{Id: poolID}.Build()}.Build(),
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())

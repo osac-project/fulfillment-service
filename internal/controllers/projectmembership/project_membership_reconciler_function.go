@@ -295,7 +295,8 @@ func (t *task) syncProjectMembership(ctx context.Context, existingProject *priva
 
 	var successfulUsers []string
 	var assignmentErrors []string
-	for _, userID := range users {
+	for _, userRef := range users {
+		userID := userRef.GetName()
 		if err := t.addUserToGroup(ctx, userID, organizationName, groupID); err != nil {
 			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: %v", userID, err))
 		} else {
@@ -324,24 +325,24 @@ func (t *task) handleUserListChange(ctx context.Context, existingProject *privat
 
 	desiredSet := make(map[string]bool)
 	for _, u := range desiredUsers {
-		desiredSet[u] = true
+		desiredSet[u.GetName()] = true
 	}
 	syncedSet := make(map[string]bool)
 	for _, u := range syncedUsers {
-		syncedSet[u] = true
+		syncedSet[u.GetName()] = true
 	}
 
 	var usersToAdd []string
 	for _, u := range desiredUsers {
-		if !syncedSet[u] {
-			usersToAdd = append(usersToAdd, u)
+		if !syncedSet[u.GetName()] {
+			usersToAdd = append(usersToAdd, u.GetName())
 		}
 	}
 
 	var usersToRemove []string
 	for _, u := range syncedUsers {
-		if !desiredSet[u] {
-			usersToRemove = append(usersToRemove, u)
+		if !desiredSet[u.GetName()] {
+			usersToRemove = append(usersToRemove, u.GetName())
 		}
 	}
 
@@ -651,7 +652,8 @@ func (t *task) cleanupProjectMembership(ctx context.Context) error {
 		return fmt.Errorf("failed to find authorization group during cleanup: %w", err)
 	}
 
-	for _, userID := range users {
+	for _, userRef := range users {
+		userID := userRef.GetName()
 		if err := t.removeUserFromGroup(ctx, userID, organizationName, groupID); err != nil {
 			return fmt.Errorf("failed to remove user %s during cleanup: %w", userID, err)
 		}

@@ -240,18 +240,19 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx contex
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "bare metal instance is mandatory")
 	}
 	ref := bmi.GetSpec().GetCatalogItem()
-	if ref == "" {
+	if ref == nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "spec.catalog_item is mandatory")
 	}
+	refStr := refKey(ref)
 
 	response, err := s.catalogItemsDao.Get().
-		SetId(ref).
+		SetId(refStr).
 		Do(ctx)
 	if err != nil {
 		var notFoundErr *dao.ErrNotFound
 		if errors.As(err, &notFoundErr) {
 			return grpcstatus.Errorf(grpccodes.NotFound,
-				"catalog item '%s' not found", ref)
+				"catalog item '%s' not found", refStr)
 		}
 		s.logger.ErrorContext(ctx, "Failed to lookup bare metal instance catalog item",
 			slog.Any("error", err))
@@ -259,7 +260,7 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx contex
 	}
 	item := response.GetObject()
 
-	if err := validateCatalogItemAccess(item, ref); err != nil {
+	if err := validateCatalogItemAccess(item, refStr); err != nil {
 		return err
 	}
 
@@ -267,7 +268,7 @@ func (s *PrivateBareMetalInstancesServer) validateAndApplyCatalogItem(ctx contex
 		return err
 	}
 
-	return s.validateAndApplyTemplateParameters(ctx, bmi, item.GetTemplate())
+	return s.validateAndApplyTemplateParameters(ctx, bmi, refKey(item.GetTemplate()))
 }
 
 // validateAndApplyTemplateParameters fetches the template referenced by the catalog item,
@@ -362,10 +363,10 @@ func (s *PrivateBareMetalInstancesServer) validateImmutability(ctx context.Conte
 		return grpcstatus.Errorf(grpccodes.Internal, "stored bare metal instance is missing spec")
 	}
 
-	if updatingCatalogItem && existingSpec.GetCatalogItem() != newSpec.GetCatalogItem() {
+	if updatingCatalogItem && !proto.Equal(existingSpec.GetCatalogItem(), newSpec.GetCatalogItem()) {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"cannot change spec.catalog_item from '%s' to '%s': catalog_item is immutable",
-			existingSpec.GetCatalogItem(), newSpec.GetCatalogItem())
+			refKey(existingSpec.GetCatalogItem()), refKey(newSpec.GetCatalogItem()))
 	}
 
 	if updatingSshKey && existingSpec.GetSshPublicKey() != newSpec.GetSshPublicKey() {

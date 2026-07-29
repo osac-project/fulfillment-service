@@ -65,7 +65,7 @@ var _ = Describe("Annotations", func() {
 				Description: "My template.",
 				NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 					"my-node-set": privatev1.ClusterTemplateNodeSet_builder{
-						HostType: hostTypeId,
+						HostType: privatev1.HostTypeReference_builder{Id: hostTypeId}.Build(),
 						Size:     3,
 					}.Build(),
 				},
@@ -90,7 +90,7 @@ var _ = Describe("Annotations", func() {
 					},
 				}.Build(),
 				Spec: publicv1.ClusterSpec_builder{
-					Template: templateId,
+					Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -120,7 +120,7 @@ var _ = Describe("Annotations", func() {
 		createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Spec: publicv1.ClusterSpec_builder{
-					Template: templateId,
+					Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -143,7 +143,7 @@ var _ = Describe("Annotations", func() {
 					},
 				}.Build(),
 				Spec: publicv1.ClusterSpec_builder{
-					Template: templateId,
+					Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -175,7 +175,7 @@ var _ = Describe("Annotations", func() {
 							},
 						}.Build(),
 						Spec: publicv1.ClusterSpec_builder{
-							Template: templateId,
+							Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -190,7 +190,7 @@ var _ = Describe("Annotations", func() {
 				createResponse, err := clustersClient.Create(ctx, publicv1.ClustersCreateRequest_builder{
 					Object: publicv1.Cluster_builder{
 						Spec: publicv1.ClusterSpec_builder{
-							Template: templateId,
+							Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -211,7 +211,7 @@ var _ = Describe("Annotations", func() {
 							},
 						}.Build(),
 						Spec: publicv1.ClusterSpec_builder{
-							Template: templateId,
+							Template: publicv1.ClusterTemplateReference_builder{Id: templateId}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())

@@ -144,8 +144,8 @@ var _ = Describe("Public NAT gateways server", func() {
 				Object: publicv1.NATGateway_builder{
 					Metadata: publicv1.Metadata_builder{Tenant: auth.SharedTenant}.Build(),
 					Spec: publicv1.NATGatewaySpec_builder{
-						VirtualNetwork: vnID,
-						ExternalIp:     eip.GetId(),
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: vnID}.Build(),
+						ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: eip.GetId()}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -167,8 +167,8 @@ var _ = Describe("Public NAT gateways server", func() {
 					Object: publicv1.NATGateway_builder{
 						Metadata: publicv1.Metadata_builder{Tenant: auth.SharedTenant}.Build(),
 						Spec: publicv1.NATGatewaySpec_builder{
-							VirtualNetwork: vnID,
-							ExternalIp:     eip.GetId(),
+							VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: vnID}.Build(),
+							ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: eip.GetId()}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -187,8 +187,8 @@ var _ = Describe("Public NAT gateways server", func() {
 				Object: publicv1.NATGateway_builder{
 					Metadata: publicv1.Metadata_builder{Tenant: auth.SharedTenant}.Build(),
 					Spec: publicv1.NATGatewaySpec_builder{
-						VirtualNetwork: vnID,
-						ExternalIp:     eip.GetId(),
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: vnID}.Build(),
+						ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: eip.GetId()}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -212,8 +212,8 @@ var _ = Describe("Public NAT gateways server", func() {
 						Tenant: auth.SharedTenant,
 					}.Build(),
 					Spec: publicv1.NATGatewaySpec_builder{
-						VirtualNetwork: vnID,
-						ExternalIp:     eip.GetId(),
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: vnID}.Build(),
+						ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: eip.GetId()}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())

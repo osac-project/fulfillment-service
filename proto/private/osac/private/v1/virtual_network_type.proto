@@ -17,6 +17,7 @@ package osac.private.v1;
 
 import "google/api/field_behavior.proto";
 import "osac/private/v1/metadata_type.proto";
+import "osac/private/v1/reference_types.proto";
 
 // Represents a tenant-isolated virtual network.
 //
@@ -66,14 +67,10 @@ message VirtualNetworkSpec {
   // The NetworkClass for this VirtualNetwork. If omitted on creation, the default NetworkClass is used.
   // Once set (either explicitly or via default), this field is immutable.
   //
-  // This field stores the ID of the selected NetworkClass resource. The selected NetworkClass determines the
-  // network backend (implementation_strategy) and the available capabilities.
-  //
-  // The NetworkClass must support the requested IP addressing capabilities (IPv4, IPv6, or dual-stack) specified
-  // via the capabilities field.
-  //
-  // Example: "udn-net", "phys-net", "ovn-kubernetes"
-  string network_class = 2 [
+  // The selected NetworkClass determines the network backend (implementation_strategy) and the available
+  // capabilities. The NetworkClass must support the requested IP addressing capabilities (IPv4, IPv6, or
+  // dual-stack) specified via the capabilities field.
+  NetworkClassReference network_class = 2 [
     (google.api.field_behavior) = OPTIONAL,
     (google.api.field_behavior) = IMMUTABLE
   ];

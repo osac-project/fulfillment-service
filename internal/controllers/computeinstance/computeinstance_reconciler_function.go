@@ -209,8 +209,8 @@ func (t *task) update(ctx context.Context) error {
 		objectLabels := map[string]string{
 			labels.ComputeInstanceUuid: t.computeInstance.GetId(),
 		}
-		if instanceTypeName := t.computeInstance.GetSpec().GetInstanceType(); instanceTypeName != "" {
-			objectLabels[labels.InstanceTypeName] = instanceTypeName
+		if instanceTypeName := t.computeInstance.GetSpec().GetInstanceType(); instanceTypeName != nil {
+			objectLabels[labels.InstanceTypeName] = instanceTypeName.GetName()
 		}
 		object = &osacv1alpha1.ComputeInstance{
 			ObjectMeta: metav1.ObjectMeta{
@@ -546,6 +546,18 @@ func (t *task) setReconciliationFailed(err error) {
 	)
 }
 
+type refKeyer interface {
+	GetId() string
+	GetName() string
+}
+
+func refKeyStr(ref refKeyer) string {
+	if ref.GetName() != "" {
+		return ref.GetName()
+	}
+	return ref.GetId()
+}
+
 // buildSpec constructs the spec for the Kubernetes ComputeInstance object based on the
 // compute instance from the database.
 func (t *task) buildSpec(ctx context.Context) (osacv1alpha1.ComputeInstanceSpec, error) {
@@ -554,7 +566,7 @@ func (t *task) buildSpec(ctx context.Context) (osacv1alpha1.ComputeInstanceSpec,
 		return osacv1alpha1.ComputeInstanceSpec{}, err
 	}
 	spec := osacv1alpha1.ComputeInstanceSpec{
-		TemplateID:         t.computeInstance.GetSpec().GetTemplate(),
+		TemplateID:         refKeyStr(t.computeInstance.GetSpec().GetTemplate()),
 		TemplateParameters: templateParameters,
 	}
 
@@ -594,7 +606,7 @@ func (t *task) buildSpecNetworkAttachments(ctx context.Context, spec *osacv1alph
 		subnetID := att.GetSubnet()
 		// subnetID is guaranteed to be non-empty by ValidateNetworkAttachments
 
-		subnetCR, err := t.getSubnetCR(ctx, subnetID)
+		subnetCR, err := t.getSubnetCR(ctx, subnetID.GetId())
 		if err != nil {
 			return fmt.Errorf(
 				"failed to look up Subnet CR for network_attachments[%d] subnet %s: %w",
@@ -609,16 +621,16 @@ func (t *task) buildSpecNetworkAttachments(ctx context.Context, spec *osacv1alph
 		t.r.logger.DebugContext(
 			ctx,
 			"Resolved subnetRef from Subnet CR",
-			slog.String("subnet_id", subnetID),
+			slog.String("subnet_id", subnetID.GetId()),
 			slog.String("subnet_ref", subnetRef),
 		)
 
 		sgRefs := make([]string, 0, len(att.GetSecurityGroups()))
 		for _, sgID := range att.GetSecurityGroups() {
-			if sgID == "" {
+			if sgID == nil {
 				continue
 			}
-			sgCR, sgErr := t.getSecurityGroupCR(ctx, sgID)
+			sgCR, sgErr := t.getSecurityGroupCR(ctx, sgID.GetId())
 			if sgErr != nil {
 				return fmt.Errorf(
 					"failed to look up SecurityGroup CR for network_attachments[%d] security group %s: %w",
@@ -633,7 +645,7 @@ func (t *task) buildSpecNetworkAttachments(ctx context.Context, spec *osacv1alph
 			t.r.logger.DebugContext(
 				ctx,
 				"Resolved securityGroupRef from SecurityGroup CR",
-				slog.String("security_group_id", sgID),
+				slog.String("security_group_id", sgID.GetId()),
 				slog.String("security_group_ref", sgCR.GetName()),
 			)
 		}
@@ -654,18 +666,22 @@ func (t *task) buildSpecNetworkAttachments(ctx context.Context, spec *osacv1alph
 func (t *task) addExplicitFields(ctx context.Context, spec *osacv1alpha1.ComputeInstanceSpec) error {
 	ciSpec := t.computeInstance.GetSpec()
 
-	instanceTypeName := ciSpec.GetInstanceType()
-	if instanceTypeName == "" {
+	instanceTypeRef := ciSpec.GetInstanceType()
+	if instanceTypeRef == nil {
 		return fmt.Errorf(
 			"compute instance '%s' has no instance_type set; cannot resolve compute resources",
 			t.computeInstance.GetId(),
 		)
 	}
+	instanceTypeKey := instanceTypeRef.GetName()
+	if instanceTypeKey == "" {
+		instanceTypeKey = instanceTypeRef.GetId()
+	}
 	response, err := t.r.instanceTypesClient.Get(ctx, privatev1.InstanceTypesGetRequest_builder{
-		Id: instanceTypeName,
+		Id: instanceTypeKey,
 	}.Build())
 	if err != nil {
-		return fmt.Errorf("failed to resolve instance type '%s': %w", instanceTypeName, err)
+		return fmt.Errorf("failed to resolve instance type '%s': %w", instanceTypeKey, err)
 	}
 	itSpec := response.GetObject().GetSpec()
 	spec.Cores = itSpec.GetCores()

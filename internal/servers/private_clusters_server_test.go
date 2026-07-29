@@ -143,11 +143,11 @@ var _ = Describe("Private clusters server", func() {
 						Description: "My template",
 						NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 							"compute": privatev1.ClusterTemplateNodeSet_builder{
-								HostType: "acme-1ti-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 								Size:     3,
 							}.Build(),
 							"gpu": privatev1.ClusterTemplateNodeSet_builder{
-								HostType: "acme-gpu-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-gpu-id"}.Build(),
 								Size:     1,
 							}.Build(),
 						},
@@ -205,7 +205,7 @@ var _ = Describe("Private clusters server", func() {
 							}.Build(),
 							NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 								"compute": privatev1.ClusterTemplateNodeSet_builder{
-									HostType: "acme-1ti-id",
+									HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 									Size:     3,
 								}.Build(),
 							},
@@ -220,7 +220,7 @@ var _ = Describe("Private clusters server", func() {
 			response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub-id",
@@ -239,7 +239,7 @@ var _ = Describe("Private clusters server", func() {
 			response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-name",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-name"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub-id",
@@ -253,14 +253,14 @@ var _ = Describe("Private clusters server", func() {
 			Expect(object.GetId()).ToNot(BeEmpty())
 
 			// Verify that the template name was replaced by the identifier:
-			Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+			Expect(object.GetSpec().GetTemplate().GetId()).To(Equal("my-template-id"))
 		})
 
 		It("Fails when creating object with non-existent template name", func() {
 			_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "does-not-exist",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "does-not-exist"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub-id",
@@ -281,10 +281,10 @@ var _ = Describe("Private clusters server", func() {
 			response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-1ti-name",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-name"}.Build(),
 								Size:     5,
 							}.Build(),
 						},
@@ -304,7 +304,7 @@ var _ = Describe("Private clusters server", func() {
 			nodeSets := object.GetSpec().GetNodeSets()
 			Expect(nodeSets).To(HaveKey("compute"))
 			nodeSet := nodeSets["compute"]
-			Expect(nodeSet.GetHostType()).To(Equal("acme-1ti-id"))
+			Expect(nodeSet.GetHostType().GetId()).To(Equal("acme-1ti-id"))
 		})
 
 		It("Creates object with host type specified by identifier in node set", func() {
@@ -312,10 +312,10 @@ var _ = Describe("Private clusters server", func() {
 			response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-1ti-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 								Size:     7,
 							}.Build(),
 						},
@@ -335,7 +335,7 @@ var _ = Describe("Private clusters server", func() {
 			nodeSets := object.GetSpec().GetNodeSets()
 			Expect(nodeSets).To(HaveKey("compute"))
 			nodeSet := nodeSets["compute"]
-			Expect(nodeSet.GetHostType()).To(Equal("acme-1ti-id"))
+			Expect(nodeSet.GetHostType().GetId()).To(Equal("acme-1ti-id"))
 		})
 
 		It("Creates object with template and host type specified by name", func() {
@@ -343,10 +343,10 @@ var _ = Describe("Private clusters server", func() {
 			response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-name",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-name"}.Build(),
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-1ti-name",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-name"}.Build(),
 								Size:     7,
 							}.Build(),
 						},
@@ -363,21 +363,21 @@ var _ = Describe("Private clusters server", func() {
 			Expect(object.GetId()).ToNot(BeEmpty())
 
 			// Verify that the the template and host type names were replaced by the identifiers:
-			Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+			Expect(object.GetSpec().GetTemplate().GetId()).To(Equal("my-template-id"))
 			nodeSets := object.GetSpec().GetNodeSets()
 			Expect(nodeSets).To(HaveKey("compute"))
 			nodeSet := nodeSets["compute"]
-			Expect(nodeSet.GetHostType()).To(Equal("acme-1ti-id"))
+			Expect(nodeSet.GetHostType().GetId()).To(Equal("acme-1ti-id"))
 		})
 
 		It("Fails when creating object with non-existent host type name", func() {
 			_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: `does-not-exist`,
+								HostType: privatev1.HostTypeReference_builder{Id: "does-not-exist"}.Build(),
 								Size:     5,
 							}.Build(),
 						},
@@ -400,10 +400,10 @@ var _ = Describe("Private clusters server", func() {
 			_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"does-not-exist": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-1ti-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 								Size:     5,
 							}.Build(),
 						},
@@ -427,10 +427,10 @@ var _ = Describe("Private clusters server", func() {
 			_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-gpu-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-gpu-id"}.Build(),
 								Size:     5,
 							}.Build(),
 						},
@@ -457,7 +457,7 @@ var _ = Describe("Private clusters server", func() {
 				Object: privatev1.Cluster_builder{
 					Id: id,
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub-id",
@@ -471,7 +471,7 @@ var _ = Describe("Private clusters server", func() {
 				Object: privatev1.Cluster_builder{
 					Id: id,
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub-id",
@@ -492,7 +492,7 @@ var _ = Describe("Private clusters server", func() {
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: fmt.Sprintf("my-template-id-%d", i),
+							Template: privatev1.ClusterTemplateReference_builder{Id: fmt.Sprintf("my-template-id-%d", i)}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: fmt.Sprintf("my-hub-id-%d", i),
@@ -517,7 +517,7 @@ var _ = Describe("Private clusters server", func() {
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: fmt.Sprintf("my-template-id-%d", i),
+							Template: privatev1.ClusterTemplateReference_builder{Id: fmt.Sprintf("my-template-id-%d", i)}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: fmt.Sprintf("my-hub-id-%d", i),
@@ -542,7 +542,7 @@ var _ = Describe("Private clusters server", func() {
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: fmt.Sprintf("my-template-id-%d", i),
+							Template: privatev1.ClusterTemplateReference_builder{Id: fmt.Sprintf("my-template-id-%d", i)}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: fmt.Sprintf("my-hub-id-%d", i),
@@ -568,7 +568,7 @@ var _ = Describe("Private clusters server", func() {
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: fmt.Sprintf("my-template-id-%d", i),
+							Template: privatev1.ClusterTemplateReference_builder{Id: fmt.Sprintf("my-template-id-%d", i)}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: fmt.Sprintf("my-hub-%d", i),
@@ -595,7 +595,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub",
@@ -616,7 +616,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub-id",
@@ -660,7 +660,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub-id",
@@ -683,7 +683,7 @@ var _ = Describe("Private clusters server", func() {
 				}.Build(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(updateResponse.GetObject().GetSpec().GetTemplate()).To(Equal("my-template-id"))
+			Expect(updateResponse.GetObject().GetSpec().GetTemplate().GetId()).To(Equal("my-template-id"))
 			Expect(updateResponse.GetObject().GetStatus().GetHub()).To(Equal("your_hub"))
 
 			// Get and verify:
@@ -691,7 +691,7 @@ var _ = Describe("Private clusters server", func() {
 				Id: object.GetId(),
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(getResponse.GetObject().GetSpec().GetTemplate()).To(Equal("my-template-id"))
+			Expect(getResponse.GetObject().GetSpec().GetTemplate().GetId()).To(Equal("my-template-id"))
 			Expect(getResponse.GetObject().GetStatus().GetHub()).To(Equal("your_hub"))
 		})
 
@@ -703,7 +703,7 @@ var _ = Describe("Private clusters server", func() {
 						Finalizers: []string{"a"},
 					}.Build(),
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Hub: "my-hub-id",
@@ -732,7 +732,7 @@ var _ = Describe("Private clusters server", func() {
 			_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Conditions: []*privatev1.ClusterCondition{
@@ -757,7 +757,7 @@ var _ = Describe("Private clusters server", func() {
 			_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 					Status: privatev1.ClusterStatus_builder{
 						Conditions: []*privatev1.ClusterCondition{
@@ -795,7 +795,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -810,15 +810,15 @@ var _ = Describe("Private clusters server", func() {
 					Spec: privatev1.ClusterSpec_builder{
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-1ti-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 								Size:     3,
 							}.Build(),
 							"gpu": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-gpu-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-gpu-id"}.Build(),
 								Size:     1,
 							}.Build(),
 							"storage": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-1ti-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 								Size:     2,
 							}.Build(),
 						},
@@ -836,7 +836,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -851,7 +851,7 @@ var _ = Describe("Private clusters server", func() {
 					Spec: privatev1.ClusterSpec_builder{
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-1ti-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 								Size:     3,
 							}.Build(),
 						},
@@ -869,7 +869,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id-0",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id-0"}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -901,7 +901,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -915,11 +915,11 @@ var _ = Describe("Private clusters server", func() {
 					Spec: privatev1.ClusterSpec_builder{
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-gpu-id", // Changed from acme-1ti-id
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-gpu-id"}.Build(), // Changed from acme-1ti-id
 								Size:     3,
 							}.Build(),
 							"gpu": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-gpu-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-gpu-id"}.Build(),
 								Size:     1,
 							}.Build(),
 						},
@@ -941,7 +941,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -955,11 +955,11 @@ var _ = Describe("Private clusters server", func() {
 					Spec: privatev1.ClusterSpec_builder{
 						NodeSets: map[string]*privatev1.ClusterNodeSet{
 							"compute": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-1ti-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 								Size:     5, // Changed from 3
 							}.Build(),
 							"gpu": privatev1.ClusterNodeSet_builder{
-								HostType: "acme-gpu-id",
+								HostType: privatev1.HostTypeReference_builder{Id: "acme-gpu-id"}.Build(),
 								Size:     1,
 							}.Build(),
 						},
@@ -979,7 +979,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -1019,7 +1019,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: oldTemplate,
+						Template: privatev1.ClusterTemplateReference_builder{Id: oldTemplate}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -1031,7 +1031,7 @@ var _ = Describe("Private clusters server", func() {
 				Object: privatev1.Cluster_builder{
 					Id: object.GetId(),
 					Spec: privatev1.ClusterSpec_builder{
-						Template: newTemplate,
+						Template: privatev1.ClusterTemplateReference_builder{Id: newTemplate}.Build(),
 					}.Build(),
 				}.Build(),
 				UpdateMask: &fieldmaskpb.FieldMask{
@@ -1053,7 +1053,7 @@ var _ = Describe("Private clusters server", func() {
 			createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 				Object: privatev1.Cluster_builder{
 					Spec: privatev1.ClusterSpec_builder{
-						Template: "my-template-id",
+						Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -1081,11 +1081,11 @@ var _ = Describe("Private clusters server", func() {
 		})
 
 		Describe("Network attachment immutability", func() {
-			createClusterWithNetworkAttachment := func(subnet string, securityGroups []string) *privatev1.Cluster {
+			createClusterWithNetworkAttachment := func(subnet *privatev1.SubnetLocalReference, securityGroups []*privatev1.SecurityGroupLocalReference) *privatev1.Cluster {
 				createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: "my-template-id",
+							Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
 								Subnet:         subnet,
 								SecurityGroups: securityGroups,
@@ -1098,15 +1098,15 @@ var _ = Describe("Private clusters server", func() {
 			}
 
 			It("Rejects changing subnet via whole attachment replacement", func() {
-				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+				object := createClusterWithNetworkAttachment(privatev1.SubnetLocalReference_builder{Id: "subnet-1"}.Build(), []*privatev1.SecurityGroupLocalReference{privatev1.SecurityGroupLocalReference_builder{Id: "sg-1"}.Build()})
 
 				_, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Id: object.GetId(),
 						Spec: privatev1.ClusterSpec_builder{
 							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
-								Subnet:         "subnet-2",
-								SecurityGroups: []string{"sg-1"},
+								Subnet:         privatev1.SubnetLocalReference_builder{Id: "subnet-2"}.Build(),
+								SecurityGroups: []*privatev1.SecurityGroupLocalReference{privatev1.SecurityGroupLocalReference_builder{Id: "sg-1"}.Build()},
 							}.Build(),
 						}.Build(),
 					}.Build(),
@@ -1124,7 +1124,7 @@ var _ = Describe("Private clusters server", func() {
 			})
 
 			It("Rejects removing network_attachment when one exists", func() {
-				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+				object := createClusterWithNetworkAttachment(privatev1.SubnetLocalReference_builder{Id: "subnet-1"}.Build(), []*privatev1.SecurityGroupLocalReference{privatev1.SecurityGroupLocalReference_builder{Id: "sg-1"}.Build()})
 
 				_, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
 					Object: privatev1.Cluster_builder{
@@ -1148,7 +1148,7 @@ var _ = Describe("Private clusters server", func() {
 				createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: "my-template-id",
+							Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -1160,7 +1160,7 @@ var _ = Describe("Private clusters server", func() {
 						Id: object.GetId(),
 						Spec: privatev1.ClusterSpec_builder{
 							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
-								Subnet: "subnet-1",
+								Subnet: privatev1.SubnetLocalReference_builder{Id: "subnet-1"}.Build(),
 							}.Build(),
 						}.Build(),
 					}.Build(),
@@ -1178,15 +1178,15 @@ var _ = Describe("Private clusters server", func() {
 			})
 
 			It("Allows changing security_groups with same subnet", func() {
-				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+				object := createClusterWithNetworkAttachment(privatev1.SubnetLocalReference_builder{Id: "subnet-1"}.Build(), []*privatev1.SecurityGroupLocalReference{privatev1.SecurityGroupLocalReference_builder{Id: "sg-1"}.Build()})
 
 				updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Id: object.GetId(),
 						Spec: privatev1.ClusterSpec_builder{
 							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
-								Subnet:         "subnet-1",
-								SecurityGroups: []string{"sg-1", "sg-2"},
+								Subnet:         privatev1.SubnetLocalReference_builder{Id: "subnet-1"}.Build(),
+								SecurityGroups: []*privatev1.SecurityGroupLocalReference{privatev1.SecurityGroupLocalReference_builder{Id: "sg-1"}.Build(), privatev1.SecurityGroupLocalReference_builder{Id: "sg-2"}.Build()},
 							}.Build(),
 						}.Build(),
 					}.Build(),
@@ -1196,19 +1196,21 @@ var _ = Describe("Private clusters server", func() {
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				updated := updateResponse.GetObject()
-				Expect(updated.GetSpec().GetNetworkAttachment().GetSubnet()).To(Equal("subnet-1"))
-				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()).To(Equal([]string{"sg-1", "sg-2"}))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSubnet().GetId()).To(Equal("subnet-1"))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()).To(HaveLen(2))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()[0].GetId()).To(Equal("sg-1"))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()[1].GetId()).To(Equal("sg-2"))
 			})
 
 			It("Allows updating security_groups via sub-field mask", func() {
-				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+				object := createClusterWithNetworkAttachment(privatev1.SubnetLocalReference_builder{Id: "subnet-1"}.Build(), []*privatev1.SecurityGroupLocalReference{privatev1.SecurityGroupLocalReference_builder{Id: "sg-1"}.Build()})
 
 				updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Id: object.GetId(),
 						Spec: privatev1.ClusterSpec_builder{
 							NetworkAttachment: privatev1.ClusterNetworkAttachment_builder{
-								SecurityGroups: []string{"sg-2", "sg-3"},
+								SecurityGroups: []*privatev1.SecurityGroupLocalReference{privatev1.SecurityGroupLocalReference_builder{Id: "sg-2"}.Build(), privatev1.SecurityGroupLocalReference_builder{Id: "sg-3"}.Build()},
 							}.Build(),
 						}.Build(),
 					}.Build(),
@@ -1218,11 +1220,13 @@ var _ = Describe("Private clusters server", func() {
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				updated := updateResponse.GetObject()
-				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()).To(Equal([]string{"sg-2", "sg-3"}))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()).To(HaveLen(2))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()[0].GetId()).To(Equal("sg-2"))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSecurityGroups()[1].GetId()).To(Equal("sg-3"))
 			})
 
 			It("Passes through when mask does not include network_attachment", func() {
-				object := createClusterWithNetworkAttachment("subnet-1", []string{"sg-1"})
+				object := createClusterWithNetworkAttachment(privatev1.SubnetLocalReference_builder{Id: "subnet-1"}.Build(), []*privatev1.SecurityGroupLocalReference{privatev1.SecurityGroupLocalReference_builder{Id: "sg-1"}.Build()})
 
 				updateResponse, err := server.Update(ctx, privatev1.ClustersUpdateRequest_builder{
 					Object: privatev1.Cluster_builder{
@@ -1237,7 +1241,7 @@ var _ = Describe("Private clusters server", func() {
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 				updated := updateResponse.GetObject()
-				Expect(updated.GetSpec().GetNetworkAttachment().GetSubnet()).To(Equal("subnet-1"))
+				Expect(updated.GetSpec().GetNetworkAttachment().GetSubnet().GetId()).To(Equal("subnet-1"))
 			})
 		})
 
@@ -1263,7 +1267,7 @@ var _ = Describe("Private clusters server", func() {
 						}.Build(),
 						Title:            "Test Catalog Item",
 						Published:        published,
-						Template:         "my-template-id",
+						Template:         privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						FieldDefinitions: fieldDefs,
 					}.Build(),
 				).Do(ctx)
@@ -1276,7 +1280,7 @@ var _ = Describe("Private clusters server", func() {
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-happy",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-happy"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1288,17 +1292,17 @@ var _ = Describe("Private clusters server", func() {
 				object := response.GetObject()
 				Expect(object).ToNot(BeNil())
 				Expect(object.GetId()).ToNot(BeEmpty())
-				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
-				Expect(object.GetSpec().GetCatalogItem()).To(Equal("cat-happy"))
+				Expect(object.GetSpec().GetTemplate().GetId()).To(Equal("my-template-id"))
+				Expect(object.GetSpec().GetCatalogItem().GetId()).To(Equal("cat-happy"))
 
 				// Verify node sets are populated from the template:
 				nodeSets := object.GetSpec().GetNodeSets()
 				Expect(nodeSets).To(HaveLen(2))
 				Expect(nodeSets).To(HaveKey("compute"))
-				Expect(nodeSets["compute"].GetHostType()).To(Equal("acme-1ti-id"))
+				Expect(nodeSets["compute"].GetHostType().GetId()).To(Equal("acme-1ti-id"))
 				Expect(nodeSets["compute"].GetSize()).To(Equal(int32(3)))
 				Expect(nodeSets).To(HaveKey("gpu"))
-				Expect(nodeSets["gpu"].GetHostType()).To(Equal("acme-gpu-id"))
+				Expect(nodeSets["gpu"].GetHostType().GetId()).To(Equal("acme-gpu-id"))
 				Expect(nodeSets["gpu"].GetSize()).To(Equal(int32(1)))
 			})
 
@@ -1308,7 +1312,7 @@ var _ = Describe("Private clusters server", func() {
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-by-name-name",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-by-name-name"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1319,14 +1323,14 @@ var _ = Describe("Private clusters server", func() {
 				Expect(response).ToNot(BeNil())
 				object := response.GetObject()
 				Expect(object).ToNot(BeNil())
-				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+				Expect(object.GetSpec().GetTemplate().GetId()).To(Equal("my-template-id"))
 			})
 
 			It("Fails when catalog item not found", func() {
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "nonexistent",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "nonexistent"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1348,7 +1352,7 @@ var _ = Describe("Private clusters server", func() {
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-unpublished",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-unpublished"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1368,8 +1372,8 @@ var _ = Describe("Private clusters server", func() {
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "any-catalog-item",
-							Template:    "my-template-id",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "any-catalog-item"}.Build(),
+							Template:    privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1395,7 +1399,7 @@ var _ = Describe("Private clusters server", func() {
 				_, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-noneditable",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-noneditable"}.Build(),
 							PullSecret:  new("user-secret"),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
@@ -1423,7 +1427,7 @@ var _ = Describe("Private clusters server", func() {
 					response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 						Object: privatev1.Cluster_builder{
 							Spec: privatev1.ClusterSpec_builder{
-								CatalogItem: catID,
+								CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: catID}.Build(),
 								PullSecret:  new(value),
 							}.Build(),
 							Status: privatev1.ClusterStatus_builder{
@@ -1458,7 +1462,7 @@ var _ = Describe("Private clusters server", func() {
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-default",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-default"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1489,7 +1493,7 @@ var _ = Describe("Private clusters server", func() {
 							Description: "Template with spec defaults",
 							NodeSets: map[string]*privatev1.ClusterTemplateNodeSet{
 								"worker": privatev1.ClusterTemplateNodeSet_builder{
-									HostType: "acme-1ti-id",
+									HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-id"}.Build(),
 									Size:     2,
 								}.Build(),
 							},
@@ -1511,7 +1515,7 @@ var _ = Describe("Private clusters server", func() {
 						}.Build(),
 						Title:     "Catalog Item with Template Defaults",
 						Published: true,
-						Template:  "template-with-defaults",
+						Template:  privatev1.ClusterTemplateReference_builder{Id: "template-with-defaults"}.Build(),
 					}.Build(),
 				).Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
@@ -1520,7 +1524,7 @@ var _ = Describe("Private clusters server", func() {
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-with-defaults",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-with-defaults"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1537,7 +1541,7 @@ var _ = Describe("Private clusters server", func() {
 				nodeSets := object.GetSpec().GetNodeSets()
 				Expect(nodeSets).To(HaveLen(1))
 				Expect(nodeSets).To(HaveKey("worker"))
-				Expect(nodeSets["worker"].GetHostType()).To(Equal("acme-1ti-id"))
+				Expect(nodeSets["worker"].GetHostType().GetId()).To(Equal("acme-1ti-id"))
 				Expect(nodeSets["worker"].GetSize()).To(Equal(int32(2)))
 			})
 
@@ -1558,7 +1562,7 @@ var _ = Describe("Private clusters server", func() {
 				_, err = server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-no-template",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-no-template"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1578,7 +1582,7 @@ var _ = Describe("Private clusters server", func() {
 				createResponse, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-immut",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-immut"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1592,7 +1596,7 @@ var _ = Describe("Private clusters server", func() {
 					Object: privatev1.Cluster_builder{
 						Id: object.GetId(),
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "different-catalog-item",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "different-catalog-item"}.Build(),
 						}.Build(),
 					}.Build(),
 					UpdateMask: &fieldmaskpb.FieldMask{
@@ -1614,7 +1618,7 @@ var _ = Describe("Private clusters server", func() {
 				response, err := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: "my-template-id",
+							Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1751,10 +1755,10 @@ var _ = Describe("Private clusters server", func() {
 				response, err := server.Create(dryRunCtx(), privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: "my-template-name",
+							Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-name"}.Build(),
 							NodeSets: map[string]*privatev1.ClusterNodeSet{
 								"compute": privatev1.ClusterNodeSet_builder{
-									HostType: "acme-1ti-name",
+									HostType: privatev1.HostTypeReference_builder{Id: "acme-1ti-name"}.Build(),
 									Size:     7,
 								}.Build(),
 							},
@@ -1767,10 +1771,10 @@ var _ = Describe("Private clusters server", func() {
 				Expect(err).ToNot(HaveOccurred())
 				object := response.GetObject()
 				Expect(object).ToNot(BeNil())
-				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
+				Expect(object.GetSpec().GetTemplate().GetId()).To(Equal("my-template-id"))
 				nodeSets := object.GetSpec().GetNodeSets()
 				Expect(nodeSets).To(HaveKey("compute"))
-				Expect(nodeSets["compute"].GetHostType()).To(Equal("acme-1ti-id"))
+				Expect(nodeSets["compute"].GetHostType().GetId()).To(Equal("acme-1ti-id"))
 			})
 
 			It("Returns resolved cluster with catalog item path", func() {
@@ -1788,7 +1792,7 @@ var _ = Describe("Private clusters server", func() {
 						}.Build(),
 						Title:     "Dry Run Catalog Item",
 						Published: true,
-						Template:  "my-template-id",
+						Template:  privatev1.ClusterTemplateReference_builder{Id: "my-template-id"}.Build(),
 					}.Build(),
 				).Do(ctx)
 				Expect(err).ToNot(HaveOccurred())
@@ -1796,7 +1800,7 @@ var _ = Describe("Private clusters server", func() {
 				response, err := server.Create(dryRunCtx(), privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							CatalogItem: "cat-dry-run",
+							CatalogItem: privatev1.ClusterCatalogItemReference_builder{Id: "cat-dry-run"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1806,15 +1810,15 @@ var _ = Describe("Private clusters server", func() {
 				Expect(err).ToNot(HaveOccurred())
 				object := response.GetObject()
 				Expect(object).ToNot(BeNil())
-				Expect(object.GetSpec().GetTemplate()).To(Equal("my-template-id"))
-				Expect(object.GetSpec().GetCatalogItem()).To(Equal("cat-dry-run"))
+				Expect(object.GetSpec().GetTemplate().GetId()).To(Equal("my-template-id"))
+				Expect(object.GetSpec().GetCatalogItem().GetId()).To(Equal("cat-dry-run"))
 			})
 
 			It("Does not persist the object", func() {
 				_, err := server.Create(dryRunCtx(), privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: "my-template-name",
+							Template: privatev1.ClusterTemplateReference_builder{Id: "my-template-name"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1832,7 +1836,7 @@ var _ = Describe("Private clusters server", func() {
 				_, realErr := server.Create(ctx, privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: "non-existent-template",
+							Template: privatev1.ClusterTemplateReference_builder{Id: "non-existent-template"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",
@@ -1844,7 +1848,7 @@ var _ = Describe("Private clusters server", func() {
 				_, dryRunErr := server.Create(dryRunCtx(), privatev1.ClustersCreateRequest_builder{
 					Object: privatev1.Cluster_builder{
 						Spec: privatev1.ClusterSpec_builder{
-							Template: "non-existent-template",
+							Template: privatev1.ClusterTemplateReference_builder{Id: "non-existent-template"}.Build(),
 						}.Build(),
 						Status: privatev1.ClusterStatus_builder{
 							Hub: "my-hub-id",

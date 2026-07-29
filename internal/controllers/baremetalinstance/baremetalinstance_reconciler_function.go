@@ -548,6 +548,18 @@ func sanitizeConditionMessage(condType bmfov1alpha1.BareMetalInstanceConditionTy
 	return ""
 }
 
+type refKeyer interface {
+	GetId() string
+	GetName() string
+}
+
+func refKeyStr(ref refKeyer) string {
+	if ref.GetName() != "" {
+		return ref.GetName()
+	}
+	return ref.GetId()
+}
+
 // mutateBMI sets the fulfillment-service-owned metadata and spec fields, leaving
 // operator-managed fields (ExternalHostID, HostClass, NetworkClass, etc.) untouched.
 func (t *task) mutateBMI(ctx context.Context, object *bmfov1alpha1.BareMetalInstance) error {
@@ -562,14 +574,14 @@ func (t *task) mutateBMI(ctx context.Context, object *bmfov1alpha1.BareMetalInst
 
 	catalogItemID := t.bareMetalInstance.GetSpec().GetCatalogItem()
 	catalogItemResp, err := t.r.bareMetalInstanceCatalogItemsClient.Get(ctx, privatev1.BareMetalInstanceCatalogItemsGetRequest_builder{
-		Id: catalogItemID,
+		Id: catalogItemID.GetId(),
 	}.Build())
 	if err != nil {
 		return fmt.Errorf("failed to get catalog item '%s': %w", catalogItemID, err)
 	}
 
 	object.Spec.HostType = defaultHostType
-	object.Spec.TemplateID = catalogItemResp.GetObject().GetTemplate()
+	object.Spec.TemplateID = refKeyStr(catalogItemResp.GetObject().GetTemplate())
 	object.Spec.TemplateParameters = ""
 	object.Spec.RunStrategy = bmfov1alpha1.RunStrategyUnspecified
 	object.Spec.RestartTrigger = t.bareMetalInstance.GetSpec().GetRestartTrigger()

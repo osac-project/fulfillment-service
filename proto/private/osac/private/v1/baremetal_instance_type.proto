@@ -21,6 +21,7 @@ import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "osac/private/v1/condition_status_type.proto";
 import "osac/private/v1/metadata_type.proto";
+import "osac/private/v1/reference_types.proto";
 
 // Contains the image configuration for a bare metal instance.
 message BareMetalInstanceImage {
@@ -47,12 +48,12 @@ message BareMetalInstance {
 // Network attachment for a bare metal instance NIC.
 // Groups a subnet with security groups and a physical interface binding.
 message BareMetalNetworkAttachment {
-  // Fulfillment Subnet ID. Must reference a Subnet in READY state.
-  string subnet = 1;
+  // Reference to the Subnet. Must reference a Subnet in READY state.
+  SubnetLocalReference subnet = 1;
 
-  // Fulfillment SecurityGroup IDs applied on this NIC.
+  // References to the SecurityGroups applied on this NIC.
   // Each must be READY and belong to the same VirtualNetwork as the subnet.
-  repeated string security_groups = 2;
+  repeated SecurityGroupLocalReference security_groups = 2;
 
   // Physical interface name from the HostType's NetworkInterface list.
   // When omitted on a single-attachment instance, the system selects the first fabric-role interface.
@@ -72,7 +73,7 @@ message BareMetalInstanceSpec {
   };
 
   // Reference to the BareMetalInstanceCatalogItem. Required on create; immutable after creation.
-  string catalog_item = 1 [(google.api.field_behavior) = IMMUTABLE];
+  BareMetalInstanceCatalogItemReference catalog_item = 1 [(google.api.field_behavior) = IMMUTABLE];
 
   // SSH public key injected into the OS at provisioning time. Immutable after creation.
   // Must be a valid SSH public key in OpenSSH format (ssh-rsa, ssh-ed25519, etc.).

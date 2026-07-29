@@ -73,7 +73,7 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: privatev1.VirtualNetwork_builder{
 				Id: virtualNetworkId,
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					NetworkClass: networkClassId,
+					NetworkClass: privatev1.NetworkClassReference_builder{Id: networkClassId}.Build(),
 					Region:       "us-east-1",
 					Ipv4Cidr:     new("10.100.0.0/16"),
 				}.Build(),
@@ -149,7 +149,7 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.ExternalIP_builder{
 				Id: externalIPId,
 				Spec: publicv1.ExternalIPSpec_builder{
-					Pool: poolId,
+					Pool: publicv1.ExternalIPPoolReference_builder{Id: poolId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -200,8 +200,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: virtualNetworkId,
-					ExternalIp:     externalIPId,
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkId}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: externalIPId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -215,8 +215,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 
 		ng := response.GetObject()
 		Expect(ng.GetId()).To(Equal(ngId))
-		Expect(ng.GetSpec().GetVirtualNetwork()).To(Equal(virtualNetworkId))
-		Expect(ng.GetSpec().GetExternalIp()).To(Equal(externalIPId))
+		Expect(ng.GetSpec().GetVirtualNetwork().GetId()).To(Equal(virtualNetworkId))
+		Expect(ng.GetSpec().GetExternalIp().GetId()).To(Equal(externalIPId))
 		Expect(ng.GetStatus().GetState()).To(Equal(publicv1.NATGatewayState_NAT_GATEWAY_STATE_PENDING))
 
 		// Verify ExternalIP attached flag is set
@@ -232,8 +232,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 		}.Build())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(getResponse.GetObject().GetId()).To(Equal(ngId))
-		Expect(getResponse.GetObject().GetSpec().GetVirtualNetwork()).To(Equal(virtualNetworkId))
-		Expect(getResponse.GetObject().GetSpec().GetExternalIp()).To(Equal(externalIPId))
+		Expect(getResponse.GetObject().GetSpec().GetVirtualNetwork().GetId()).To(Equal(virtualNetworkId))
+		Expect(getResponse.GetObject().GetSpec().GetExternalIp().GetId()).To(Equal(externalIPId))
 
 		// List
 		listResponse, err := natGatewaysClient.List(ctx, publicv1.NATGatewaysListRequest_builder{}.Build())
@@ -247,8 +247,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: virtualNetworkId,
-					ExternalIp:     "nonexistent-ip",
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkId}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Name: "nonexistent-ip"}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -262,7 +262,7 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.ExternalIP_builder{
 				Id: pendingIPId,
 				Spec: publicv1.ExternalIPSpec_builder{
-					Pool: poolId,
+					Pool: publicv1.ExternalIPPoolReference_builder{Id: poolId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -292,8 +292,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: virtualNetworkId,
-					ExternalIp:     pendingIPId,
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkId}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: pendingIPId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -307,8 +307,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId1,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: virtualNetworkId,
-					ExternalIp:     externalIPId,
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkId}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: externalIPId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -325,7 +325,7 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: privatev1.VirtualNetwork_builder{
 				Id: vn2Id,
 				Spec: privatev1.VirtualNetworkSpec_builder{
-					NetworkClass: networkClassId,
+					NetworkClass: privatev1.NetworkClassReference_builder{Id: networkClassId}.Build(),
 					Region:       "us-east-1",
 					Ipv4Cidr:     new("10.200.0.0/16"),
 				}.Build(),
@@ -343,8 +343,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId2,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: vn2Id,
-					ExternalIp:     externalIPId,
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: vn2Id}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: externalIPId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -358,8 +358,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: virtualNetworkId,
-					ExternalIp:     externalIPId,
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkId}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: externalIPId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -374,7 +374,7 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: "different-vnet",
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Name: "different-vnet"}.Build(),
 				}.Build(),
 			}.Build(),
 			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.virtual_network"}},
@@ -389,8 +389,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: virtualNetworkId,
-					ExternalIp:     externalIPId,
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkId}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: externalIPId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -405,7 +405,7 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					ExternalIp: "different-ip",
+					ExternalIp: publicv1.ExternalIPLocalReference_builder{Name: "different-ip"}.Build(),
 				}.Build(),
 			}.Build(),
 			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.external_ip"}},
@@ -420,8 +420,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: virtualNetworkId,
-					ExternalIp:     externalIPId,
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkId}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: externalIPId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -451,8 +451,8 @@ var _ = Describe("NATGateway lifecycle", func() {
 			Object: publicv1.NATGateway_builder{
 				Id: ngId,
 				Spec: publicv1.NATGatewaySpec_builder{
-					VirtualNetwork: virtualNetworkId,
-					ExternalIp:     externalIPId,
+					VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkId}.Build(),
+					ExternalIp:     publicv1.ExternalIPLocalReference_builder{Id: externalIPId}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())

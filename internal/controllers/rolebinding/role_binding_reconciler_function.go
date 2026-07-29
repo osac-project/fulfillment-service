@@ -156,6 +156,18 @@ func (t *task) update(ctx context.Context) error {
 	return t.syncRoleAssignments(ctx)
 }
 
+type refKeyer interface {
+	GetId() string
+	GetName() string
+}
+
+func refKeyStr(ref refKeyer) string {
+	if ref.GetName() != "" {
+		return ref.GetName()
+	}
+	return ref.GetId()
+}
+
 // getRoleByNameOrID fetches a role by ID or name. If the provided value is not found as an ID,
 // it attempts to find the role by name.
 func (t *task) getRoleByNameOrID(ctx context.Context, nameOrID string) (*privatev1.Role, error) {
@@ -201,26 +213,26 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 	// Convert to sets for efficient comparison
 	desiredSet := make(map[string]bool)
 	for _, u := range desiredUsers {
-		desiredSet[u] = true
+		desiredSet[refKeyStr(u)] = true
 	}
 	syncedSet := make(map[string]bool)
 	for _, u := range syncedUsers {
-		syncedSet[u] = true
+		syncedSet[refKeyStr(u)] = true
 	}
 
 	// Find users to add (in desired but not in synced)
 	var usersToAdd []string
 	for _, u := range desiredUsers {
-		if !syncedSet[u] {
-			usersToAdd = append(usersToAdd, u)
+		if !syncedSet[refKeyStr(u)] {
+			usersToAdd = append(usersToAdd, refKeyStr(u))
 		}
 	}
 
 	// Find users to remove (in synced but not in desired)
 	var usersToRemove []string
 	for _, u := range syncedUsers {
-		if !desiredSet[u] {
-			usersToRemove = append(usersToRemove, u)
+		if !desiredSet[refKeyStr(u)] {
+			usersToRemove = append(usersToRemove, refKeyStr(u))
 		}
 	}
 
@@ -230,7 +242,7 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 	}
 
 	// Fetch the Role by name or ID
-	role, err := t.getRoleByNameOrID(ctx, t.binding.GetSpec().GetRole())
+	role, err := t.getRoleByNameOrID(ctx, refKeyStr(t.binding.GetSpec().GetRole()))
 	if err != nil {
 		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED)
 		t.binding.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch role: %v", err))
@@ -377,7 +389,7 @@ func (t *task) handleUserListChange(ctx context.Context) error {
 // syncRoleAssignments assigns the role to all users in the binding.
 func (t *task) syncRoleAssignments(ctx context.Context) error {
 	// Fetch the Role by name or ID
-	role, err := t.getRoleByNameOrID(ctx, t.binding.GetSpec().GetRole())
+	role, err := t.getRoleByNameOrID(ctx, refKeyStr(t.binding.GetSpec().GetRole()))
 	if err != nil {
 		t.binding.GetStatus().SetState(privatev1.RoleBindingState_ROLE_BINDING_STATE_FAILED)
 		t.binding.GetStatus().SetMessage(fmt.Sprintf("Failed to fetch role: %v", err))
@@ -397,7 +409,8 @@ func (t *task) syncRoleAssignments(ctx context.Context) error {
 
 	// Assign the roles to each user in the binding
 	var assignmentErrors []string
-	for _, userID := range t.binding.GetSpec().GetUsers() {
+	for _, userRef := range t.binding.GetSpec().GetUsers() {
+		userID := refKeyStr(userRef)
 		// Fetch the user to get their Keycloak ID
 		userResp, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
 			Id: userID,
@@ -480,7 +493,7 @@ func (t *task) delete(ctx context.Context) error {
 	}
 
 	// Fetch the Role by name or ID
-	role, err := t.getRoleByNameOrID(ctx, t.binding.GetSpec().GetRole())
+	role, err := t.getRoleByNameOrID(ctx, refKeyStr(t.binding.GetSpec().GetRole()))
 	if err != nil {
 		t.r.logger.ErrorContext(ctx, "Failed to fetch role for deletion",
 			slog.String("role_binding_id", t.binding.GetId()),
@@ -506,7 +519,8 @@ func (t *task) delete(ctx context.Context) error {
 	}
 
 	// Remove the roles from each user in the binding
-	for _, userID := range t.binding.GetSpec().GetUsers() {
+	for _, userRef := range t.binding.GetSpec().GetUsers() {
+		userID := refKeyStr(userRef)
 		// Fetch the user to get their Keycloak ID
 		userResp, err := t.r.usersClient.Get(ctx, privatev1.UsersGetRequest_builder{
 			Id: userID,
