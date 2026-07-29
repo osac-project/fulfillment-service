@@ -62,7 +62,8 @@ jobs:
       fork-pr-author: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.user.login || '' }}
       pr-number: ${{ github.event.pull_request.number }}
       test-infra-repository: osac-project/osac-test-infra
-      test-infra-ref: ${{ inputs.test-infra-ref || 'main' }}
+      # TODO: revert to 'main' before merging
+      test-infra-ref: ${{ inputs.test-infra-ref || 'feat/OSAC-1330-type-safe-resource-references' }}
 
   e2e:
     if: always()
