@@ -76,7 +76,7 @@ var _ = Describe("Private bare metal instance types", func() {
 						},
 						Capabilities: map[string]string{
 							"virtualization": "enabled",
-							"tpm":           "2.0",
+							"tpm":            "2.0",
 						},
 					}.Build(),
 					HostLabelSelector: privatev1.BareMetalLabelSelector_builder{
