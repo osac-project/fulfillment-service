@@ -1439,6 +1439,36 @@ var _ = Describe("Private subnets server", func() {
 				}.Build())
 				Expect(err).ToNot(HaveOccurred())
 			})
+
+			It("blocks deletion of default-labeled Subnet", func() {
+				vn := createVirtualNetwork(ctx, "10.0.0.0/16", "")
+
+				createResponse, err := server.Create(ctx, privatev1.SubnetsCreateRequest_builder{
+					Object: privatev1.Subnet_builder{
+						Metadata: privatev1.Metadata_builder{
+							Tenant: auth.SharedTenant,
+							Labels: map[string]string{
+								"osac.openshift.io/default": "true",
+							},
+						}.Build(),
+						Spec: privatev1.SubnetSpec_builder{
+							Ipv4Cidr:       new("10.0.1.0/24"),
+							VirtualNetwork: vn.GetId(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = server.Delete(ctx, privatev1.SubnetsDeleteRequest_builder{
+					Id: createResponse.GetObject().GetId(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				status, ok := grpcstatus.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+				Expect(err.Error()).To(ContainSubstring("default"))
+				Expect(err.Error()).To(ContainSubstring("system-managed"))
+			})
 		})
 	})
 

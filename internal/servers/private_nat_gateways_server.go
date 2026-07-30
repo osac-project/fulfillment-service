@@ -205,6 +205,9 @@ func (s *PrivateNATGatewaysServer) Delete(ctx context.Context,
 	if err != nil {
 		return
 	}
+	if err = validateNotDefault(getResponse.GetObject().GetMetadata().GetLabels(), "NAT gateway"); err != nil {
+		return
+	}
 
 	externalIPID := getResponse.GetObject().GetSpec().GetExternalIp()
 

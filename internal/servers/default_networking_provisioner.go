@@ -20,6 +20,8 @@ import (
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -28,6 +30,14 @@ import (
 
 const defaultLabel = "osac.openshift.io/default"
 const ownerReferenceAnnotation = "osac.openshift.io/owner-reference"
+
+func validateNotDefault(labels map[string]string, resourceType string) error {
+	if labels[defaultLabel] == "true" {
+		return grpcstatus.Errorf(grpccodes.FailedPrecondition,
+			"cannot delete default %s: default networking resources are system-managed", resourceType)
+	}
+	return nil
+}
 
 type DefaultNetworkingProvisionerBuilder struct {
 	logger            *slog.Logger

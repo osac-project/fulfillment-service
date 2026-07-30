@@ -550,5 +550,36 @@ var _ = Describe("Private NAT gateways server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(getResp.GetObject().GetStatus().GetAttached()).To(BeFalse())
 		})
+
+		It("blocks deletion of default-labeled NATGateway", func() {
+			vnID := createVirtualNetwork()
+			eip := createAllocatedExternalIP()
+			createResponse, err := natGatewaysServer.Create(ctx, privatev1.NATGatewaysCreateRequest_builder{
+				Object: privatev1.NATGateway_builder{
+					Metadata: privatev1.Metadata_builder{
+						Finalizers: []string{"test-finalizer"},
+						Tenant:     auth.SharedTenant,
+						Labels: map[string]string{
+							"osac.openshift.io/default": "true",
+						},
+					}.Build(),
+					Spec: privatev1.NATGatewaySpec_builder{
+						VirtualNetwork: vnID,
+						ExternalIp:     eip.GetId(),
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = natGatewaysServer.Delete(ctx, privatev1.NATGatewaysDeleteRequest_builder{
+				Id: createResponse.GetObject().GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("default"))
+			Expect(err.Error()).To(ContainSubstring("system-managed"))
+		})
 	})
 })

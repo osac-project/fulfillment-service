@@ -187,6 +187,16 @@ func (s *PrivateVirtualNetworksServer) Update(ctx context.Context,
 
 func (s *PrivateVirtualNetworksServer) Delete(ctx context.Context,
 	request *privatev1.VirtualNetworksDeleteRequest) (response *privatev1.VirtualNetworksDeleteResponse, err error) {
+	getRequest := &privatev1.VirtualNetworksGetRequest{}
+	getRequest.SetId(request.GetId())
+	var getResponse *privatev1.VirtualNetworksGetResponse
+	err = s.generic.Get(ctx, getRequest, &getResponse)
+	if err != nil {
+		return
+	}
+	if err = validateNotDefault(getResponse.GetObject().GetMetadata().GetLabels(), "virtual network"); err != nil {
+		return
+	}
 	err = s.generic.Delete(ctx, request, &response)
 	return
 }

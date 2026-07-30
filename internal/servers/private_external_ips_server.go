@@ -230,6 +230,10 @@ func (s *PrivateExternalIPsServer) Delete(ctx context.Context,
 
 	existingExternalIP := getResponse.GetObject()
 
+	if err = validateNotDefault(existingExternalIP.GetMetadata().GetLabels(), "external IP"); err != nil {
+		return
+	}
+
 	state := existingExternalIP.GetStatus().GetState()
 	if state != privatev1.ExternalIPState_EXTERNAL_IP_STATE_ALLOCATED {
 		err = grpcstatus.Errorf(grpccodes.FailedPrecondition,

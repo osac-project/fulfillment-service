@@ -1743,5 +1743,35 @@ var _ = Describe("Private virtual networks server", func() {
 			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
 			Expect(err.Error()).To(ContainSubstring("3 Subnet"))
 		})
+
+		It("blocks deletion of default-labeled VirtualNetwork", func() {
+			nc := createNetworkClass(ctx, privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY)
+			createResp, err := vnServer.Create(ctx, privatev1.VirtualNetworksCreateRequest_builder{
+				Object: privatev1.VirtualNetwork_builder{
+					Metadata: privatev1.Metadata_builder{
+						Tenant: auth.SharedTenant,
+						Labels: map[string]string{
+							"osac.openshift.io/default": "true",
+						},
+					}.Build(),
+					Spec: privatev1.VirtualNetworkSpec_builder{
+						Ipv4Cidr:     proto.String("10.0.0.0/16"),
+						NetworkClass: nc.GetId(),
+						Region:       "us-west-1",
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = vnServer.Delete(ctx, privatev1.VirtualNetworksDeleteRequest_builder{
+				Id: createResp.GetObject().GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("default"))
+			Expect(err.Error()).To(ContainSubstring("system-managed"))
+		})
 	})
 })

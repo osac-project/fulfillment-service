@@ -512,6 +512,30 @@ var _ = Describe("Private external IPs server", func() {
 			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
 			Expect(err.Error()).To(ContainSubstring("must be in ALLOCATED state"))
 		})
+
+		It("blocks deletion of default-labeled ExternalIP", func() {
+			object := createExternalIPInState(externalIPsServer, privatev1.ExternalIPState_EXTERNAL_IP_STATE_ALLOCATED)
+			object.GetMetadata().SetLabels(map[string]string{
+				"osac.openshift.io/default": "true",
+			})
+			eipDao, err := dao.NewGenericDAO[*privatev1.ExternalIP]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			_, err = eipDao.Update().SetObject(object).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = externalIPsServer.Delete(ctx, privatev1.ExternalIPsDeleteRequest_builder{
+				Id: object.GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("default"))
+			Expect(err.Error()).To(ContainSubstring("system-managed"))
+		})
 	})
 
 	Describe("Pool immutability on Update", func() {

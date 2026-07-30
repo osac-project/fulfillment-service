@@ -190,6 +190,16 @@ func (s *PrivateSubnetsServer) Update(ctx context.Context,
 
 func (s *PrivateSubnetsServer) Delete(ctx context.Context,
 	request *privatev1.SubnetsDeleteRequest) (response *privatev1.SubnetsDeleteResponse, err error) {
+	getRequest := &privatev1.SubnetsGetRequest{}
+	getRequest.SetId(request.GetId())
+	var getResponse *privatev1.SubnetsGetResponse
+	err = s.generic.Get(ctx, getRequest, &getResponse)
+	if err != nil {
+		return
+	}
+	if err = validateNotDefault(getResponse.GetObject().GetMetadata().GetLabels(), "subnet"); err != nil {
+		return
+	}
 	err = s.generic.Delete(ctx, request, &response)
 	return
 }

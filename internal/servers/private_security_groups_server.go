@@ -201,6 +201,16 @@ func (s *PrivateSecurityGroupsServer) Update(ctx context.Context,
 
 func (s *PrivateSecurityGroupsServer) Delete(ctx context.Context,
 	request *privatev1.SecurityGroupsDeleteRequest) (response *privatev1.SecurityGroupsDeleteResponse, err error) {
+	getRequest := &privatev1.SecurityGroupsGetRequest{}
+	getRequest.SetId(request.GetId())
+	var getResponse *privatev1.SecurityGroupsGetResponse
+	err = s.generic.Get(ctx, getRequest, &getResponse)
+	if err != nil {
+		return
+	}
+	if err = validateNotDefault(getResponse.GetObject().GetMetadata().GetLabels(), "security group"); err != nil {
+		return
+	}
 	err = s.generic.Delete(ctx, request, &response)
 	return
 }

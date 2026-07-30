@@ -18,6 +18,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
@@ -462,6 +464,32 @@ var _ = Describe("SecurityGroups server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			object = getResponse.GetObject()
 			Expect(object.GetMetadata().GetDeletionTimestamp()).ToNot(BeNil())
+		})
+
+		It("blocks deletion of default-labeled SecurityGroup", func() {
+			createResponse, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
+				Object: publicv1.SecurityGroup_builder{
+					Metadata: publicv1.Metadata_builder{
+						Labels: map[string]string{
+							"osac.openshift.io/default": "true",
+						},
+					}.Build(),
+					Spec: publicv1.SecurityGroupSpec_builder{
+						VirtualNetwork: virtualNetworkID,
+					}.Build(),
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = server.Delete(ctx, publicv1.SecurityGroupsDeleteRequest_builder{
+				Id: createResponse.GetObject().GetId(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.FailedPrecondition))
+			Expect(err.Error()).To(ContainSubstring("default"))
+			Expect(err.Error()).To(ContainSubstring("system-managed"))
 		})
 	})
 })
