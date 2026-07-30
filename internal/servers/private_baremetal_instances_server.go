@@ -415,10 +415,10 @@ func compareNetworkAttachmentsImmutability(existing, updated []*privatev1.BareMe
 			len(existing), len(updated))
 	}
 	for i := range existing {
-		if existing[i].GetSubnet() != updated[i].GetSubnet() {
+		if !proto.Equal(existing[i].GetSubnet(), updated[i].GetSubnet()) {
 			return grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"cannot change network_attachments[%d].subnet from '%s' to '%s': subnet is immutable",
-				i, existing[i].GetSubnet(), updated[i].GetSubnet())
+				i, refKey(existing[i].GetSubnet()), refKey(updated[i].GetSubnet()))
 		}
 		if existing[i].GetInterface() != updated[i].GetInterface() {
 			return grpcstatus.Errorf(grpccodes.InvalidArgument,
@@ -473,20 +473,22 @@ func (s *PrivateBareMetalInstancesServer) validateNetworkAttachments(ctx context
 
 	// Interface-against-HostType validation (only when template has host_type).
 	catalogItemRef := bmi.GetSpec().GetCatalogItem()
-	if catalogItemRef == "" {
+	catalogItemID := catalogItemRef.GetId()
+	if catalogItemID == "" {
 		return nil
 	}
-	catResp, err := s.catalogItemsDao.Get().SetId(catalogItemRef).Do(ctx)
+	catResp, err := s.catalogItemsDao.Get().SetId(catalogItemID).Do(ctx)
 	if err != nil {
 		var notFoundErr *dao.ErrNotFound
 		if errors.As(err, &notFoundErr) {
 			return nil
 		}
 		s.logger.ErrorContext(ctx, "Failed to lookup catalog item for interface validation",
-			slog.String("catalog_item", catalogItemRef), slog.Any("error", err))
+			slog.String("catalog_item", catalogItemID), slog.Any("error", err))
 		return grpcstatus.Errorf(grpccodes.Internal, "failed to validate network attachments")
 	}
-	templateID := catResp.GetObject().GetTemplate()
+	templateRef := catResp.GetObject().GetTemplate()
+	templateID := templateRef.GetId()
 	if templateID == "" {
 		return nil
 	}
