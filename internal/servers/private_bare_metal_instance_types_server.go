@@ -370,6 +370,11 @@ func validateBareMetalInstanceTypeImmutability(merged, existing *privatev1.BareM
 				"field 'spec.hardware.cpu.architecture' is immutable and cannot be changed from '%s' to '%s'",
 				existingCpu.GetArchitecture(), mergedCpu.GetArchitecture())
 		}
+		if mergedCpu.GetThreadsPerCore() != existingCpu.GetThreadsPerCore() {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.hardware.cpu.threads_per_core' is immutable and cannot be changed from '%d' to '%d'",
+				existingCpu.GetThreadsPerCore(), mergedCpu.GetThreadsPerCore())
+		}
 	}
 
 	// Memory validation:
@@ -386,8 +391,6 @@ func validateBareMetalInstanceTypeImmutability(merged, existing *privatev1.BareM
 				existingMem.GetTotalGb(), mergedMem.GetTotalGb())
 		}
 	}
-
-	return nil
 
 	return nil
 }
