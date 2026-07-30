@@ -81,6 +81,11 @@ func validateFieldDefinitionPaths(
 		}
 		segments := strings.Split(path, ".")
 		if segments[0] == "template_parameters" {
+			if len(segments) == 1 {
+				return grpcstatus.Errorf(grpccodes.InvalidArgument,
+					"invalid field_definition path 'template_parameters': "+
+						"must specify a parameter name (e.g., 'template_parameters.param_name')")
+			}
 			continue
 		}
 		if err := validatePathAgainstDescriptor(segments, specDescriptor); err != nil {

@@ -541,6 +541,17 @@ var _ = Describe("validateFieldDefinitionPaths", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
+	It("rejects bare template_parameters path without parameter name", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "template_parameters",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+		Expect(err.Error()).To(ContainSubstring("must specify a parameter name"))
+	})
+
 	It("rejects invalid top-level path", func() {
 		fieldDefs := []*privatev1.FieldDefinition{{
 			Path: "nonexistent",
