@@ -106,7 +106,7 @@ var _ = Describe("mutateBMI", func() {
 			getResponse: privatev1.BareMetalInstanceCatalogItemsGetResponse_builder{
 				Object: privatev1.BareMetalInstanceCatalogItem_builder{
 					Id:       catalogItemID,
-					Template: &privatev1.BareMetalInstanceTemplateReference{Name: templateID},
+					Template: privatev1.BareMetalInstanceTemplateReference_builder{Id: templateID}.Build(),
 				}.Build(),
 			}.Build(),
 		}
