@@ -83,8 +83,10 @@ var _ = Describe("ComputeInstance with Subnet attachment", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create NetworkClass
+		ncName := fmt.Sprintf("cudn-subnet-%s", uuid.New())
 		ncResp, err := networkClassesClient.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
 			Object: privatev1.NetworkClass_builder{
+				Metadata:               privatev1.Metadata_builder{Name: ncName}.Build(),
 				Title:                  "Test CUDN Network Class",
 				ImplementationStrategy: "cudn",
 				FabricManager:          "netris",
