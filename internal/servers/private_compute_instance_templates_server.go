@@ -131,6 +131,14 @@ func (s *PrivateComputeInstanceTemplatesServer) Get(ctx context.Context,
 
 func (s *PrivateComputeInstanceTemplatesServer) Create(ctx context.Context,
 	request *privatev1.ComputeInstanceTemplatesCreateRequest) (response *privatev1.ComputeInstanceTemplatesCreateResponse, err error) {
+	obj := request.GetObject()
+	if obj != nil && obj.GetMetadata().GetName() == "" && obj.GetId() != "" {
+		if obj.GetMetadata() == nil {
+			obj.SetMetadata(&privatev1.Metadata{})
+		}
+		obj.GetMetadata().SetName(templateNameFromID(obj.GetId()))
+	}
+
 	// Validate instance type in spec_defaults before creating (D-14, D-17).
 	var warnings []string
 	if request.GetObject() != nil {

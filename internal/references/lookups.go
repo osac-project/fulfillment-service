@@ -37,7 +37,7 @@ func (e *errRefNotFound) IsNotFound() bool {
 }
 
 // NewDAOLookupFunc creates a ReferenceLookupFunc backed by a GenericDAO. It queries the DAO
-// using a CEL filter that matches by id or name and returns the resolved reference metadata.
+// using a CEL filter that matches by id or metadata.name and returns the resolved reference metadata.
 func NewDAOLookupFunc[O dao.Object](d *dao.GenericDAO[O]) ReferenceLookupFunc {
 	return func(ctx context.Context, tenant, project, id, name string) (*ResolvedRef, error) {
 		var filter string
