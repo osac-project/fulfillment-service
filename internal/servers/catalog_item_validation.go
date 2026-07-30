@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,11 +29,13 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/maputil"
+	"github.com/osac-project/fulfillment-service/internal/utils"
 )
 
 // catalogItem is implemented by both ClusterCatalogItem and ComputeInstanceCatalogItem.
@@ -62,6 +65,183 @@ func validateFieldDefinitions(fieldDefinitions []*privatev1.FieldDefinition) err
 		}
 	}
 	return nil
+}
+
+// validateFieldDefinitionPaths checks that each field definition path corresponds to a valid field
+// in the given spec message descriptor. Paths starting with "template_parameters" are skipped
+// (validated separately by validateFieldDefinitionTemplateParams).
+func validateFieldDefinitionPaths(
+	fieldDefinitions []*privatev1.FieldDefinition,
+	specDescriptor protoreflect.MessageDescriptor,
+) error {
+	for _, fd := range fieldDefinitions {
+		path := fd.GetPath()
+		if path == "" {
+			continue
+		}
+		segments := strings.Split(path, ".")
+		if segments[0] == "template_parameters" {
+			continue
+		}
+		if err := validatePathAgainstDescriptor(segments, specDescriptor); err != nil {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"invalid field_definition path '%s': %v", path, err)
+		}
+	}
+	return nil
+}
+
+func validatePathAgainstDescriptor(segments []string, md protoreflect.MessageDescriptor) error {
+	fields := md.Fields()
+	fd := fields.ByName(protoreflect.Name(segments[0]))
+	if fd == nil {
+		return fmt.Errorf("field '%s' does not exist; valid fields: %s",
+			segments[0], listFieldNames(fields))
+	}
+
+	remaining := segments[1:]
+	if len(remaining) == 0 {
+		return nil
+	}
+
+	if fd.IsMap() {
+		// Map field: next segment is a key (any value), then continue with value descriptor.
+		remaining = remaining[1:]
+		if len(remaining) == 0 {
+			return nil
+		}
+		valueDesc := fd.MapValue()
+		if valueDesc.Kind() != protoreflect.MessageKind {
+			return fmt.Errorf("field '%s' is a map with scalar values; path cannot continue beyond the key",
+				segments[0])
+		}
+		return validatePathAgainstDescriptor(remaining, valueDesc.Message())
+	}
+
+	if fd.Kind() == protoreflect.MessageKind {
+		return validatePathAgainstDescriptor(remaining, fd.Message())
+	}
+
+	return fmt.Errorf("field '%s' is a scalar; path cannot continue with '%s'",
+		segments[0], remaining[0])
+}
+
+func listFieldNames(fields protoreflect.FieldDescriptors) string {
+	names := make([]string, 0, fields.Len())
+	for i := range fields.Len() {
+		names = append(names, string(fields.Get(i).Name()))
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
+// validateFieldDefinitionTemplateParams checks that template_parameters.* paths in field definitions
+// correspond to parameters declared in the referenced template.
+func validateFieldDefinitionTemplateParams(
+	fieldDefinitions []*privatev1.FieldDefinition,
+	template utils.Template,
+) error {
+	var paramPaths []string
+	for _, fd := range fieldDefinitions {
+		path := fd.GetPath()
+		if strings.HasPrefix(path, "template_parameters.") {
+			paramPaths = append(paramPaths, path)
+		}
+	}
+	if len(paramPaths) == 0 {
+		return nil
+	}
+
+	validNames := make(map[string]bool)
+	for _, p := range template.GetParameters() {
+		validNames[p.GetName()] = true
+	}
+
+	var invalid []string
+	for _, path := range paramPaths {
+		paramName := strings.TrimPrefix(path, "template_parameters.")
+		if !validNames[paramName] {
+			invalid = append(invalid, paramName)
+		}
+	}
+
+	if len(invalid) > 0 {
+		sort.Strings(invalid)
+		validList := make([]string, 0, len(validNames))
+		for name := range validNames {
+			validList = append(validList, name)
+		}
+		sort.Strings(validList)
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"field_definition references unknown template parameter(s) %s; "+
+				"valid parameters for template '%s': %s",
+			strings.Join(invalid, ", "),
+			template.GetId(),
+			strings.Join(validList, ", "))
+	}
+	return nil
+}
+
+// templateResolver looks up a template by ID and returns it wrapped as a utils.Template.
+type templateResolver func(ctx context.Context, id string) (utils.Template, error)
+
+// validateCatalogItemFieldDefinitionPaths validates that field definition paths match the spec
+// proto schema and that template_parameters paths reference valid template parameters.
+func validateCatalogItemFieldDefinitionPaths(
+	ctx context.Context,
+	item catalogItem,
+	specDescriptor protoreflect.MessageDescriptor,
+	resolve templateResolver,
+) error {
+	fieldDefs := item.GetFieldDefinitions()
+	if len(fieldDefs) == 0 {
+		return nil
+	}
+
+	if err := validateFieldDefinitionPaths(fieldDefs, specDescriptor); err != nil {
+		return err
+	}
+
+	return validateTemplateParams(ctx, item.GetTemplate(), fieldDefs, resolve)
+}
+
+func validateTemplateParams(
+	ctx context.Context, templateRef string,
+	fieldDefs []*privatev1.FieldDefinition,
+	resolve templateResolver,
+) error {
+	hasTemplateParamPaths := false
+	for _, fd := range fieldDefs {
+		if strings.HasPrefix(fd.GetPath(), "template_parameters.") {
+			hasTemplateParamPaths = true
+			break
+		}
+	}
+	if !hasTemplateParamPaths {
+		return nil
+	}
+
+	if templateRef == "" {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"field_definitions reference template_parameters but no template is set")
+	}
+
+	template, err := resolve(ctx, templateRef)
+	if err != nil {
+		return err
+	}
+
+	return validateFieldDefinitionTemplateParams(fieldDefs, template)
+}
+
+func templateLookupError(id string, err error) error {
+	var notFoundErr *dao.ErrNotFound
+	if errors.As(err, &notFoundErr) {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"template '%s' not found", id)
+	}
+	return grpcstatus.Errorf(grpccodes.Internal,
+		"failed to retrieve template '%s'", id)
 }
 
 // applyFieldDefinitions validates and applies field definitions from a catalog item against a resource spec.

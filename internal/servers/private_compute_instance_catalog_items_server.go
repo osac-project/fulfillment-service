@@ -24,6 +24,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
+	"github.com/osac-project/fulfillment-service/internal/utils"
 )
 
 type PrivateComputeInstanceCatalogItemsServerBuilder struct {
@@ -41,6 +42,7 @@ type PrivateComputeInstanceCatalogItemsServer struct {
 	logger           *slog.Logger
 	generic          *GenericServer[*privatev1.ComputeInstanceCatalogItem]
 	instanceTypesDao *dao.GenericDAO[*privatev1.InstanceType]
+	templatesDao     *dao.GenericDAO[*privatev1.ComputeInstanceTemplate]
 }
 
 func NewPrivateComputeInstanceCatalogItemsServer() *PrivateComputeInstanceCatalogItemsServerBuilder {
@@ -92,6 +94,15 @@ func (b *PrivateComputeInstanceCatalogItemsServerBuilder) Build() (result *Priva
 		return
 	}
 
+	templatesDao, err := dao.NewGenericDAO[*privatev1.ComputeInstanceTemplate]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	generic, err := NewGenericServer[*privatev1.ComputeInstanceCatalogItem]().
 		SetLogger(b.logger).
 		SetService(privatev1.ComputeInstanceCatalogItems_ServiceDesc.ServiceName).
@@ -108,6 +119,7 @@ func (b *PrivateComputeInstanceCatalogItemsServerBuilder) Build() (result *Priva
 		logger:           b.logger,
 		generic:          generic,
 		instanceTypesDao: instanceTypesDao,
+		templatesDao:     templatesDao,
 	}
 	return
 }
@@ -127,11 +139,14 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Get(ctx context.Context,
 func (s *PrivateComputeInstanceCatalogItemsServer) Create(ctx context.Context,
 	request *privatev1.ComputeInstanceCatalogItemsCreateRequest) (response *privatev1.ComputeInstanceCatalogItemsCreateResponse, err error) {
 	var warnings []string
-	if request.GetObject() != nil {
-		if err = validateFieldDefinitions(request.GetObject().GetFieldDefinitions()); err != nil {
+	if object := request.GetObject(); object != nil {
+		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
 			return
 		}
-		warnings, err = s.validateFieldDefinitionsInstanceType(ctx, request.GetObject().GetFieldDefinitions())
+		if err = s.validateFieldDefinitionPathsAndTemplateParams(ctx, object); err != nil {
+			return
+		}
+		warnings, err = s.validateFieldDefinitionsInstanceType(ctx, object.GetFieldDefinitions())
 		if err != nil {
 			return
 		}
@@ -149,11 +164,14 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Create(ctx context.Context,
 func (s *PrivateComputeInstanceCatalogItemsServer) Update(ctx context.Context,
 	request *privatev1.ComputeInstanceCatalogItemsUpdateRequest) (response *privatev1.ComputeInstanceCatalogItemsUpdateResponse, err error) {
 	var warnings []string
-	if request.GetObject() != nil {
-		if err = validateFieldDefinitions(request.GetObject().GetFieldDefinitions()); err != nil {
+	if object := request.GetObject(); object != nil {
+		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
 			return
 		}
-		warnings, err = s.validateFieldDefinitionsInstanceType(ctx, request.GetObject().GetFieldDefinitions())
+		if err = s.validateFieldDefinitionPathsAndTemplateParams(ctx, object); err != nil {
+			return
+		}
+		warnings, err = s.validateFieldDefinitionsInstanceType(ctx, object.GetFieldDefinitions())
 		if err != nil {
 			return
 		}
@@ -180,16 +198,33 @@ func (s *PrivateComputeInstanceCatalogItemsServer) Signal(ctx context.Context,
 	return
 }
 
+func (s *PrivateComputeInstanceCatalogItemsServer) validateFieldDefinitionPathsAndTemplateParams(
+	ctx context.Context, object *privatev1.ComputeInstanceCatalogItem,
+) error {
+	return validateCatalogItemFieldDefinitionPaths(ctx, object,
+		(&privatev1.ComputeInstanceSpec{}).ProtoReflect().Descriptor(),
+		s.resolveTemplate,
+	)
+}
+
+func (s *PrivateComputeInstanceCatalogItemsServer) resolveTemplate(ctx context.Context, id string) (utils.Template, error) {
+	resp, err := s.templatesDao.Get().SetId(id).Do(ctx)
+	if err != nil {
+		return nil, templateLookupError(id, err)
+	}
+	return utils.ComputeInstanceTemplateAdapter{ComputeInstanceTemplate: resp.GetObject()}, nil
+}
+
 // validateFieldDefinitionsInstanceType validates instance_type constraints in field_definitions.
 // Rejects OBSOLETE instance types, warns on DEPRECATED.
 func (s *PrivateComputeInstanceCatalogItemsServer) validateFieldDefinitionsInstanceType(
 	ctx context.Context,
 	fieldDefinitions []*privatev1.FieldDefinition,
 ) ([]string, error) {
-	// Scan field_definitions to extract the spec.instance_type default value.
+	// Scan field_definitions to extract the instance_type default value.
 	var instanceTypeName string
 	for _, fd := range fieldDefinitions {
-		if fd.GetPath() == "spec.instance_type" {
+		if fd.GetPath() == "instance_type" {
 			defaultValue := fd.GetDefault()
 			if defaultValue != nil {
 				instanceTypeName = defaultValue.GetStringValue()

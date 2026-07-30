@@ -25,6 +25,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
@@ -81,6 +82,25 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 		})
+
+		createBareMetalInstanceTemplate := func(id, paramName string) {
+			_, err := server.templatesDao.Create().SetObject(
+				privatev1.BareMetalInstanceTemplate_builder{
+					Id: id,
+					Metadata: privatev1.Metadata_builder{
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Title: "Template with params",
+					Parameters: []*privatev1.BareMetalInstanceTemplateParameterDefinition{
+						privatev1.BareMetalInstanceTemplateParameterDefinition_builder{
+							Name: paramName,
+							Type: "type.googleapis.com/google.protobuf.StringValue",
+						}.Build(),
+					},
+				}.Build(),
+			).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
 
 		It("Creates object", func() {
 			response, err := server.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
@@ -210,7 +230,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Template: "my-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:        "spec.run_strategy",
+							Path:        "run_strategy",
 							DisplayName: "Run strategy",
 							Editable:    true,
 						}.Build(),
@@ -219,7 +239,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.GetObject().GetFieldDefinitions()).To(HaveLen(1))
-			Expect(response.GetObject().GetFieldDefinitions()[0].GetPath()).To(Equal("spec.run_strategy"))
+			Expect(response.GetObject().GetFieldDefinitions()[0].GetPath()).To(Equal("run_strategy"))
 		})
 
 		It("Rejects non-editable field definition without default value", func() {
@@ -229,7 +249,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Template: "my-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.pull_secret",
+							Path:     "user_data",
 							Editable: false,
 						}.Build(),
 					},
@@ -239,7 +259,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("pull_secret"))
+			Expect(status.Message()).To(ContainSubstring("user_data"))
 			Expect(status.Message()).To(ContainSubstring("default value"))
 		})
 
@@ -250,7 +270,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Template: "my-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.pull_secret",
+							Path:     "user_data",
 							Editable: false,
 							Default:  structpb.NewStringValue("my-secret"),
 						}.Build(),
@@ -275,7 +295,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Template: "my-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.pull_secret",
+							Path:     "user_data",
 							Editable: true,
 						}.Build(),
 					},
@@ -299,11 +319,11 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Template: "my-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.pull_secret",
+							Path:     "user_data",
 							Editable: true,
 						}.Build(),
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.ssh_public_key",
+							Path:     "ssh_public_key",
 							Editable: false,
 						}.Build(),
 					},
@@ -323,7 +343,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Template: "my-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.cores",
+							Path:             "restart_trigger",
 							Editable:         true,
 							ValidationSchema: "{not valid json}",
 						}.Build(),
@@ -334,7 +354,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("cores"))
+			Expect(status.Message()).To(ContainSubstring("restart_trigger"))
 			Expect(status.Message()).To(ContainSubstring("invalid validation_schema"))
 		})
 
@@ -345,7 +365,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Template: "my-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.cores",
+							Path:             "restart_trigger",
 							Editable:         true,
 							ValidationSchema: `{"type":"number","minimum":1}`,
 						}.Build(),
@@ -384,7 +404,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Id: id,
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.cores",
+							Path:     "restart_trigger",
 							Editable: false,
 						}.Build(),
 					},
@@ -397,7 +417,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("cores"))
+			Expect(status.Message()).To(ContainSubstring("restart_trigger"))
 			Expect(status.Message()).To(ContainSubstring("default value"))
 		})
 
@@ -422,7 +442,7 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 					Id: id,
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.cores",
+							Path:             "restart_trigger",
 							Editable:         true,
 							ValidationSchema: "{bad json}",
 						}.Build(),
@@ -437,6 +457,127 @@ var _ = Describe("Private bare metal instance catalog items server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
 			Expect(status.Message()).To(ContainSubstring("invalid validation_schema"))
+		})
+
+		It("Rejects field definition with invalid spec path on Create", func() {
+			_, err := server.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:    "Bad path catalog item",
+					Template: "my-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "nonexistent_field",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("nonexistent_field"))
+			Expect(status.Message()).To(ContainSubstring("does not exist"))
+		})
+
+		It("Rejects field definition with invalid spec path on Update", func() {
+			response, err := server.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:    "Will update with bad path",
+					Template: "my-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			id := response.GetObject().GetId()
+			DeferCleanup(func() {
+				_, _ = server.Delete(ctx, privatev1.BareMetalInstanceCatalogItemsDeleteRequest_builder{
+					Id: id,
+				}.Build())
+			})
+
+			_, err = server.Update(ctx, privatev1.BareMetalInstanceCatalogItemsUpdateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Id:       id,
+					Title:    "Will update with bad path",
+					Template: "my-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "nonexistent_field",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"field_definitions"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("nonexistent_field"))
+		})
+
+		It("Rejects field definition with unknown template parameter on Create", func() {
+			createBareMetalInstanceTemplate("tpl_bm_param_create", "valid_param")
+
+			_, err := server.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:    "Bad template param",
+					Template: "tpl_bm_param_create",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "template_parameters.unknown_param",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("unknown_param"))
+		})
+
+		It("Rejects field definition with unknown template parameter on Update", func() {
+			createBareMetalInstanceTemplate("tpl_bm_param_update", "valid_param")
+
+			response, err := server.Create(ctx, privatev1.BareMetalInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Title:    "Will update with bad param",
+					Template: "tpl_bm_param_update",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			id := response.GetObject().GetId()
+			DeferCleanup(func() {
+				_, _ = server.Delete(ctx, privatev1.BareMetalInstanceCatalogItemsDeleteRequest_builder{
+					Id: id,
+				}.Build())
+			})
+
+			_, err = server.Update(ctx, privatev1.BareMetalInstanceCatalogItemsUpdateRequest_builder{
+				Object: privatev1.BareMetalInstanceCatalogItem_builder{
+					Id:       id,
+					Title:    "Will update with bad param",
+					Template: "tpl_bm_param_update",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "template_parameters.unknown_param",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"field_definitions"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("unknown_param"))
 		})
 	})
 })

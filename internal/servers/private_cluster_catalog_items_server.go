@@ -22,7 +22,9 @@ import (
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
+	"github.com/osac-project/fulfillment-service/internal/utils"
 )
 
 type PrivateClusterCatalogItemsServerBuilder struct {
@@ -37,8 +39,9 @@ var _ privatev1.ClusterCatalogItemsServer = (*PrivateClusterCatalogItemsServer)(
 
 type PrivateClusterCatalogItemsServer struct {
 	privatev1.UnimplementedClusterCatalogItemsServer
-	logger  *slog.Logger
-	generic *GenericServer[*privatev1.ClusterCatalogItem]
+	logger       *slog.Logger
+	generic      *GenericServer[*privatev1.ClusterCatalogItem]
+	templatesDao *dao.GenericDAO[*privatev1.ClusterTemplate]
 }
 
 func NewPrivateClusterCatalogItemsServer() *PrivateClusterCatalogItemsServerBuilder {
@@ -80,6 +83,16 @@ func (b *PrivateClusterCatalogItemsServerBuilder) Build() (result *PrivateCluste
 		err = errors.New("tenancy logic is mandatory")
 		return
 	}
+
+	templatesDao, err := dao.NewGenericDAO[*privatev1.ClusterTemplate]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	generic, err := NewGenericServer[*privatev1.ClusterCatalogItem]().
 		SetLogger(b.logger).
 		SetService(privatev1.ClusterCatalogItems_ServiceDesc.ServiceName).
@@ -93,8 +106,9 @@ func (b *PrivateClusterCatalogItemsServerBuilder) Build() (result *PrivateCluste
 	}
 
 	result = &PrivateClusterCatalogItemsServer{
-		logger:  b.logger,
-		generic: generic,
+		logger:       b.logger,
+		generic:      generic,
+		templatesDao: templatesDao,
 	}
 	return
 }
@@ -117,6 +131,9 @@ func (s *PrivateClusterCatalogItemsServer) Create(ctx context.Context,
 		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
 			return
 		}
+		if err = s.validateFieldDefinitionPathsAndTemplateParams(ctx, object); err != nil {
+			return
+		}
 	}
 	err = s.generic.Create(ctx, request, &response)
 	return
@@ -126,6 +143,9 @@ func (s *PrivateClusterCatalogItemsServer) Update(ctx context.Context,
 	request *privatev1.ClusterCatalogItemsUpdateRequest) (response *privatev1.ClusterCatalogItemsUpdateResponse, err error) {
 	if object := request.GetObject(); object != nil {
 		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
+			return
+		}
+		if err = s.validateFieldDefinitionPathsAndTemplateParams(ctx, object); err != nil {
 			return
 		}
 	}
@@ -143,4 +163,21 @@ func (s *PrivateClusterCatalogItemsServer) Signal(ctx context.Context,
 	request *privatev1.ClusterCatalogItemsSignalRequest) (response *privatev1.ClusterCatalogItemsSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)
 	return
+}
+
+func (s *PrivateClusterCatalogItemsServer) validateFieldDefinitionPathsAndTemplateParams(
+	ctx context.Context, object *privatev1.ClusterCatalogItem,
+) error {
+	return validateCatalogItemFieldDefinitionPaths(ctx, object,
+		(&privatev1.ClusterSpec{}).ProtoReflect().Descriptor(),
+		s.resolveTemplate,
+	)
+}
+
+func (s *PrivateClusterCatalogItemsServer) resolveTemplate(ctx context.Context, id string) (utils.Template, error) {
+	resp, err := s.templatesDao.Get().SetId(id).Do(ctx)
+	if err != nil {
+		return nil, templateLookupError(id, err)
+	}
+	return utils.ClusterTemplateAdapter{ClusterTemplate: resp.GetObject()}, nil
 }

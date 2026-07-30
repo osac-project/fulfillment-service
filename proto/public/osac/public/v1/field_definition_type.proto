@@ -19,7 +19,7 @@ import "google/protobuf/struct.proto";
 
 // Defines a single field on the resource spec that a catalog item controls.
 message FieldDefinition {
-  // Dot-notation path referencing a field in the resource spec.
+  // Dot-notation path relative to the resource spec (e.g. "network.pod_cidr").
   string path = 1;
 
   // Human friendly label for this field, suitable for displaying in a UI.

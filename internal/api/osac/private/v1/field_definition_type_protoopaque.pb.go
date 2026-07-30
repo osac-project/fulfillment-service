@@ -143,8 +143,8 @@ func (x *FieldDefinition) ClearDefault() {
 type FieldDefinition_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Dot-notation path referencing a field in the resource spec. For example: "spec.network.pod_cidr" or
-	// "spec.node_sets.workers.size". Wildcards are not supported.
+	// Dot-notation path relative to the resource spec. For example: "network.pod_cidr" or
+	// "template_parameters.vpc_id". Wildcards are not supported.
 	Path string
 	// Human friendly label for this field, suitable for displaying in a UI.
 	DisplayName string

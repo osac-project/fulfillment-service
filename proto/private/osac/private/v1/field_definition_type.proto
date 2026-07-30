@@ -20,8 +20,8 @@ import "google/protobuf/struct.proto";
 // Defines a single field on the resource spec that a catalog item controls. Each field definition specifies whether
 // the user can set the field, what default value to apply, and optional JSON Schema validation constraints.
 message FieldDefinition {
-  // Dot-notation path referencing a field in the resource spec. For example: "spec.network.pod_cidr" or
-  // "spec.node_sets.workers.size". Wildcards are not supported.
+  // Dot-notation path relative to the resource spec. For example: "network.pod_cidr" or
+  // "template_parameters.vpc_id". Wildcards are not supported.
   string path = 1;
 
   // Human friendly label for this field, suitable for displaying in a UI.
