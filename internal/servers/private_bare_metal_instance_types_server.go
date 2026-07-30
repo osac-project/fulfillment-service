@@ -204,12 +204,7 @@ func (s *PrivateBareMetalInstanceTypesServer) Create(ctx context.Context,
 	}
 
 	// Validate network port specifications:
-	portNames := make(map[string]struct{})
 	for i, port := range hardware.GetNetworkPorts() {
-		if port.GetName() == "" {
-			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].name' is mandatory", i)
-			return
-		}
 		if port.GetRole() == "" {
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].role' is mandatory", i)
 			return
@@ -222,12 +217,12 @@ func (s *PrivateBareMetalInstanceTypesServer) Create(ctx context.Context,
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].speed' is mandatory", i)
 			return
 		}
-		// Check for duplicate port names:
-		if _, exists := portNames[port.GetName()]; exists {
-			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].name' has duplicate value '%s' - port names must be unique", i, port.GetName())
-			return
-		}
-		portNames[port.GetName()] = struct{}{}
+	}
+
+	// Validate network port name uniqueness:
+	err = validateNetworkPortUniqueness(hardware)
+	if err != nil {
+		return
 	}
 
 	// Validate host label selector:
@@ -274,6 +269,12 @@ func (s *PrivateBareMetalInstanceTypesServer) Update(ctx context.Context,
 
 	// Validate immutable fields:
 	err = validateBareMetalInstanceTypeImmutability(merged, existing)
+	if err != nil {
+		return
+	}
+
+	// Validate network port uniqueness on the merged object:
+	err = validateNetworkPortUniqueness(merged.GetSpec().GetHardware())
 	if err != nil {
 		return
 	}
@@ -340,34 +341,73 @@ func validateBareMetalInstanceTypeImmutability(merged, existing *privatev1.BareM
 	existingHw := existing.GetSpec().GetHardware()
 	mergedHw := merged.GetSpec().GetHardware()
 
-	if existingHw != nil && mergedHw != nil {
-		// CPU core hardware immutable:
-		existingCpu := existingHw.GetCpu()
-		mergedCpu := mergedHw.GetCpu()
-		if existingCpu != nil && mergedCpu != nil {
-			if mergedCpu.GetCores() != existingCpu.GetCores() {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"field 'spec.hardware.cpu.cores' is immutable and cannot be changed from '%d' to '%d'",
-					existingCpu.GetCores(), mergedCpu.GetCores())
-			}
-			if mergedCpu.GetArchitecture() != existingCpu.GetArchitecture() {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"field 'spec.hardware.cpu.architecture' is immutable and cannot be changed from '%s' to '%s'",
-					existingCpu.GetArchitecture(), mergedCpu.GetArchitecture())
-			}
-		}
+	// Reject clearing hardware entirely:
+	if existingHw != nil && mergedHw == nil {
+		return grpcstatus.Errorf(grpccodes.InvalidArgument,
+			"field 'spec.hardware' is immutable and cannot be cleared")
+	}
 
-		// Memory total immutable:
-		existingMem := existingHw.GetMemory()
-		mergedMem := mergedHw.GetMemory()
-		if existingMem != nil && mergedMem != nil {
-			if mergedMem.GetTotalGb() != existingMem.GetTotalGb() {
-				return grpcstatus.Errorf(grpccodes.InvalidArgument,
-					"field 'spec.hardware.memory.total_gb' is immutable and cannot be changed from '%d' to '%d'",
-					existingMem.GetTotalGb(), mergedMem.GetTotalGb())
-			}
+	// Skip validation if no existing hardware (new resource):
+	if existingHw == nil {
+		return nil
+	}
+
+	// CPU validation:
+	existingCpu := existingHw.GetCpu()
+	mergedCpu := mergedHw.GetCpu()
+	if existingCpu != nil {
+		if mergedCpu == nil {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.hardware.cpu' is immutable and cannot be cleared")
+		}
+		if mergedCpu.GetCores() != existingCpu.GetCores() {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.hardware.cpu.cores' is immutable and cannot be changed from '%d' to '%d'",
+				existingCpu.GetCores(), mergedCpu.GetCores())
+		}
+		if mergedCpu.GetArchitecture() != existingCpu.GetArchitecture() {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.hardware.cpu.architecture' is immutable and cannot be changed from '%s' to '%s'",
+				existingCpu.GetArchitecture(), mergedCpu.GetArchitecture())
 		}
 	}
 
+	// Memory validation:
+	existingMem := existingHw.GetMemory()
+	mergedMem := mergedHw.GetMemory()
+	if existingMem != nil {
+		if mergedMem == nil {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.hardware.memory' is immutable and cannot be cleared")
+		}
+		if mergedMem.GetTotalGb() != existingMem.GetTotalGb() {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"field 'spec.hardware.memory.total_gb' is immutable and cannot be changed from '%d' to '%d'",
+				existingMem.GetTotalGb(), mergedMem.GetTotalGb())
+		}
+	}
+
+	return nil
+
+	return nil
+}
+
+// validateNetworkPortUniqueness validates that network port names are unique within the hardware specification.
+func validateNetworkPortUniqueness(hardware *privatev1.BareMetalHardwareSpec) error {
+	if hardware == nil {
+		return nil
+	}
+
+	portNames := make(map[string]struct{})
+	for i, port := range hardware.GetNetworkPorts() {
+		if port.GetName() == "" {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].name' is mandatory", i)
+		}
+		// Check for duplicate port names:
+		if _, exists := portNames[port.GetName()]; exists {
+			return grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].name' has duplicate value '%s' - port names must be unique", i, port.GetName())
+		}
+		portNames[port.GetName()] = struct{}{}
+	}
 	return nil
 }
