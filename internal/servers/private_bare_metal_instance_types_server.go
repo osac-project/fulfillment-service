@@ -204,6 +204,7 @@ func (s *PrivateBareMetalInstanceTypesServer) Create(ctx context.Context,
 	}
 
 	// Validate network port specifications:
+	portNames := make(map[string]struct{})
 	for i, port := range hardware.GetNetworkPorts() {
 		if port.GetName() == "" {
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].name' is mandatory", i)
@@ -221,6 +222,12 @@ func (s *PrivateBareMetalInstanceTypesServer) Create(ctx context.Context,
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].speed' is mandatory", i)
 			return
 		}
+		// Check for duplicate port names:
+		if _, exists := portNames[port.GetName()]; exists {
+			err = grpcstatus.Errorf(grpccodes.InvalidArgument, "field 'spec.hardware.network_ports[%d].name' has duplicate value '%s' - port names must be unique", i, port.GetName())
+			return
+		}
+		portNames[port.GetName()] = struct{}{}
 	}
 
 	// Validate host label selector:
