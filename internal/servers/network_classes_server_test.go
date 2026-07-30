@@ -570,6 +570,46 @@ var _ = Describe("Network classes server", func() {
 				Expect(getResponse.GetObject().GetIsDefault()).To(BeTrue())
 			})
 
+			It("Update without UpdateMask validates the fully-replaced capabilities, not a stale merge", func() {
+				// Create a NC where dual_stack is validly supported (both ipv4 and ipv6 true):
+				response, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC with capabilities",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Capabilities: privatev1.NetworkClassCapabilities_builder{
+							SupportsIpv4:      true,
+							SupportsIpv6:      true,
+							SupportsDualStack: true,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				nc := response.GetObject()
+
+				// Update without a field mask (full replacement), dropping supports_ipv4/ipv6 but
+				// keeping supports_dual_stack=true. The persisted object (via generic.Update, which
+				// replaces wholesale) would violate NC-VAL-03 (dual_stack requires ipv4 and ipv6).
+				// applyNetworkClassUpdate's nil-mask path builds a "merged" preview solely for this
+				// validation step; if it used proto.Merge's recursive semantics on capabilities
+				// unchanged, the preview would incorrectly retain the old ipv4/ipv6=true flags and
+				// let this invalid update pass validation.
+				_, err = privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id:                     nc.GetId(),
+						Title:                  nc.GetTitle(),
+						ImplementationStrategy: nc.GetImplementationStrategy(),
+						FabricManager:          nc.GetFabricManager(),
+						Capabilities: privatev1.NetworkClassCapabilities_builder{
+							SupportsDualStack: true,
+						}.Build(),
+					}.Build(),
+					// No UpdateMask — triggers the proto.Merge branch in applyNetworkClassUpdate.
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("supports_ipv4"))
+			})
+
 			It("Update without UpdateMask and IsDefault absent clears is_default via full replacement", func() {
 				// Create NC-A as default:
 				ncA := createDefaultNetworkClass()
@@ -1239,6 +1279,19 @@ var _ = Describe("Network classes server", func() {
 				Expect(err.Error()).To(ContainSubstring("virtual_network_ipv4_cidr"))
 			})
 
+			It("Update with an unknown field mask path fails", func() {
+				nc := createNetworkClass()
+
+				_, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id:    nc.GetId(),
+						Title: "New Title",
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"not_a_real_field"}},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+			})
+
 			It("Public API returns defaults as OUTPUT_ONLY", func() {
 				nc := createNetworkClassWithDefaults(validDefaults())
 
@@ -1297,6 +1350,280 @@ var _ = Describe("Network classes server", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(getResponse.GetObject().GetSpec().GetDefaults()).ToNot(BeNil())
 				Expect(getResponse.GetObject().GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(Equal("10.0.0.0/16"))
+				Expect(getResponse.GetObject().GetTitle()).To(Equal("Updated title"))
+			})
+		})
+
+		Describe("DisableCapabilities", func() {
+			createWithDisableCapabilities := func(caps *privatev1.NetworkClassCapabilities) *privatev1.NetworkClass {
+				response, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC with disable_capabilities",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec: privatev1.NetworkClassSpec_builder{
+							DisableCapabilities: caps,
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				return response.GetObject()
+			}
+
+			It("Create with valid disable_capabilities persists and returns them", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+					DpuSupport:   true,
+				}.Build())
+
+				Expect(nc.GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeTrue())
+				Expect(nc.GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeTrue())
+				Expect(nc.GetSpec().GetDisableCapabilities().GetSupportsIpv4()).To(BeFalse())
+				Expect(nc.GetSpec().GetDisableCapabilities().GetSupportsDualStack()).To(BeFalse())
+
+				getResponse, err := privateServer.Get(ctx, privatev1.NetworkClassesGetRequest_builder{
+					Id: nc.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeTrue())
+				Expect(getResponse.GetObject().GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeTrue())
+			})
+
+			It("Create with all capabilities disabled succeeds", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv4:      true,
+					SupportsIpv6:      true,
+					SupportsDualStack: true,
+					DpuSupport:        true,
+				}.Build())
+				Expect(nc.GetSpec().GetDisableCapabilities().GetSupportsIpv4()).To(BeTrue())
+				Expect(nc.GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeTrue())
+				Expect(nc.GetSpec().GetDisableCapabilities().GetSupportsDualStack()).To(BeTrue())
+				Expect(nc.GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeTrue())
+			})
+
+			It("Create with empty disable_capabilities succeeds", func() {
+				nc := createWithDisableCapabilities(nil)
+				Expect(nc.GetSpec().GetDisableCapabilities()).To(BeNil())
+			})
+
+			It("Create without spec succeeds with nil disable_capabilities", func() {
+				nc := createNetworkClass()
+				Expect(nc.GetSpec().GetDisableCapabilities()).To(BeNil())
+			})
+
+			It("Update via spec.disable_capabilities field mask replaces only that sub-field", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+				}.Build())
+
+				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id: nc.GetId(),
+						Spec: privatev1.NetworkClassSpec_builder{
+							DisableCapabilities: privatev1.NetworkClassCapabilities_builder{
+								DpuSupport: true,
+							}.Build(),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.disable_capabilities"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeTrue())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeFalse())
+			})
+
+			It("Update without UpdateMask replaces disable_capabilities instead of merging", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+				}.Build())
+
+				// Update without a field mask, setting a different disable_capabilities value
+				// (proto.Merge path in applyNetworkClassUpdate). proto.Merge recursively merges
+				// nested messages instead of replacing them, so if that semantic leaked through,
+				// supports_ipv6 would still be true here alongside dpu_support.
+				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id:                     nc.GetId(),
+						Title:                  nc.GetTitle(),
+						ImplementationStrategy: nc.GetImplementationStrategy(),
+						FabricManager:          nc.GetFabricManager(),
+						Spec: privatev1.NetworkClassSpec_builder{
+							DisableCapabilities: privatev1.NetworkClassCapabilities_builder{
+								DpuSupport: true,
+							}.Build(),
+						}.Build(),
+					}.Build(),
+					// No UpdateMask — triggers proto.Merge branch in applyNetworkClassUpdate.
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeTrue())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeFalse())
+			})
+
+			It("Update via spec field mask replaces entire spec including disable_capabilities", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+				}.Build())
+
+				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id: nc.GetId(),
+						Spec: privatev1.NetworkClassSpec_builder{
+							DisableCapabilities: privatev1.NetworkClassCapabilities_builder{
+								DpuSupport:        true,
+								SupportsDualStack: true,
+							}.Build(),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeTrue())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsDualStack()).To(BeTrue())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeFalse())
+				Expect(updateResponse.GetObject().GetSpec().GetDefaults()).To(BeNil())
+			})
+
+			It("Update to empty disable_capabilities clears it", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+					DpuSupport:   true,
+				}.Build())
+
+				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id: nc.GetId(),
+						Spec: privatev1.NetworkClassSpec_builder{
+							DisableCapabilities: privatev1.NetworkClassCapabilities_builder{}.Build(),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.disable_capabilities"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeFalse())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeFalse())
+			})
+
+			It("Update via spec.defaults mask preserves disable_capabilities", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+				}.Build())
+
+				defaults := privatev1.NetworkDefaults_builder{
+					VirtualNetworkIpv4Cidr: "10.0.0.0/16",
+					SubnetIpv4Cidr:         "10.0.1.0/24",
+				}.Build()
+				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id:   nc.GetId(),
+						Spec: privatev1.NetworkClassSpec_builder{Defaults: defaults}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.defaults"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeTrue())
+				Expect(updateResponse.GetObject().GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(
+					Equal("10.0.0.0/16"))
+			})
+
+			It("Update via spec.disable_capabilities mask preserves defaults", func() {
+				response, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Title:                  "NC with both",
+						ImplementationStrategy: "ovn-kubernetes",
+						FabricManager:          "netris",
+						Spec: privatev1.NetworkClassSpec_builder{
+							Defaults: privatev1.NetworkDefaults_builder{
+								VirtualNetworkIpv4Cidr: "10.0.0.0/16",
+								SubnetIpv4Cidr:         "10.0.1.0/24",
+							}.Build(),
+							DisableCapabilities: privatev1.NetworkClassCapabilities_builder{
+								SupportsIpv6: true,
+							}.Build(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				nc := response.GetObject()
+
+				updateResponse, err := privateServer.Update(ctx, privatev1.NetworkClassesUpdateRequest_builder{
+					Object: privatev1.NetworkClass_builder{
+						Id: nc.GetId(),
+						Spec: privatev1.NetworkClassSpec_builder{
+							DisableCapabilities: privatev1.NetworkClassCapabilities_builder{
+								DpuSupport: true,
+							}.Build(),
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.disable_capabilities"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeTrue())
+				Expect(updateResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeFalse())
+				Expect(updateResponse.GetObject().GetSpec().GetDefaults().GetVirtualNetworkIpv4Cidr()).To(
+					Equal("10.0.0.0/16"))
+			})
+
+			It("Public API returns disable_capabilities as OUTPUT_ONLY", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+					DpuSupport:   true,
+				}.Build())
+
+				getResponse, err := publicServer.Get(ctx, publicv1.NetworkClassesGetRequest_builder{
+					Id: nc.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				publicNC := getResponse.GetObject()
+				Expect(publicNC.GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeTrue())
+				Expect(publicNC.GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeTrue())
+			})
+
+			It("Public Update does not overwrite disable_capabilities set via private API", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+				}.Build())
+
+				_, err := publicServer.Update(ctx, publicv1.NetworkClassesUpdateRequest_builder{
+					Object: publicv1.NetworkClass_builder{
+						Id:    nc.GetId(),
+						Title: nc.GetTitle(),
+						Spec: publicv1.NetworkClassSpec_builder{
+							DisableCapabilities: publicv1.NetworkClassCapabilities_builder{
+								DpuSupport: true,
+							}.Build(),
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				getResponse, err := privateServer.Get(ctx, privatev1.NetworkClassesGetRequest_builder{
+					Id: nc.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeTrue())
+				Expect(getResponse.GetObject().GetSpec().GetDisableCapabilities().GetDpuSupport()).To(BeFalse())
+			})
+
+			It("Public Update preserves disable_capabilities when changing other fields", func() {
+				nc := createWithDisableCapabilities(privatev1.NetworkClassCapabilities_builder{
+					SupportsIpv6: true,
+				}.Build())
+
+				_, err := publicServer.Update(ctx, publicv1.NetworkClassesUpdateRequest_builder{
+					Object: publicv1.NetworkClass_builder{
+						Id:    nc.GetId(),
+						Title: "Updated title",
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				getResponse, err := publicServer.Get(ctx, publicv1.NetworkClassesGetRequest_builder{
+					Id: nc.GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse.GetObject().GetSpec().GetDisableCapabilities().GetSupportsIpv6()).To(BeTrue())
 				Expect(getResponse.GetObject().GetTitle()).To(Equal("Updated title"))
 			})
 		})

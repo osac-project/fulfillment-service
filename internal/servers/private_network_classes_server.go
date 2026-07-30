@@ -226,7 +226,10 @@ func (s *PrivateNetworkClassesServer) Update(ctx context.Context,
 	// Merge the update into the existing object so that required-field
 	// validation works correctly for partial updates (field mask).
 	merged := cloneNetworkClass(existingNC)
-	applyNetworkClassUpdate(merged, request.GetObject(), request.GetUpdateMask())
+	err = s.applyNetworkClassUpdate(merged, request.GetObject(), request.GetUpdateMask())
+	if err != nil {
+		return
+	}
 
 	// Validate the merged result against the original for immutability checks:
 	err = s.validateNetworkClass(ctx, merged, existingNC)
@@ -469,49 +472,37 @@ func validateDefaultCIDRPair(vnCIDR, subnetCIDR, ipVersion, vnField, subnetField
 // applyNetworkClassUpdate applies the update fields onto the base object,
 // respecting the field mask. If no mask is provided, all fields from the
 // update are applied.
-func applyNetworkClassUpdate(base, update *privatev1.NetworkClass, mask *fieldmaskpb.FieldMask) {
+func (s *PrivateNetworkClassesServer) applyNetworkClassUpdate(base, update *privatev1.NetworkClass,
+	mask *fieldmaskpb.FieldMask) error {
 	if mask == nil || len(mask.GetPaths()) == 0 {
 		proto.Merge(base, update)
-		return
+		// proto.Merge appends repeated fields and recursively merges nested messages instead of
+		// replacing them. Since the nil-mask case represents a full object replacement, take
+		// capabilities and spec from the update object wholesale when set, so that unset boolean
+		// capability flags, disable_capabilities, and repeated fields (security rules) are
+		// replaced rather than merged with the previous values.
+		if update.GetCapabilities() != nil {
+			base.SetCapabilities(proto.Clone(update.GetCapabilities()).(*privatev1.NetworkClassCapabilities))
+		}
+		if update.GetSpec() != nil {
+			base.SetSpec(proto.Clone(update.GetSpec()).(*privatev1.NetworkClassSpec))
+		}
+		return nil
 	}
-	for _, path := range mask.GetPaths() {
-		switch path {
-		case "status.state":
-			if base.Status == nil {
-				base.Status = &privatev1.NetworkClassStatus{}
-			}
-			base.Status.SetState(update.GetStatus().GetState())
-		case "status.message":
-			if base.Status == nil {
-				base.Status = &privatev1.NetworkClassStatus{}
-			}
-			base.Status.SetMessage(update.GetStatus().GetMessage())
-		case "title":
-			base.SetTitle(update.GetTitle())
-		case "description":
-			base.SetDescription(update.GetDescription())
-		case "implementation_strategy":
-			base.SetImplementationStrategy(update.GetImplementationStrategy())
-		case "capabilities":
-			base.SetCapabilities(update.GetCapabilities())
-		case "is_default":
-			base.SetIsDefault(update.GetIsDefault())
-		case "fabric_manager":
-			base.SetFabricManager(update.GetFabricManager())
-		case "k8s_manager":
-			if update.HasK8SManager() {
-				base.SetK8SManager(update.GetK8SManager())
-			} else {
-				base.ClearK8SManager()
-			}
-		case "spec", "spec.defaults":
-			if base.GetSpec() == nil {
-				base.SetSpec(&privatev1.NetworkClassSpec{})
-			}
-			base.GetSpec().SetDefaults(update.GetSpec().GetDefaults())
-		default:
-			// For unknown paths, fall through - the generic handler will
-			// reject invalid paths if needed.
+
+	// Reuse the same reflection-based mask-application mechanism that generic.Update uses for the
+	// persisted write, so this validation preview can never diverge from what actually gets saved.
+	fieldPaths, err := s.generic.compilePaths(mask.GetPaths())
+	if err != nil {
+		return err
+	}
+	for _, fieldPath := range fieldPaths {
+		value, ok := fieldPath.Get(update)
+		if ok {
+			fieldPath.Set(base, value)
+		} else {
+			fieldPath.Clear(base)
 		}
 	}
+	return nil
 }

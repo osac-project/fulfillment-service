@@ -970,6 +970,10 @@ var _ = Describe("Private bare metal instances server", func() {
 							Editable: false,
 							Default:  structpb.NewStringValue(testSSHPublicKey),
 						}.Build(),
+						privatev1.FieldDefinition_builder{
+							Path:     "template_parameters.os_version",
+							Editable: true,
+						}.Build(),
 					},
 				}.Build(),
 			}.Build())
@@ -1007,6 +1011,10 @@ var _ = Describe("Private bare metal instances server", func() {
 							Path:     "ssh_public_key",
 							Editable: false,
 							Default:  structpb.NewStringValue(testSSHPublicKey),
+						}.Build(),
+						privatev1.FieldDefinition_builder{
+							Path:     "template_parameters.os_version",
+							Editable: true,
 						}.Build(),
 					},
 				}.Build(),
@@ -1049,6 +1057,10 @@ var _ = Describe("Private bare metal instances server", func() {
 							Path:     "ssh_public_key",
 							Editable: true,
 						}.Build(),
+						privatev1.FieldDefinition_builder{
+							Path:     "template_parameters.os_version",
+							Editable: true,
+						}.Build(),
 					},
 				}.Build(),
 			}.Build())
@@ -1085,6 +1097,10 @@ var _ = Describe("Private bare metal instances server", func() {
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
 							Path:     "ssh_public_key",
+							Editable: true,
+						}.Build(),
+						privatev1.FieldDefinition_builder{
+							Path:     "template_parameters.os_version",
 							Editable: true,
 						}.Build(),
 					},

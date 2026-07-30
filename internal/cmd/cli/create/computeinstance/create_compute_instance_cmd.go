@@ -34,6 +34,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	publicv1 "github.com/osac-project/fulfillment-service/internal/api/osac/public/v1"
+	"github.com/osac-project/fulfillment-service/internal/cmd/cli/create/fieldutil"
 	"github.com/osac-project/fulfillment-service/internal/config"
 	"github.com/osac-project/fulfillment-service/internal/exit"
 	"github.com/osac-project/fulfillment-service/internal/logging"
@@ -150,6 +151,12 @@ func Cmd() *cobra.Command {
 		false,
 		windowsFlagHelp,
 	)
+	flags.StringArrayVar(
+		&runner.args.setFields,
+		"set",
+		nil,
+		setFlagHelp,
+	)
 
 	result.MarkFlagsMutuallyExclusive("catalog-item", "template")
 	result.MarkFlagsOneRequired("catalog-item", "template")
@@ -163,6 +170,7 @@ type runnerContext struct {
 		catalogItem             string
 		templateParameterValues []string
 		templateParameterFiles  []string
+		setFields               []string
 		instanceType            string
 		imageSourceRef          string
 		imageSourceType         string
@@ -206,6 +214,11 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Reject --set without --catalog-item:
+	if c.args.catalogItem == "" && len(c.args.setFields) > 0 {
+		return fmt.Errorf("--set is only supported with --catalog-item")
+	}
+
 	// Deprecation warning for --template (per D-03):
 	if c.args.template != "" {
 		fmt.Fprintf(os.Stderr, "Warning: --template is deprecated, use --catalog-item instead\n")
@@ -245,6 +258,9 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		specResult, specErr := c.buildSpecFromCatalogItem(c.args.catalogItem)
 		if specErr != nil {
 			return specErr
+		}
+		if err := fieldutil.ApplyFields(specResult, c.args.setFields); err != nil {
+			return err
 		}
 
 		computeInstance := publicv1.ComputeInstance_builder{
@@ -1034,4 +1050,11 @@ specified multiple times to attach multiple NICs.
 
 const windowsFlagHelp = `
 _[BOOLEAN]_ - Create a Windows VM. Defaults to {{ bt }}false{{ bt }} (Linux VM).
+`
+
+const setFlagHelp = `
+_KEY=VALUE_ - Set a spec field or template parameter on the resource.
+Use dot notation for nested fields (e.g.
+{{ bt }}template_parameters.vpc_id=vpc-123{{ bt }}). Only supported
+with {{ bt }}--catalog-item{{ bt }}. Can be specified multiple times.
 `

@@ -156,6 +156,42 @@ var _ = Describe("Private clusters server", func() {
 				Do(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
+			// Create a virtual network and subnets for network attachment tests:
+			vnDao, err := dao.NewGenericDAO[*privatev1.VirtualNetwork]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			_, err = vnDao.Create().SetObject(privatev1.VirtualNetwork_builder{
+				Id: "test-vnet",
+				Metadata: privatev1.Metadata_builder{
+					Tenant: auth.SharedTenant,
+				}.Build(),
+			}.Build()).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			subnetsDao, err := dao.NewGenericDAO[*privatev1.Subnet]().
+				SetLogger(logger).
+				SetTenancyLogic(tenancy).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+			for _, subnetID := range []string{"subnet-1", "subnet-2"} {
+				_, err = subnetsDao.Create().SetObject(privatev1.Subnet_builder{
+					Id: subnetID,
+					Metadata: privatev1.Metadata_builder{
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Spec: privatev1.SubnetSpec_builder{
+						VirtualNetwork: "test-vnet",
+						Ipv4Cidr:       new("10.0.0.0/24"),
+					}.Build(),
+					Status: privatev1.SubnetStatus_builder{
+						State: privatev1.SubnetState_SUBNET_STATE_READY,
+					}.Build(),
+				}.Build()).Do(ctx)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
 			// Create numbered templates for list tests:
 			for i := range 10 {
 				_, err = templatesDao.Create().

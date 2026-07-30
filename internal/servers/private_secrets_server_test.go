@@ -27,7 +27,10 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
+	"github.com/osac-project/fulfillment-service/internal/database"
 	"github.com/osac-project/fulfillment-service/internal/events"
+	"github.com/osac-project/fulfillment-service/internal/vault"
 )
 
 var _ = Describe("Private secrets server", func() {
@@ -514,6 +517,421 @@ var _ = Describe("Private secrets server", func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.InvalidArgument))
 			Expect(st.Message()).To(ContainSubstring("identifier"))
+		})
+	})
+
+	Describe("Vault integration", func() {
+		var (
+			mockStore *vault.MockSecretStore
+			server    *PrivateSecretsServer
+		)
+
+		BeforeEach(func() {
+			mockStore = vault.NewMockSecretStore(ctrl)
+			var err error
+			server, err = NewPrivateSecretsServer().
+				SetLogger(logger).
+				SetAttributionLogic(attribution).
+				SetTenancyLogic(tenancy).
+				SetSecretStore(mockStore).
+				Build()
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		Describe("Create", func() {
+			It("Stores data in vault and clears spec.data before DB write", func() {
+				mockStore.EXPECT().
+					Store(gomock.Any(), auth.SystemTenant, "", "my-secret",
+						map[string][]byte{"key": []byte("value")}).
+					Return(nil)
+
+				response, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "my-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				obj := response.GetObject()
+				Expect(obj.GetSpec().GetBackend()).To(Equal(
+					privatev1.SecretBackend_SECRET_BACKEND_VAULT))
+				Expect(obj.GetSpec().GetData()).To(BeEmpty())
+			})
+
+			It("Vault failure prevents DB record creation", func() {
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(fmt.Errorf("vault connection refused"))
+
+				_, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "fail-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+
+				listResponse, listErr := server.List(ctx, privatev1.SecretsListRequest_builder{}.Build())
+				Expect(listErr).ToNot(HaveOccurred())
+				Expect(listResponse.GetItems()).To(BeEmpty())
+			})
+
+			It("Hub secret does not interact with vault", func() {
+				response, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "hub-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Backend: privatev1.SecretBackend_SECRET_BACKEND_HUB,
+							Coordinates: map[string]string{
+								"cluster":   "hub-1",
+								"namespace": "default",
+								"name":      "my-k8s-secret",
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.GetObject().GetSpec().GetBackend()).To(Equal(
+					privatev1.SecretBackend_SECRET_BACKEND_HUB))
+			})
+		})
+
+		Describe("Get", func() {
+			It("Fetches resolved data from vault", func() {
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil)
+
+				created, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "get-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"password": []byte("secret-value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				mockStore.EXPECT().
+					Fetch(gomock.Any(), auth.SystemTenant, "", "get-secret").
+					Return(map[string][]byte{"password": []byte("secret-value")}, nil)
+
+				getResponse, err := server.Get(ctx, privatev1.SecretsGetRequest_builder{
+					Id: created.GetObject().GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse.GetObject().GetStatus().GetResolvedData()).To(
+					HaveKeyWithValue("password", []byte("secret-value")))
+			})
+
+			It("Vault fetch failure returns gRPC error", func() {
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil)
+
+				created, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "fail-get-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				mockStore.EXPECT().
+					Fetch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil, fmt.Errorf("vault unavailable"))
+
+				_, err = server.Get(ctx, privatev1.SecretsGetRequest_builder{
+					Id: created.GetObject().GetId(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				st, ok := status.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(st.Code()).To(Equal(codes.Internal))
+			})
+
+			It("Hub secret get does not interact with vault", func() {
+				created, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "hub-get-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Backend: privatev1.SecretBackend_SECRET_BACKEND_HUB,
+							Coordinates: map[string]string{
+								"cluster": "hub-1",
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				getResponse, err := server.Get(ctx, privatev1.SecretsGetRequest_builder{
+					Id: created.GetObject().GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse.GetObject().GetSpec().GetBackend()).To(Equal(
+					privatev1.SecretBackend_SECRET_BACKEND_HUB))
+			})
+		})
+
+		Describe("Update", func() {
+			It("Stores new data in vault when data provided", func() {
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), "update-secret",
+						map[string][]byte{"key": []byte("value")}).
+					Return(nil)
+
+				created, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "update-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				mockStore.EXPECT().
+					Store(gomock.Any(), auth.SystemTenant, "", "update-secret",
+						map[string][]byte{"key": []byte("new-value")}).
+					Return(nil)
+
+				updateResponse, err := server.Update(ctx, privatev1.SecretsUpdateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Id: created.GetObject().GetId(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("new-value"),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.data"}},
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateResponse.GetObject().GetSpec().GetData()).To(BeEmpty())
+			})
+
+			It("Vault store failure on update returns error", func() {
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil)
+
+				created, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "fail-update-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(fmt.Errorf("vault write failed"))
+
+				_, err = server.Update(ctx, privatev1.SecretsUpdateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Id: created.GetObject().GetId(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("updated"),
+							},
+						}.Build(),
+					}.Build(),
+					UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"spec.data"}},
+				}.Build())
+				Expect(err).To(HaveOccurred())
+			})
+		})
+
+		Describe("Delete", func() {
+			It("Removes vault data after DB deletion", func() {
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil)
+
+				created, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "delete-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				mockStore.EXPECT().
+					Delete(gomock.Any(), auth.SystemTenant, "", "delete-secret").
+					Return(nil)
+
+				_, err = server.Delete(ctx, privatev1.SecretsDeleteRequest_builder{
+					Id: created.GetObject().GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = server.Get(ctx, privatev1.SecretsGetRequest_builder{
+					Id: created.GetObject().GetId(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+				st, ok := status.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(st.Code()).To(Equal(codes.NotFound))
+			})
+
+			It("Vault delete failure returns error", func() {
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil)
+
+				created, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "fail-delete-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				mockStore.EXPECT().
+					Delete(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(fmt.Errorf("vault delete failed"))
+
+				_, err = server.Delete(ctx, privatev1.SecretsDeleteRequest_builder{
+					Id: created.GetObject().GetId(),
+				}.Build())
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("Vault delete failure rolls back DB deletion", func() {
+				// Phase 1: Create the secret in a committed transaction.
+				createTx, err := tm.Begin(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				createCtx := database.TxIntoContext(context.Background(), createTx)
+				DeferCleanup(func() { _ = createTx.End(createCtx) })
+
+				mockStore.EXPECT().
+					Store(gomock.Any(), gomock.Any(), gomock.Any(), "rollback-secret", gomock.Any()).
+					Return(nil)
+
+				created, err := server.Create(createCtx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "rollback-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Data: map[string][]byte{
+								"key": []byte("value"),
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				secretID := created.GetObject().GetId()
+
+				err = createTx.End(createCtx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Phase 2: Attempt delete in a separate transaction — vault fails,
+				// so ReportError triggers rollback of the DB deletion.
+				deleteTx, err := tm.Begin(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				deleteCtx := database.TxIntoContext(context.Background(), deleteTx)
+				DeferCleanup(func() { _ = deleteTx.End(deleteCtx) })
+
+				mockStore.EXPECT().
+					Delete(gomock.Any(), auth.SystemTenant, "", "rollback-secret").
+					Return(fmt.Errorf("vault unavailable"))
+
+				_, err = server.Delete(deleteCtx, privatev1.SecretsDeleteRequest_builder{
+					Id: secretID,
+				}.Build())
+				Expect(err).To(HaveOccurred())
+
+				err = deleteTx.End(deleteCtx)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Phase 3: Verify the record still exists after rollback.
+				verifyTx, err := tm.Begin(ctx)
+				Expect(err).ToNot(HaveOccurred())
+				verifyCtx := database.TxIntoContext(context.Background(), verifyTx)
+				DeferCleanup(func() { _ = verifyTx.End(verifyCtx) })
+
+				mockStore.EXPECT().
+					Fetch(gomock.Any(), auth.SystemTenant, "", "rollback-secret").
+					Return(map[string][]byte{"key": []byte("value")}, nil)
+
+				getResponse, err := server.Get(verifyCtx, privatev1.SecretsGetRequest_builder{
+					Id: secretID,
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getResponse.GetObject().GetId()).To(Equal(secretID))
+			})
+
+			It("Hub secret delete does not interact with vault", func() {
+				created, err := server.Create(ctx, privatev1.SecretsCreateRequest_builder{
+					Object: privatev1.Secret_builder{
+						Metadata: privatev1.Metadata_builder{
+							Name: "hub-delete-secret",
+						}.Build(),
+						Spec: privatev1.SecretSpec_builder{
+							Backend: privatev1.SecretBackend_SECRET_BACKEND_HUB,
+							Coordinates: map[string]string{
+								"cluster": "hub-1",
+							},
+						}.Build(),
+					}.Build(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = server.Delete(ctx, privatev1.SecretsDeleteRequest_builder{
+					Id: created.GetObject().GetId(),
+				}.Build())
+				Expect(err).ToNot(HaveOccurred())
+			})
 		})
 	})
 

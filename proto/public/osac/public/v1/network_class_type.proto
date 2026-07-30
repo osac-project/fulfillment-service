@@ -73,6 +73,11 @@ message NetworkClassSpec {
   // Default networking configuration for tenant onboarding. When a tenant is created, the system uses these
   // defaults to auto-create a VirtualNetwork, Subnet, and SecurityGroup for the tenant.
   NetworkDefaults defaults = 1;
+
+  // Capabilities to disable for this NetworkClass. Each field set to true here is removed from
+  // the class's supported capabilities. The operator uses this during capabilities intersection
+  // to remove capabilities that the provider has explicitly disabled for this region.
+  NetworkClassCapabilities disable_capabilities = 2;
 }
 
 // Default networking configuration used during tenant onboarding.

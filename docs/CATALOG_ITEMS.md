@@ -28,38 +28,43 @@ in two ways:
   `--template-parameter` to pass custom values (e.g., `vpc_id`, `vlan`) that AAP uses for
   provisioning.
 - `osac create cluster --catalog-item <id>` — the server resolves the template from the catalog
-  item and applies `field_definitions` to enforce defaults and validation. Only the fixed set of
-  known fields can be controlled; custom template parameters cannot be passed via the CLI yet
-  (`--template-parameter` flag — support is planned), but they can be passed through the
-  gRPC/REST API directly.
+  item and applies `field_definitions` to enforce defaults and validation. Use `--set` to pass
+  template parameters and spec field overrides (e.g., `--set template_parameters.vpc_id=vpc-123`).
 
-Both templates and catalog items are created and managed by the platform admin through the private
+Both templates and catalog items are created and managed by the cloud provider admin through the private
 API. The distinction is not one of roles but of purpose: templates define what infrastructure
-exists, catalog items define what users see. Unlike templates, which are private-only, catalog items
-span both APIs — the admin manages them via the private API, and once published they become visible
+exists and are deeply linked to Ansible roles, catalog items define what users see. Unlike templates, which are private-only, catalog items span both APIs — the admin manages them via the private API, and once published they become visible
 to end users via the public API (list, inspect, and use when creating resources).
 
-### What field_definitions can and cannot do
+### What field_definitions can do
 
-Catalog items control a **fixed set of known fields** on the resource (e.g., `pull_secret`,
-`ssh_public_key`, `network.pod_cidr` for clusters). These are the same fields available as CLI
-flags (`--pull-secret`, `--ssh-public-key`, `--pod-cidr`).
+Catalog items control **both typed spec fields and template parameters**:
 
-**You cannot define custom parameters in a catalog item.** For example, you cannot create a
-`field_definition` with `path: vlan` or `path: vpc_id` and expect AAP to receive it. Paths must
-correspond to known fields in the resource spec — unknown paths have no effect on provisioning.
+- **Typed spec fields** (e.g., `pull_secret`, `ssh_public_key`, `release_image`, `network.pod_cidr`,
+  `node_sets.<name>.size`) — fields defined in the resource protobuf spec. Simple scalar fields have
+  dedicated CLI flags (`--pull-secret`, `--ssh-public-key`, `--pod-cidr`); nested or map-like fields
+  such as `node_sets.*` or `network.*` are only settable via `--set` or YAML, because expressing them as
+  first-class CLI arguments is awkward.
+- **Template parameters** (e.g., `template_parameters.vpc_id`, `template_parameters.vlan`) —
+  custom provisioning parameters forwarded to AAP as Ansible extra variables. Their names must
+  already exist on the referenced template; a catalog item cannot invent new ones.
 
-Custom provisioning parameters (like `vpc_id`, `ip_block_id`, `ssh_key_group_id`) are defined as
-**template parameters**, which are a separate mechanism. Template parameters are forwarded to AAP as
-extra variables. The OSAC CLI does not yet support `--template-parameter` with `--catalog-item`
-(support is planned), but the
-gRPC/REST API accepts `template_parameters` on any create request regardless of whether it uses a
-template or a catalog item. This means:
+How catalog items interact with those parameters:
 
-- Catalog items work well with templates that only need the standard spec fields.
-- Templates that require custom parameters (e.g., `osac.templates.ocp_virt_vm`) can be used
-  through catalog items when creating resources via the API with `template_parameters`. Through the
-  CLI, users must use `--template` directly instead.
+1. **Not listed in `field_definitions`** — the user cannot set them (any value sent is rejected).
+   The server then applies the **template** default, if the parameter is optional
+   (`required: false`) and template defines one. If it is optional with no default, it is omitted. If it is
+   `required: true`, creation always fails when the parameter is not listed — template `default` is
+   ignored for required parameters, so the catalog item must list them (with a catalog-item
+   `default`, or `editable: true` so the user supplies the value).
+2. **Listed in `field_definitions`** — the catalog item controls the value:
+   - `editable: false` + `default` → locked to the catalog-item default (user cannot override).
+   - `editable: true` + `default` → user may override; otherwise the catalog-item default is used.
+   - `editable: true` without `default` → user **must** provide a value. The template default is
+     **not** used as a fallback once the parameter is listed here.
+
+In short: omit a parameter from `field_definitions` to keep the template's optional default; list
+it to expose, lock, or require a catalog-item-controlled value.
 
 ## Creating Catalog Items
 
@@ -73,15 +78,49 @@ field that identifies the catalog item type.
 
 ### ClusterTemplates
 
-Cluster Catalog Items are based on Cluster Templates, you can list the ones available in your environment:
+Cluster Catalog Items are based on Cluster Templates. Templates are imported periodically via an
+Ansible job; you can list the ones available in your environment:
 
 ```bash
 $ osac get clustertemplates
-ID                                    NAME  TITLE
-osac.templates.ocp_small              -     OpenShift Small Cluster
-osac.templates.ocp_ci_small           -     CI OpenShift Cluster
-osac.templates.ocp_4_20_ai_maas       -     OpenShift AI 4.20 Cluster with MaaS
-osac.templates.ocp_4_20_small_nico    -     OpenShift 4.20 Cluster on NICo Bare Metal
+TENANT  DELETING  PROJECT  ID                                  NAME  TITLE
+shared  -         -        osac.templates.ocp_4_20_ai_maas     -     OpenShift AI 4.20 Cluster with MaaS
+shared  -         -        osac.templates.ocp_4_20_small_nico  -     OpenShift 4.20 Cluster on NICo Bare Metal
+shared  -         -        osac.templates.ocp_ci_small         -     CI OpenShift Cluster
+shared  -         -        osac.templates.ocp_small            -     OpenShift Small Cluster
+```
+
+Example cluster template that the catalog item below references. It defines optional `vpc_id` and `vlan`
+parameters (with defaults) that the catalog item can expose or lock:
+
+```yaml
+'@type': type.googleapis.com/osac.public.v1.ClusterTemplate
+id: osac.templates.sandbox
+metadata:
+  name: sandbox
+title: Sandbox Cluster
+description: Small sandbox cluster template with networking parameters.
+node_sets:
+  workers:
+    host_type: fc430
+    size: 1
+parameters:
+  - name: vpc_id
+    title: VPC ID
+    description: Virtual private cloud identifier for provisioning.
+    required: false
+    type: type.googleapis.com/google.protobuf.StringValue
+    default:
+      '@type': type.googleapis.com/google.protobuf.StringValue
+      value: vpc-sandbox-default
+  - name: vlan
+    title: VLAN ID
+    description: VLAN used for the cluster network.
+    required: false
+    type: type.googleapis.com/google.protobuf.Int64Value
+    default:
+      '@type': type.googleapis.com/google.protobuf.Int64Value
+      value: "100"
 ```
 
 ### ClusterCatalogItem
@@ -89,12 +128,13 @@ osac.templates.ocp_4_20_small_nico    -     OpenShift 4.20 Cluster on NICo Bare 
 ```yaml
 '@type': type.googleapis.com/osac.public.v1.ClusterCatalogItem
 metadata:
-  name: dev-sandbox
-title: Dev Sandbox Cluster
-description: Small development cluster with locked-down defaults.
-template: "osac.templates.ocp_small"
+  name: sandbox
+title: Sandbox Cluster
+description: Small development cluster.
+template: "osac.templates.sandbox"
 published: true
 field_definitions:
+  # Typed proto fields
   - path: ssh_public_key
     display_name: SSH Public Key
     editable: false
@@ -116,7 +156,24 @@ field_definitions:
     editable: true
     default: "10.128.0.0/14"
     validation_schema: '{"type":"string","pattern":"^[0-9./]+$"}'
+  # Template parameters — forwarded to AAP/Ansible
+  - path: template_parameters.vpc_id
+    display_name: VPC ID
+    editable: true
+    default: "vpc-sandbox-01"
+  - path: template_parameters.vlan
+    display_name: VLAN ID
+    editable: false
+    default: 100
+    validation_schema: '{"type":"number","minimum":1,"maximum":4094}'
 ```
+
+> Cluster templates and catalog items reference host types in `node_sets.*.host_type`. Those host
+> types must already exist (`osac get hosttypes`).
+
+Only list `template_parameters.*` paths that exist on the referenced template (e.g., VPC ID, VLAN ID). Omit a parameter to
+keep the template's optional default; list it to expose, lock, or require a value. Required
+template parameters must be listed — see the rules above.
 
 ### ComputeInstanceTemplates
 
@@ -218,6 +275,7 @@ catalog item, the server rejects any spec field not listed in `field_definitions
 | `network.service_cidr` | `--service-cidr` | Service network CIDR (default: `172.30.0.0/16`) |
 | `node_sets.<name>.size` | — | Number of nodes in a named node set (e.g., `node_sets.workers.size`) |
 | `node_sets.<name>.host_type` | — | Host type for a named node set. Immutable after creation |
+| `template_parameters.<name>` | `--set` | Custom template parameter forwarded to AAP as an Ansible extra variable |
 
 **ComputeInstanceCatalogItem** paths:
 
@@ -232,6 +290,7 @@ catalog item, the server rejects any spec field not listed in `field_definitions
 | `boot_disk.size_gib` | Boot disk size in GiB |
 | `additional_disks` | Additional disk configurations |
 | `network_attachments` | Network attachments (subnet + security groups per NIC) |
+| `template_parameters.<name>` | Custom template parameter forwarded to AAP as an Ansible extra variable |
 
 These paths are defined by the resource API. If new fields are added or removed in a future version,
 the available paths change accordingly.
@@ -244,7 +303,7 @@ Once a catalog item is published, users create resources from it using `--catalo
 osac create cluster --catalog-item dev-sandbox
 ```
 
-Users can provide spec fields via CLI flags:
+Users can provide spec fields via CLI flags and `--set`:
 
 ```bash
 osac create cluster --catalog-item dev-sandbox \
@@ -255,12 +314,24 @@ osac create cluster --catalog-item dev-sandbox \
   --pod-cidr "10.128.0.0/14"
 ```
 
-> **Note:** The CLI does not yet support `--template-parameter` with `--catalog-item` (support is
-> planned). To pass custom
-> template parameters with a catalog item, use the gRPC/REST API directly (the
-> `template_parameters` field is accepted on all create requests). Alternatively, use `--template`
-> with the CLI (see
-> [What field_definitions can and cannot do](#what-field_definitions-can-and-cannot-do)).
+Use `--set` to pass template parameters or override editable spec fields. Each `--set` takes a
+single `KEY=VALUE` pair (split on the first `=`):
+
+```bash
+osac create cluster --catalog-item rhel-ai-small \
+  --set template_parameters.vpc_id=vpc-staging-02 \
+  --set template_parameters.ip_block_id=block-789 \
+  --pull-secret-file pull-secret.json
+```
+
+Non-editable parameters are rejected by the server:
+
+```bash
+# This fails because vlan is non-editable in the catalog item:
+osac create cluster --catalog-item rhel-ai-small \
+  --set template_parameters.vlan=5000
+# Error: field 'template_parameters.vlan' is not editable
+```
 
 ### How CLI flags interact with field_definitions
 

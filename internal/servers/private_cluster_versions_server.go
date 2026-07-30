@@ -209,7 +209,9 @@ func (s *PrivateClusterVersionsServer) Update(ctx context.Context,
 		}
 	}
 
-	applyClusterVersionStateEffects(existing, request)
+	if err := applyClusterVersionStateEffects(existing, request); err != nil {
+		return nil, err
+	}
 
 	if resolveIsDefault(existing, request) {
 		if err := s.unsetPreviousDefaultClusterVersion(ctx, id); err != nil {
@@ -340,12 +342,15 @@ func validateClusterVersionCreateRequest(request *privatev1.ClusterVersionsCreat
 	return cv, nil
 }
 
-// resolveState returns the state that will be effective after the update: the request's value
-// if spec.state is in the mask, otherwise the existing value.
+// resolveState returns the state that will be effective after the update. UNSPECIFIED is
+// treated as absent because non-optional proto3 enums have no presence — the zero value is
+// indistinguishable from an unset field.
 func resolveState(existing *privatev1.ClusterVersion,
 	request *privatev1.ClusterVersionsUpdateRequest) privatev1.ClusterVersionState {
 	if updateIncludesField(request.GetUpdateMask(), "spec.state") {
-		return request.GetObject().GetSpec().GetState()
+		if s := request.GetObject().GetSpec().GetState(); s != privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_UNSPECIFIED {
+			return s
+		}
 	}
 	return existing.GetSpec().GetState()
 }
@@ -439,14 +444,20 @@ func applyClusterVersionDefaults(cv *privatev1.ClusterVersion) {
 // occurs, any client-supplied deprecation timestamps are replaced with the existing values
 // (OUTPUT_ONLY enforcement).
 func applyClusterVersionStateEffects(existing *privatev1.ClusterVersion,
-	request *privatev1.ClusterVersionsUpdateRequest) {
+	request *privatev1.ClusterVersionsUpdateRequest) error {
 	spec := request.GetObject().GetSpec()
 	if spec == nil {
-		return
+		return nil
 	}
 	oldState := existing.GetSpec().GetState()
 	newState := resolveState(existing, request)
 	mask := request.GetUpdateMask()
+
+	// Normalize the request's state to the resolved value so the generic server's mask merge
+	// persists the correct state (UNSPECIFIED is replaced with the existing or intended value).
+	if updateIncludesField(mask, "spec.state") {
+		spec.SetState(newState)
+	}
 
 	// Same-state update — enforce OUTPUT_ONLY contract on deprecation timestamps by
 	// unconditionally restoring existing values, regardless of what the client sent:
@@ -475,6 +486,9 @@ func applyClusterVersionStateEffects(existing *privatev1.ClusterVersion,
 			dep.SetObsolescenceTimestamp(timestamppb.Now())
 		case privatev1.ClusterVersionState_CLUSTER_VERSION_STATE_ACTIVE:
 			// Retain existing timestamps as historical record.
+		default:
+			return grpcstatus.Errorf(grpccodes.InvalidArgument,
+				"unsupported cluster version state: %v", newState)
 		}
 
 		if mask != nil {
@@ -492,6 +506,7 @@ func applyClusterVersionStateEffects(existing *privatev1.ClusterVersion,
 			}
 		}
 	}
+	return nil
 }
 
 func validateClusterVersionImmutability(existing *privatev1.ClusterVersion,
