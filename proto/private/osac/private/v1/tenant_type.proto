@@ -16,6 +16,7 @@ syntax = "proto3";
 package osac.private.v1;
 
 import "buf/validate/validate.proto";
+import "osac/private/v1/condition_status_type.proto";
 import "osac/private/v1/metadata_type.proto";
 import "osac/private/v1/break_glass_credentials_type.proto";
 
@@ -106,6 +107,38 @@ message TenantStatus {
   // during tenant creation.
   // Empty string when state is PENDING or FAILED.
   string break_glass_user_id = 5;
+
+  // Conditions provide detailed status information about various subsystems of the tenant.
+  repeated TenantCondition conditions = 6;
+}
+
+// Represents a specific aspect of the tenant's current state.
+message TenantCondition {
+  // Type of condition.
+  TenantConditionType type = 1;
+
+  // Status of the condition (True, False, or Unknown).
+  ConditionStatus status = 2;
+
+  // Machine-readable reason for the condition's last transition.
+  optional string reason = 3;
+
+  // Human-readable message providing details about the condition.
+  optional string message = 4;
+}
+
+// Types of conditions that can be reported for a Tenant.
+enum TenantConditionType {
+  // Unspecified condition type.
+  TENANT_CONDITION_TYPE_UNSPECIFIED = 0;
+
+  // Indicates whether all default networking resources (VirtualNetwork, Subnets, SecurityGroup, NATGateway)
+  // have reached READY state.
+  //
+  // Status meanings:
+  // - True: All default networking resources are ready, or no default networking is configured
+  // - False: One or more default networking resources are pending or failed
+  TENANT_CONDITION_TYPE_DEFAULT_NETWORKING_READY = 1;
 }
 
 // Lifecycle states for Tenant resources.

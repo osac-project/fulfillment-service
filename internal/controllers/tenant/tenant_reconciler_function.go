@@ -12,6 +12,10 @@ language governing permissions and limitations under the License.
 */
 
 //go:generate mockgen -source=../../api/osac/private/v1/projects_service_grpc.pb.go -destination=projects_client_mock.go -package=tenant ProjectsClient
+//go:generate mockgen -source=../../api/osac/private/v1/virtual_networks_service_grpc.pb.go -destination=virtual_networks_client_mock.go -package=tenant VirtualNetworksClient
+//go:generate mockgen -source=../../api/osac/private/v1/subnets_service_grpc.pb.go -destination=subnets_client_mock.go -package=tenant SubnetsClient
+//go:generate mockgen -source=../../api/osac/private/v1/security_groups_service_grpc.pb.go -destination=security_groups_client_mock.go -package=tenant SecurityGroupsClient
+//go:generate mockgen -source=../../api/osac/private/v1/nat_gateways_service_grpc.pb.go -destination=nat_gateways_client_mock.go -package=tenant NATGatewaysClient
 
 package tenant
 
@@ -21,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -78,22 +83,30 @@ func (b *FunctionBuilder) Build() (result *function, err error) {
 	}
 
 	result = &function{
-		logger:         b.logger,
-		tenantsClient:  privatev1.NewTenantsClient(b.connection),
-		projectsClient: privatev1.NewProjectsClient(b.connection),
-		idpManager:     b.idpManager,
-		maskCalculator: masks.NewCalculator().Build(),
+		logger:                b.logger,
+		tenantsClient:         privatev1.NewTenantsClient(b.connection),
+		projectsClient:        privatev1.NewProjectsClient(b.connection),
+		virtualNetworksClient: privatev1.NewVirtualNetworksClient(b.connection),
+		subnetsClient:         privatev1.NewSubnetsClient(b.connection),
+		securityGroupsClient:  privatev1.NewSecurityGroupsClient(b.connection),
+		natGatewaysClient:     privatev1.NewNATGatewaysClient(b.connection),
+		idpManager:            b.idpManager,
+		maskCalculator:        masks.NewCalculator().Build(),
 	}
 	return
 }
 
 // function is the implementation of the reconciler function.
 type function struct {
-	logger         *slog.Logger
-	tenantsClient  privatev1.TenantsClient
-	projectsClient privatev1.ProjectsClient
-	idpManager     *idp.TenantManager
-	maskCalculator *masks.Calculator
+	logger                *slog.Logger
+	tenantsClient         privatev1.TenantsClient
+	projectsClient        privatev1.ProjectsClient
+	virtualNetworksClient privatev1.VirtualNetworksClient
+	subnetsClient         privatev1.SubnetsClient
+	securityGroupsClient  privatev1.SecurityGroupsClient
+	natGatewaysClient     privatev1.NATGatewaysClient
+	idpManager            *idp.TenantManager
+	maskCalculator        *masks.Calculator
 }
 
 // Run executes the reconciliation logic for the given tenant.
@@ -140,6 +153,7 @@ func (t *task) update(ctx context.Context) error {
 	}
 
 	t.setDefaults()
+	t.setConditionDefaults()
 
 	if err := t.validateTenant(); err != nil {
 		return err
@@ -153,9 +167,15 @@ func (t *task) update(ctx context.Context) error {
 		return nil
 	}
 
-	// For synced tenants, no updates are needed since spec is empty.
+	// For synced tenants, update IDP and check default networking readiness.
 	if state == privatev1.TenantState_TENANT_STATE_SYNCED {
-		return t.updateIDP(ctx)
+		if err := t.updateIDP(ctx); err != nil {
+			return err
+		}
+		if t.tenant.GetStatus().GetState() == privatev1.TenantState_TENANT_STATE_FAILED {
+			return nil
+		}
+		return t.checkDefaultNetworkingReadiness(ctx)
 	}
 
 	// Tenant is PENDING or UNSPECIFIED, perform initial sync to IDP
@@ -334,4 +354,150 @@ func (t *task) countRemainingProjects(ctx context.Context) (int32, error) {
 		return 0, err
 	}
 	return listResp.GetTotal(), nil
+}
+
+var tenantConditionTypes = []privatev1.TenantConditionType{
+	privatev1.TenantConditionType_TENANT_CONDITION_TYPE_DEFAULT_NETWORKING_READY,
+}
+
+// setConditionDefaults ensures every known condition type has an entry in the tenant's conditions list.
+func (t *task) setConditionDefaults() {
+	for _, conditionType := range tenantConditionTypes {
+		t.setConditionDefault(conditionType)
+	}
+}
+
+func (t *task) setConditionDefault(conditionType privatev1.TenantConditionType) {
+	for _, c := range t.tenant.GetStatus().GetConditions() {
+		if c.GetType() == conditionType {
+			return
+		}
+	}
+	conditions := t.tenant.GetStatus().GetConditions()
+	conditions = append(conditions, privatev1.TenantCondition_builder{
+		Type:   conditionType,
+		Status: privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+	}.Build())
+	t.tenant.GetStatus().SetConditions(conditions)
+}
+
+func (t *task) updateCondition(conditionType privatev1.TenantConditionType, status privatev1.ConditionStatus,
+	reason string, message string) {
+	newCondition := privatev1.TenantCondition_builder{
+		Type:    conditionType,
+		Status:  status,
+		Reason:  new(reason),
+		Message: new(message),
+	}.Build()
+	conditions := t.tenant.GetStatus().GetConditions()
+	for i, c := range conditions {
+		if c.GetType() == conditionType {
+			conditions[i] = newCondition
+			t.tenant.GetStatus().SetConditions(conditions)
+			return
+		}
+	}
+	conditions = append(conditions, newCondition)
+	t.tenant.GetStatus().SetConditions(conditions)
+}
+
+const defaultLabelFilter = "this.metadata.labels['osac.openshift.io/default'] == 'true'"
+
+func (t *task) checkDefaultNetworkingReadiness(ctx context.Context) error {
+	if t.r.virtualNetworksClient == nil {
+		return nil
+	}
+	tenantName := t.tenant.GetMetadata().GetName()
+	filter := fmt.Sprintf("%s && this.metadata.tenant == %q", defaultLabelFilter, tenantName)
+
+	var pending, failed []string
+
+	vns, err := t.r.virtualNetworksClient.List(ctx, privatev1.VirtualNetworksListRequest_builder{
+		Filter: new(filter),
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to list default virtual networks: %w", err)
+	}
+	for _, vn := range vns.GetItems() {
+		switch vn.GetStatus().GetState() {
+		case privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_READY:
+		case privatev1.VirtualNetworkState_VIRTUAL_NETWORK_STATE_FAILED:
+			failed = append(failed, fmt.Sprintf("VirtualNetwork/%s", vn.GetMetadata().GetName()))
+		default:
+			pending = append(pending, fmt.Sprintf("VirtualNetwork/%s", vn.GetMetadata().GetName()))
+		}
+	}
+
+	subnets, err := t.r.subnetsClient.List(ctx, privatev1.SubnetsListRequest_builder{
+		Filter: new(filter),
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to list default subnets: %w", err)
+	}
+	for _, s := range subnets.GetItems() {
+		switch s.GetStatus().GetState() {
+		case privatev1.SubnetState_SUBNET_STATE_READY:
+		case privatev1.SubnetState_SUBNET_STATE_FAILED, privatev1.SubnetState_SUBNET_STATE_DELETE_FAILED:
+			failed = append(failed, fmt.Sprintf("Subnet/%s", s.GetMetadata().GetName()))
+		default:
+			pending = append(pending, fmt.Sprintf("Subnet/%s", s.GetMetadata().GetName()))
+		}
+	}
+
+	sgs, err := t.r.securityGroupsClient.List(ctx, privatev1.SecurityGroupsListRequest_builder{
+		Filter: new(filter),
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to list default security groups: %w", err)
+	}
+	for _, sg := range sgs.GetItems() {
+		switch sg.GetStatus().GetState() {
+		case privatev1.SecurityGroupState_SECURITY_GROUP_STATE_READY:
+		case privatev1.SecurityGroupState_SECURITY_GROUP_STATE_FAILED, privatev1.SecurityGroupState_SECURITY_GROUP_STATE_DELETE_FAILED:
+			failed = append(failed, fmt.Sprintf("SecurityGroup/%s", sg.GetMetadata().GetName()))
+		default:
+			pending = append(pending, fmt.Sprintf("SecurityGroup/%s", sg.GetMetadata().GetName()))
+		}
+	}
+
+	ngs, err := t.r.natGatewaysClient.List(ctx, privatev1.NATGatewaysListRequest_builder{
+		Filter: new(filter),
+	}.Build())
+	if err != nil {
+		return fmt.Errorf("failed to list default NAT gateways: %w", err)
+	}
+	for _, ng := range ngs.GetItems() {
+		switch ng.GetStatus().GetState() {
+		case privatev1.NATGatewayState_NAT_GATEWAY_STATE_READY:
+		case privatev1.NATGatewayState_NAT_GATEWAY_STATE_FAILED:
+			failed = append(failed, fmt.Sprintf("NATGateway/%s", ng.GetMetadata().GetName()))
+		default:
+			pending = append(pending, fmt.Sprintf("NATGateway/%s", ng.GetMetadata().GetName()))
+		}
+	}
+
+	totalResources := len(vns.GetItems()) + len(subnets.GetItems()) + len(sgs.GetItems()) + len(ngs.GetItems())
+	condType := privatev1.TenantConditionType_TENANT_CONDITION_TYPE_DEFAULT_NETWORKING_READY
+
+	if totalResources == 0 {
+		t.updateCondition(condType, privatev1.ConditionStatus_CONDITION_STATUS_TRUE,
+			"NoDefaultNetworking", "No default networking resources configured")
+		return nil
+	}
+
+	if len(failed) > 0 {
+		t.updateCondition(condType, privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+			"ResourceFailed", fmt.Sprintf("Default networking resources failed: %s", strings.Join(failed, ", ")))
+		return nil
+	}
+
+	if len(pending) > 0 {
+		t.updateCondition(condType, privatev1.ConditionStatus_CONDITION_STATUS_FALSE,
+			"ResourcesPending", fmt.Sprintf("Default networking resources pending: %s", strings.Join(pending, ", ")))
+		return nil
+	}
+
+	t.updateCondition(condType, privatev1.ConditionStatus_CONDITION_STATUS_TRUE,
+		"AllResourcesReady", "All default networking resources are ready")
+	return nil
 }
