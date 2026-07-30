@@ -162,10 +162,10 @@ type refKeyer interface {
 }
 
 func refKeyStr(ref refKeyer) string {
-	if ref.GetName() != "" {
-		return ref.GetName()
+	if ref.GetId() != "" {
+		return ref.GetId()
 	}
-	return ref.GetId()
+	return ref.GetName()
 }
 
 // getRoleByNameOrID fetches a role by ID or name. If the provided value is not found as an ID,

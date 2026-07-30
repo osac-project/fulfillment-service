@@ -396,10 +396,10 @@ type refKeyer interface {
 }
 
 func refKeyStr(ref refKeyer) string {
-	if ref.GetName() != "" {
-		return ref.GetName()
+	if ref.GetId() != "" {
+		return ref.GetId()
 	}
-	return ref.GetId()
+	return ref.GetName()
 }
 
 // buildSpec constructs the spec for the Kubernetes Subnet object based on the

@@ -373,10 +373,10 @@ type refKeyer interface {
 }
 
 func refKeyStr(ref refKeyer) string {
-	if ref.GetName() != "" {
-		return ref.GetName()
+	if ref.GetId() != "" {
+		return ref.GetId()
 	}
-	return ref.GetId()
+	return ref.GetName()
 }
 
 func (t *task) buildSpec() osacv1alpha1.NATGatewaySpec {
