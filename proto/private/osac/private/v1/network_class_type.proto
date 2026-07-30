@@ -94,6 +94,15 @@ message NetworkClassSpec {
   // the class's supported capabilities. The operator uses this during capabilities intersection
   // to remove capabilities that the provider has explicitly disabled for this region.
   NetworkClassCapabilities disable_capabilities = 2;
+
+  // Prefix length that reserves a sub-range of each subnet for MetalLB VIPs. This is a deployment-wide
+  // parameter that applies to all subnet creation, not just defaults. The fabric manager uses this to
+  // exclude the VIP sub-range from the DHCP pool.
+  // Example: 28 means a /28 sub-range (16 IPs) is reserved for MetalLB VIPs in each subnet.
+  optional int32 metallb_vip_prefix_length = 3 [(buf.validate.field).int32 = {
+    gte: 1,
+    lte: 128
+  }];
 }
 
 // Default networking configuration used during tenant onboarding.
