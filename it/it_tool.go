@@ -173,6 +173,7 @@ func (b *ToolBuilder) SetKeepService(value bool) *ToolBuilder {
 // - gRPC server: 30001
 // - REST gateway: 30002
 // - Controller: 30003
+// - Console proxy: 30004
 func (b *ToolBuilder) SetDebug(value bool) *ToolBuilder {
 	b.debug = value
 	return b
@@ -553,6 +554,7 @@ func (t *Tool) startCluster(ctx context.Context) error {
 		builder.AddPortMapping("127.0.0.1", 30001, 30001) // gRPC server.
 		builder.AddPortMapping("127.0.0.1", 30002, 30002) // REST gateway.
 		builder.AddPortMapping("127.0.0.1", 30003, 30003) // Controller.
+		builder.AddPortMapping("127.0.0.1", 30004, 30004) // Console proxy.
 	}
 	if t.caKeyFile != "" && t.caCrtFile != "" {
 		builder.SetCaFiles(t.caKeyFile, t.caCrtFile)

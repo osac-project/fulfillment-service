@@ -24,7 +24,7 @@ spec:
       app: fulfillment-console-proxy
   replicas: 1
   strategy:
-    type: RollingUpdate
+    type: {{ if .Values.debug }}Recreate{{ else }}RollingUpdate{{ end }}
   template:
     metadata:
       labels:
@@ -49,13 +49,8 @@ spec:
             path: tls.key
       containers:
       - name: console-proxy
+        securityContext: {{ include "fulfillment.containerSecurityContext" . | fromYaml | toJson }}
         image: {{ .Values.images.service }}
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
         volumeMounts:
         - name: cas
           mountPath: /etc/fulfillment-console-proxy/tls/cas
@@ -65,7 +60,19 @@ spec:
           mountPath: /etc/fulfillment-token-encryption
           readOnly: true
         command:
+        {{ if .Values.debug }}
+        - dlv
+        - exec
         - /usr/local/bin/fulfillment-service
+        - --headless
+        - --api-version=2
+        - --listen=:30004
+        - --accept-multiclient
+        - --continue
+        - --
+        {{ else}}
+        - /usr/local/bin/fulfillment-service
+        {{ end }}
         - start
         - console-proxy
         - --log-level={{ .Values.log.level }}
@@ -90,6 +97,13 @@ spec:
         - name: metrics
           containerPort: 8002
           protocol: TCP
+        {{ if .Values.debug }}
+        - name: debug
+          containerPort: 30004
+          hostPort: 30004
+          protocol: TCP
+        {{ end }}
+        {{ if not .Values.debug }}
         livenessProbe:
           tcpSocket:
             port: 8000
@@ -110,3 +124,4 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 5
+        {{ end }}

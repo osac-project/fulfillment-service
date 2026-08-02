@@ -79,13 +79,8 @@ spec:
           type: RuntimeDefault
       containers:
       - name: grpc-server
+        securityContext: {{ include "fulfillment.containerSecurityContext" . | fromYaml | toJson }}
         image: {{ .Values.images.service }}
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
         volumeMounts:
         - name: cas
           mountPath: /etc/fulfillment-grpc-server/tls/cas
