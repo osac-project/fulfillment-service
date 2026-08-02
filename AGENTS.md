@@ -131,7 +131,9 @@ running tests with specific options, or installing a tool), refer to [dev/README
 
 - `cmd/fulfillment-service/` - Service binary entry point (calls `internal/cmd/service.Root()`)
 - `cmd/osac/` - CLI binary entry point (calls `internal/cmd/cli.Root()`)
-- `internal/cmd/service/start/` - Server startup commands (grpcserver, restgateway, controller)
+- `cmd/osac-dev/` - Development tooling binary
+- `cmd/test-server/` - Test server binary
+- `internal/cmd/service/start/` - Server startup commands (grpcserver, restgateway, consoleproxy, controller)
 - `internal/servers/` - gRPC service implementations (one `*_server.go` per resource)
 - `proto/` - Protocol Buffer definitions (public/private/tests)
 - `internal/api/` - Generated Go code from protobuf (see [Files Requiring Extra Caution](#files-requiring-extra-caution))
@@ -168,18 +170,21 @@ Public servers delegate to private servers and add tenant/auth logic:
 Uses `pgx/v5` with a generic DAO pattern:
 - `GenericDAO[O Object]` provides type-safe CRUD for any protobuf message
 - Resources stored as JSON-serialized protobuf in a `data` column
-- Standard columns: `id`, `name`, `creation_timestamp`, `deletion_timestamp`, `finalizers`, `creator`, `tenant`, `labels`, `annotations`, `data`
+- Standard columns: `id`, `name`, `creation_timestamp`, `deletion_timestamp`, `finalizers`, `creator`, `tenant`, `project`, `labels`, `annotations`, `version`, `data`
 - CEL filter expressions translated to SQL WHERE clauses via `FilterTranslator`
 - Migrations in `internal/database/migrations/` (numbered `*.up.sql` files)
 
 ### gRPC Interceptor Chain
 
-The gRPC server uses chained interceptors (configured in `internal/cmd/service/start/grpcserver/`):
+The gRPC server uses chained unary interceptors (configured in `internal/cmd/service/start/grpcserver/`; stream RPCs omit the transaction interceptor):
 1. Panic recovery
 2. Prometheus metrics
 3. Structured logging (slog)
-4. Authentication (JWT validation)
+4. Validation
 5. Database transaction management
+6. Authentication (JWT validation)
+7. Authorization (Rego/OPA)
+8. JIT user provisioning
 
 ### Mock Generation
 
@@ -190,7 +195,7 @@ Uses `go.uber.org/mock` (uber-go/mock). Mocks are generated with `//go:generate 
 Tests use Ginkgo v2 + Gomega. Typical suite setup in `*_suite_test.go`:
 - `BeforeSuite` initializes logger, auth logic, database
 - `DeferCleanup` for teardown
-- `dao.CreateTables[T]()` dynamically creates test schemas
+- `database.NewContainer()` creates a PostgreSQL test container; `server.NewInstance().Build()` creates isolated database instances per test
 
 ## Automated Hooks
 

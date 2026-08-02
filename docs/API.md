@@ -19,9 +19,11 @@ The API has two variants, each defined in its own directory tree:
 - `proto/private/osac/private/v1/` contains the private API, reserved for system administrators and
   controllers.
 
-The public API must always be a strict subset of the private API. The private API may contain
+The public API must be a strict subset of the private API. The private API may contain
 services, methods, messages, and fields that do not appear in the public API, but the reverse is
-never allowed. Public protos must never import private protos, and vice versa.
+never allowed except for documented exceptions: `console_proxy_service`, `console_service`,
+`json_web_key_set_service`, and `openapi_options` exist only in the public API (no private
+counterpart). Public protos must never import private protos, and vice versa.
 
 Both APIs must be documented with documentation comments in the `.proto` files. The documentation in
 both should be identical for the parts they share. The private API has not been documented
@@ -80,6 +82,7 @@ The `Metadata` message is shared by all object types and contains the following 
 | `labels`               | `map<string, string>`        | Indexed key-value pairs for organizing objects.  |
 | `annotations`          | `map<string, string>`        | Arbitrary user-controlled metadata.              |
 | `version`              | `int32`                      | Auto-incremented on every change.                |
+| `project`              | `string`                     | Dot-separated project path (empty = default).    |
 
 The private API adds a `finalizers` field (`repeated string`) that is not exposed in the public API.
 
@@ -509,7 +512,7 @@ Other examples from the codebase:
 
 - `SubnetSpec.virtual_network` references a `VirtualNetwork` by its `id`.
 - `RoleBindingSpec.role` references a `Role` by its `id`.
-- `ProjectSpec.parent` references a parent `Project` by its `id`.
+- `Metadata.project` tracks project hierarchy via a dot-separated path (not a spec field).
 
 In the future the project plans to introduce a typed `Reference` message to make these references
 type-safe. Until then, references are plain `string` fields and the relationship must be documented
