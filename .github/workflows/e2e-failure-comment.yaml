@@ -1,0 +1,69 @@
+#
+# Copyright (c) 2025 Red Hat Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing permissions and limitations under
+# the License.
+#
+
+name: E2E failure comment
+
+on:
+  status:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  comment:
+    name: Post debug command on PR
+    if: >-
+      github.event.state == 'failure' &&
+      startsWith(github.event.context, 'ci/prow/e2e-')
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Find PR for commit
+      id: pr
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        PR_NUMBER=$(gh api \
+          "repos/${{ github.repository }}/commits/${{ github.event.commit.sha }}/pulls" \
+          --jq '.[0].number // empty')
+        echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+    - name: Post comment
+      if: steps.pr.outputs.number != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ steps.pr.outputs.number }}
+        CONTEXT: ${{ github.event.context }}
+        TARGET_URL: ${{ github.event.target_url }}
+      run: |
+        REPO_NAME=$(echo "${{ github.repository }}" | cut -d/ -f2)
+
+        # Skip if we already posted a comment for this exact job URL
+        EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+          --jq "[.[] | select(.body | contains(\"${TARGET_URL}\"))] | length")
+        if [ "${EXISTING}" != "0" ]; then
+          echo "Comment already exists for this job, skipping"
+          exit 0
+        fi
+
+        gh pr comment "${PR_NUMBER}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+        E2E test \`${CONTEXT}\` failed. [View job](${TARGET_URL})
+
+        To investigate, run the \`/debug-e2e\` skill in [Claude Code](https://claude.ai/code) from the \`osac-workspace\` repo:
+
+        \`\`\`
+        /debug-e2e ${TARGET_URL}
+        \`\`\`
+        EOF
+        )"
