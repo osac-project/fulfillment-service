@@ -15,7 +15,6 @@ syntax = "proto3";
 
 package osac.private.v1;
 
-import "buf/validate/validate.proto";
 import "osac/private/v1/metadata_type.proto";
 
 // Contains the details about the bare metal instance type that are available only for the system.
@@ -32,18 +31,18 @@ message BareMetalInstanceType {
   string id = 1;
 
   Metadata metadata = 2;
-  BareMetalInstanceTypeSpec spec = 3 [(buf.validate.field).required = true];
+  BareMetalInstanceTypeSpec spec = 3;
   BareMetalInstanceTypeStatus status = 4;
 }
 
 // Defines the hardware specifications and host label selector for a BareMetalInstanceType.
 message BareMetalInstanceTypeSpec {
   // Hardware specifications for this bare metal instance type.
-  BareMetalHardwareSpec hardware = 1 [(buf.validate.field).required = true];
+  BareMetalHardwareSpec hardware = 1;
 
   // Label selector for matching inventory hosts. Required.
   // Labels are passed directly to the inventory backend using backend-native naming conventions.
-  BareMetalLabelSelector host_label_selector = 2 [(buf.validate.field).required = true];
+  BareMetalLabelSelector host_label_selector = 2;
 
   // Human-readable description of the bare metal instance type.
   string description = 3;
@@ -56,22 +55,16 @@ message BareMetalInstanceTypeStatus {}
 message BareMetalLabelSelector {
   // Simple key-value label matches. At least one pair is required.
   // Labels are passed directly to the inventory backend using backend-native naming conventions.
-  map<string, string> match_labels = 1 [(buf.validate.field).map.min_pairs = 1];
+  map<string, string> match_labels = 1;
 }
 
 // Describes the hardware specifications of a bare metal instance type.
 message BareMetalHardwareSpec {
-  option (buf.validate.message).cel = {
-    id: "hardware_spec.network_ports_unique_names"
-    message: "network port names must be unique"
-    expression: "this.network_ports.map(p, p.name).unique()"
-  };
-
   // CPU specifications.
-  BareMetalCPUSpec cpu = 1 [(buf.validate.field).required = true];
+  BareMetalCPUSpec cpu = 1;
 
   // Memory specifications.
-  BareMetalMemorySpec memory = 2 [(buf.validate.field).required = true];
+  BareMetalMemorySpec memory = 2;
 
   // Local disk specifications. Optional — not all types have local storage.
   repeated BareMetalDiskSpec disks = 3;
@@ -89,22 +82,22 @@ message BareMetalHardwareSpec {
 // Describes the CPU specifications of a bare metal instance type.
 message BareMetalCPUSpec {
   // Number of CPU cores.
-  int32 cores = 1 [(buf.validate.field).int32.gt = 0];
+  int32 cores = 1;
 
   // CPU architecture (e.g. x86_64, aarch64).
-  string architecture = 2 [(buf.validate.field).string.min_len = 1];
+  string architecture = 2;
 
   // CPU model. Optional — may be unknown.
   string model = 3;
 
   // Number of threads per core.
-  int32 threads_per_core = 4 [(buf.validate.field).int32.gt = 0];
+  int32 threads_per_core = 4;
 }
 
 // Describes the memory specifications of a bare metal instance type.
 message BareMetalMemorySpec {
   // Total memory in gigabytes.
-  int64 total_gb = 1 [(buf.validate.field).int64.gt = 0];
+  int64 total_gb = 1;
 
   // Memory type (e.g. DDR4, DDR5). Optional.
   string type = 2;
@@ -113,28 +106,28 @@ message BareMetalMemorySpec {
 // Describes an individual disk in a bare metal instance type.
 message BareMetalDiskSpec {
   // Disk type (e.g. SSD, NVMe, HDD).
-  string type = 1 [(buf.validate.field).string.min_len = 1];
+  string type = 1;
 
   // Disk capacity in gigabytes.
-  int64 capacity_gb = 2 [(buf.validate.field).int64.gt = 0];
+  int64 capacity_gb = 2;
 
   // Disk interface (e.g. SATA, NVMe, SAS).
-  string interface = 3 [(buf.validate.field).string.min_len = 1];
+  string interface = 3;
 }
 
 // Describes an accelerator device in a bare metal instance type.
 message BareMetalAcceleratorSpec {
   // Accelerator type (e.g. GPU, FPGA, TPU).
-  string type = 1 [(buf.validate.field).string.min_len = 1];
+  string type = 1;
 
   // Accelerator model (e.g. A100, H100).
-  string model = 2 [(buf.validate.field).string.min_len = 1];
+  string model = 2;
 
   // Accelerator vendor (e.g. NVIDIA, AMD, Intel).
   optional string vendor = 3;
 
   // Accelerator memory in gigabytes.
-  optional int32 memory_gb = 4 [(buf.validate.field).int32.gt = 0];
+  optional int32 memory_gb = 4;
 }
 
 // Describes a network port in a bare metal instance type.
@@ -144,14 +137,14 @@ message BareMetalAcceleratorSpec {
 // Ports are ordered; the first port with a given role is the default for that role.
 message BareMetalNetworkPortSpec {
   // Port name, unique within the type (e.g. data-0, mgmt-0).
-  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string name = 1;
 
   // Port role (e.g. fabric, management, storage, lifecycle).
-  string role = 2 [(buf.validate.field).string.min_len = 1];
+  string role = 2;
 
   // Port type (e.g. Ethernet, InfiniBand).
-  string type = 3 [(buf.validate.field).string.min_len = 1];
+  string type = 3;
 
   // Port speed (e.g. 1Gbps, 10Gbps, 100Gbps).
-  string speed = 4 [(buf.validate.field).string.min_len = 1];
+  string speed = 4;
 }

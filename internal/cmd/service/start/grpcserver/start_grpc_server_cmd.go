@@ -1014,6 +1014,34 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	}
 	privatev1.RegisterInstanceTypesServer(grpcServer, privateInstanceTypesServer)
 
+	// Create the bare metal instance types server:
+	c.logger.InfoContext(ctx, "Creating bare metal instance types server")
+	bareMetalInstanceTypesServer, err := servers.NewBareMetalInstanceTypesServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(publicAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create bare metal instance types server: %w", err)
+	}
+	publicv1.RegisterBareMetalInstanceTypesServer(grpcServer, bareMetalInstanceTypesServer)
+
+	// Create the private bare metal instance types server:
+	c.logger.InfoContext(ctx, "Creating private bare metal instance types server")
+	privateBareMetalInstanceTypesServer, err := servers.NewPrivateBareMetalInstanceTypesServer().
+		SetLogger(c.logger).
+		SetNotifier(notifier).
+		SetAttributionLogic(privateAttributionLogic).
+		SetTenancyLogic(tenancyLogic).
+		SetMetricsRegisterer(metricsRegisterer).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create private bare metal instance types server: %w", err)
+	}
+	privatev1.RegisterBareMetalInstanceTypesServer(grpcServer, privateBareMetalInstanceTypesServer)
+
 	// Create the cluster versions server:
 	c.logger.InfoContext(ctx, "Creating cluster versions server")
 	clusterVersionsServer, err := servers.NewClusterVersionsServer().
