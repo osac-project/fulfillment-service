@@ -50,31 +50,34 @@ func Setup(cmd *cobra.Command) {
 		return
 	}
 
-	// Select the style according to the terminal color scheme:
+	// Select the style according to the terminal color scheme, and also prepare a colorless style for when color
+	// isn't wanted (see useColor below) -- we still want Markdown structure (headings, code spans, etc.) to be
+	// rendered properly, just without ANSI color codes.
 	var style ansi.StyleConfig
 	if lipgloss.HasDarkBackground(os.Stdin, os.Stdout) {
 		style = styles.DarkStyleConfig
 	} else {
 		style = styles.LightStyleConfig
 	}
+	plainStyle := styles.ASCIIStyleConfig
 
 	// Regardless of the style, we want to remove the default document margin and leading newline, so the output is
-	// flush with the left edge of the terminal.
-	zero := new(uint)
-	style.Document.Margin = zero
-	style.Document.BlockPrefix = ""
-
-	// We don't want to display the heading prefixes:
-	style.H2.Prefix = ""
-	style.H3.Prefix = ""
-	style.H4.Prefix = ""
-	style.H5.Prefix = ""
-	style.H6.Prefix = ""
-
-	// For code inside paragraphs, we don't want to change the background color or add prefixes and suffixes:
-	style.Code.BackgroundColor = nil
-	style.Code.Prefix = ""
-	style.Code.Suffix = ""
+	// flush with the left edge of the terminal. We also don't want to display the heading prefixes, and we don't
+	// want code inside paragraphs to change the background color or add prefixes and suffixes. Apply these tweaks
+	// to both styles so the plain (no-color) rendering looks as clean as the colored one.
+	for _, s := range []*ansi.StyleConfig{&style, &plainStyle} {
+		zero := new(uint)
+		s.Document.Margin = zero
+		s.Document.BlockPrefix = ""
+		s.H2.Prefix = ""
+		s.H3.Prefix = ""
+		s.H4.Prefix = ""
+		s.H5.Prefix = ""
+		s.H6.Prefix = ""
+		s.Code.BackgroundColor = nil
+		s.Code.Prefix = ""
+		s.Code.Suffix = ""
+	}
 
 	// Set the help function for the command and all its subcommands. The renderer is created each time the
 	// help is displayed, so that it can adapt to the current terminal width.
@@ -83,8 +86,7 @@ func Setup(cmd *cobra.Command) {
 		// maximun width that we consider readable:
 		out := c.OutOrStdout()
 		var width int
-		file, ok := out.(*os.File)
-		if ok {
+		if file, ok := out.(*os.File); ok {
 			fd := int(file.Fd())
 			if term.IsTerminal(fd) {
 				width, _, err = term.GetSize(fd)
@@ -96,6 +98,10 @@ func Setup(cmd *cobra.Command) {
 		}
 		width = min(width, maxReadableWidth)
 
+		// Color is opt-in: default is plain/no-color, even in an interactive terminal. Set FORCE_COLOR to enable
+		// styled output; NO_COLOR always wins if both are set.
+		useColor := os.Getenv("FORCE_COLOR") != "" && os.Getenv("NO_COLOR") == ""
+
 		// Render the help output:
 		var buffer bytes.Buffer
 		err = engine.Execute(&buffer, "command_help.md", c)
@@ -103,10 +109,13 @@ func Setup(cmd *cobra.Command) {
 			c.PrintErrln("Error executing help template:", err)
 			return
 		}
-		renderer, err := glamour.NewTermRenderer(
-			glamour.WithStyles(style),
-			glamour.WithWordWrap(width),
-		)
+		rendererOpts := []glamour.TermRendererOption{glamour.WithWordWrap(width)}
+		if useColor {
+			rendererOpts = append(rendererOpts, glamour.WithStyles(style))
+		} else {
+			rendererOpts = append(rendererOpts, glamour.WithStyles(plainStyle))
+		}
+		renderer, err := glamour.NewTermRenderer(rendererOpts...)
 		if err != nil {
 			c.PrintErrln("Error creating renderer:", err)
 			return
