@@ -22,7 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
+
 	"strings"
 
 	"google.golang.org/grpc"
@@ -293,14 +293,14 @@ func (t *task) syncProjectMembership(ctx context.Context, existingProject *priva
 		return nil
 	}
 
-	var successfulUsers []string
+	var successfulUsers []*privatev1.UserReference
 	var assignmentErrors []string
 	for _, userRef := range users {
 		userID := userRef.GetName()
 		if err := t.addUserToGroup(ctx, userID, organizationName, groupID); err != nil {
 			assignmentErrors = append(assignmentErrors, fmt.Sprintf("user %s: %v", userID, err))
 		} else {
-			successfulUsers = append(successfulUsers, userID)
+			successfulUsers = append(successfulUsers, userRef)
 		}
 	}
 
@@ -358,7 +358,7 @@ func (t *task) handleUserListChange(ctx context.Context, existingProject *privat
 	// Track the actual synced user set so partial progress is preserved on failure.
 	actualUsers := make(map[string]bool)
 	for _, u := range syncedUsers {
-		actualUsers[u] = true
+		actualUsers[u.GetName()] = true
 	}
 
 	var syncErrors []string
@@ -380,11 +380,10 @@ func (t *task) handleUserListChange(ctx context.Context, existingProject *privat
 	}
 
 	if len(syncErrors) > 0 {
-		currentUsers := make([]string, 0, len(actualUsers))
-		for u := range actualUsers {
-			currentUsers = append(currentUsers, u)
+		currentUsers := make([]*privatev1.UserReference, 0, len(actualUsers))
+		for name := range actualUsers {
+			currentUsers = append(currentUsers, privatev1.UserReference_builder{Name: name}.Build())
 		}
-		sort.Strings(currentUsers)
 		t.membership.GetStatus().SetState(privatev1.ProjectMembershipState_PROJECT_MEMBERSHIP_STATE_FAILED)
 		t.membership.GetStatus().SetUsers(currentUsers)
 		t.membership.GetStatus().SetMessage(fmt.Sprintf(
