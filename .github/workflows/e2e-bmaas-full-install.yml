@@ -51,8 +51,7 @@ jobs:
   e2e-bmaas-full-install:
     needs: changes
     if: needs.changes.outputs.should-run == 'true'
-    # TODO: revert to osac-project/osac-test-infra/...@main before merging
-    uses: htayrie-rh/osac-test-infra/.github/workflows/e2e-bmaas-full-install.yml@feat/OSAC-1330-type-safe-resource-references
+    uses: osac-project/osac-test-infra/.github/workflows/e2e-bmaas-full-install.yml@main
     with:
       test-suite: ${{ inputs.test-suite || 'bmaas' }}
       test-filter: ${{ inputs.test-filter || '' }}
@@ -62,9 +61,11 @@ jobs:
       fork-pr-author-association: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.author_association || '' }}
       fork-pr-author: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.user.login || '' }}
       pr-number: ${{ github.event.pull_request.number }}
-      # TODO: revert to osac-project/osac-test-infra on main before merging
+      # TODO: revert to osac-project/osac-test-infra on main after test-infra PR #272 merges
       test-infra-repository: htayrie-rh/osac-test-infra
       test-infra-ref: ${{ inputs.test-infra-ref || 'feat/OSAC-1330-type-safe-resource-references' }}
+      # Override default from @main until test-infra PR #272 merges
+      bmi-template: bm-host-provisioning
 
   e2e:
     if: always()
