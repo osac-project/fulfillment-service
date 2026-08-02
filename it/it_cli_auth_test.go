@@ -15,6 +15,7 @@ package it
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -26,22 +27,17 @@ var _ = Describe("CLI Authentication", Label("cli", "auth"), func() {
 	var homeDir string
 
 	BeforeEach(func() {
-		var err error
-		homeDir, err = tool.NewCLIHomeDir()
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			err := os.RemoveAll(homeDir)
-			Expect(err).ToNot(HaveOccurred())
-		})
+		homeDir = setupCLIHomeDir()
 	})
 
 	It("Login with password flow succeeds", func(ctx context.Context) {
 		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
 		Expect(exitCode).To(Equal(0), "login should succeed")
 
-		// Verify that subsequent commands work with the stored credentials
-		_, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "computeinstance")
-		Expect(exitCode).To(Equal(0), "get should succeed after login")
+		// Verify the stored session is usable and belongs to the logged-in user
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "whoami")
+		Expect(exitCode).To(Equal(0), "whoami should succeed after login")
+		Expect(stdout).To(ContainSubstring(adminUsername))
 	})
 
 	It("Login with client credentials flow succeeds", func(ctx context.Context) {
@@ -54,9 +50,13 @@ var _ = Describe("CLI Authentication", Label("cli", "auth"), func() {
 		)
 		Expect(exitCode).To(Equal(0), "client credentials login should succeed")
 
-		// Verify that subsequent commands work with the stored credentials
-		_, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "computeinstance")
+		// Verify the stored session can call the API
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "computeinstance")
 		Expect(exitCode).To(Equal(0), "get should succeed after client credentials login")
+		Expect(stdout).To(SatisfyAny(
+			ContainSubstring("ID"),
+			ContainSubstring("There are no objects matching the given criteria"),
+		))
 	})
 
 	It("Login with invalid credentials fails", func(ctx context.Context) {
@@ -75,17 +75,21 @@ var _ = Describe("CLI Authentication", Label("cli", "auth"), func() {
 		Expect(exitCode).To(Equal(0), "login should succeed")
 
 		// Verify commands work
-		_, _, exitCode = tool.RunCLI(ctx, homeDir, "get", "computeinstance")
-		Expect(exitCode).To(Equal(0), "get should succeed after login")
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "whoami")
+		Expect(exitCode).To(Equal(0), "whoami should succeed after login")
+		Expect(stdout).To(ContainSubstring(adminUsername))
 
 		// Logout
 		_, _, exitCode = tool.RunCLI(ctx, homeDir, "logout")
 		Expect(exitCode).To(Equal(0), "logout should succeed")
 
 		// Verify commands fail after logout
-		_, stderr, exitCode := tool.RunCLI(ctx, homeDir, "get", "computeinstance")
+		_, stderr, exitCode := tool.RunCLI(ctx, homeDir, "whoami")
 		Expect(exitCode).ToNot(Equal(0), "commands should fail after logout")
-		Expect(stderr).To(ContainSubstring("there is no configuration"))
+		Expect(stderr).To(SatisfyAny(
+			ContainSubstring("there is no configuration"),
+			ContainSubstring("Not logged in"),
+		))
 	})
 
 	It("Corrupted configuration produces a clear error", func(ctx context.Context) {
@@ -103,5 +107,54 @@ var _ = Describe("CLI Authentication", Label("cli", "auth"), func() {
 		Expect(stderr).ToNot(BeEmpty(), "should produce an error message")
 		Expect(stderr).ToNot(ContainSubstring("runtime error"), "should not panic")
 		Expect(stderr).ToNot(ContainSubstring("goroutine"), "should not dump stack trace")
+	})
+
+	It("Login with token-script succeeds", func(ctx context.Context) {
+		script := fmt.Sprintf(
+			"kubectl create token -n osac %s --kubeconfig %s --duration 1h",
+			emergencyServiceAccount, tool.KubeconfigFile(),
+		)
+		_, _, exitCode := tool.LoginCLIWithTokenScript(ctx, homeDir, script)
+		Expect(exitCode).To(Equal(0), "token-script login should succeed")
+
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "get", "computeinstance")
+		Expect(exitCode).To(Equal(0), "get should succeed after token-script login")
+		Expect(stdout).To(SatisfyAny(
+			ContainSubstring("ID"),
+			ContainSubstring("There are no objects matching the given criteria"),
+		))
+	})
+
+	It("Re-login replaces stored credentials", func(ctx context.Context) {
+		_, _, exitCode := tool.LoginCLI(ctx, homeDir, adminUsername, adminsPassword)
+		Expect(exitCode).To(Equal(0), "first login should succeed")
+
+		stdout, _, exitCode := tool.RunCLI(ctx, homeDir, "whoami")
+		Expect(exitCode).To(Equal(0), "whoami should succeed after first login")
+		Expect(stdout).To(ContainSubstring(adminUsername))
+
+		// Re-login with different credentials replaces the stored session
+		_, _, exitCode = tool.LoginCLI(ctx, homeDir, userUsername, usersPassword)
+		Expect(exitCode).To(Equal(0), "re-login should succeed")
+
+		stdout, _, exitCode = tool.RunCLI(ctx, homeDir, "whoami")
+		Expect(exitCode).To(Equal(0), "whoami should succeed after re-login")
+		Expect(stdout).To(ContainSubstring(userUsername), "session should be the re-logged-in user")
+	})
+
+	It("Login with bad token-script fails gracefully", func(ctx context.Context) {
+		stdout, stderr, exitCode := tool.LoginCLIWithTokenScript(ctx, homeDir, "echo not-a-valid-jwt")
+		combinedOutput := stdout + stderr
+
+		Expect(combinedOutput).ToNot(ContainSubstring("runtime error"), "should not panic")
+		Expect(combinedOutput).ToNot(ContainSubstring("goroutine"), "should not dump stack trace")
+
+		if exitCode == 0 {
+			_, _, apiExitCode := tool.RunCLI(ctx, homeDir, "get", "computeinstance")
+			Expect(apiExitCode).ToNot(Equal(0), "API call with invalid token should fail")
+		} else {
+			Expect(exitCode).ToNot(Equal(0), "bad token-script login should fail")
+			Expect(combinedOutput).ToNot(BeEmpty(), "should produce an error message")
+		}
 	})
 })
