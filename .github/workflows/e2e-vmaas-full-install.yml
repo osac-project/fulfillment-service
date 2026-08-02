@@ -53,7 +53,8 @@ jobs:
   e2e-vmaas-full-install:
     needs: changes
     if: needs.changes.outputs.should-run == 'true'
-    uses: osac-project/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@main
+    # TODO: revert to osac-project/osac-test-infra/...@main before merging
+    uses: htayrie-rh/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@feat/OSAC-1330-type-safe-resource-references
     with:
       test-suite: ${{ inputs.test-suite || 'vmaas' }}
       test-filter: ${{ inputs.test-filter || '' }}
@@ -65,7 +66,7 @@ jobs:
       fork-pr-author-association: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.author_association || '' }}
       fork-pr-author: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.user.login || '' }}
       pr-number: ${{ github.event.pull_request.number }}
-      # TODO: revert repository to osac-project/osac-test-infra and ref to 'main' before merging
+      # TODO: revert to osac-project/osac-test-infra on main before merging
       test-infra-repository: htayrie-rh/osac-test-infra
       test-infra-ref: ${{ inputs.test-infra-ref || 'feat/OSAC-1330-type-safe-resource-references' }}
 
