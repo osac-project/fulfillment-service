@@ -834,12 +834,19 @@ func (r *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 	if err != nil {
 		return fmt.Errorf("failed to create tenant reconciler function: %w", err)
 	}
+	tenantEventFilter := "has(event.tenant)"
+	for _, resource := range []string{"virtual_network", "subnet", "security_group", "nat_gateway"} {
+		tenantEventFilter += fmt.Sprintf(
+			" || (has(event.%s) && event.%s.metadata.labels['osac.openshift.io/default'] == 'true')",
+			resource, resource,
+		)
+	}
 	tenantReconciler, err := controllers.NewReconciler[*privatev1.Tenant]().
 		SetLogger(r.logger).
 		SetName("tenant").
 		SetClient(r.client).
 		SetFunction(tenantReconcilerFunction.Run).
-		SetEventFilter("has(event.tenant)").
+		SetEventFilter(tenantEventFilter).
 		SetHealthReporter(healthAggregator).
 		Build()
 	if err != nil {
