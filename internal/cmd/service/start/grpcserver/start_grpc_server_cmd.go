@@ -441,6 +441,13 @@ func (c *runnerContext) run(cmd *cobra.Command, argv []string) error { //nolint:
 		return fmt.Errorf("failed to create reference validation interceptor: %w", err)
 	}
 
+	// Register reference lookup functions for all resource types:
+	c.logger.InfoContext(ctx, "Registering reference lookup functions")
+	err = registerReferenceLookups(referenceValidator, c.logger, tenancyLogic, metricsRegisterer)
+	if err != nil {
+		return fmt.Errorf("failed to register reference lookups: %w", err)
+	}
+
 	// Prepare the transactions manager:
 	c.logger.InfoContext(ctx, "Creating transactions manager")
 	txManager, err := database.NewTxManager().

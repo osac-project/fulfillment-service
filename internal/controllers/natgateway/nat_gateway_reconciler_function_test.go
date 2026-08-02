@@ -102,8 +102,8 @@ var _ = Describe("buildSpec", func() {
 			natGateway: privatev1.NATGateway_builder{
 				Id: "natgw-uuid-test-1",
 				Spec: privatev1.NATGatewaySpec_builder{
-					VirtualNetwork: "vn-uuid-abc123",
-					ExternalIp:     "eip-uuid-abc123",
+					VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: "vn-uuid-abc123"}.Build(),
+					ExternalIp:     privatev1.ExternalIPLocalReference_builder{Id: "eip-uuid-abc123"}.Build(),
 				}.Build(),
 			}.Build(),
 		}
@@ -119,8 +119,8 @@ var _ = Describe("buildSpec", func() {
 			natGateway: privatev1.NATGateway_builder{
 				Id: "natgw-uuid-test-2",
 				Spec: privatev1.NATGatewaySpec_builder{
-					VirtualNetwork: "vn-uuid-abc456",
-					ExternalIp:     "eip-uuid-abc456",
+					VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: "vn-uuid-abc456"}.Build(),
+					ExternalIp:     privatev1.ExternalIPLocalReference_builder{Id: "eip-uuid-abc456"}.Build(),
 				}.Build(),
 				Status: privatev1.NATGatewayStatus_builder{
 					State: privatev1.NATGatewayState_NAT_GATEWAY_STATE_READY,
@@ -520,7 +520,7 @@ var _ = Describe("selectHub", func() {
 			natGateway: privatev1.NATGateway_builder{
 				Id: "natgw-uuid-existing-hub",
 				Spec: privatev1.NATGatewaySpec_builder{
-					VirtualNetwork: "vn-uuid-1",
+					VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: "vn-uuid-1"}.Build(),
 				}.Build(),
 				Status: privatev1.NATGatewayStatus_builder{
 					Hub: "hub-1",
@@ -563,7 +563,7 @@ var _ = Describe("selectHub", func() {
 			natGateway: privatev1.NATGateway_builder{
 				Id: "natgw-uuid-derive-hub",
 				Spec: privatev1.NATGatewaySpec_builder{
-					VirtualNetwork: "vn-uuid-1",
+					VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: "vn-uuid-1"}.Build(),
 				}.Build(),
 			}.Build(),
 		}
@@ -592,7 +592,7 @@ var _ = Describe("selectHub", func() {
 			natGateway: privatev1.NATGateway_builder{
 				Id: "natgw-uuid-vn-no-hub",
 				Spec: privatev1.NATGatewaySpec_builder{
-					VirtualNetwork: "vn-uuid-no-hub",
+					VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: "vn-uuid-no-hub"}.Build(),
 				}.Build(),
 			}.Build(),
 		}
@@ -615,7 +615,7 @@ var _ = Describe("selectHub", func() {
 			natGateway: privatev1.NATGateway_builder{
 				Id: "natgw-uuid-vn-error",
 				Spec: privatev1.NATGatewaySpec_builder{
-					VirtualNetwork: "vn-uuid-missing",
+					VirtualNetwork: privatev1.VirtualNetworkLocalReference_builder{Id: "vn-uuid-missing"}.Build(),
 				}.Build(),
 			}.Build(),
 		}

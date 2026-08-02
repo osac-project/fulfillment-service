@@ -19,6 +19,7 @@ import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "osac/private/v1/condition_status_type.proto";
 import "osac/private/v1/metadata_type.proto";
+import "osac/private/v1/reference_types.proto";
 
 // Contains the details about the cluster that are available only for the system.
 message Cluster {
@@ -31,7 +32,7 @@ message Cluster {
 
 message ClusterSpec {
   // Copies of the public fields.
-  string template = 1;
+  ClusterTemplateReference template = 1;
   map<string, google.protobuf.Any> template_parameters = 2;
   map<string, ClusterNodeSet> node_sets = 3;
   optional string pull_secret = 4;
@@ -41,7 +42,7 @@ message ClusterSpec {
 
   // Reference to a cluster catalog item. Mutually exclusive with template during the migration period.
   // When set, the server fetches the catalog item and applies its field definitions.
-  string catalog_item = 8;
+  ClusterCatalogItemReference catalog_item = 8;
 
   // Network attachment connecting this cluster to a tenant subnet.
   //
@@ -127,21 +128,20 @@ enum ClusterConditionType {
 // network attachment shared by all node sets. The fabric interface for each node set is resolved automatically by the
 // system from the node set's host type.
 message ClusterNetworkAttachment {
-  // Identifier of the subnet to connect the cluster to.
+  // Reference to the subnet to connect the cluster to.
   //
-  // Must be the value of the `id` field of an existing subnet. The subnet must be in `READY` state at creation time.
+  // The subnet must be in `READY` state at creation time.
   //
   // This can't be modified after the cluster is created.
-  string subnet = 1;
+  SubnetLocalReference subnet = 1;
 
-  // Identifiers of the security groups to apply to the cluster's network attachment.
+  // References to the security groups to apply to the cluster's network attachment.
   //
-  // Each value must be the `id` field of an existing security group. All security groups must belong to the same
-  // virtual network as the subnet.
-  repeated string security_groups = 2;
+  // All security groups must belong to the same virtual network as the subnet.
+  repeated SecurityGroupLocalReference security_groups = 2;
 }
 
 message ClusterNodeSet {
-  string host_type = 1;
+  HostTypeReference host_type = 1;
   int32 size = 2;
 }

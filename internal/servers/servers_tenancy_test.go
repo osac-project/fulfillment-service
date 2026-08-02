@@ -108,7 +108,7 @@ var _ = Describe("Tenancy logic", func() {
 			publicv1.ClustersCreateRequest_builder{
 				Object: publicv1.Cluster_builder{
 					Spec: publicv1.ClusterSpec_builder{
-						Template: "my-template",
+						Template: publicv1.ClusterTemplateReference_builder{Id: "my-template"}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build(),
@@ -170,7 +170,7 @@ var _ = Describe("Tenancy logic", func() {
 		response, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Spec: publicv1.ClusterSpec_builder{
-					Template: "my-template",
+					Template: publicv1.ClusterTemplateReference_builder{Id: "my-template"}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -231,7 +231,7 @@ var _ = Describe("Tenancy logic", func() {
 					Tenant: "",
 				}.Build(),
 				Spec: publicv1.ClusterSpec_builder{
-					Template: "my-template",
+					Template: publicv1.ClusterTemplateReference_builder{Id: "my-template"}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -291,7 +291,7 @@ var _ = Describe("Tenancy logic", func() {
 					Tenant: "my-tenant",
 				}.Build(),
 				Spec: publicv1.ClusterSpec_builder{
-					Template: "my-template",
+					Template: publicv1.ClusterTemplateReference_builder{Id: "my-template"}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -344,7 +344,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Spec: publicv1.ClusterSpec_builder{
-					Template: "my-template",
+					Template: publicv1.ClusterTemplateReference_builder{Id: "my-template"}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -406,7 +406,7 @@ var _ = Describe("Tenancy logic", func() {
 		createResponse, err := clustersServer.Create(ctx, publicv1.ClustersCreateRequest_builder{
 			Object: publicv1.Cluster_builder{
 				Spec: publicv1.ClusterSpec_builder{
-					Template: "my-template",
+					Template: publicv1.ClusterTemplateReference_builder{Id: "my-template"}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -419,7 +419,7 @@ var _ = Describe("Tenancy logic", func() {
 				Spec: publicv1.ClusterSpec_builder{
 					NodeSets: map[string]*publicv1.ClusterNodeSet{
 						"compute": publicv1.ClusterNodeSet_builder{
-							HostType: "acme_1tib",
+							HostType: publicv1.HostTypeReference_builder{Id: "acme_1tib"}.Build(),
 							Size:     4,
 						}.Build(),
 					},
@@ -476,7 +476,7 @@ var _ = Describe("Tenancy logic", func() {
 					Tenant: "your-tenant",
 				}.Build(),
 				Spec: publicv1.ClusterSpec_builder{
-					Template: "our-template",
+					Template: publicv1.ClusterTemplateReference_builder{Id: "our-template"}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())
@@ -538,7 +538,7 @@ var _ = Describe("Tenancy logic", func() {
 					Tenant: "does-not-exist",
 				}.Build(),
 				Spec: publicv1.ClusterSpec_builder{
-					Template: "my-template",
+					Template: publicv1.ClusterTemplateReference_builder{Id: "my-template"}.Build(),
 				}.Build(),
 			}.Build(),
 		}.Build())

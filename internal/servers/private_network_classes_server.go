@@ -176,6 +176,14 @@ func (s *PrivateNetworkClassesServer) Create(ctx context.Context,
 	// Clear any caller-provided ID so the DAO always generates a UUID.
 	nc.SetId("")
 
+	// Auto-derive metadata.name from implementation_strategy if not set.
+	if nc.GetMetadata().GetName() == "" && nc.GetImplementationStrategy() != "" {
+		if nc.GetMetadata() == nil {
+			nc.SetMetadata(&privatev1.Metadata{})
+		}
+		nc.GetMetadata().SetName(toDNSLabel(nc.GetImplementationStrategy()))
+	}
+
 	// Default-swap: if this NC is being created as the default, unset all existing defaults.
 	// Both the old-default unset(s) and the new-NC persist share this request's database transaction via ctx.
 	if nc.GetIsDefault() {

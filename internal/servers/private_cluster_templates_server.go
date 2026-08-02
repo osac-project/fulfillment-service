@@ -119,6 +119,13 @@ func (s *PrivateClusterTemplatesServer) Get(ctx context.Context,
 
 func (s *PrivateClusterTemplatesServer) Create(ctx context.Context,
 	request *privatev1.ClusterTemplatesCreateRequest) (response *privatev1.ClusterTemplatesCreateResponse, err error) {
+	obj := request.GetObject()
+	if obj != nil && obj.GetMetadata().GetName() == "" && obj.GetId() != "" {
+		if obj.GetMetadata() == nil {
+			obj.SetMetadata(&privatev1.Metadata{})
+		}
+		obj.GetMetadata().SetName(templateNameFromID(obj.GetId()))
+	}
 	err = s.generic.Create(ctx, request, &response)
 	return
 }

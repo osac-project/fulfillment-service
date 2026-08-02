@@ -274,8 +274,9 @@ func (t *task) delete(ctx context.Context) (err error) {
 func (t *task) selectHub(ctx context.Context) error {
 	t.hubId = t.externalIPAttachment.GetStatus().GetHub()
 	if t.hubId == "" {
+		eipKey := refKeyStr(t.externalIPAttachment.GetSpec().GetExternalIp())
 		eipResponse, err := t.r.externalIPsClient.Get(ctx, privatev1.ExternalIPsGetRequest_builder{
-			Id: t.externalIPAttachment.GetSpec().GetExternalIp(),
+			Id: eipKey,
 		}.Build())
 		if err != nil {
 			return err
@@ -284,7 +285,7 @@ func (t *task) selectHub(ctx context.Context) error {
 		if eipHub == "" {
 			return fmt.Errorf(
 				"external IP %s has no hub assigned yet, skipping",
-				t.externalIPAttachment.GetSpec().GetExternalIp(),
+				eipKey,
 			)
 		}
 		t.hubId = eipHub
@@ -369,11 +370,23 @@ func (t *task) removeFinalizer() {
 
 func (t *task) buildSpec() osacv1alpha1.ExternalIPAttachmentSpec {
 	spec := osacv1alpha1.ExternalIPAttachmentSpec{
-		ExternalIP: t.externalIPAttachment.GetSpec().GetExternalIp(),
+		ExternalIP: refKeyStr(t.externalIPAttachment.GetSpec().GetExternalIp()),
 	}
 	if t.externalIPAttachment.GetSpec().HasComputeInstance() {
-		ci := t.externalIPAttachment.GetSpec().GetComputeInstance()
+		ci := refKeyStr(t.externalIPAttachment.GetSpec().GetComputeInstance())
 		spec.ComputeInstance = &ci
 	}
 	return spec
+}
+
+type refKeyer interface {
+	GetId() string
+	GetName() string
+}
+
+func refKeyStr(ref refKeyer) string {
+	if ref.GetId() != "" {
+		return ref.GetId()
+	}
+	return ref.GetName()
 }

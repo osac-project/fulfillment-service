@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -146,8 +147,8 @@ func (s *PrivateExternalIPsServer) Create(ctx context.Context,
 		return
 	}
 
-	poolID := externalIP.GetSpec().GetPool()
-	err = s.validatePoolReference(ctx, poolID)
+	poolKey := refKey(externalIP.GetSpec().GetPool())
+	err = s.validatePoolReference(ctx, poolKey)
 	if err != nil {
 		return
 	}
@@ -165,7 +166,7 @@ func (s *PrivateExternalIPsServer) Create(ctx context.Context,
 		return
 	}
 
-	err = s.updatePoolCapacity(ctx, poolID, 1)
+	err = s.updatePoolCapacity(ctx, poolKey, 1)
 	if err != nil {
 		return
 	}
@@ -242,9 +243,9 @@ func (s *PrivateExternalIPsServer) Delete(ctx context.Context,
 		return
 	}
 
-	poolID := existingExternalIP.GetSpec().GetPool()
-	if poolID != "" {
-		err = s.updatePoolCapacity(ctx, poolID, -1)
+	poolRef := existingExternalIP.GetSpec().GetPool()
+	if poolRef != nil {
+		err = s.updatePoolCapacity(ctx, refKey(poolRef), -1)
 		if err != nil {
 			return
 		}
@@ -268,7 +269,7 @@ func (s *PrivateExternalIPsServer) validateExternalIP(ctx context.Context,
 	if spec == nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument, "external IP spec is mandatory")
 	}
-	if spec.GetPool() == "" {
+	if spec.GetPool() == nil {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"field 'spec.pool' is required")
 	}
@@ -359,10 +360,10 @@ func validateImmutableFieldsExternalIP(newExternalIP, existingExternalIP *privat
 	newPool := newExternalIP.GetSpec().GetPool()
 	existingPool := existingExternalIP.GetSpec().GetPool()
 
-	if newPool != existingPool {
+	if !proto.Equal(newPool, existingPool) {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"field 'spec.pool' is immutable and cannot be changed from '%s' to '%s'",
-			existingPool, newPool)
+			refKey(existingPool), refKey(newPool))
 	}
 
 	return nil

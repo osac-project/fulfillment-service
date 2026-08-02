@@ -390,11 +390,23 @@ func (t *task) removeFinalizer() {
 	}
 }
 
+type refKeyer interface {
+	GetId() string
+	GetName() string
+}
+
+func refKeyStr(ref refKeyer) string {
+	if ref.GetId() != "" {
+		return ref.GetId()
+	}
+	return ref.GetName()
+}
+
 // buildSpec constructs the spec for the Kubernetes Subnet object based on the
 // subnet from the database.
 func (t *task) buildSpec() osacv1alpha1.SubnetSpec {
 	spec := osacv1alpha1.SubnetSpec{
-		VirtualNetwork: t.subnet.GetSpec().GetVirtualNetwork(),
+		VirtualNetwork: refKeyStr(t.subnet.GetSpec().GetVirtualNetwork()),
 	}
 
 	// Add IPv4 CIDR if present:

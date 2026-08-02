@@ -247,15 +247,16 @@ func (t *task) validateTenant() error {
 }
 
 func (t *task) getParentVirtualNetwork(ctx context.Context) (*privatev1.VirtualNetwork, error) {
-	vnID := t.securityGroup.GetSpec().GetVirtualNetwork()
-	if vnID == "" {
+	vnRef := t.securityGroup.GetSpec().GetVirtualNetwork()
+	vnKey := refKeyStr(vnRef)
+	if vnKey == "" {
 		return nil, errors.New("security group must reference a parent virtual network")
 	}
 	response, err := t.r.virtualNetworksClient.Get(ctx, privatev1.VirtualNetworksGetRequest_builder{
-		Id: vnID,
+		Id: vnKey,
 	}.Build())
 	if err != nil {
-		return nil, fmt.Errorf("failed to get parent virtual network '%s': %w", vnID, err)
+		return nil, fmt.Errorf("failed to get parent virtual network '%s': %w", vnKey, err)
 	}
 	return response.GetObject(), nil
 }
@@ -392,11 +393,23 @@ func (t *task) removeFinalizer() {
 	}
 }
 
+type refKeyer interface {
+	GetId() string
+	GetName() string
+}
+
+func refKeyStr(ref refKeyer) string {
+	if ref.GetId() != "" {
+		return ref.GetId()
+	}
+	return ref.GetName()
+}
+
 // buildSpec constructs the spec for the Kubernetes SecurityGroup object based on the
 // security group from the database.
 func (t *task) buildSpec() osacv1alpha1.SecurityGroupSpec {
 	spec := osacv1alpha1.SecurityGroupSpec{
-		VirtualNetwork: t.securityGroup.GetSpec().GetVirtualNetwork(),
+		VirtualNetwork: refKeyStr(t.securityGroup.GetSpec().GetVirtualNetwork()),
 	}
 
 	// Add implementation strategy if present:

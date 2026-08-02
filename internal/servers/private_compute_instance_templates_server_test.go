@@ -443,7 +443,7 @@ var _ = Describe("Private compute instance templates server", func() {
 						Title:       "Template with deprecated default",
 						Description: "Template referencing a deprecated instance type.",
 						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-							InstanceType: new("deprecated-type"),
+							InstanceType: privatev1.InstanceTypeReference_builder{Id: "deprecated-type"}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -473,7 +473,7 @@ var _ = Describe("Private compute instance templates server", func() {
 					Object: privatev1.ComputeInstanceTemplate_builder{
 						Id: id,
 						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-							InstanceType: new("deprecated-for-update"),
+							InstanceType: privatev1.InstanceTypeReference_builder{Id: "deprecated-for-update"}.Build(),
 						}.Build(),
 					}.Build(),
 					UpdateMask: &fieldmaskpb.FieldMask{
@@ -494,7 +494,7 @@ var _ = Describe("Private compute instance templates server", func() {
 						Title:       "Template with obsolete default",
 						Description: "Template referencing an obsolete instance type.",
 						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-							InstanceType: new("obsolete-type"),
+							InstanceType: privatev1.InstanceTypeReference_builder{Id: "obsolete-type"}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -526,7 +526,7 @@ var _ = Describe("Private compute instance templates server", func() {
 					Object: privatev1.ComputeInstanceTemplate_builder{
 						Id: id,
 						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-							InstanceType: new("obsolete-for-update"),
+							InstanceType: privatev1.InstanceTypeReference_builder{Id: "obsolete-for-update"}.Build(),
 						}.Build(),
 					}.Build(),
 					UpdateMask: &fieldmaskpb.FieldMask{
@@ -549,7 +549,7 @@ var _ = Describe("Private compute instance templates server", func() {
 						Title:       "Template with active default",
 						Description: "Template referencing an active instance type.",
 						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-							InstanceType: new("active-default"),
+							InstanceType: privatev1.InstanceTypeReference_builder{Id: "active-default"}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -564,7 +564,7 @@ var _ = Describe("Private compute instance templates server", func() {
 						Title:       "Template with missing default",
 						Description: "Template referencing a non-existent instance type.",
 						SpecDefaults: privatev1.ComputeInstanceTemplateSpecDefaults_builder{
-							InstanceType: new("non-existent-type"),
+							InstanceType: privatev1.InstanceTypeReference_builder{Id: "non-existent-type"}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())

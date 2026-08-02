@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
 	"github.com/osac-project/fulfillment-service/internal/auth"
@@ -244,7 +245,7 @@ func (s *PrivateVirtualNetworksServer) validateVirtualNetwork(ctx context.Contex
 	// VN-VAL-04, VN-VAL-05, VN-VAL-06: Validate NetworkClass
 	// Only on Create (existingVN == nil) or if network_class differs (VN-VAL-10 above prevents NC
 	// changes on Update, so the second branch is effectively dead but kept for safety).
-	if existingVN == nil || spec.GetNetworkClass() != existingVN.GetSpec().GetNetworkClass() {
+	if existingVN == nil || !proto.Equal(spec.GetNetworkClass(), existingVN.GetSpec().GetNetworkClass()) {
 		implementationStrategy, err = s.validateNetworkClassReference(ctx, spec)
 		if err != nil {
 			return
@@ -271,10 +272,10 @@ func validateImmutableFields(newVN *privatev1.VirtualNetwork, existingVN *privat
 	}
 
 	// Check immutable network_class field
-	if newSpec.GetNetworkClass() != existingSpec.GetNetworkClass() {
+	if !proto.Equal(newSpec.GetNetworkClass(), existingSpec.GetNetworkClass()) {
 		return grpcstatus.Errorf(grpccodes.InvalidArgument,
 			"field 'spec.network_class' is immutable and cannot be changed from '%s' to '%s'",
-			existingSpec.GetNetworkClass(), newSpec.GetNetworkClass())
+			refKey(existingSpec.GetNetworkClass()), refKey(newSpec.GetNetworkClass()))
 	}
 
 	// Check immutable implementation_strategy field.
@@ -322,7 +323,8 @@ func (s *PrivateVirtualNetworksServer) validateNetworkClassReference(ctx context
 
 	networkClassRef := spec.GetNetworkClass()
 	var networkClass *privatev1.NetworkClass
-	if networkClassRef == "" {
+	var networkClassKey string
+	if networkClassRef == nil {
 		var defaultNC *privatev1.NetworkClass
 		defaultNC, err = findDefaultNetworkClass(ctx, s.logger, s.networkClassDao)
 		if err != nil {
@@ -335,30 +337,33 @@ func (s *PrivateVirtualNetworksServer) validateNetworkClassReference(ctx context
 			return "", grpcstatus.Errorf(grpccodes.InvalidArgument,
 				"field 'spec.network_class' is required (no default NetworkClass is configured)")
 		}
-		networkClassRef = defaultNC.GetId()
-		spec.SetNetworkClass(networkClassRef)
+		resolvedRef := &privatev1.NetworkClassReference{}
+		resolvedRef.SetId(defaultNC.GetId())
+		spec.SetNetworkClass(resolvedRef)
+		networkClassKey = defaultNC.GetId()
 		networkClass = defaultNC
 	} else {
+		networkClassKey = refKey(networkClassRef)
 		// Look up NetworkClass by ID or implementation_strategy using a single List call.
 		// We avoid Get() here because a NotFound error from Get poisons the shared
 		// database transaction (via ReportError), causing subsequent writes to roll back.
 		listResponse, listErr := s.networkClassDao.List().
 			SetFilter(fmt.Sprintf(
 				"this.id == %[1]q || this.implementation_strategy == %[1]q",
-				networkClassRef,
+				networkClassKey,
 			)).
 			SetLimit(1).
 			Do(ctx)
 		if listErr != nil {
 			s.logger.ErrorContext(ctx, "Failed to query NetworkClass",
-				slog.String("network_class", networkClassRef),
+				slog.String("network_class", networkClassKey),
 				slog.Any("error", listErr))
 			err = grpcstatus.Errorf(grpccodes.Internal, "failed to validate network_class")
 			return
 		}
 		if len(listResponse.GetItems()) == 0 {
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument,
-				"network_class '%s' does not exist", networkClassRef)
+				"network_class '%s' does not exist", networkClassKey)
 			return
 		}
 		networkClass = listResponse.GetItems()[0]
@@ -366,7 +371,7 @@ func (s *PrivateVirtualNetworksServer) validateNetworkClassReference(ctx context
 
 	if networkClass.GetMetadata().HasDeletionTimestamp() {
 		err = grpcstatus.Errorf(grpccodes.InvalidArgument,
-			"network_class '%s' does not exist", networkClassRef)
+			"network_class '%s' does not exist", networkClassKey)
 		return
 	}
 
@@ -374,7 +379,7 @@ func (s *PrivateVirtualNetworksServer) validateNetworkClassReference(ctx context
 	if networkClass.GetStatus().GetState() != privatev1.NetworkClassState_NETWORK_CLASS_STATE_READY {
 		err = grpcstatus.Errorf(grpccodes.FailedPrecondition,
 			"network_class '%s' is not in READY state (current state: %s)",
-			networkClassRef, networkClass.GetStatus().GetState().String())
+			networkClassKey, networkClass.GetStatus().GetState().String())
 		return
 	}
 
@@ -384,17 +389,17 @@ func (s *PrivateVirtualNetworksServer) validateNetworkClassReference(ctx context
 	if vnCaps != nil && ncCaps != nil {
 		if vnCaps.GetEnableIpv4() && !ncCaps.GetSupportsIpv4() {
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument,
-				"network_class '%s' does not support IPv4", networkClassRef)
+				"network_class '%s' does not support IPv4", networkClassKey)
 			return
 		}
 		if vnCaps.GetEnableIpv6() && !ncCaps.GetSupportsIpv6() {
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument,
-				"network_class '%s' does not support IPv6", networkClassRef)
+				"network_class '%s' does not support IPv6", networkClassKey)
 			return
 		}
 		if vnCaps.GetEnableDualStack() && !ncCaps.GetSupportsDualStack() {
 			err = grpcstatus.Errorf(grpccodes.InvalidArgument,
-				"network_class '%s' does not support dual-stack", networkClassRef)
+				"network_class '%s' does not support dual-stack", networkClassKey)
 			return
 		}
 	}

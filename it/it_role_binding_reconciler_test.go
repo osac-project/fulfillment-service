@@ -135,9 +135,9 @@ var _ = Describe("Role binding reconciler", func() {
 					Name: fmt.Sprintf("my-%s", uuid.New()),
 				}.Build(),
 				Spec: privatev1.RoleBindingSpec_builder{
-					Role: testRoleName,
-					Users: []string{
-						testUserID,
+					Role: privatev1.RoleReference_builder{Name: testRoleName}.Build(),
+					Users: []*privatev1.UserReference{
+						privatev1.UserReference_builder{Id: testUserID}.Build(),
 					},
 				}.Build(),
 			}.Build(),
@@ -176,9 +176,9 @@ var _ = Describe("Role binding reconciler", func() {
 					Name: fmt.Sprintf("my-%s", uuid.New()),
 				}.Build(),
 				Spec: privatev1.RoleBindingSpec_builder{
-					Role: testRoleName,
-					Users: []string{
-						testUserID,
+					Role: privatev1.RoleReference_builder{Name: testRoleName}.Build(),
+					Users: []*privatev1.UserReference{
+						privatev1.UserReference_builder{Id: testUserID}.Build(),
 					},
 				}.Build(),
 			}.Build(),

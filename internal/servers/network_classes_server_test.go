@@ -102,7 +102,7 @@ var _ = Describe("Network classes server", func() {
 			response, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
 				Object: privatev1.NetworkClass_builder{
 					Title:                  "Test Network Class",
-					ImplementationStrategy: "ovn-kubernetes",
+					ImplementationStrategy: fmt.Sprintf("ovn-%s", uuid.NewString()[:8]),
 					FabricManager:          "netris",
 				}.Build(),
 			}.Build())
@@ -115,7 +115,7 @@ var _ = Describe("Network classes server", func() {
 			response, err := privateServer.Create(ctx, privatev1.NetworkClassesCreateRequest_builder{
 				Object: privatev1.NetworkClass_builder{
 					Title:                  "Default Network Class",
-					ImplementationStrategy: "ovn-kubernetes",
+					ImplementationStrategy: fmt.Sprintf("ovn-%s", uuid.NewString()[:8]),
 					FabricManager:          "netris",
 					IsDefault:              new(true),
 				}.Build(),

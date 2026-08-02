@@ -75,7 +75,7 @@ var _ = Describe("SecurityGroups server", func() {
 			}.Build(),
 			Spec: privatev1.VirtualNetworkSpec_builder{
 				Region:       "us-east-1",
-				NetworkClass: "default",
+				NetworkClass: privatev1.NetworkClassReference_builder{Id: "default"}.Build(),
 				Ipv4Cidr:     new("10.0.0.0/16"),
 				Capabilities: privatev1.VirtualNetworkCapabilities_builder{
 					EnableIpv4: true,
@@ -143,7 +143,7 @@ var _ = Describe("SecurityGroups server", func() {
 			response, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
 				Object: publicv1.SecurityGroup_builder{
 					Spec: publicv1.SecurityGroupSpec_builder{
-						VirtualNetwork: virtualNetworkID,
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
@@ -180,7 +180,7 @@ var _ = Describe("SecurityGroups server", func() {
 							Name: fmt.Sprintf("sg-%d", i),
 						}.Build(),
 						Spec: publicv1.SecurityGroupSpec_builder{
-							VirtualNetwork: virtualNetworkID,
+							VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 							Ingress: []*publicv1.SecurityRule{
 								{
 									Protocol: publicv1.Protocol_PROTOCOL_TCP,
@@ -210,7 +210,7 @@ var _ = Describe("SecurityGroups server", func() {
 				_, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
 					Object: publicv1.SecurityGroup_builder{
 						Spec: publicv1.SecurityGroupSpec_builder{
-							VirtualNetwork: virtualNetworkID,
+							VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -232,7 +232,7 @@ var _ = Describe("SecurityGroups server", func() {
 				_, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
 					Object: publicv1.SecurityGroup_builder{
 						Spec: publicv1.SecurityGroupSpec_builder{
-							VirtualNetwork: virtualNetworkID,
+							VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -255,7 +255,7 @@ var _ = Describe("SecurityGroups server", func() {
 				response, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
 					Object: publicv1.SecurityGroup_builder{
 						Spec: publicv1.SecurityGroupSpec_builder{
-							VirtualNetwork: virtualNetworkID,
+							VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						}.Build(),
 					}.Build(),
 				}.Build())
@@ -279,7 +279,7 @@ var _ = Describe("SecurityGroups server", func() {
 			createResponse, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
 				Object: publicv1.SecurityGroup_builder{
 					Spec: publicv1.SecurityGroupSpec_builder{
-						VirtualNetwork: virtualNetworkID,
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
@@ -305,7 +305,7 @@ var _ = Describe("SecurityGroups server", func() {
 			response, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
 				Object: publicv1.SecurityGroup_builder{
 					Spec: publicv1.SecurityGroupSpec_builder{
-						VirtualNetwork: virtualNetworkID,
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
@@ -331,7 +331,7 @@ var _ = Describe("SecurityGroups server", func() {
 			createResponse, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
 				Object: publicv1.SecurityGroup_builder{
 					Spec: publicv1.SecurityGroupSpec_builder{
-						VirtualNetwork: virtualNetworkID,
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
@@ -356,7 +356,7 @@ var _ = Describe("SecurityGroups server", func() {
 				Object: publicv1.SecurityGroup_builder{
 					Id: object.GetId(),
 					Spec: publicv1.SecurityGroupSpec_builder{
-						VirtualNetwork: virtualNetworkID,
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_TCP,
@@ -386,7 +386,7 @@ var _ = Describe("SecurityGroups server", func() {
 						Name: "original-name",
 					}.Build(),
 					Spec: publicv1.SecurityGroupSpec_builder{
-						VirtualNetwork: virtualNetworkID,
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
@@ -401,7 +401,7 @@ var _ = Describe("SecurityGroups server", func() {
 						Name: "updated-name",
 					}.Build(),
 					Spec: publicv1.SecurityGroupSpec_builder{
-						VirtualNetwork: virtualNetworkID,
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 						Ingress: []*publicv1.SecurityRule{
 							{
 								Protocol: publicv1.Protocol_PROTOCOL_UDP,
@@ -430,7 +430,7 @@ var _ = Describe("SecurityGroups server", func() {
 			createResponse, err := server.Create(ctx, publicv1.SecurityGroupsCreateRequest_builder{
 				Object: publicv1.SecurityGroup_builder{
 					Spec: publicv1.SecurityGroupSpec_builder{
-						VirtualNetwork: virtualNetworkID,
+						VirtualNetwork: publicv1.VirtualNetworkLocalReference_builder{Id: virtualNetworkID}.Build(),
 					}.Build(),
 				}.Build(),
 			}.Build())
