@@ -26,6 +26,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 )
 
@@ -85,6 +86,25 @@ var _ = Describe("Private compute instance catalog items server", func() {
 				Build()
 			Expect(err).ToNot(HaveOccurred())
 		})
+
+		createComputeInstanceTemplate := func(id, paramName string) {
+			_, err := server.templatesDao.Create().SetObject(
+				privatev1.ComputeInstanceTemplate_builder{
+					Id: id,
+					Metadata: privatev1.Metadata_builder{
+						Tenant: auth.SharedTenant,
+					}.Build(),
+					Title: "Template with params",
+					Parameters: []*privatev1.ComputeInstanceTemplateParameterDefinition{
+						privatev1.ComputeInstanceTemplateParameterDefinition_builder{
+							Name: paramName,
+							Type: "type.googleapis.com/google.protobuf.StringValue",
+						}.Build(),
+					},
+				}.Build(),
+			).Do(ctx)
+			Expect(err).ToNot(HaveOccurred())
+		}
 
 		It("Creates object", func() {
 			response, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
@@ -282,13 +302,13 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.ssh_public_key",
+							Path:             "ssh_public_key",
 							DisplayName:      "SSH Key",
 							Editable:         true,
 							ValidationSchema: `{"type":"string","minLength":1}`,
 						}.Build(),
 						privatev1.FieldDefinition_builder{
-							Path:        "spec.run_strategy",
+							Path:        "run_strategy",
 							DisplayName: "Run Strategy",
 							Editable:    false,
 							Default:     structpb.NewNumberValue(16),
@@ -313,13 +333,13 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			Expect(fetched.GetFieldDefinitions()).To(HaveLen(2))
 
 			fd0 := fetched.GetFieldDefinitions()[0]
-			Expect(fd0.GetPath()).To(Equal("spec.ssh_public_key"))
+			Expect(fd0.GetPath()).To(Equal("ssh_public_key"))
 			Expect(fd0.GetDisplayName()).To(Equal("SSH Key"))
 			Expect(fd0.GetEditable()).To(BeTrue())
 			Expect(fd0.GetValidationSchema()).To(Equal(`{"type":"string","minLength":1}`))
 
 			fd1 := fetched.GetFieldDefinitions()[1]
-			Expect(fd1.GetPath()).To(Equal("spec.run_strategy"))
+			Expect(fd1.GetPath()).To(Equal("run_strategy"))
 			Expect(fd1.GetDisplayName()).To(Equal("Run Strategy"))
 			Expect(fd1.GetEditable()).To(BeFalse())
 			Expect(fd1.GetDefault()).ToNot(BeNil())
@@ -436,7 +456,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 				Object: privatev1.ComputeInstanceCatalogItem_builder{
 					Metadata: privatev1.Metadata_builder{
 						Name:   "dev-sandbox",
-						Tenant: "shared",
+						Tenant: auth.SharedTenant,
 					}.Build(),
 					Title:    "CI catalog item for shared tenant",
 					Template: "my-ci-template-id",
@@ -492,7 +512,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.pull_secret",
+							Path:     "user_data",
 							Editable: false,
 						}.Build(),
 					},
@@ -502,7 +522,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("pull_secret"))
+			Expect(status.Message()).To(ContainSubstring("user_data"))
 			Expect(status.Message()).To(ContainSubstring("default value"))
 		})
 
@@ -513,7 +533,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.pull_secret",
+							Path:     "user_data",
 							Editable: false,
 							Default:  structpb.NewStringValue("my-secret"),
 						}.Build(),
@@ -538,7 +558,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.pull_secret",
+							Path:     "user_data",
 							Editable: true,
 						}.Build(),
 					},
@@ -562,11 +582,11 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.cores",
+							Path:     "instance_type",
 							Editable: true,
 						}.Build(),
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.memory_gib",
+							Path:     "is_windows",
 							Editable: false,
 						}.Build(),
 					},
@@ -576,7 +596,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("memory_gib"))
+			Expect(status.Message()).To(ContainSubstring("is_windows"))
 		})
 
 		It("Rejects field definition with invalid validation_schema JSON", func() {
@@ -586,7 +606,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.cores",
+							Path:             "instance_type",
 							Editable:         true,
 							ValidationSchema: "{not valid json}",
 						}.Build(),
@@ -597,7 +617,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("cores"))
+			Expect(status.Message()).To(ContainSubstring("instance_type"))
 			Expect(status.Message()).To(ContainSubstring("invalid validation_schema"))
 		})
 
@@ -608,7 +628,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Template: "my-ci-template-id",
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.cores",
+							Path:             "instance_type",
 							Editable:         true,
 							ValidationSchema: `{"type":"number","minimum":1}`,
 						}.Build(),
@@ -647,7 +667,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Id: id,
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.cores",
+							Path:     "instance_type",
 							Editable: false,
 						}.Build(),
 					},
@@ -660,7 +680,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			status, ok := grpcstatus.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
-			Expect(status.Message()).To(ContainSubstring("cores"))
+			Expect(status.Message()).To(ContainSubstring("instance_type"))
 			Expect(status.Message()).To(ContainSubstring("default value"))
 		})
 
@@ -685,7 +705,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Id: id,
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.cores",
+							Path:             "instance_type",
 							Editable:         true,
 							ValidationSchema: "{bad json}",
 						}.Build(),
@@ -723,12 +743,12 @@ var _ = Describe("Private compute instance catalog items server", func() {
 					Id: id,
 					FieldDefinitions: []*privatev1.FieldDefinition{
 						privatev1.FieldDefinition_builder{
-							Path:     "spec.cores",
+							Path:     "instance_type",
 							Editable: false,
 							Default:  structpb.NewNumberValue(4),
 						}.Build(),
 						privatev1.FieldDefinition_builder{
-							Path:             "spec.memory_gib",
+							Path:             "is_windows",
 							Editable:         true,
 							ValidationSchema: `{"type":"number"}`,
 						}.Build(),
@@ -740,6 +760,127 @@ var _ = Describe("Private compute instance catalog items server", func() {
 			}.Build())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(updateResponse.GetObject().GetFieldDefinitions()).To(HaveLen(2))
+		})
+
+		It("Rejects field definition with invalid spec path on Create", func() {
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Bad path catalog item",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "nonexistent_field",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("nonexistent_field"))
+			Expect(status.Message()).To(ContainSubstring("does not exist"))
+		})
+
+		It("Rejects field definition with invalid spec path on Update", func() {
+			response, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Will update with bad path",
+					Template: "my-ci-template-id",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			id := response.GetObject().GetId()
+			DeferCleanup(func() {
+				_, _ = server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
+					Id: id,
+				}.Build())
+			})
+
+			_, err = server.Update(ctx, privatev1.ComputeInstanceCatalogItemsUpdateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Id:       id,
+					Title:    "Will update with bad path",
+					Template: "my-ci-template-id",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "nonexistent_field",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"field_definitions"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("nonexistent_field"))
+		})
+
+		It("Rejects field definition with unknown template parameter on Create", func() {
+			createComputeInstanceTemplate("tpl-ci-param-create", "valid_param")
+
+			_, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Bad template param",
+					Template: "tpl-ci-param-create",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "template_parameters.unknown_param",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("unknown_param"))
+		})
+
+		It("Rejects field definition with unknown template parameter on Update", func() {
+			createComputeInstanceTemplate("tpl-ci-param-update", "valid_param")
+
+			response, err := server.Create(ctx, privatev1.ComputeInstanceCatalogItemsCreateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Title:    "Will update with bad param",
+					Template: "tpl-ci-param-update",
+				}.Build(),
+			}.Build())
+			Expect(err).ToNot(HaveOccurred())
+			id := response.GetObject().GetId()
+			DeferCleanup(func() {
+				_, _ = server.Delete(ctx, privatev1.ComputeInstanceCatalogItemsDeleteRequest_builder{
+					Id: id,
+				}.Build())
+			})
+
+			_, err = server.Update(ctx, privatev1.ComputeInstanceCatalogItemsUpdateRequest_builder{
+				Object: privatev1.ComputeInstanceCatalogItem_builder{
+					Id:       id,
+					Title:    "Will update with bad param",
+					Template: "tpl-ci-param-update",
+					FieldDefinitions: []*privatev1.FieldDefinition{
+						privatev1.FieldDefinition_builder{
+							Path:     "template_parameters.unknown_param",
+							Editable: true,
+						}.Build(),
+					},
+				}.Build(),
+				UpdateMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"field_definitions"},
+				},
+			}.Build())
+			Expect(err).To(HaveOccurred())
+			status, ok := grpcstatus.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(status.Code()).To(Equal(grpccodes.InvalidArgument))
+			Expect(status.Message()).To(ContainSubstring("unknown_param"))
 		})
 
 		It("Allows empty name without conflict", func() {
@@ -819,7 +960,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
+								Path:     "instance_type",
 								Editable: true,
 								Default:  structpb.NewStringValue("deprecated-type"),
 							}.Build(),
@@ -852,7 +993,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
+								Path:     "instance_type",
 								Editable: true,
 								Default:  structpb.NewStringValue("deprecated-type-upd"),
 							}.Build(),
@@ -873,7 +1014,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
+								Path:     "instance_type",
 								Editable: true,
 								Default:  structpb.NewStringValue("obsolete-type"),
 							}.Build(),
@@ -908,7 +1049,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
+								Path:     "instance_type",
 								Editable: true,
 								Default:  structpb.NewStringValue("obsolete-type-upd"),
 							}.Build(),
@@ -931,7 +1072,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
+								Path:     "instance_type",
 								Editable: true,
 								Default:  structpb.NewStringValue("active-type"),
 							}.Build(),
@@ -949,7 +1090,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.instance_type",
+								Path:     "instance_type",
 								Editable: true,
 								Default:  structpb.NewStringValue("non-existent-type"),
 							}.Build(),
@@ -969,7 +1110,7 @@ var _ = Describe("Private compute instance catalog items server", func() {
 						Template: "my-ci-template-id",
 						FieldDefinitions: []*privatev1.FieldDefinition{
 							privatev1.FieldDefinition_builder{
-								Path:     "spec.ssh_public_key",
+								Path:     "ssh_public_key",
 								Editable: true,
 							}.Build(),
 						},

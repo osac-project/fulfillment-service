@@ -142,7 +142,7 @@ func (x *FieldDefinition) ClearDefault() {
 type FieldDefinition_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Dot-notation path referencing a field in the resource spec.
+	// Dot-notation path relative to the resource spec (e.g. "network.pod_cidr").
 	Path string
 	// Human friendly label for this field, suitable for displaying in a UI.
 	DisplayName string

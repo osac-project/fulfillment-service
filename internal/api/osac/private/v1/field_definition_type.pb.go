@@ -40,8 +40,8 @@ const (
 // the user can set the field, what default value to apply, and optional JSON Schema validation constraints.
 type FieldDefinition struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
-	// Dot-notation path referencing a field in the resource spec. For example: "spec.network.pod_cidr" or
-	// "spec.node_sets.workers.size". Wildcards are not supported.
+	// Dot-notation path relative to the resource spec. For example: "network.pod_cidr" or
+	// "template_parameters.vpc_id". Wildcards are not supported.
 	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	// Human friendly label for this field, suitable for displaying in a UI.
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
@@ -152,8 +152,8 @@ func (x *FieldDefinition) ClearDefault() {
 type FieldDefinition_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Dot-notation path referencing a field in the resource spec. For example: "spec.network.pod_cidr" or
-	// "spec.node_sets.workers.size". Wildcards are not supported.
+	// Dot-notation path relative to the resource spec. For example: "network.pod_cidr" or
+	// "template_parameters.vpc_id". Wildcards are not supported.
 	Path string
 	// Human friendly label for this field, suitable for displaying in a UI.
 	DisplayName string

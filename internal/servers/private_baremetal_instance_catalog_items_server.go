@@ -27,6 +27,7 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/auth"
 	"github.com/osac-project/fulfillment-service/internal/database/dao"
 	"github.com/osac-project/fulfillment-service/internal/events"
+	"github.com/osac-project/fulfillment-service/internal/utils"
 )
 
 type PrivateBareMetalInstanceCatalogItemsServerBuilder struct {
@@ -45,6 +46,7 @@ type PrivateBareMetalInstanceCatalogItemsServer struct {
 	logger           *slog.Logger
 	generic          *GenericServer[*privatev1.BareMetalInstanceCatalogItem]
 	referenceChecker catalogItemReferenceChecker
+	templatesDao     *dao.GenericDAO[*privatev1.BareMetalInstanceTemplate]
 }
 
 func NewPrivateBareMetalInstanceCatalogItemsServer() *PrivateBareMetalInstanceCatalogItemsServerBuilder {
@@ -121,10 +123,20 @@ func (b *PrivateBareMetalInstanceCatalogItemsServerBuilder) Build() (result *Pri
 		refChecker = &daoReferenceChecker[*privatev1.BareMetalInstance]{resourceDao: bmiDao}
 	}
 
+	templatesDao, err := dao.NewGenericDAO[*privatev1.BareMetalInstanceTemplate]().
+		SetLogger(b.logger).
+		SetTenancyLogic(b.tenancyLogic).
+		SetMetricsRegisterer(b.metricsRegisterer).
+		Build()
+	if err != nil {
+		return
+	}
+
 	result = &PrivateBareMetalInstanceCatalogItemsServer{
 		logger:           b.logger,
 		generic:          generic,
 		referenceChecker: refChecker,
+		templatesDao:     templatesDao,
 	}
 	return
 }
@@ -147,6 +159,9 @@ func (s *PrivateBareMetalInstanceCatalogItemsServer) Create(ctx context.Context,
 		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
 			return
 		}
+		if err = s.validateFieldDefinitionPathsAndTemplateParams(ctx, object); err != nil {
+			return
+		}
 	}
 	err = s.generic.Create(ctx, request, &response)
 	return
@@ -156,6 +171,9 @@ func (s *PrivateBareMetalInstanceCatalogItemsServer) Update(ctx context.Context,
 	request *privatev1.BareMetalInstanceCatalogItemsUpdateRequest) (response *privatev1.BareMetalInstanceCatalogItemsUpdateResponse, err error) {
 	if object := request.GetObject(); object != nil {
 		if err = validateFieldDefinitions(object.GetFieldDefinitions()); err != nil {
+			return
+		}
+		if err = s.validateFieldDefinitionPathsAndTemplateParams(ctx, object); err != nil {
 			return
 		}
 	}
@@ -185,4 +203,21 @@ func (s *PrivateBareMetalInstanceCatalogItemsServer) Signal(ctx context.Context,
 	request *privatev1.BareMetalInstanceCatalogItemsSignalRequest) (response *privatev1.BareMetalInstanceCatalogItemsSignalResponse, err error) {
 	err = s.generic.Signal(ctx, request, &response)
 	return
+}
+
+func (s *PrivateBareMetalInstanceCatalogItemsServer) validateFieldDefinitionPathsAndTemplateParams(
+	ctx context.Context, object *privatev1.BareMetalInstanceCatalogItem,
+) error {
+	return validateCatalogItemFieldDefinitionPaths(ctx, object,
+		(&privatev1.BareMetalInstanceSpec{}).ProtoReflect().Descriptor(),
+		s.resolveTemplate,
+	)
+}
+
+func (s *PrivateBareMetalInstanceCatalogItemsServer) resolveTemplate(ctx context.Context, id string) (utils.Template, error) {
+	resp, err := s.templatesDao.Get().SetId(id).Do(ctx)
+	if err != nil {
+		return nil, templateLookupError(id, err)
+	}
+	return utils.BareMetalInstanceTemplateAdapter{BareMetalInstanceTemplate: resp.GetObject()}, nil
 }

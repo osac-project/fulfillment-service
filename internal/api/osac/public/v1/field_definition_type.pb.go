@@ -39,7 +39,7 @@ const (
 // Defines a single field on the resource spec that a catalog item controls.
 type FieldDefinition struct {
 	state protoimpl.MessageState `protogen:"hybrid.v1"`
-	// Dot-notation path referencing a field in the resource spec.
+	// Dot-notation path relative to the resource spec (e.g. "network.pod_cidr").
 	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	// Human friendly label for this field, suitable for displaying in a UI.
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
@@ -147,7 +147,7 @@ func (x *FieldDefinition) ClearDefault() {
 type FieldDefinition_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Dot-notation path referencing a field in the resource spec.
+	// Dot-notation path relative to the resource spec (e.g. "network.pod_cidr").
 	Path string
 	// Human friendly label for this field, suitable for displaying in a UI.
 	DisplayName string

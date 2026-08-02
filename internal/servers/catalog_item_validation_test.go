@@ -24,7 +24,34 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	privatev1 "github.com/osac-project/fulfillment-service/internal/api/osac/private/v1"
+	"github.com/osac-project/fulfillment-service/internal/utils"
 )
+
+type fakeTemplate struct {
+	id     string
+	params []string
+}
+
+func (t *fakeTemplate) GetId() string {
+	return t.id
+}
+
+func (t *fakeTemplate) GetParameters() []utils.TemplateParameterDefinition {
+	result := make([]utils.TemplateParameterDefinition, len(t.params))
+	for i, name := range t.params {
+		result[i] = &fakeParam{name: name}
+	}
+	return result
+}
+
+type fakeParam struct {
+	name string
+}
+
+func (p *fakeParam) GetName() string        { return p.name }
+func (p *fakeParam) GetRequired() bool      { return false }
+func (p *fakeParam) GetType() string        { return "" }
+func (p *fakeParam) GetDefault() *anypb.Any { return nil }
 
 var _ = Describe("applyFieldDefinitions", func() {
 	It("rejects editable field with no default and no user value", func() {
@@ -463,6 +490,176 @@ var _ = Describe("applyFieldDefinitions rejects unlisted fields", func() {
 		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 		Expect(err.Error()).To(ContainSubstring("run_strategy"))
 		Expect(err.Error()).To(ContainSubstring("not allowed"))
+	})
+})
+
+var _ = Describe("validateFieldDefinitionPaths", func() {
+	It("accepts valid simple path", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "pull_secret",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("accepts valid nested path", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "network.pod_cidr",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("accepts valid map entry path", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "node_sets.workers.size",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("accepts parent message path without traversing children", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "network",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("skips template_parameters paths", func() {
+		fieldDefs := []*privatev1.FieldDefinition{
+			{Path: "pull_secret"},
+			{Path: "template_parameters.vpc_id"},
+			{Path: "template_parameters.nonexistent"},
+		}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("rejects bare template_parameters path without parameter name", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "template_parameters",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+		Expect(err.Error()).To(ContainSubstring("must specify a parameter name"))
+	})
+
+	It("rejects invalid top-level path", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "nonexistent",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+		Expect(err.Error()).To(ContainSubstring("nonexistent"))
+		Expect(err.Error()).To(ContainSubstring("does not exist"))
+	})
+
+	It("rejects invalid nested path", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "network.invalid_field",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+		Expect(err.Error()).To(ContainSubstring("invalid_field"))
+	})
+
+	It("rejects path continuing beyond a scalar field", func() {
+		fieldDefs := []*privatev1.FieldDefinition{{
+			Path: "pull_secret.nested",
+		}}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+		Expect(err.Error()).To(ContainSubstring("scalar"))
+	})
+
+	It("accepts valid compute instance spec paths", func() {
+		fieldDefs := []*privatev1.FieldDefinition{
+			{Path: "ssh_public_key"},
+			{Path: "image.source_ref"},
+			{Path: "boot_disk.size_gib"},
+			{Path: "instance_type"},
+		}
+		descriptor := (&privatev1.ComputeInstanceSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("accepts valid bare metal instance spec paths", func() {
+		fieldDefs := []*privatev1.FieldDefinition{
+			{Path: "ssh_public_key"},
+			{Path: "user_data"},
+			{Path: "image.source_ref"},
+		}
+		descriptor := (&privatev1.BareMetalInstanceSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("skips empty paths", func() {
+		fieldDefs := []*privatev1.FieldDefinition{
+			{Path: ""},
+			{Path: "pull_secret"},
+		}
+		descriptor := (&privatev1.ClusterSpec{}).ProtoReflect().Descriptor()
+		err := validateFieldDefinitionPaths(fieldDefs, descriptor)
+		Expect(err).ToNot(HaveOccurred())
+	})
+})
+
+var _ = Describe("validateFieldDefinitionTemplateParams", func() {
+	It("accepts valid template parameter paths", func() {
+		fieldDefs := []*privatev1.FieldDefinition{
+			{Path: "pull_secret"},
+			{Path: "template_parameters.ip_block_id"},
+		}
+		template := &fakeTemplate{
+			id:     "my-template",
+			params: []string{"ip_block_id", "vpc_id"},
+		}
+		err := validateFieldDefinitionTemplateParams(fieldDefs, template)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("rejects unknown template parameter", func() {
+		fieldDefs := []*privatev1.FieldDefinition{
+			{Path: "template_parameters.nonexistent"},
+		}
+		template := &fakeTemplate{
+			id:     "my-template",
+			params: []string{"ip_block_id", "vpc_id"},
+		}
+		err := validateFieldDefinitionTemplateParams(fieldDefs, template)
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+		Expect(err.Error()).To(ContainSubstring("nonexistent"))
+		Expect(err.Error()).To(ContainSubstring("ip_block_id"))
+	})
+
+	It("is a no-op when there are no template_parameters paths", func() {
+		fieldDefs := []*privatev1.FieldDefinition{
+			{Path: "pull_secret"},
+			{Path: "ssh_public_key"},
+		}
+		template := &fakeTemplate{
+			id:     "my-template",
+			params: []string{"ip_block_id"},
+		}
+		err := validateFieldDefinitionTemplateParams(fieldDefs, template)
+		Expect(err).ToNot(HaveOccurred())
 	})
 })
 
