@@ -13,12 +13,22 @@ language governing permissions and limitations under the License.
 
 package reflection
 
-import "github.com/osac-project/fulfillment-service/internal/util"
+import "reflect"
 
 // NormalizeNil returns a true nil when the interface holds a nil pointer, preventing typed-nil values from bypassing
 // nil checks and causing panics on method calls.
-//
-// Deprecated: Use util.NormalizeNil instead. This wrapper is provided for backward compatibility.
 func NormalizeNil[T any](value T) T {
-	return util.NormalizeNil(value)
+	v := reflect.ValueOf(&value).Elem()
+	if v.Kind() == reflect.Interface {
+		elem := v.Elem()
+		if !elem.IsValid() {
+			var zero T
+			return zero
+		}
+		if elem.Kind() == reflect.Pointer && elem.IsNil() {
+			var zero T
+			return zero
+		}
+	}
+	return value
 }
