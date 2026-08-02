@@ -37,3 +37,24 @@ jobs:
         args: release --clean
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # goreleaser has been observed silently shipping a broken release when the
+    # GitHub API errors mid-publish: it can't find the release it's supposed to
+    # update, creates a second orphaned "untagged-*" release with the real
+    # assets attached, then fails to rename it onto the real tag -- leaving the
+    # tag's actual release empty. Every consumer that resolves "latest" (e.g.
+    # osac-test-infra's e2e image build) then 404s on the binary download.
+    # Fail loudly here instead of finding out from a downstream repo days later.
+    - name: Verify release assets were published
+      run: |
+        tag="${GITHUB_REF_NAME}"
+        count=$(gh release view "${tag}" --json assets --jq '.assets | length')
+        echo "Release ${tag} has ${count} asset(s)."
+        # 2 builds (osac, fulfillment-service) x 3 os x 2 arch + 1 checksums file = 13
+        # today; use a conservative floor so small build-matrix changes don't
+        # make this flaky.
+        if [ "${count}" -lt 10 ]; then
+          echo "::error::Release ${tag} has only ${count} asset(s) -- goreleaser likely failed to attach binaries (see comment above). Check for a stray 'untagged-*' release holding the real assets."
+          exit 1
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
