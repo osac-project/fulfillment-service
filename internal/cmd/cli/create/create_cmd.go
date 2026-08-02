@@ -14,6 +14,7 @@ language governing permissions and limitations under the License.
 package create
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,8 +53,18 @@ import (
 	"github.com/osac-project/fulfillment-service/internal/terminal"
 )
 
+// Possible output formats:
+const (
+	outputFormatJson = "json"
+	outputFormatYaml = "yaml"
+)
+
 func Cmd() *cobra.Command {
-	runner := &runnerContext{}
+	runner := &runnerContext{
+		marshalOptions: protojson.MarshalOptions{
+			UseProtoNames: true,
+		},
+	}
 	result := &cobra.Command{
 		Use:                   "create [FLAG...] -f FILE",
 		DisableFlagsInUseLine: true,
@@ -86,17 +97,26 @@ func Cmd() *cobra.Command {
 		"",
 		filenameFlagHelp,
 	)
+	flags.StringVarP(
+		&runner.args.format,
+		"output",
+		"o",
+		"",
+		outputFlagHelp,
+	)
 	return result
 }
 
 type runnerContext struct {
 	args struct {
-		file string
+		file   string
+		format string
 	}
-	logger   *slog.Logger
-	console  *terminal.Console
-	settings *config.Settings
-	conn     *grpc.ClientConn
+	logger         *slog.Logger
+	console        *terminal.Console
+	settings       *config.Settings
+	conn           *grpc.ClientConn
+	marshalOptions protojson.MarshalOptions
 }
 
 func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
@@ -136,6 +156,12 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if c.args.file == "" {
 		return fmt.Errorf("it is mandatory to specify the input file with the '--filename' or '-f' options")
 	}
+	if c.args.format != "" && c.args.format != outputFormatJson && c.args.format != outputFormatYaml {
+		return fmt.Errorf(
+			"unknown output format '%s', should be '%s' or '%s'",
+			c.args.format, outputFormatJson, outputFormatYaml,
+		)
+	}
 
 	// Open the input:
 	var reader io.ReadCloser
@@ -165,6 +191,7 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	created := make([]proto.Message, 0, len(objects))
 	tenant := config.TenantFromContext(ctx)
 	for i, object := range objects {
 		objectDesc := object.ProtoReflect().Descriptor()
@@ -179,6 +206,10 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		object, err = objectHelper.Create(ctx, object)
 		if err != nil {
 			return fmt.Errorf("failed to create object at index %d: %w", i, err)
+		}
+		created = append(created, object)
+		if c.args.format != "" {
+			continue
 		}
 		objectSingular := objectHelper.Singular()
 		objectId := objectHelper.GetId(object)
@@ -209,7 +240,67 @@ func (c *runnerContext) run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// When an output format was requested, write the created objects instead of the human-readable messages.
+	switch c.args.format {
+	case outputFormatJson:
+		return c.renderJson(ctx, created)
+	case outputFormatYaml:
+		return c.renderYaml(ctx, created)
+	default:
+		return nil
+	}
+}
+
+func (c *runnerContext) renderJson(ctx context.Context, objects []proto.Message) error {
+	values, err := c.encodeObjects(objects)
+	if err != nil {
+		return err
+	}
+	if len(values) == 1 {
+		c.console.RenderJson(ctx, values[0])
+	} else {
+		c.console.RenderJson(ctx, values)
+	}
 	return nil
+}
+
+func (c *runnerContext) renderYaml(ctx context.Context, objects []proto.Message) error {
+	values, err := c.encodeObjects(objects)
+	if err != nil {
+		return err
+	}
+	if len(values) == 1 {
+		c.console.RenderYaml(ctx, values[0])
+	} else {
+		c.console.RenderYaml(ctx, values)
+	}
+	return nil
+}
+
+func (c *runnerContext) encodeObjects(objects []proto.Message) (result []any, err error) {
+	values := make([]any, len(objects))
+	for i, object := range objects {
+		values[i], err = c.encodeObject(object)
+		if err != nil {
+			return
+		}
+	}
+	result = values
+	return
+}
+
+func (c *runnerContext) encodeObject(object proto.Message) (result any, err error) {
+	wrapper, err := anypb.New(object)
+	if err != nil {
+		return
+	}
+	var data []byte
+	data, err = c.marshalOptions.Marshal(wrapper)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(data, &result)
+	return
 }
 
 // decode reads the given input, which may contain multiple YAML or JSON documents, each of them being a single object
@@ -298,10 +389,22 @@ cat my-cluster.yaml | {{ binary }} create -f -
 The input file can contain multiple documents separated by {{ bt }}---{{ bt }}, and each document can be a single object
 or a list of objects. All objects are created in order.
 
+By default the command prints a short confirmation message for each created object. Use the {{ bt }}--output{{ bt }}
+flag to write the created objects as {{ bt }}json{{ bt }} or {{ bt }}yaml{{ bt }} instead:
+
+{{ bt 3 }}shell
+{{ binary }} create -f my-cluster.yaml -o yaml
+{{ bt 3 }}
+
 There are also subcommands for creating specific types of objects with dedicated flags instead of a file. Use {{ bt
 }}--help{{ bt }} on any subcommand for details.
 `
 
 const filenameFlagHelp = `
 _FILE_ - Name of the file containing the object to create. Use {{ bt }}-{{ bt }} to read from standard input.
+`
+
+const outputFlagHelp = `
+_FORMAT_ - Output format for the created objects. Must be {{ bt }}json{{ bt }} or {{ bt }}yaml{{ bt }}. When omitted
+the command prints a short confirmation message instead.
 `
