@@ -1458,7 +1458,11 @@ var _ = Describe("syncStatus", func() {
 	It("should clear restart conditions and sync restart trigger when PowerSynced is True", func() {
 		t := newTask(42)
 		object := &bmfov1alpha1.BareMetalInstance{
+			Spec: bmfov1alpha1.BareMetalInstanceSpec{
+				RestartTrigger: 42,
+			},
 			Status: bmfov1alpha1.BareMetalInstanceStatus{
+				RestartTrigger: 42,
 				Conditions: []metav1.Condition{
 					{
 						Type:    string(bmfov1alpha1.HostConditionPowerSynced),
@@ -1482,6 +1486,39 @@ var _ = Describe("syncStatus", func() {
 		Expect(failed.GetStatus()).To(Equal(privatev1.ConditionStatus_CONDITION_STATUS_FALSE))
 
 		Expect(t.bareMetalInstance.GetStatus().GetRestartTrigger()).To(Equal(int64(42)))
+	})
+
+	It("should not echo restart trigger when operator has not completed restart", func() {
+		t := newTask(42)
+		object := &bmfov1alpha1.BareMetalInstance{
+			Spec: bmfov1alpha1.BareMetalInstanceSpec{
+				RestartTrigger: 42,
+			},
+			Status: bmfov1alpha1.BareMetalInstanceStatus{
+				RestartTrigger: 0,
+				Conditions: []metav1.Condition{
+					{
+						Type:    string(bmfov1alpha1.HostConditionPowerSynced),
+						Status:  metav1.ConditionTrue,
+						Reason:  bmfov1alpha1.HostConditionReasonPowerOn,
+						Message: "Power on complete",
+					},
+				},
+			},
+		}
+		t.syncStatus(object)
+
+		Expect(t.bareMetalInstance.GetStatus().GetRestartTrigger()).To(Equal(int64(0)))
+
+		inProgress := findProtoCondition(t.bareMetalInstance,
+			privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_IN_PROGRESS)
+		Expect(inProgress).ToNot(BeNil())
+		Expect(inProgress.GetStatus()).To(Equal(privatev1.ConditionStatus_CONDITION_STATUS_TRUE))
+
+		failed := findProtoCondition(t.bareMetalInstance,
+			privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_FAILED)
+		Expect(failed).ToNot(BeNil())
+		Expect(failed.GetStatus()).To(Equal(privatev1.ConditionStatus_CONDITION_STATUS_FALSE))
 	})
 
 	It("should not set restart conditions when PowerSynced is False with unhandled reason", func() {

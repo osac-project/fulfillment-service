@@ -474,14 +474,23 @@ func (t *task) syncStatus(object *bmfov1alpha1.BareMetalInstance) {
 					privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_IN_PROGRESS,
 					privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
 			} else if cond.Status == metav1.ConditionTrue {
-				t.updateCondition(
-					privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_IN_PROGRESS,
-					privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
-				t.updateCondition(
-					privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_FAILED,
-					privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
-				t.bareMetalInstance.GetStatus().SetRestartTrigger(
-					t.bareMetalInstance.GetSpec().GetRestartTrigger())
+				if object.Spec.RestartTrigger == object.Status.RestartTrigger {
+					t.updateCondition(
+						privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_IN_PROGRESS,
+						privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
+					t.updateCondition(
+						privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_FAILED,
+						privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
+					t.bareMetalInstance.GetStatus().SetRestartTrigger(
+						t.bareMetalInstance.GetSpec().GetRestartTrigger())
+				} else {
+					t.updateCondition(
+						privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_IN_PROGRESS,
+						privatev1.ConditionStatus_CONDITION_STATUS_TRUE, cond.Reason, "Restart in progress")
+					t.updateCondition(
+						privatev1.BareMetalInstanceConditionType_BARE_METAL_INSTANCE_CONDITION_TYPE_RESTART_FAILED,
+						privatev1.ConditionStatus_CONDITION_STATUS_FALSE, "", "")
+				}
 			}
 		}
 	}
